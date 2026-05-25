@@ -5,7 +5,6 @@ import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
 import CategoryGrid from '@/components/dashboard/CategoryGrid'
 import TrendKeywords from '@/components/dashboard/TrendKeywords'
-import YoutubeSection from '@/components/dashboard/YoutubeSection'
 import RecentFeed from '@/components/dashboard/RecentFeed'
 import EditorPick from '@/components/dashboard/EditorPick'
 import CompetitorTrends from '@/components/dashboard/CompetitorTrends'
@@ -38,9 +37,6 @@ export default function DashboardPage() {
         <main className="min-w-0 flex-1 space-y-6 px-6 py-6">
           {/* Category Grid */}
           <CategoryGrid />
-
-          {/* YouTube */}
-          <YoutubeSection activeService={activeService} />
 
           {/* Trend Keywords */}
           <TrendKeywords />
