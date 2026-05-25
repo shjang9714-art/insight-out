@@ -1,9 +1,9 @@
 'use client'
 
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import { YOUTUBE_VIDEOS, SERVICES, type YoutubeVideo } from '@/components/dashboard/mock-data'
-import { useState } from 'react'
 
 const SERVICE_GRADIENT: Record<string, string> = {
   AICC: 'from-pink-500 to-rose-600',
@@ -31,16 +31,14 @@ function VideoCard({ video }: { video: YoutubeVideo }) {
   const gradient = SERVICE_GRADIENT[video.service] ?? SERVICE_GRADIENT.default
   return (
     <div className="group cursor-pointer">
-      {/* Thumbnail */}
       <div className={`relative mb-3 aspect-video overflow-hidden rounded-2xl bg-gradient-to-br ${gradient}`}>
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+        <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-transform group-hover:scale-110">
             <svg className="h-6 w-6 translate-x-0.5 text-white" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
         </div>
-        {/* Badges */}
         <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
           <span className="rounded-lg bg-black/50 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
             {video.snippet.channelTitle}
@@ -50,8 +48,6 @@ function VideoCard({ video }: { video: YoutubeVideo }) {
           </span>
         </div>
       </div>
-
-      {/* Info */}
       <p className="mb-1.5 line-clamp-2 text-sm font-medium leading-snug text-gray-900 group-hover:text-brand-600">
         {video.snippet.title}
       </p>
@@ -73,81 +69,72 @@ function VideoCard({ video }: { video: YoutubeVideo }) {
   )
 }
 
-export default function YoutubePage() {
-  const [activeService, setActiveService] = useState('all')
+function YoutubeContent() {
+  const searchParams = useSearchParams()
+  const activeService = searchParams.get('service') ?? 'all'
 
-  const serviceLabel = activeService !== 'all'
-    ? SERVICES.find((s) => s.id === activeService)?.label
-    : null
+  const serviceLabel =
+    activeService !== 'all' ? SERVICES.find((s) => s.id === activeService)?.label : null
 
   const videos = serviceLabel
     ? YOUTUBE_VIDEOS.filter((v) => v.service === serviceLabel)
     : YOUTUBE_VIDEOS
 
+  const dashboardHref =
+    activeService !== 'all' ? `/dashboard?service=${activeService}` : '/dashboard'
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <DashboardHeader />
-
-      <div className="mx-auto max-w-screen-xl px-6 py-6">
-        {/* Breadcrumb */}
-        <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
-          <Link href="/dashboard" className="transition-colors hover:text-brand-600">대시보드</Link>
-          <span>›</span>
-          <span className="font-medium text-gray-700">유튜브 영상</span>
-        </div>
-
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-600 text-sm font-bold text-white">▶</span>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">유튜브 영상</h1>
-              <p className="text-xs text-gray-400">총 {videos.length}개 영상</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Service Filter */}
-        <div className="mb-6 flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveService('all')}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              activeService === 'all'
-                ? 'bg-brand-600 text-white'
-                : 'border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            전체
-          </button>
-          {SERVICES.filter((s) => s.id !== 'all').map((svc) => (
-            <button
-              key={svc.id}
-              onClick={() => setActiveService(svc.id)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                activeService === svc.id
-                  ? 'bg-brand-600 text-white'
-                  : 'border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {svc.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Video Grid */}
-        {videos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-100 bg-white py-20">
-            <span className="mb-3 text-4xl">📭</span>
-            <p className="text-sm font-medium text-gray-500">해당 서비스의 영상이 없습니다</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {videos.map((video) => (
-              <VideoCard key={video.id} video={video} />
-            ))}
-          </div>
+    <div className="px-6 py-6">
+      {/* Breadcrumb */}
+      <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
+        <Link href={dashboardHref} className="transition-colors hover:text-brand-600">
+          대시보드
+        </Link>
+        <span>›</span>
+        <span className="font-medium text-gray-700">유튜브 영상</span>
+        {serviceLabel && (
+          <>
+            <span>›</span>
+            <span className="font-medium text-brand-600">{serviceLabel}</span>
+          </>
         )}
       </div>
+
+      {/* Header */}
+      <div className="mb-6 flex items-center gap-3">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-600 text-sm font-bold text-white">
+          ▶
+        </span>
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">유튜브 영상</h1>
+          <p className="text-xs text-gray-400">
+            {serviceLabel ? `${serviceLabel} 서비스 기준` : '전체'} · {videos.length}개 영상
+          </p>
+        </div>
+      </div>
+
+      {/* Video grid — 서비스 필터 탭 없음, 사이드바로 제어 */}
+      {videos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-gray-100 bg-white py-20">
+          <span className="text-4xl">📭</span>
+          <p className="text-sm font-medium text-gray-500">해당 서비스의 영상이 없습니다</p>
+          <p className="text-xs text-gray-400">사이드바에서 다른 서비스를 선택해보세요</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {videos.map((video) => (
+            <VideoCard key={video.id} video={video} />
+          ))}
+        </div>
+      )}
     </div>
+  )
+}
+
+export default function YoutubePage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">로딩 중...</div>}>
+      <YoutubeContent />
+    </Suspense>
   )
 }

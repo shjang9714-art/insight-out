@@ -8,11 +8,19 @@ const CATEGORY_HREF: Record<string, string> = {
 const ITEM_CLASS =
   'flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white p-4 text-center transition-all hover:border-brand-200 hover:shadow-sm group'
 
-export default function CategoryGrid() {
+interface Props {
+  activeService?: string
+}
+
+export default function CategoryGrid({ activeService = 'all' }: Props) {
+  const buildHref = (basePath: string) =>
+    activeService !== 'all' ? `${basePath}?service=${activeService}` : basePath
+
   return (
     <div className="grid grid-cols-8 gap-3">
       {CATEGORIES.map((cat) => {
-        const href = CATEGORY_HREF[cat.id]
+        const baseHref = CATEGORY_HREF[cat.id]
+        const href = baseHref ? buildHref(baseHref) : undefined
         const inner = (
           <>
             <div className="relative">
