@@ -1,7 +1,7 @@
 import { RECENT_FEED } from './mock-data'
 
 const CATEGORY_COLORS: Record<string, string> = {
-  blue: 'bg-blue-50 text-blue-700',
+  blue: 'bg-brand-50 text-brand-600',
   yellow: 'bg-yellow-50 text-yellow-700',
   purple: 'bg-purple-50 text-purple-700',
   green: 'bg-green-50 text-green-700',
@@ -12,7 +12,7 @@ export default function RecentFeed() {
     <div className="rounded-2xl border border-gray-100 bg-white p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900">최근 피드</h2>
-        <button className="text-xs text-blue-600 hover:underline">전체 보기</button>
+        <button className="text-xs text-brand-600 hover:underline">전체 보기</button>
       </div>
       <div className="flex flex-col divide-y divide-gray-50">
         {RECENT_FEED.map((item) => (
@@ -25,7 +25,7 @@ export default function RecentFeed() {
                 {item.service}
               </span>
             </div>
-            <p className="text-sm font-medium text-gray-900 leading-snug group-hover:text-blue-700 line-clamp-2 mb-1">
+            <p className="text-sm font-medium text-gray-900 leading-snug group-hover:text-brand-600 line-clamp-2 mb-1">
               {item.title}
             </p>
             <p className="text-xs text-gray-500 line-clamp-1 mb-1.5">{item.summary}</p>

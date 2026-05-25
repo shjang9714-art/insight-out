@@ -46,7 +46,7 @@ export default function DashboardPage() {
           <TrendKeywords />
 
           {/* AI Report Banner */}
-          <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5">
+          <div className="rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 to-pink-50 px-6 py-5">
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -59,7 +59,7 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={() => setShowGenerateModal(true)}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -74,11 +74,11 @@ export default function DashboardPage() {
                   <button
                     key={r.id}
                     onClick={() => setSelectedReport(r)}
-                    className="shrink-0 rounded-xl border border-blue-100 bg-white px-3 py-2.5 text-left transition-colors hover:border-blue-300 hover:shadow-sm"
+                    className="shrink-0 rounded-xl border border-brand-100 bg-white px-3 py-2.5 text-left transition-colors hover:border-brand-600 hover:shadow-sm"
                   >
                     <p className="max-w-[160px] truncate text-xs font-medium text-gray-800">{r.title}</p>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                      <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-600">
                         {r.service}
                       </span>
                       <span className="text-[10px] text-gray-400">{r.date}</span>

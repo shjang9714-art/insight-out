@@ -16,7 +16,7 @@ export default function ServiceTabs({ activeService, onChange }: Props) {
           onClick={() => onChange(service.id)}
           className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
             activeService === service.id
-              ? 'bg-blue-600 text-white'
+              ? 'bg-brand-600 text-white'
               : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
           }`}
         >

@@ -39,10 +39,29 @@ export type AIReport = {
   service: string
   period: string
   date: string
+  llm?: string
   summary: string
   insights: string[]
   sources: { title: string; source: string; date: string }[]
 }
+
+export type SelectableContent = {
+  id: string
+  title: string
+  source: string
+  tag: string
+}
+
+export const SELECTABLE_CONTENT: SelectableContent[] = [
+  { id: 'feed-1', title: 'AWS, 기업용 AI 에이전트 서비스 국내 출시 — 콜센터·RPA 시장 판도 변화 예고', source: 'ZDNet Korea', tag: 'AICC' },
+  { id: 'feed-2', title: 'Gartner: 2026년까지 기업의 75%가 제로 트러스트 아키텍처 도입 예정', source: 'Gartner Blog', tag: '보안/클라우드' },
+  { id: 'feed-3', title: 'Private 5G가 스마트팩토리의 판을 바꾼다 — 제조업 연결성 혁신', source: 'Medium', tag: 'Connectivity' },
+  { id: 'feed-4', title: '현대차, 차량 데이터 플랫폼 고도화 — M2M·V2X 통합 솔루션 발주', source: '전자신문', tag: 'M2M' },
+  { id: 'feed-5', title: '2026 국내 클라우드 보안 시장 전망 — MSSP 성장률 34% 예측', source: 'KRG Research', tag: '보안/클라우드' },
+  { id: 'pick-1', title: 'AICC 2.0 시대: 생성형 AI가 바꾸는 콜센터의 미래', source: '가트너 리포트', tag: 'AICC' },
+  { id: 'pick-2', title: '제로 트러스트 실전 도입 가이드 — 국내 금융권 사례 중심', source: '웹 인사이트', tag: '보안/클라우드' },
+  { id: 'pick-3', title: 'Private 5G vs Wi-Fi 6E — 제조현장 선택 기준 완전 정리', source: '뉴스레터', tag: 'Connectivity' },
+]
 
 export const AI_REPORTS: AIReport[] = [
   {

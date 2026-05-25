@@ -46,6 +46,13 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* LGU+ brand */
+  --color-brand-50: #fff0f9;
+  --color-brand-100: #ffd6ef;
+  --color-brand-200: #ffaad9;
+  --color-brand-600: #E6007E;
+  --color-brand-700: #c5006b;
 }
 
 :root {

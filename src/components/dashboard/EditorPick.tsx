@@ -16,11 +16,11 @@ export default function EditorPick() {
             key={item.id}
             className="flex gap-3 cursor-pointer group rounded-xl p-3 hover:bg-gray-50 transition-colors -mx-1"
           >
-            <div className="shrink-0 flex h-7 w-12 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-bold text-white">
+            <div className="shrink-0 flex h-7 w-12 items-center justify-center rounded-lg bg-brand-600 text-[10px] font-bold text-white">
               {item.badge}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900 leading-snug group-hover:text-blue-700 line-clamp-2 mb-1">
+              <p className="text-sm font-medium text-gray-900 leading-snug group-hover:text-brand-600 line-clamp-2 mb-1">
                 {item.title}
               </p>
               <div className="flex items-center gap-2 text-xs text-gray-400">

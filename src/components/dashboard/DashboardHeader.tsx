@@ -1,11 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { NOTIFICATIONS, TODAY_UPDATES, MOCK_USER } from './mock-data'
+import { createClient } from '@/lib/supabase/client'
+import { NOTIFICATIONS, TODAY_UPDATES } from './mock-data'
 
 export default function DashboardHeader() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
+  const [userName, setUserName] = useState('—')
+  const [userTeam, setUserTeam] = useState('')
   const notifRef = useRef<HTMLDivElement>(null)
 
   const unreadCount = NOTIFICATIONS.filter((n) => !n.read).length
@@ -15,6 +18,22 @@ export default function DashboardHeader() {
     day: 'numeric',
     weekday: 'short',
   })
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase
+        .from('users')
+        .select('name, team')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.name) setUserName(data.name)
+          if (data?.team) setUserTeam(data.team)
+        })
+    })
+  }, [])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -56,7 +75,7 @@ export default function DashboardHeader() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="키워드, 서비스, 경쟁사 검색..."
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
         </div>
@@ -66,7 +85,7 @@ export default function DashboardHeader() {
           {/* Date + updates */}
           <div className="hidden flex-col items-end md:flex">
             <span className="text-xs font-medium text-gray-700">{today}</span>
-            <span className="text-[11px] font-medium text-blue-600">
+            <span className="text-[11px] font-medium text-brand-600">
               오늘 업데이트 {TODAY_UPDATES}건
             </span>
           </div>
@@ -104,7 +123,7 @@ export default function DashboardHeader() {
                 </div>
                 <div className="max-h-64 divide-y divide-gray-50 overflow-y-auto">
                   {NOTIFICATIONS.map((n) => (
-                    <div key={n.id} className={`px-4 py-3 ${n.read ? '' : 'bg-blue-50/50'}`}>
+                    <div key={n.id} className={`px-4 py-3 ${n.read ? '' : 'bg-brand-50/60'}`}>
                       <p className="text-xs leading-snug text-gray-800">{n.text}</p>
                       <p className="mt-1 text-[11px] text-gray-400">{n.time}</p>
                     </div>
@@ -117,11 +136,11 @@ export default function DashboardHeader() {
           {/* User */}
           <div className="flex items-center gap-2">
             <div className="hidden flex-col items-end sm:flex">
-              <span className="text-xs font-semibold text-gray-800">{MOCK_USER.name}</span>
-              <span className="text-[11px] text-gray-400">{MOCK_USER.team}</span>
+              <span className="text-xs font-semibold text-gray-800">{userName}</span>
+              {userTeam && <span className="text-[11px] text-gray-400">{userTeam}</span>}
             </div>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-              {MOCK_USER.name[0]}
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+              {userName !== '—' ? userName[0] : '?'}
             </div>
           </div>
         </div>
