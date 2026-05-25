@@ -44,28 +44,40 @@ export default function OnboardingPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
 
+      const upsertPayload = {
+        id: user.id,
+        email: user.email!,
+        name: step1Data.name,
+        department: step1Data.department,
+        team: step1Data.team,
+        position: step1Data.position || null,
+        onboarding_completed: true,
+      }
+      console.log('[onboarding] users upsert payload:', upsertPayload)
+
       const { error: profileError } = await supabase
         .from('users')
-        .upsert({
-          id: user.id,
-          email: user.email!,
-          name: step1Data.name,
-          department: step1Data.department,
-          team: step1Data.team,
-          position: step1Data.position || null,
-          onboarding_completed: true,
-        })
-      if (profileError) throw profileError
+        .upsert(upsertPayload)
+      if (profileError) {
+        console.error('[onboarding] users upsert error:', JSON.stringify(profileError))
+        throw new Error(`프로필 저장 실패: ${profileError.message} (code: ${profileError.code})`)
+      }
 
       const isActive = data.frequency !== 'none'
+      const newsletterPayload = {
+        user_id: user.id,
+        frequency: data.frequency as NewsletterFrequency,
+        is_active: isActive,
+      }
+      console.log('[onboarding] newsletter upsert payload:', newsletterPayload)
+
       const { error: newsletterError } = await supabase
         .from('newsletter_subscriptions')
-        .upsert({
-          user_id: user.id,
-          frequency: data.frequency as NewsletterFrequency,
-          is_active: isActive,
-        })
-      if (newsletterError) throw newsletterError
+        .upsert(newsletterPayload)
+      if (newsletterError) {
+        console.error('[onboarding] newsletter upsert error:', JSON.stringify(newsletterError))
+        throw new Error(`뉴스레터 설정 실패: ${newsletterError.message} (code: ${newsletterError.code})`)
+      }
 
       router.push('/dashboard')
       router.refresh()

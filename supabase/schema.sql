@@ -110,19 +110,31 @@ create policy "users: 본인 조회"
   on public.users for select
   using (auth.uid() = id);
 
+create policy "users: 본인 추가"
+  on public.users for insert
+  with check (auth.uid() = id);
+
 create policy "users: 본인 수정"
   on public.users for update
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.users
+    where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 create policy "users: admin 전체 조회"
   on public.users for select
-  using (
-    exists (
-      select 1 from public.users u
-      where u.id = auth.uid() and u.role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
 -- services
 create policy "services: 인증 사용자 조회"
