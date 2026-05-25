@@ -1,3 +1,88 @@
+export const MOCK_USER = {
+  name: '장수희',
+  team: '기업솔루션팀',
+}
+
+export const TODAY_UPDATES = 34
+
+export const NOTIFICATIONS = [
+  { id: '1', text: '보안/클라우드 관련 신규 아티클 5건이 수집됐습니다', time: '5분 전', read: false },
+  { id: '2', text: 'AICC 경쟁사 동향 업데이트 — KT, LG U+ 신규 발표', time: '1시간 전', read: false },
+  { id: '3', text: '이번 주 에디터 픽이 업데이트됐습니다', time: '3시간 전', read: true },
+  { id: '4', text: 'Private 5G 트렌드 키워드 급상승 감지', time: '어제', read: true },
+]
+
+export const MY_SERVICES_NAV = [
+  { id: 'aicc', label: 'AICC', icon: '🤖', count: 8 },
+  { id: 'connectivity', label: 'Connectivity', icon: '🔗', count: 5 },
+  { id: 'security-cloud', label: '보안/클라우드', icon: '🔒', count: 12 },
+  { id: 'm2m', label: 'M2M', icon: '📡', count: 3 },
+]
+
+export const BOOKMARKED_ARTICLES = [
+  { id: '1', title: 'AICC 2.0 시대: 생성형 AI가 바꾸는 콜센터의 미래', category: '가트너 리포트', date: '2026.05.20' },
+  { id: '2', title: '제로 트러스트 실전 도입 가이드 — 국내 금융권 사례 중심', category: '웹 인사이트', date: '2026.05.19' },
+  { id: '3', title: 'Gartner: 2026 AICC 시장 규모 전망', category: '가트너 리포트', date: '2026.05.15' },
+]
+
+export const RECENT_VIEWS = [
+  { id: '1', title: 'Gartner: 2026년까지 기업의 75%가 제로 트러스트 도입 예정', time: '10분 전' },
+  { id: '2', title: 'AWS Bedrock 멀티 에이전트 서비스 국내 GA', time: '1시간 전' },
+  { id: '3', title: 'Private 5G vs Wi-Fi 6E — 제조현장 선택 기준', time: '어제' },
+]
+
+export const SAVED_KEYWORDS = ['AI 에이전트', 'Private 5G', '제로 트러스트', 'GenAI']
+
+export type AIReport = {
+  id: string
+  title: string
+  service: string
+  period: string
+  date: string
+  summary: string
+  insights: string[]
+  sources: { title: string; source: string; date: string }[]
+}
+
+export const AI_REPORTS: AIReport[] = [
+  {
+    id: '1',
+    title: 'AICC 시장 동향 및 경쟁사 분석',
+    service: 'AICC',
+    period: '2026년 1분기',
+    date: '2026.05.24',
+    summary: 'AI 콜센터(AICC) 시장이 2026년 1분기 기준 전년 대비 42% 성장세를 기록했다. KT·LG U+의 SMB 타깃 패키지 출시와 AWS Bedrock 기반 글로벌 서비스의 국내 진입이 맞물리며 경쟁이 본격화되고 있다. 특히 감성 분석과 실시간 코칭 기능이 고객사 도입 결정의 핵심 요인으로 부상했다.',
+    insights: [
+      'KT와 LG U+가 SMB 시장 공략을 위해 월정액 패키지를 신규 출시하며 가격 경쟁 심화',
+      'AWS Bedrock 기반 멀티 에이전트 서비스 출시로 글로벌 빅테크의 국내 AICC 시장 진입 본격화',
+      '감성 분석·실시간 코칭 기능이 고객사 도입 결정의 핵심 요인으로 부상',
+      '공공·금융 부문 컴플라이언스 요건 강화로 온프레미스 하이브리드 AICC 수요 증가 예상',
+    ],
+    sources: [
+      { title: 'AWS, 기업용 AI 에이전트 서비스 국내 출시', source: 'ZDNet Korea', date: '2026.05.24' },
+      { title: 'AICC 2.0 시대: 생성형 AI가 바꾸는 콜센터의 미래', source: '가트너 리포트', date: '2026.05.20' },
+      { title: 'KT AI Contact 무상 체험 프로그램 런칭', source: '전자신문', date: '2026.05.23' },
+    ],
+  },
+  {
+    id: '2',
+    title: 'Private 5G 스마트팩토리 시장 현황',
+    service: 'Connectivity',
+    period: '2026년 상반기',
+    date: '2026.05.21',
+    summary: 'Private 5G 기반 스마트팩토리 구축 사업이 국내 제조업 전반으로 확산되고 있다. LG U+의 현대제철 레퍼런스 확보를 계기로 대기업 제조사 공략 경쟁이 본격화됐으며, 정부의 스마트제조 2.0 정책과 맞물려 공공 조달 기회도 확대되고 있다.',
+    insights: [
+      'LG U+의 현대제철 레퍼런스 확보로 대기업 제조사 공략 경쟁 본격화',
+      'Wi-Fi 6E 대비 Private 5G의 TCO 우위는 3년 이상 운영 시 명확히 나타남',
+      '정부 스마트제조 2.0 정책과 맞물려 공공 조달 기회 확대 예상',
+    ],
+    sources: [
+      { title: 'Private 5G가 스마트팩토리의 판을 바꾼다', source: 'Medium', date: '2026.05.19' },
+      { title: 'LG U+ Private 5G 현대제철 구축 완료', source: '전자신문', date: '2026.05.22' },
+    ],
+  },
+]
+
 export const SERVICES = [
   { id: 'all', label: '전체' },
   { id: 'connectivity', label: 'Connectivity' },
