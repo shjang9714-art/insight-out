@@ -1,17 +1,47 @@
 'use client'
 
-import { BOOKMARKED_ARTICLES, RECENT_VIEWS, SAVED_KEYWORDS, type AIReport } from './mock-data'
+import { SERVICES, BOOKMARKED_ARTICLES, RECENT_VIEWS, SAVED_KEYWORDS, type AIReport } from './mock-data'
 
 interface Props {
+  activeService: string
+  onServiceChange: (id: string) => void
   reports: AIReport[]
   onSelectReport: (report: AIReport) => void
   onOpenGenerate: () => void
 }
 
-export default function Sidebar({ reports, onSelectReport, onOpenGenerate }: Props) {
+export default function Sidebar({ activeService, onServiceChange, reports, onSelectReport, onOpenGenerate }: Props) {
   return (
     <aside className="w-56 shrink-0 border-r border-gray-100 bg-white">
       <div className="sticky top-14 h-[calc(100vh-56px)] space-y-5 overflow-y-auto px-3 py-4">
+
+        {/* Service Navigation */}
+        <section>
+          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            서비스
+          </h3>
+          <div className="space-y-0.5">
+            {SERVICES.map((svc) => {
+              const isActive = activeService === svc.id
+              return (
+                <button
+                  key={svc.id}
+                  onClick={() => onServiceChange(svc.id)}
+                  className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors ${
+                    isActive
+                      ? 'bg-brand-50 font-medium text-brand-600'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <span className="text-sm">{svc.label}</span>
+                  {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        <div className="border-t border-gray-100" />
 
         {/* Bookmarks */}
         <section>

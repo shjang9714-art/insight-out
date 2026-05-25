@@ -2,7 +2,7 @@ import { CATEGORIES } from './mock-data'
 
 export default function CategoryGrid() {
   return (
-    <div className="grid grid-cols-7 gap-3">
+    <div className="grid grid-cols-8 gap-3">
       {CATEGORIES.map((cat) => (
         <button
           key={cat.id}

@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
-import ServiceTabs from '@/components/dashboard/ServiceTabs'
 import CategoryGrid from '@/components/dashboard/CategoryGrid'
 import TrendKeywords from '@/components/dashboard/TrendKeywords'
+import YoutubeSection from '@/components/dashboard/YoutubeSection'
 import RecentFeed from '@/components/dashboard/RecentFeed'
 import EditorPick from '@/components/dashboard/EditorPick'
 import CompetitorTrends from '@/components/dashboard/CompetitorTrends'
@@ -28,19 +28,19 @@ export default function DashboardPage() {
 
       <div className="flex">
         <Sidebar
+          activeService={activeService}
+          onServiceChange={setActiveService}
           reports={reports}
           onSelectReport={setSelectedReport}
           onOpenGenerate={() => setShowGenerateModal(true)}
         />
 
-        <main className="min-w-0 flex-1 px-6 py-6 space-y-6">
-          {/* Service Tabs */}
-          <div className="rounded-2xl border border-gray-100 bg-white px-5 py-4">
-            <ServiceTabs activeService={activeService} onChange={setActiveService} />
-          </div>
-
+        <main className="min-w-0 flex-1 space-y-6 px-6 py-6">
           {/* Category Grid */}
           <CategoryGrid />
+
+          {/* YouTube */}
+          <YoutubeSection activeService={activeService} />
 
           {/* Trend Keywords */}
           <TrendKeywords />
@@ -49,7 +49,7 @@ export default function DashboardPage() {
           <div className="rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 to-pink-50 px-6 py-5">
             <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="mb-1 flex items-center gap-2">
                   <span className="text-lg">🤖</span>
                   <h2 className="text-sm font-semibold text-gray-900">AI 보고서</h2>
                 </div>
@@ -89,10 +89,10 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Bottom 3-column layout */}
+          {/* Bottom 3-column */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="lg:col-span-1">
-              <RecentFeed />
+              <RecentFeed activeService={activeService} />
             </div>
             <div className="lg:col-span-1">
               <EditorPick />
