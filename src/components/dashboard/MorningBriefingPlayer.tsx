@@ -52,10 +52,22 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="모닝 브리핑 열기"
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
-        style={{ backgroundColor: '#E6007E' }}
+        className="fixed bottom-6 right-6 z-50 flex flex-col items-center justify-center gap-1 rounded-2xl px-4 py-3 shadow-xl transition-all hover:scale-105 hover:shadow-2xl active:scale-95"
+        style={{
+          background: 'linear-gradient(135deg, #E6007E 0%, #ff4aaa 100%)',
+          minWidth: '72px',
+        }}
       >
-        <span className="text-2xl">🎙️</span>
+        {/* Microphone SVG icon */}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="2" width="6" height="11" rx="3" />
+          <path d="M5 10a7 7 0 0 0 14 0" />
+          <line x1="12" y1="19" x2="12" y2="22" />
+          <line x1="9" y1="22" x2="15" y2="22" />
+        </svg>
+        <span className="text-white font-semibold leading-none" style={{ fontSize: '9px', letterSpacing: '0.05em' }}>
+          모닝브리핑
+        </span>
       </button>
 
       {/* Mini player popup */}
