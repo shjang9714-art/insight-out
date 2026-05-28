@@ -17,12 +17,13 @@ export default function TrendKeywords() {
       </div>
       <div className="flex flex-wrap gap-2">
         {TREND_KEYWORDS.map((item) => (
-          <button
+          <span
             key={item.keyword}
-            className={`rounded-full transition-opacity hover:opacity-80 ${SIZE_STYLES[item.size]}`}
+            title="키워드 컨텍스트 기능 곧 제공"
+            className={`rounded-full cursor-default ${SIZE_STYLES[item.size]}`}
           >
             {item.keyword}
-          </button>
+          </span>
         ))}
       </div>
     </div>
