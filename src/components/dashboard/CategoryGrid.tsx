@@ -42,9 +42,9 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
             {inner}
           </Link>
         ) : (
-          <button key={cat.id} className={ITEM_CLASS}>
+          <div key={cat.id} title="곧 제공 예정" className={`${ITEM_CLASS} cursor-default`}>
             {inner}
-          </button>
+          </div>
         )
       })}
     </div>

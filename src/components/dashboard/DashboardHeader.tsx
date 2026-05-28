@@ -61,6 +61,9 @@ export default function DashboardHeader() {
             className="h-8 w-auto"
           />
           <span className="hidden text-xs text-gray-400 sm:block">B2B Intelligence</span>
+          <span className="hidden sm:inline-block bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider">
+            DEMO
+          </span>
         </div>
 
         {/* Search */}
@@ -83,8 +86,9 @@ export default function DashboardHeader() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="키워드, 서비스, 경쟁사 검색..."
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+              placeholder="검색 기능 곧 제공 예정"
+              disabled
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -137,6 +141,9 @@ export default function DashboardHeader() {
                       <p className="mt-1 text-[11px] text-gray-400">{n.time}</p>
                     </div>
                   ))}
+                </div>
+                <div className="px-4 py-2 border-t border-gray-100 text-[11px] text-amber-600">
+                  표시되는 알림은 샘플 데이터입니다
                 </div>
               </div>
             )}

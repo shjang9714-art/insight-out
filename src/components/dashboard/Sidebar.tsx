@@ -50,13 +50,14 @@ export default function Sidebar({ activeService, onServiceChange, reports, onSel
           </h3>
           <div className="space-y-0.5">
             {BOOKMARKED_ARTICLES.map((article) => (
-              <button
+              <div
                 key={article.id}
-                className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-50"
+                title="상세 보기 곧 제공"
+                className="w-full rounded-lg px-2 py-2 cursor-default"
               >
                 <p className="line-clamp-2 text-xs leading-snug text-gray-700">{article.title}</p>
                 <span className="mt-0.5 inline-block text-[10px] text-gray-400">{article.date}</span>
-              </button>
+              </div>
             ))}
           </div>
         </section>
@@ -70,13 +71,14 @@ export default function Sidebar({ activeService, onServiceChange, reports, onSel
           </h3>
           <div className="space-y-0.5">
             {RECENT_VIEWS.map((item) => (
-              <button
+              <div
                 key={item.id}
-                className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-50"
+                title="상세 보기 곧 제공"
+                className="w-full rounded-lg px-2 py-2 cursor-default"
               >
                 <p className="line-clamp-2 text-xs leading-snug text-gray-700">{item.title}</p>
                 <span className="mt-0.5 inline-block text-[10px] text-gray-400">{item.time}</span>
-              </button>
+              </div>
             ))}
           </div>
         </section>
@@ -92,7 +94,8 @@ export default function Sidebar({ activeService, onServiceChange, reports, onSel
             {SAVED_KEYWORDS.map((kw) => (
               <span
                 key={kw}
-                className="cursor-pointer rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                title="상세 보기 곧 제공"
+                className="cursor-default rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600"
               >
                 {kw}
               </span>
