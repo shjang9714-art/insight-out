@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { NOTIFICATIONS, TODAY_UPDATES } from './mock-data'
 
@@ -49,8 +50,16 @@ export default function DashboardHeader() {
     <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
       <div className="flex h-14 items-center gap-4 px-5">
         {/* Logo */}
-        <div className="flex w-52 shrink-0 items-center gap-2">
-          <span className="text-base font-bold tracking-tight text-gray-900">Insight Out</span>
+        <div className="flex w-52 shrink-0 items-center gap-2.5">
+          <Image
+            src="/logo.svg"
+            alt="Insight Out"
+            width={320}
+            height={80}
+            priority
+            unoptimized
+            className="h-7 w-auto"
+          />
           <span className="hidden text-xs text-gray-400 sm:block">B2B Intelligence</span>
         </div>
 
