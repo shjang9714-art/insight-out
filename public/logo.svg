@@ -7,12 +7,12 @@
       <stop offset="100%" stop-color="#E6007E"/>
     </linearGradient>
   </defs>
-  <g transform="translate(8,8)">
+  <g transform="translate(14,4)">
     <circle cx="24" cy="40" r="18" fill="url(#io-orb-h)"/>
     <ellipse cx="17.5" cy="33" rx="4.6" ry="2.8" fill="#FFE0EE" opacity="0.6"/>
     <circle cx="50" cy="14" r="10" fill="#E6007E"/>
   </g>
-  <g font-family="Geist, Inter, ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-weight="600" font-size="36" letter-spacing="-0.025em">
-    <text x="88" y="52" fill="#0F1535">insight<tspan fill="#E6007E">out</tspan></text>
+  <g font-family="Pretendard, Geist, Inter, ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-weight="600" font-size="42" letter-spacing="-0.025em">
+    <text x="88" y="54" fill="#0F1535">insight<tspan fill="#E6007E">out</tspan></text>
   </g>
 </svg>

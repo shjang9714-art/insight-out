@@ -58,7 +58,7 @@ export default function DashboardHeader() {
             height={80}
             priority
             unoptimized
-            className="h-7 w-auto"
+            className="h-8 w-auto"
           />
           <span className="hidden text-xs text-gray-400 sm:block">B2B Intelligence</span>
         </div>
