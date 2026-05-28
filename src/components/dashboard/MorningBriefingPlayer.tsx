@@ -73,19 +73,16 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
       {/* Mini player popup */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 z-50 w-72 overflow-hidden rounded-2xl bg-white shadow-2xl"
-          style={{ border: '1.5px solid #f0f0f0' }}
+          className="fixed bottom-24 right-6 z-50 w-72 overflow-hidden rounded-2xl shadow-2xl"
+          style={{ backgroundColor: '#2D2D6E' }}
         >
           {/* Header stripe */}
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ backgroundColor: '#E6007E' }}
-          >
+          <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: '#1A1A4E' }}>
             <span className="text-sm font-semibold text-white">오늘의 모닝 브리핑</span>
             <button
               onClick={handleClose}
               aria-label="닫기"
-              className="text-white/80 hover:text-white text-lg leading-none"
+              className="text-white/60 hover:text-white text-lg leading-none"
             >
               ✕
             </button>
@@ -94,7 +91,7 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
           {/* Body */}
           <div className="flex flex-col items-center gap-4 px-5 py-5">
             {/* Date */}
-            <p className="text-xs text-gray-400">{today}</p>
+            <p className="text-xs text-white/60">{today}</p>
 
             {/* Play / Coming soon */}
             {isAvailable ? (
@@ -105,13 +102,11 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
                 style={{ backgroundColor: '#E6007E' }}
               >
                 {playing ? (
-                  /* Pause icon */
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="5" y="4" width="4" height="16" rx="1" />
                     <rect x="15" y="4" width="4" height="16" rx="1" />
                   </svg>
                 ) : (
-                  /* Play icon */
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M8 5v14l11-7z" />
                   </svg>
@@ -136,7 +131,7 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
               </div>
             )}
 
-            <p className="text-center text-xs text-gray-400">
+            <p className="text-center text-xs text-white/60">
               {isAvailable
                 ? '재생 버튼을 눌러 오늘의 브리핑을 들어보세요.'
                 : '곧 모닝 브리핑 서비스가 시작됩니다.'}
