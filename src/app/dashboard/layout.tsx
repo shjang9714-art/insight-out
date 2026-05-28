@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
 import AIReportModal from '@/components/dashboard/AIReportModal'
+import MorningBriefingPlayer from '@/components/dashboard/MorningBriefingPlayer'
 import { DashboardContext } from './DashboardContext'
 import { AI_REPORTS, type AIReport } from '@/components/dashboard/mock-data'
 
@@ -63,6 +64,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           onClose={() => setSelectedReport(null)}
         />
       )}
+
+      {/* audioUrl prop을 실제 URL로 교체하면 Coming Soon → 재생 가능 상태로 전환 */}
+      <MorningBriefingPlayer />
     </DashboardContext.Provider>
   )
 }
