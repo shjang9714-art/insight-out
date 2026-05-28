@@ -54,7 +54,7 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
         aria-label="모닝 브리핑 열기"
         className="fixed bottom-6 right-6 z-50 flex flex-col items-center justify-center gap-1 rounded-2xl px-4 py-3 shadow-xl transition-all hover:scale-105 hover:shadow-2xl active:scale-95"
         style={{
-          background: 'linear-gradient(135deg, #E6007E 0%, #ff4aaa 100%)',
+          background: '#1A1A4E',
           minWidth: '72px',
         }}
       >
