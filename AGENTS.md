@@ -439,7 +439,7 @@ import { cn } from '@/lib/utils'
 ### 20.1 한 줄 요약
 
 ```
-git pull → 작업 → git pull → commit → git pull --rebase → push → 노션 일지 기록
+git pull → 작업 → git pull → commit → git pull --rebase → push → 노션 기록 (개발 일지 + 작업 DB 상태)
 ```
 
 ### 20.2 작업 시작 (필수, 3초)
@@ -512,15 +512,33 @@ git push
 
 대부분 이걸로 풀림.
 
-### 20.8 작업 후 노션 일지 기록
+### 20.8 작업 후 노션 기록 (필수, 2단계)
 
-push 끝나면 노션 **개발 일지**에 한 줄 추가 (또는 AI 에게 "기록해줘"):
-- 제목: 변경 요약
-- 유형: 커밋 / PR / 배포 / 검증
-- 작업자, 브랜치, 링크 (commit URL 또는 PR URL)
-- 내용: 무엇을 / 왜
+push 끝나면 노션에 두 가지를 갱신한다. ①은 모든 push 후 필수, ②는 작업 DB 항목이 있을 때만.
 
-미래 자동화: **GitHub Actions → Notion 자동 일지** (작업 DB 에 별도 항목 예정).
+#### ① 개발 일지 DB 에 한 줄 추가 — 모든 push 후 필수
+
+- URL: <https://www.notion.so/bc50b27c33b64af78ecb70ee54c8c80a>
+- 필드:
+  - `제목` (title): 변경 요약 한 줄
+  - `유형` (select): `커밋` / `PR` / `배포` / `검증` / `기타` 중 하나
+  - `작업자` (select): `수희` 또는 `David`
+  - `날짜` (date): 오늘
+  - `브랜치` (text): 작업한 브랜치명 (예: `chore/로고-파비콘-개편`)
+  - `링크` (url): commit URL 또는 PR URL
+  - `내용` (text): 무엇을 / 왜 (한두 문장)
+  - `관련 작업` (relation, 선택): 해당 push가 작업 DB 의 특정 항목과 연관되면 그 페이지 링크
+
+#### ② 작업 DB 상태 갱신 — 작업 DB 에 해당 항목이 있을 때만
+
+- URL: <https://www.notion.so/dd9050f8ffc8451db18475abd03166d4>
+- 갱신 필드:
+  - `상태` (select): `Todo` → `In Progress` → `Done` (또는 `Blocked`)
+  - `메모` (text): 완료 컨텍스트 — 예) `"완료: 2026-MM-DD, PR #N (브랜치명). 핵심 변경 요약"`
+
+작업 DB 에 항목이 없는 push (오타 수정 같은 가벼운 polish)는 ② 생략 OK. ①은 모든 push 후 필수.
+
+**미래 자동화**: GitHub Actions → Notion 자동 일지 (작업 DB 항목과 매칭해서 상태도 자동 갱신).
 
 ### 20.9 AI 에이전트에게 (바이브 코딩 시)
 
@@ -529,4 +547,8 @@ push 끝나면 노션 **개발 일지**에 한 줄 추가 (또는 AI 에게 "기
 1. **작업 시작 시**: `git status` 와 `git pull` 실행 여부 확인. 안 했다면 사용자에게 권유.
 2. **작업 중**: 30분 이상 걸리면 중간 `git pull --rebase` 권유.
 3. **작업 끝낼 때**: commit 메시지 형식(`type: 한국어 요약`) 지키고, push 전 마지막 `git pull --rebase` 권유.
-4. **push 후**: 노션 개발 일지 자동 기록 제안 (사용자가 "기록해줘" 안 해도 먼저 제안).
+4. **push 후 노션 기록 자동 제안** (사용자가 "기록해줘" 안 해도 먼저 제안). 두 단계 분리:
+   - ① 개발 일지 추가 — 모든 push 에 해당
+   - ② 작업 DB 상태 갱신 — 해당 항목이 작업 DB 에 존재할 때만
+5. **노션 MCP 사용 가능한 경우** (예: Claude Code 에 Notion MCP 연결, Cowork 등): 직접 페이지 생성·상태 갱신 후 결과 URL 사용자에게 보고.
+6. **노션 MCP 사용 불가능한 경우**: 사용자에게 필드별 값을 정확히 채워서 안내 — 어느 DB 에 / 제목 / 유형 / 브랜치 / 링크 / 내용 등. 사용자가 복붙으로 빠르게 입력 가능하도록.
