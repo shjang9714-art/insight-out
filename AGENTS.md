@@ -429,3 +429,104 @@ import { cn } from '@/lib/utils'
 5. 기존 코드 스타일 (들여쓰기·인용부호·주석 톤) 을 따라가기 — 일관성이 가독성
 
 **불확실하면 코드를 만들기 전에 묻기.** 이 프로젝트는 학습 + 실제 배포를 겸하는 팀 프로젝트이므로, 잘못된 추론보다 확인이 낫다.
+
+---
+
+## 20. 작업 사이클 — Git 표준 흐름 (공동 작업 필수)
+
+**모든 작업의 시작과 끝은 git 동기화입니다.** 공동 작업 환경에서 충돌과 꼬임을 방지하는 핵심 습관. 바이브 코딩 시 AI 도 이 사이클을 반드시 따른다.
+
+### 20.1 한 줄 요약
+
+```
+git pull → 작업 → git pull → commit → git pull --rebase → push → 노션 일지 기록
+```
+
+### 20.2 작업 시작 (필수, 3초)
+
+```bash
+cd ~/insight-out
+git checkout main
+git pull
+```
+
+수희(또는 다른 팀원)가 방금 push 한 것을 못 받으면 모든 게 꼬임. 예외 없음.
+
+### 20.3 작업 종료 (필수)
+
+```bash
+git add <변경 파일>
+git commit -m "<type>: <한국어 요약>"
+git pull --rebase
+git push
+```
+
+`pull --rebase` 가 핵심: push 직전에 누가 또 올렸을 수 있으니 한 번 더 sync, 본인 commit 을 그 위에 얹는 방식.
+
+### 20.4 30분 이상 작업 시 — 중간 sync
+
+```bash
+git pull --rebase
+```
+
+중간에 한 번씩 끼워 넣기. 마지막에 큰 충돌 풀기보다 조각으로 푸는 게 쉬움.
+
+### 20.5 언제 main 직접 push? 언제 브랜치?
+
+| 작업 성격 | 방식 |
+|---|---|
+| 작은 polish (오타, 색상, 1~2줄 버그 fix) | main 직접 push |
+| 큰 기능 추가 (30분 이상 작업) | 브랜치 + PR |
+| 여러 작업 묶음 | 브랜치 + PR |
+| AGENTS.md 같은 규칙 변경 | 브랜치 + PR |
+| DB 스키마 변경 | 브랜치 + PR (필수) |
+| 환경변수 추가 | 브랜치 + PR (필수, owner 에게 알림) |
+
+### 20.6 충돌(conflict) 발생 시
+
+`git pull` 또는 `git push` 가 다음을 보내면:
+
+```
+CONFLICT (content): Merge conflict in <file>
+```
+
+대응:
+1. 충돌 파일 열기 → `<<<<<<<`, `=======`, `>>>>>>>` 마커 확인
+2. 어느 쪽 살릴지 결정 → 마커 제거 + 정리
+3. `git add <file>` → `git rebase --continue` (또는 `git commit` if merge)
+4. `git push`
+
+당황하지 말 것. 코드는 안 사라진다.
+
+### 20.7 push 거부될 때
+
+```
+! [rejected]  main -> main (fetch first)
+```
+
+이렇게 뜨면:
+```bash
+git pull --rebase
+git push
+```
+
+대부분 이걸로 풀림.
+
+### 20.8 작업 후 노션 일지 기록
+
+push 끝나면 노션 **개발 일지**에 한 줄 추가 (또는 AI 에게 "기록해줘"):
+- 제목: 변경 요약
+- 유형: 커밋 / PR / 배포 / 검증
+- 작업자, 브랜치, 링크 (commit URL 또는 PR URL)
+- 내용: 무엇을 / 왜
+
+미래 자동화: **GitHub Actions → Notion 자동 일지** (작업 DB 에 별도 항목 예정).
+
+### 20.9 AI 에이전트에게 (바이브 코딩 시)
+
+이 사이클을 매번 자연스럽게 따라간다:
+
+1. **작업 시작 시**: `git status` 와 `git pull` 실행 여부 확인. 안 했다면 사용자에게 권유.
+2. **작업 중**: 30분 이상 걸리면 중간 `git pull --rebase` 권유.
+3. **작업 끝낼 때**: commit 메시지 형식(`type: 한국어 요약`) 지키고, push 전 마지막 `git pull --rebase` 권유.
+4. **push 후**: 노션 개발 일지 자동 기록 제안 (사용자가 "기록해줘" 안 해도 먼저 제안).

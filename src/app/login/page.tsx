@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -138,8 +139,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Insight Out</h1>
-          <p className="mt-1 text-sm text-gray-500">계정에 로그인하세요</p>
+          <Image src="/logo.svg" alt="Insight Out" width={320} height={80} priority unoptimized className="mx-auto mb-3 h-12 w-auto" />
+          <p className="text-sm text-gray-500">계정에 로그인하세요</p>
         </div>
         <Suspense fallback={<div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 h-64" />}>
           <LoginForm />
