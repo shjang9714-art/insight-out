@@ -1,0 +1,41 @@
+%% 뉴스 크롤링 파이프라인 — 1회 실행 시퀀스 (Opus #3)
+sequenceDiagram
+    autonumber
+    participant Cron as Vercel Cron 05:00
+    participant API as /api/cron/crawl
+    participant Orch as Orchestrator
+    participant DB as Supabase (service_role)
+    participant Src as Source Adapter (RSS/API)
+
+    Cron->>API: POST (CRON_SECRET 헤더)
+    API->>API: 시크릿 검증 (실패 시 401)
+    API->>Orch: 실행 시작
+    Orch->>DB: select sources where is_active and 주기 도래
+    DB-->>Orch: 대상 소스 목록
+
+    loop 소스별 (allSettled, 격리)
+        Orch->>DB: insert crawl_logs(status=running, started_at)
+        Orch->>Src: fetch(source, since=last_crawled_at)
+        alt fetch 성공
+            Src-->>Orch: raw item[]
+            Orch->>Orch: 메타 정규화 + title_hash/body_hash 계산
+            loop item별 중복필터 3단계
+                Orch->>DB: 1) on conflict(original_url)
+                Orch->>DB: 2) title_hash 조회
+                Orch->>DB: 3) body_hash 조회
+                alt 신규
+                    Orch->>DB: upsert contents (사용자지표 보존)
+                    Orch->>DB: upsert content_services / content_keywords
+                else 중복
+                    Orch->>Orch: skip (duplicate_count++)
+                end
+            end
+            Orch->>DB: update crawl_logs(success, counts, finished_at)
+            Orch->>DB: update sources.last_crawled_at
+        else fetch 실패 (3회 백오프 후)
+            Orch->>DB: update crawl_logs(failed, error_message)
+        end
+    end
+
+    Orch-->>API: 요약(총 소스/성공/실패/신규)
+    API-->>Cron: 200 OK

@@ -1,0 +1,118 @@
+%% Phase 1-B 콘텐츠 + 북마크·아카이빙 ER 다이어그램
+%% 기존: users, services / 신규 11개 테이블
+%% 다형 참조(contents | youtube_videos)는 점선으로 표시
+erDiagram
+    users ||--o{ ai_reports        : "작성"
+    users ||--o{ bookmarks         : "저장"
+    users ||--o{ archives          : "소유"
+
+    services ||--o{ keywords          : "카테고리 힌트"
+    services ||--o{ content_services  : ""
+    services ||--o{ user_services     : "(기존)"
+
+    sources ||--o{ contents        : "수집 출처"
+    sources ||--o{ youtube_videos  : "수집 출처"
+
+    contents ||--o{ content_services  : ""
+    contents ||--o{ content_keywords  : ""
+    keywords ||--o{ content_keywords  : ""
+
+    contents       ||--o{ bookmarks          : "(다형)"
+    youtube_videos ||--o{ bookmarks          : "(다형)"
+    contents       ||--o{ archive_items      : "(다형)"
+    youtube_videos ||--o{ archive_items      : "(다형)"
+    contents       ||--o{ ai_report_sources  : "(다형)"
+    youtube_videos ||--o{ ai_report_sources  : "(다형)"
+
+    archives   ||--o{ archive_items      : "포함"
+    ai_reports ||--o{ ai_report_sources  : "참조"
+
+    sources {
+        uuid    id PK
+        text    name
+        enum    type "source_type(5)"
+        text    url
+        text    rss_url
+        bool    is_active
+        int     crawl_interval_minutes "null=수동"
+        tstz    last_crawled_at
+    }
+    keywords {
+        uuid    id PK
+        text    name "unique(lower)"
+        uuid    service_id FK "nullable"
+        bool    is_competitor
+    }
+    contents {
+        uuid    id PK
+        enum    category "content_category(8)"
+        uuid    source_id FK
+        text    title
+        text    title_original
+        text    summary_ko
+        text    body_original
+        text    body_translated_ko
+        text    original_language
+        text    original_url "부분 unique·중복필터 1단계"
+        text    file_path "Storage 첨부"
+        text    title_hash "중복필터 2단계"
+        text    body_hash "중복필터 3단계"
+        int     view_count
+        int     bookmark_count "트리거 동기화"
+        bool    is_editor_pick
+        bool    is_published
+        tstz    published_at
+        tstz    collected_at
+    }
+    content_services {
+        uuid    content_id FK
+        uuid    service_id FK
+    }
+    content_keywords {
+        uuid    content_id FK
+        uuid    keyword_id FK
+    }
+    youtube_videos {
+        uuid    id PK
+        uuid    source_id FK
+        text    video_id "unique"
+        text    title
+        text    channel_name
+        text    thumbnail_url
+        int     duration_seconds
+        tstz    published_at
+    }
+    ai_reports {
+        uuid    id PK
+        uuid    user_id FK
+        enum    type "ai_report_type(5)"
+        enum    status "ai_report_status(4)"
+        text    title
+        text    prompt
+        text    body_md
+        text    file_path
+    }
+    ai_report_sources {
+        uuid    ai_report_id FK
+        uuid    content_id FK "다형 nullable"
+        uuid    youtube_video_id FK "다형 nullable"
+    }
+    bookmarks {
+        uuid    id PK
+        uuid    user_id FK
+        uuid    content_id FK "다형 nullable"
+        uuid    youtube_video_id FK "다형 nullable"
+    }
+    archives {
+        uuid    id PK
+        uuid    user_id FK
+        text    name
+        text    description
+    }
+    archive_items {
+        uuid    archive_id FK
+        uuid    content_id FK "다형 nullable"
+        uuid    youtube_video_id FK "다형 nullable"
+        text    note "메일 발송용 메모"
+        int     order
+    }
