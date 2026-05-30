@@ -52,12 +52,11 @@ export default function DashboardHeader() {
         {/* Logo */}
         <div className="flex w-52 shrink-0 items-center gap-2.5">
           <Image
-            src="/logo.svg"
+            src="/logo.png"
             alt="Insight Out"
-            width={320}
-            height={80}
+            width={976}
+            height={286}
             priority
-            unoptimized
             className="h-8 w-auto"
           />
           <span className="hidden text-xs text-gray-400 sm:block">B2B Intelligence</span>

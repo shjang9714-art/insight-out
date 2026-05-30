@@ -139,7 +139,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Image src="/logo.svg" alt="Insight Out" width={320} height={80} priority unoptimized className="mx-auto mb-3 h-12 w-auto" />
+          <Image src="/logo.png" alt="Insight Out" width={976} height={286} priority className="mx-auto mb-3 h-12 w-auto" />
           <p className="text-sm text-gray-500">계정에 로그인하세요</p>
         </div>
         <Suspense fallback={<div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 h-64" />}>
