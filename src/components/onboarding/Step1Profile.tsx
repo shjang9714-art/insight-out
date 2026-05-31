@@ -4,7 +4,37 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { OnboardingStep1 } from '@/lib/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
+import type { OnboardingStep1, Department, ContentFilterMode } from '@/lib/types'
+
+const DEPARTMENTS: Department[] = [
+  'Enterprise사업부문',
+  'SMB사업부문',
+  '공공사업부문',
+  '기술부문',
+  '마케팅부문',
+  '기타',
+]
+
+const FILTER_OPTIONS: { value: ContentFilterMode; label: string; description: string }[] = [
+  {
+    value: 'my_services',
+    label: '담당 서비스만',
+    description: '내가 담당하는 서비스 관련 콘텐츠만 표시합니다.',
+  },
+  {
+    value: 'all',
+    label: '전체 보기',
+    description: '모든 서비스의 콘텐츠를 함께 표시합니다.',
+  },
+]
 
 interface Props {
   defaultValues: OnboardingStep1
@@ -43,6 +73,23 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
       </div>
 
       <div className="flex flex-col gap-1.5">
+        <Label htmlFor="department">부문 <span className="text-red-500">*</span></Label>
+        <Select
+          value={form.department}
+          onValueChange={(value) => setForm({ ...form, department: value as Department })}
+        >
+          <SelectTrigger id="department">
+            <SelectValue placeholder="부문을 선택해주세요" />
+          </SelectTrigger>
+          <SelectContent>
+            {DEPARTMENTS.map((dept) => (
+              <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor="team">팀 <span className="text-red-500">*</span></Label>
         <Input
           id="team"
@@ -62,6 +109,36 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
           value={form.position}
           onChange={(e) => setForm({ ...form, position: e.target.value })}
         />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>콘텐츠 보기 방식 <span className="text-red-500">*</span></Label>
+        <p className="text-xs text-gray-500">대시보드에서 어떤 범위의 콘텐츠를 기본으로 보시겠어요?</p>
+        <div className="flex gap-2">
+          {FILTER_OPTIONS.map((opt) => {
+            const isSelected = form.content_filter_mode === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setForm({ ...form, content_filter_mode: opt.value })}
+                className={cn(
+                  'flex flex-1 flex-col gap-0.5 rounded-xl border p-3 text-left transition-all',
+                  isSelected
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                )}
+              >
+                <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-gray-800')}>
+                  {opt.label}
+                </span>
+                <span className={cn('text-xs leading-snug', isSelected ? 'text-blue-700' : 'text-gray-400')}>
+                  {opt.description}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <Button type="submit" className="mt-2 w-full h-10">

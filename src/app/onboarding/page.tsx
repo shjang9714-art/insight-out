@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Progress } from '@/components/ui/progress'
@@ -21,13 +21,21 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [authEmail, setAuthEmail] = useState('')
 
   const [step1Data, setStep1Data] = useState<OnboardingStep1>({
     name: '',
     department: '기타',
     team: '',
     position: '',
+    content_filter_mode: 'all',
   })
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) setAuthEmail(user.email)
+    })
+  }, [])
 
   const progress = (currentStep / STEPS.length) * 100
 
@@ -51,16 +59,21 @@ export default function OnboardingPage() {
         department: step1Data.department,
         team: step1Data.team,
         position: step1Data.position || null,
+        content_filter_mode: step1Data.content_filter_mode,
         onboarding_completed: true,
       }
       console.log('[onboarding] users upsert payload:', upsertPayload)
 
       const { error: profileError } = await supabase
         .from('users')
-        .upsert(upsertPayload)
+        .upsert(upsertPayload, { onConflict: 'id' })
       if (profileError) {
-        console.error('[onboarding] users upsert error:', JSON.stringify(profileError))
-        throw new Error(`프로필 저장 실패: ${profileError.message} (code: ${profileError.code})`)
+        console.error('[onboarding] users upsert error:', JSON.stringify(profileError, null, 2))
+        throw new Error(
+          `프로필 저장 실패: ${profileError.message}` +
+          (profileError.code ? ` (code: ${profileError.code})` : '') +
+          (profileError.hint ? ` — ${profileError.hint}` : '')
+        )
       }
 
       const isActive = data.frequency !== 'none'
@@ -68,19 +81,24 @@ export default function OnboardingPage() {
         user_id: user.id,
         frequency: data.frequency as NewsletterFrequency,
         is_active: isActive,
+        newsletter_email: isActive ? data.newsletter_email : null,
       }
       console.log('[onboarding] newsletter upsert payload:', newsletterPayload)
 
       const { error: newsletterError } = await supabase
         .from('newsletter_subscriptions')
-        .upsert(newsletterPayload)
+        .upsert(newsletterPayload, { onConflict: 'user_id' })
       if (newsletterError) {
-        console.error('[onboarding] newsletter upsert error:', JSON.stringify(newsletterError))
-        throw new Error(`뉴스레터 설정 실패: ${newsletterError.message} (code: ${newsletterError.code})`)
+        console.error('[onboarding] newsletter upsert error:', JSON.stringify(newsletterError, null, 2))
+        throw new Error(
+          `뉴스레터 설정 실패: ${newsletterError.message}` +
+          (newsletterError.code ? ` (code: ${newsletterError.code})` : '') +
+          (newsletterError.hint ? ` — ${newsletterError.hint}` : '')
+        )
       }
 
-      router.push('/dashboard')
       router.refresh()
+      router.push('/dashboard')
     } catch (err) {
       const message = err instanceof Error ? err.message : '오류가 발생했습니다.'
       setError(message)
@@ -118,6 +136,7 @@ export default function OnboardingPage() {
           )}
           {currentStep === 2 && (
             <Step3Newsletter
+              defaultEmail={authEmail}
               onSubmit={handleStep2Submit}
               onBack={() => setCurrentStep(1)}
               isSubmitting={isSubmitting}

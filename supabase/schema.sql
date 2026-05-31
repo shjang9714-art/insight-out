@@ -11,7 +11,7 @@ create type department as enum (
   '마케팅부문',
   '기타'
 );
-create type newsletter_frequency as enum ('daily', 'weekly', 'none');
+create type newsletter_frequency as enum ('daily', 'weekly', 'twice_weekly', 'none');
 
 
 -- ============================================================
@@ -27,6 +27,8 @@ create table public.users (
   position             text,
   role                 user_role not null default 'user',
   onboarding_completed boolean not null default false,
+  content_filter_mode  text not null default 'all'
+    check (content_filter_mode in ('my_services', 'all')),
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );
@@ -49,11 +51,12 @@ create table public.user_services (
 );
 
 create table public.newsletter_subscriptions (
-  user_id    uuid primary key references public.users (id) on delete cascade,
-  frequency  newsletter_frequency not null default 'weekly',
-  is_active  boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  user_id          uuid primary key references public.users (id) on delete cascade,
+  frequency        newsletter_frequency not null default 'weekly',
+  is_active        boolean not null default true,
+  newsletter_email text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
 );
 
 
@@ -86,7 +89,8 @@ create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer as $$
 begin
   insert into public.users (id, email)
-  values (new.id, new.email);
+  values (new.id, coalesce(new.email, ''))
+  on conflict (id) do nothing;
   return new;
 end;
 $$;
@@ -159,16 +163,25 @@ create policy "user_services: 본인 추가"
   on public.user_services for insert
   with check (auth.uid() = user_id);
 
+create policy "user_services: 본인 수정"
+  on public.user_services for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
 create policy "user_services: 본인 삭제"
   on public.user_services for delete
   using (auth.uid() = user_id);
+
+create policy "user_services: admin 전체 조회"
+  on public.user_services for select
+  using (public.is_admin());
 
 -- newsletter_subscriptions
 create policy "newsletter: 본인 조회"
   on public.newsletter_subscriptions for select
   using (auth.uid() = user_id);
 
-create policy "newsletter: 본인 추가/수정"
+create policy "newsletter: 본인 추가"
   on public.newsletter_subscriptions for insert
   with check (auth.uid() = user_id);
 
@@ -176,6 +189,10 @@ create policy "newsletter: 본인 수정"
   on public.newsletter_subscriptions for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+create policy "newsletter: admin 전체 조회"
+  on public.newsletter_subscriptions for select
+  using (public.is_admin());
 
 
 -- ============================================================
@@ -600,3 +617,21 @@ create policy "archive_items: 본인 삭제"
   on public.archive_items for delete
   using (exists (select 1 from public.archives a
                  where a.id = archive_id and a.user_id = auth.uid()));
+
+
+-- ============================================================
+-- MIGRATION (기존 배포 인스턴스에 직접 실행)
+-- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
+-- ============================================================
+
+-- newsletter_frequency enum 에 twice_weekly 추가
+-- alter type newsletter_frequency add value 'twice_weekly';
+
+-- users 테이블에 content_filter_mode 추가
+-- alter table public.users
+--   add column if not exists content_filter_mode text not null default 'all'
+--   check (content_filter_mode in ('my_services', 'all'));
+
+-- newsletter_subscriptions 에 newsletter_email 추가
+-- alter table public.newsletter_subscriptions
+--   add column if not exists newsletter_email text;

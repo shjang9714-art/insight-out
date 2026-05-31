@@ -2,18 +2,26 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 import type { OnboardingStep3, NewsletterFrequency } from '@/lib/types'
 
 const OPTIONS: { value: NewsletterFrequency; label: string; description: string }[] = [
   {
     value: 'daily',
     label: '매일',
-    description: '매일 아침 주요 인사이트를 받아보세요.',
+    description: '매일 오전 8시, 주요 인사이트를 받아보세요.',
+  },
+  {
+    value: 'twice_weekly',
+    label: '주 2회',
+    description: '화·목 오전 8시, 주 2회 핵심 업데이트를 받아보세요.',
   },
   {
     value: 'weekly',
-    label: '매주',
-    description: '매주 월요일 한 주 요약을 받아보세요.',
+    label: '주 1회',
+    description: '매주 월요일 오전 8시, 한 주 요약을 받아보세요.',
   },
   {
     value: 'none',
@@ -23,17 +31,33 @@ const OPTIONS: { value: NewsletterFrequency; label: string; description: string 
 ]
 
 interface Props {
+  defaultEmail: string
   onSubmit: (data: OnboardingStep3) => void
   onBack: () => void
   isSubmitting: boolean
 }
 
-export default function Step3Newsletter({ onSubmit, onBack, isSubmitting }: Props) {
+export default function Step3Newsletter({ defaultEmail, onSubmit, onBack, isSubmitting }: Props) {
   const [frequency, setFrequency] = useState<NewsletterFrequency>('weekly')
+  const [email, setEmail] = useState(defaultEmail)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit({ frequency })
+
+    if (frequency !== 'none') {
+      if (!email.trim()) {
+        setEmailError('수신할 이메일 주소를 입력해주세요.')
+        return
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        setEmailError('올바른 이메일 형식을 입력해주세요.')
+        return
+      }
+    }
+
+    setEmailError(null)
+    onSubmit({ frequency, newsletter_email: email.trim() })
   }
 
   return (
@@ -50,22 +74,44 @@ export default function Step3Newsletter({ onSubmit, onBack, isSubmitting }: Prop
               key={option.value}
               type="button"
               onClick={() => setFrequency(option.value)}
-              className={`flex flex-col gap-0.5 rounded-xl border p-4 text-left transition-all ${
+              className={cn(
+                'flex flex-col gap-0.5 rounded-xl border p-4 text-left transition-all',
                 isSelected
                   ? 'border-blue-500 bg-blue-50'
                   : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-              }`}
+              )}
             >
-              <span className={`text-sm font-semibold ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
+              <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-gray-800')}>
                 {option.label}
               </span>
-              <span className={`text-xs ${isSelected ? 'text-blue-700' : 'text-gray-400'}`}>
+              <span className={cn('text-xs', isSelected ? 'text-blue-700' : 'text-gray-400')}>
                 {option.description}
               </span>
             </button>
           )
         })}
       </div>
+
+      {frequency !== 'none' && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="newsletter-email">
+            수신 이메일 <span className="text-red-500">*</span>
+          </Label>
+          <p className="text-xs text-gray-500">Gmail 또는 사내 이메일로 받아보실 수 있습니다.</p>
+          <Input
+            id="newsletter-email"
+            type="email"
+            placeholder="예: name@lguplus.co.kr"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setEmailError(null)
+            }}
+            aria-invalid={!!emailError}
+          />
+          {emailError && <p className="text-xs text-red-500">{emailError}</p>}
+        </div>
+      )}
 
       <div className="flex gap-3 mt-2">
         <Button

@@ -8,7 +8,9 @@ export type Department =
   | '마케팅부문'
   | '기타'
 
-export type NewsletterFrequency = 'daily' | 'weekly' | 'none'
+export type NewsletterFrequency = 'daily' | 'weekly' | 'twice_weekly' | 'none'
+
+export type ContentFilterMode = 'my_services' | 'all'
 
 export interface UserProfile {
   id: string
@@ -18,6 +20,7 @@ export interface UserProfile {
   team: string
   position?: string
   role: UserRole
+  content_filter_mode: ContentFilterMode
   created_at: string
   updated_at: string
 }
@@ -40,6 +43,7 @@ export interface NewsletterSubscription {
   user_id: string
   frequency: NewsletterFrequency
   is_active: boolean
+  newsletter_email?: string
 }
 
 export interface OnboardingStep1 {
@@ -47,6 +51,7 @@ export interface OnboardingStep1 {
   department: Department
   team: string
   position: string
+  content_filter_mode: ContentFilterMode
 }
 
 export interface OnboardingStep2 {
@@ -55,6 +60,7 @@ export interface OnboardingStep2 {
 
 export interface OnboardingStep3 {
   frequency: NewsletterFrequency
+  newsletter_email: string
 }
 
 // ============================================================

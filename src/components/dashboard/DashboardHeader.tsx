@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { NOTIFICATIONS, TODAY_UPDATES } from './mock-data'
 
@@ -149,7 +150,11 @@ export default function DashboardHeader() {
           </div>
 
           {/* User */}
-          <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/mypage"
+            className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-gray-100"
+            title="마이페이지"
+          >
             <div className="hidden flex-col items-end sm:flex">
               <span className="text-xs font-semibold text-gray-800">{userName}</span>
               {userTeam && <span className="text-[11px] text-gray-400">{userTeam}</span>}
@@ -157,7 +162,7 @@ export default function DashboardHeader() {
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
               {userName !== '—' ? userName[0] : '?'}
             </div>
-          </div>
+          </Link>
         </div>
       </div>
     </header>
