@@ -25,10 +25,10 @@ export default function OnboardingPage() {
 
   const [step1Data, setStep1Data] = useState<OnboardingStep1>({
     name: '',
-    department: '기타',
     team: '',
     position: '',
     content_filter_mode: 'all',
+    selected_services: [],
   })
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function OnboardingPage() {
         id: user.id,
         email: user.email!,
         name: step1Data.name,
-        department: step1Data.department,
+        department: '기타',
         team: step1Data.team,
         position: step1Data.position || null,
         content_filter_mode: step1Data.content_filter_mode,
@@ -74,6 +74,32 @@ export default function OnboardingPage() {
           (profileError.code ? ` (code: ${profileError.code})` : '') +
           (profileError.hint ? ` — ${profileError.hint}` : '')
         )
+      }
+
+      if (step1Data.content_filter_mode === 'my_services' && step1Data.selected_services.length > 0) {
+        const { data: matchedServices, error: servicesError } = await supabase
+          .from('services')
+          .select('id, name')
+          .in('name', step1Data.selected_services)
+        if (servicesError) {
+          console.error('[onboarding] services 조회 오류:', servicesError)
+          throw new Error('담당 서비스 정보를 불러오는 데 실패했습니다.')
+        }
+
+        if (matchedServices && matchedServices.length > 0) {
+          const userServiceRows = matchedServices.map((s) => ({
+            user_id: user.id,
+            service_id: s.id,
+            is_pinned: false,
+          }))
+          const { error: userServicesError } = await supabase
+            .from('user_services')
+            .upsert(userServiceRows, { onConflict: 'user_id,service_id' })
+          if (userServicesError) {
+            console.error('[onboarding] user_services upsert 오류:', userServicesError)
+            throw new Error('담당 서비스 저장에 실패했습니다.')
+          }
+        }
       }
 
       const isActive = data.frequency !== 'none'

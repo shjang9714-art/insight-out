@@ -4,24 +4,8 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { OnboardingStep1, Department, ContentFilterMode } from '@/lib/types'
-
-const DEPARTMENTS: Department[] = [
-  'Enterprise사업부문',
-  'SMB사업부문',
-  '공공사업부문',
-  '기술부문',
-  '마케팅부문',
-  '기타',
-]
+import type { OnboardingStep1, ContentFilterMode } from '@/lib/types'
 
 const FILTER_OPTIONS: { value: ContentFilterMode; label: string; description: string }[] = [
   {
@@ -34,6 +18,16 @@ const FILTER_OPTIONS: { value: ContentFilterMode; label: string; description: st
     label: '전체 보기',
     description: '모든 서비스의 콘텐츠를 함께 표시합니다.',
   },
+]
+
+const SERVICE_OPTIONS = [
+  'Connectivity',
+  '보안/클라우드',
+  'M2M',
+  'AICC',
+  'AIDC',
+  '모빌리티',
+  '기업솔루션',
 ]
 
 interface Props {
@@ -58,6 +52,15 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
     if (validate()) onNext(form)
   }
 
+  const toggleService = (service: string) => {
+    setForm((prev) => {
+      const next = prev.selected_services.includes(service)
+        ? prev.selected_services.filter((s) => s !== service)
+        : [...prev.selected_services, service]
+      return { ...prev, selected_services: next }
+    })
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
@@ -70,23 +73,6 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
           aria-invalid={!!errors.name}
         />
         {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="department">부문 <span className="text-red-500">*</span></Label>
-        <Select
-          value={form.department}
-          onValueChange={(value) => setForm({ ...form, department: value as Department })}
-        >
-          <SelectTrigger id="department">
-            <SelectValue placeholder="부문을 선택해주세요" />
-          </SelectTrigger>
-          <SelectContent>
-            {DEPARTMENTS.map((dept) => (
-              <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -139,6 +125,35 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
             )
           })}
         </div>
+
+        {form.content_filter_mode === 'my_services' && (
+          <div className="flex flex-col gap-2 mt-1">
+            <p className="text-xs text-gray-500">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
+            <div className="flex flex-wrap gap-2">
+              {SERVICE_OPTIONS.map((service) => {
+                const isSelected = form.selected_services.includes(service)
+                return (
+                  <button
+                    key={service}
+                    type="button"
+                    onClick={() => toggleService(service)}
+                    className={cn(
+                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50 text-blue-900'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                    )}
+                  >
+                    {service}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400">
+              가입 이후 프로필에서 담당 서비스를 변경할 수 있습니다.
+            </p>
+          </div>
+        )}
       </div>
 
       <Button type="submit" className="mt-2 w-full h-10">

@@ -48,10 +48,10 @@ export interface NewsletterSubscription {
 
 export interface OnboardingStep1 {
   name: string
-  department: Department
   team: string
   position: string
   content_filter_mode: ContentFilterMode
+  selected_services: string[]
 }
 
 export interface OnboardingStep2 {
