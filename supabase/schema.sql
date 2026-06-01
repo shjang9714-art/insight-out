@@ -314,15 +314,18 @@ create table public.contents (
   published_at       timestamptz,                       -- 원문 발행일
   collected_at       timestamptz not null default now(),-- 수집 시각
   created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now()
+  updated_at         timestamptz not null default now(),
+  -- 전문 검색 벡터 — 트리거로 자동 관리 (제목 A · 요약 B · 번역 본문 C)
+  search_vector      tsvector
 );
 -- 1단계 중복 필터: 원문 URL 유일성 (null 은 허용 → 부분 유니크)
 create unique index contents_original_url_key on public.contents (original_url) where original_url is not null;
-create index contents_category_idx     on public.contents (category);
-create index contents_source_idx       on public.contents (source_id);
-create index contents_published_at_idx on public.contents (published_at desc);
-create index contents_title_hash_idx   on public.contents (title_hash) where title_hash is not null;
-create index contents_body_hash_idx    on public.contents (body_hash)  where body_hash is not null;
+create index contents_category_idx        on public.contents (category);
+create index contents_source_idx          on public.contents (source_id);
+create index contents_published_at_idx    on public.contents (published_at desc);
+create index contents_title_hash_idx      on public.contents (title_hash) where title_hash is not null;
+create index contents_body_hash_idx       on public.contents (body_hash)  where body_hash is not null;
+create index contents_search_vector_idx   on public.contents using gin(search_vector);
 
 -- 콘텐츠 ↔ 서비스 (N:M) — 결정 C: content_services
 create table public.content_services (
@@ -459,6 +462,29 @@ create trigger set_sources_updated_at
 create trigger set_contents_updated_at
   before update on public.contents
   for each row execute function public.set_updated_at();
+
+
+-- ============================================================
+-- 전문 검색 벡터 자동 갱신 트리거 (contents)
+-- 'simple' 사전: 한국어 불용어·어간 처리 없이 토큰 그대로 사용 — 한국어에 적합
+-- ============================================================
+
+create or replace function public.contents_search_vector_update()
+returns trigger language plpgsql as $$
+begin
+  new.search_vector :=
+    setweight(to_tsvector('simple', coalesce(new.title, '')),              'A') ||
+    setweight(to_tsvector('simple', coalesce(new.summary_ko, '')),         'B') ||
+    setweight(to_tsvector('simple', coalesce(new.body_translated_ko, '')), 'C');
+  return new;
+end;
+$$;
+
+drop trigger if exists contents_search_vector_trigger on public.contents;
+create trigger contents_search_vector_trigger
+  before insert or update on public.contents
+  for each row execute function public.contents_search_vector_update();
+
 
 create trigger set_youtube_videos_updated_at
   before update on public.youtube_videos
