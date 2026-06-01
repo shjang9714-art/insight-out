@@ -94,7 +94,7 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
       let q = supabase
         .from('contents')
         .select('id, title, summary_ko, category, published_at, sources(name)')
-        .eq('is_published', true)
+        .eq('status', 'published')
         .order('published_at', { ascending: false })
         .limit(5)
 

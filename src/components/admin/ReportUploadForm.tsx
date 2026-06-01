@@ -224,7 +224,7 @@ export default function ReportUploadForm() {
           summary_ko:      form.summary.trim() || null,
           file_path:       storagePath,
           original_language: 'ko',
-          is_published:    true,
+          status:          'published',
           is_editor_pick:  form.isEditorPick,
           published_at:    form.publishedAt || null,
         })

@@ -121,7 +121,7 @@ export interface Content {
   view_count: number
   bookmark_count: number
   is_editor_pick: boolean
-  is_published: boolean
+  status: 'pending' | 'published' | 'rejected'
   published_at?: string | null
   collected_at: string
   created_at: string

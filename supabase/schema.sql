@@ -258,6 +258,20 @@ create type ai_report_status as enum (
   'failed'       -- 생성 실패
 );
 
+-- 콘텐츠 게시 상태 (크롤링 스키마 BL-4: is_published 대체)
+create type content_status as enum (
+  'pending',     -- 품질 검토 보류
+  'published',   -- 게시 완료
+  'rejected'     -- 거부됨
+);
+
+-- 크롤링 결과 상태
+create type crawl_status as enum (
+  'success',
+  'partial',
+  'failed'
+);
+
 
 -- ---------- TABLES ----------
 
@@ -310,13 +324,15 @@ create table public.contents (
   bookmark_count     integer not null default 0,        -- bookmarks 트리거로 동기화
   is_editor_pick     boolean not null default false,
   -- 상태·시각
-  is_published       boolean not null default true,
+  status             content_status not null default 'published', -- 크롤링 BL-4 (is_published 대체)
   published_at       timestamptz,                       -- 원문 발행일
   collected_at       timestamptz not null default now(),-- 수집 시각
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
   -- 전문 검색 벡터 — 트리거로 자동 관리 (제목 A · 요약 B · 번역 본문 C)
-  search_vector      tsvector
+  search_vector      tsvector,
+  -- 유사중복 대표 그룹 — 같은 사건 보도를 묶는 자기참조 (BL-3)
+  cluster_id         uuid references public.contents (id) on delete set null
 );
 -- 1단계 중복 필터: 원문 URL 유일성 (null 은 허용 → 부분 유니크)
 create unique index contents_original_url_key on public.contents (original_url) where original_url is not null;
@@ -325,6 +341,8 @@ create index contents_source_idx          on public.contents (source_id);
 create index contents_published_at_idx    on public.contents (published_at desc);
 create index contents_title_hash_idx      on public.contents (title_hash) where title_hash is not null;
 create index contents_body_hash_idx       on public.contents (body_hash)  where body_hash is not null;
+create index contents_status_idx          on public.contents (status);
+create index contents_cluster_idx         on public.contents (cluster_id) where cluster_id is not null;
 create index contents_search_vector_idx   on public.contents using gin(search_vector);
 
 -- 콘텐츠 ↔ 서비스 (N:M) — 결정 C: content_services
@@ -344,6 +362,22 @@ create table public.content_keywords (
   primary key (content_id, keyword_id)
 );
 create index content_keywords_keyword_idx on public.content_keywords (keyword_id);
+
+-- 크롤링 로그 (크롤링 스키마 2026-06-01)
+create table public.crawl_logs (
+  id              uuid primary key default gen_random_uuid(),
+  source_id       uuid references public.sources (id) on delete set null,
+  status          crawl_status not null,
+  fetched_count   integer not null default 0,   -- 가져온 raw 건수
+  inserted_count  integer not null default 0,   -- 신규 적재
+  duplicate_count integer not null default 0,   -- 중복 스킵
+  held_count      integer not null default 0,   -- 보류(pending) 적재
+  error_message   text,
+  started_at      timestamptz not null default now(),
+  finished_at     timestamptz,
+  created_at      timestamptz not null default now()
+);
+create index crawl_logs_source_idx on public.crawl_logs (source_id, created_at desc);
 
 -- 유튜브 영상 (결정 A: 별도 테이블 — 영상 메타 구조 상이)
 create table public.youtube_videos (
@@ -535,6 +569,7 @@ create trigger sync_bookmark_count_del
 alter table public.sources           enable row level security;
 alter table public.keywords          enable row level security;
 alter table public.contents          enable row level security;
+alter table public.crawl_logs        enable row level security;
 alter table public.content_services  enable row level security;
 alter table public.content_keywords  enable row level security;
 alter table public.youtube_videos    enable row level security;
@@ -558,11 +593,14 @@ create policy "keywords: admin 관리"
   on public.keywords for all using (public.is_admin()) with check (public.is_admin());
 
 create policy "contents: 인증 사용자 조회"
-  on public.contents for select using (auth.role() = 'authenticated' and is_published);
+  on public.contents for select using (auth.role() = 'authenticated' and status = 'published');
 create policy "contents: admin 전체 조회"
   on public.contents for select using (public.is_admin());
 create policy "contents: admin 관리"
   on public.contents for all using (public.is_admin()) with check (public.is_admin());
+
+create policy "crawl_logs: admin 조회"
+  on public.crawl_logs for select using (public.is_admin());
 
 create policy "content_services: 인증 사용자 조회"
   on public.content_services for select using (auth.role() = 'authenticated');

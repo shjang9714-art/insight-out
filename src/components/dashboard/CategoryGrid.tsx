@@ -39,7 +39,7 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
     supabase
       .from('contents')
       .select('category')
-      .eq('is_published', true)
+      .eq('status', 'published')
       .then(({ data }) => {
         if (!data) return
         const c: Record<string, number> = {}

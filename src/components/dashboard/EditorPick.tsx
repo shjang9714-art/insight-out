@@ -27,7 +27,7 @@ export default function EditorPick() {
     supabase
       .from('contents')
       .select('id, title, category, published_at, sources(name)')
-      .eq('is_published', true)
+      .eq('status', 'published')
       .eq('is_editor_pick', true)
       .order('published_at', { ascending: false })
       .limit(3)

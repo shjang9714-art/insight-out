@@ -168,7 +168,7 @@ function SearchContent() {
         'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)'
       )
       .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
-      .eq('is_published', true)
+      .eq('status', 'published')
       .order('published_at', { ascending: false })
       .limit(MAX_RESULTS)
       .then(({ data, error: err }) => {

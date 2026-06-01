@@ -289,7 +289,7 @@ function ContentsContent() {
           'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)',
           { count: 'exact' }
         )
-        .eq('is_published', true)
+        .eq('status', 'published')
         .order('published_at', { ascending: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
