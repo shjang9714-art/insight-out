@@ -71,7 +71,7 @@ export default function DashboardHeader() {
     <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
       <div className="flex h-14 items-center gap-4 px-5">
         {/* Logo */}
-        <div className="flex w-52 shrink-0 items-center gap-2.5">
+        <Link href="/dashboard" className="flex w-52 shrink-0 items-center gap-2.5">
           <Image
             src="/logo.png"
             alt="Insight Out"
@@ -84,7 +84,7 @@ export default function DashboardHeader() {
           <span className="hidden sm:inline-block bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider">
             DEMO
           </span>
-        </div>
+        </Link>
 
         {/* Search */}
         <form onSubmit={handleSearch} className="max-w-xl flex-1">

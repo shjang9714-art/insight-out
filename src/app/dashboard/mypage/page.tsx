@@ -264,6 +264,16 @@ export default function MyPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard')}
+          className="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 transition-colors"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          대시보드로 돌아가기
+        </button>
         <h1 className="text-xl font-bold text-gray-900">마이페이지</h1>
         <p className="mt-1 text-sm text-gray-500">{authEmail}</p>
       </div>
