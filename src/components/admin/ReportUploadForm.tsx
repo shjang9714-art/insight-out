@@ -192,22 +192,24 @@ export default function ReportUploadForm() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
 
-      // ① Supabase Storage 업로드
-      const ext         = file!.name.split('.').pop()?.toLowerCase()
-      const year        = new Date().getFullYear()
-      const storagePath = `${form.category}/${year}/${crypto.randomUUID()}.${ext}`
+      // ① 서버에서 서명된 업로드 URL 발급 (admin 확인 + service_role 키는 서버에서만 사용)
+      const tokenRes = await fetch('/api/admin/upload', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ filename: file!.name, category: form.category }),
+      })
+      const tokenData: { token?: string; storagePath?: string; error?: string } =
+        await tokenRes.json()
+      if (!tokenRes.ok || !tokenData.token || !tokenData.storagePath) {
+        throw new Error(tokenData.error ?? '업로드 URL 발급에 실패했습니다.')
+      }
+      const { token, storagePath } = tokenData
 
+      // ② 서명된 토큰으로 Supabase Storage 에 직접 업로드 (파일이 Next.js 서버를 거치지 않음)
       const { error: storageErr } = await supabase.storage
         .from('reports')
-        .upload(storagePath, file!, { upsert: false })
+        .uploadToSignedUrl(storagePath, token, file!)
       if (storageErr) {
-        // 버킷 미생성 시 가이드 메시지
-        if (storageErr.message.includes('Bucket not found') || storageErr.message.includes('bucket')) {
-          throw new Error(
-            '스토리지 버킷 "reports" 가 없습니다. ' +
-            'Supabase 대시보드 > Storage > New bucket 에서 "reports" 버킷을 생성해주세요.'
-          )
-        }
         throw new Error(`파일 업로드 실패: ${storageErr.message}`)
       }
 
