@@ -278,3 +278,52 @@ insert into public.services (name, description, icon, "order") values
   ('ConnectAPI',  'API 연동 및 통합 관리 서비스',       '🔗', 7),
   ('InsightAds',  '마케팅 퍼포먼스 분석 대시보드',      '📈', 8)
 on conflict do nothing;
+
+
+-- ============================================================
+-- 12. Supabase Storage — reports 버킷 정책
+-- ============================================================
+-- 사전 작업 (SQL 로 불가 → Supabase 대시보드에서 수동):
+--   Storage > New bucket > 이름: reports / Public: OFF (비공개)
+--
+-- 아래 SQL 은 버킷 생성 후 실행해야 합니다.
+-- ============================================================
+
+-- 기존 정책 초기화
+drop policy if exists "reports: admin 업로드"   on storage.objects;
+drop policy if exists "reports: admin 조회"     on storage.objects;
+drop policy if exists "reports: admin 삭제"     on storage.objects;
+drop policy if exists "reports: 인증 사용자 조회" on storage.objects;
+
+-- 관리자만 업로드 가능
+create policy "reports: admin 업로드"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'reports'
+    and public.is_admin()
+  );
+
+-- 관리자: 전체 조회·수정
+create policy "reports: admin 조회"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'reports'
+    and public.is_admin()
+  );
+
+-- 관리자: 삭제
+create policy "reports: admin 삭제"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'reports'
+    and public.is_admin()
+  );
+
+-- 인증된 일반 사용자: 조회만 가능 (리포트 열람)
+create policy "reports: 인증 사용자 조회"
+  on storage.objects for select
+  to authenticated
+  using (bucket_id = 'reports');
