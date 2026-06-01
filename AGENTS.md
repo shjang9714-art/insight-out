@@ -201,7 +201,7 @@ export default async function Page() {
 | `user_role` | `'user'` 또는 `'admin'` |
 | `department` | 6개 enum: `Enterprise사업부문`, `SMB사업부문`, `공공사업부문`, `기술부문`, `마케팅부문`, `기타` |
 | `newsletter_frequency` | `'daily'`, `'weekly'`, `'none'` |
-| `services` 테이블 | LGU+ B2B 서비스 8개 (STAGE, BizWork, GovLink, CloudOps, DataBridge, SecureVault, ConnectAPI, InsightAds) |
+| `services` 테이블 | LGU+ B2B 서비스 7개 (Connectivity, 보안/클라우드, M2M, AICC, AIDC, 모빌리티, 기업솔루션) |
 | `user_services.is_pinned` | true 이면 대시보드 상단에 우선 노출 |
 | `onboarding_completed` | false 이면 미들웨어가 `/onboarding` 으로 보냄 |
 

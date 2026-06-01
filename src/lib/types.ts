@@ -80,6 +80,12 @@ export type AiReportType =
 
 export type AiReportStatus = 'draft' | 'generating' | 'completed' | 'failed'
 
+// 콘텐츠 품질·승인 상태 (BL-4)
+export type ContentStatus = 'pending' | 'published' | 'rejected'
+
+// 크롤링 실행 결과 상태
+export type CrawlStatus = 'success' | 'partial' | 'failed'
+
 export interface Source {
   id: string
   name: string
@@ -121,7 +127,8 @@ export interface Content {
   view_count: number
   bookmark_count: number
   is_editor_pick: boolean
-  status: 'pending' | 'published' | 'rejected'
+  cluster_id?: string | null
+  status: ContentStatus
   published_at?: string | null
   collected_at: string
   created_at: string
@@ -175,6 +182,20 @@ export interface AiReportSource {
   ai_report_id: string
   content_id?: string | null
   youtube_video_id?: string | null
+  created_at: string
+}
+
+export interface CrawlLog {
+  id: string
+  source_id?: string | null
+  status: CrawlStatus
+  fetched_count: number
+  inserted_count: number
+  duplicate_count: number
+  held_count: number
+  error_message?: string | null
+  started_at: string
+  finished_at?: string | null
   created_at: string
 }
 

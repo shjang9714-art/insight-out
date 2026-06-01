@@ -199,14 +199,15 @@ create policy "newsletter: admin 전체 조회"
 -- INITIAL SERVICES DATA
 -- ============================================================
 
+-- 실제 LG U+ B2B 서비스 7개 (BL-1 확정, 2026-06-01)
 insert into public.services (name, description, icon, "order") values
-  ('Connectivity',  '유선·무선 기업 네트워크 솔루션',      '🌐', 1),
-  ('보안/클라우드',  '기업 보안 및 클라우드 인프라 서비스',  '🔒', 2),
-  ('M2M',           'IoT·M2M 디바이스 연결 플랫폼',       '📡', 3),
-  ('AICC',          'AI 기반 컨택센터 솔루션',             '🎧', 4),
-  ('AIDC',          'AI 데이터센터 및 GPU 인프라',         '🖥️', 5),
-  ('모빌리티',       '기업 모빌리티·차량 관리 서비스',      '🚗', 6),
-  ('기업솔루션',     '그룹웨어·협업·업무 자동화 솔루션',    '⚙️', 7);
+  ('Connectivity', '기업 전용회선·인터넷 등 유선 연결 서비스',     '🔗', 1),
+  ('보안/클라우드', '기업 보안 및 클라우드 인프라 서비스',          '☁️', 2),
+  ('M2M',          '사물지능통신(IoT) 회선·플랫폼',               '📡', 3),
+  ('AICC',         'AI 컨택센터(AI Contact Center) 솔루션',       '🎧', 4),
+  ('AIDC',         'AI 데이터센터(AI Data Center)',               '🖥️', 5),
+  ('모빌리티',      '차량관제·물류 등 모빌리티 솔루션',             '🚗', 6),
+  ('기업솔루션',    '스마트워크·업무 자동화 등 기업 솔루션',         '🏢', 7);
 
 
 -- ============================================================
@@ -258,19 +259,15 @@ create type ai_report_status as enum (
   'failed'       -- 생성 실패
 );
 
--- 콘텐츠 게시 상태 (크롤링 스키마 BL-4: is_published 대체)
+-- 콘텐츠 품질·승인 상태 (BL-4) — 크롤러 보류 큐 + 어드민 승인
 create type content_status as enum (
-  'pending',     -- 품질 검토 보류
-  'published',   -- 게시 완료
-  'rejected'     -- 거부됨
+  'pending',     -- 보류(관리자 검토 대기 — 관련도 낮음 등)
+  'published',   -- 게시(사용자 노출)
+  'rejected'     -- 반려(노출 안 함)
 );
 
--- 크롤링 결과 상태
-create type crawl_status as enum (
-  'success',
-  'partial',
-  'failed'
-);
+-- 크롤링 실행 결과 상태
+create type crawl_status as enum ('success', 'partial', 'failed');
 
 
 -- ---------- TABLES ----------
@@ -323,8 +320,10 @@ create table public.contents (
   view_count         integer not null default 0,
   bookmark_count     integer not null default 0,        -- bookmarks 트리거로 동기화
   is_editor_pick     boolean not null default false,
+  -- 유사중복 그룹 (BL-3 · PRD 4.4 "관련 기사 N건") — null=단독, 값=대표 content.id
+  cluster_id         uuid references public.contents (id) on delete set null,
   -- 상태·시각
-  status             content_status not null default 'published', -- 크롤링 BL-4 (is_published 대체)
+  status             content_status not null default 'published',  -- 보류/게시/반려 (BL-4)
   published_at       timestamptz,                       -- 원문 발행일
   collected_at       timestamptz not null default now(),-- 수집 시각
   created_at         timestamptz not null default now(),
@@ -344,6 +343,8 @@ create index contents_body_hash_idx       on public.contents (body_hash)  where 
 create index contents_status_idx          on public.contents (status);
 create index contents_cluster_idx         on public.contents (cluster_id) where cluster_id is not null;
 create index contents_search_vector_idx   on public.contents using gin(search_vector);
+create index contents_status_idx          on public.contents (status);
+create index contents_cluster_idx         on public.contents (cluster_id) where cluster_id is not null;
 
 -- 콘텐츠 ↔ 서비스 (N:M) — 결정 C: content_services
 create table public.content_services (
@@ -430,6 +431,22 @@ create unique index ai_report_sources_content_key
   on public.ai_report_sources (ai_report_id, content_id) where content_id is not null;
 create unique index ai_report_sources_youtube_key
   on public.ai_report_sources (ai_report_id, youtube_video_id) where youtube_video_id is not null;
+
+-- 크롤링 실행 로그 (#3 §6) — 어드민 "크롤링 현황"(#23) 데이터 소스
+create table public.crawl_logs (
+  id              uuid primary key default gen_random_uuid(),
+  source_id       uuid references public.sources (id) on delete set null,
+  status          crawl_status not null,
+  fetched_count   integer not null default 0,   -- 가져온 raw 건수
+  inserted_count  integer not null default 0,   -- 신규 적재
+  duplicate_count integer not null default 0,   -- 중복 스킵
+  held_count      integer not null default 0,   -- 보류(pending) 적재
+  error_message   text,
+  started_at      timestamptz not null default now(),
+  finished_at     timestamptz,
+  created_at      timestamptz not null default now()
+);
+create index crawl_logs_source_idx on public.crawl_logs (source_id, created_at desc);
 
 
 -- ============================================================
@@ -573,6 +590,7 @@ alter table public.crawl_logs        enable row level security;
 alter table public.content_services  enable row level security;
 alter table public.content_keywords  enable row level security;
 alter table public.youtube_videos    enable row level security;
+alter table public.crawl_logs        enable row level security;
 alter table public.ai_reports        enable row level security;
 alter table public.ai_report_sources enable row level security;
 alter table public.bookmarks         enable row level security;
@@ -616,6 +634,10 @@ create policy "youtube_videos: 인증 사용자 조회"
   on public.youtube_videos for select using (auth.role() = 'authenticated');
 create policy "youtube_videos: admin 관리"
   on public.youtube_videos for all using (public.is_admin()) with check (public.is_admin());
+
+-- crawl_logs: 크롤러는 service_role 로 적재(RLS 우회), 조회는 admin 만
+create policy "crawl_logs: admin 조회"
+  on public.crawl_logs for select using (public.is_admin());
 
 -- ---------- AI 보고서: 본인 데이터 + admin 전체 ----------
 
