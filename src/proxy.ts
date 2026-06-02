@@ -28,7 +28,9 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  const publicPaths = ['/login', '/auth/callback']
+  // /api/cron/* 는 자체 CRON_SECRET 로 인증하므로 로그인 가드에서 제외
+  // (제외 안 하면 세션 없는 크론 요청이 /login 으로 리다이렉트됨)
+  const publicPaths = ['/login', '/auth/callback', '/api/cron']
   if (!user && !publicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
