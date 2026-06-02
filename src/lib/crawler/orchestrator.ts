@@ -15,15 +15,27 @@ export interface SourceCrawlResult {
   error?: string
 }
 
+/** 소스별 진단 상세 (응답 가시성용) */
+export interface CrawlSourceDetail {
+  source: string
+  status: 'success' | 'partial' | 'failed'
+  fetched: number
+  inserted: number
+  duplicate: number
+  error?: string
+}
+
 /** 전체 크롤 실행 요약 (라우트 응답 형태) */
 export interface CrawlSummary {
   ok: boolean
   sources_total: number
   success: number
   failed: number
+  fetched: number
   inserted: number
   duplicates: number
   held: number
+  details: CrawlSourceDetail[]
 }
 
 /**
@@ -256,23 +268,43 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
   // 결과 집계
   let successCount = 0
   let failedCount = 0
+  let totalFetched = 0
   let totalInserted = 0
   let totalDuplicates = 0
   let totalHeld = 0
+  const details: CrawlSourceDetail[] = []
 
   for (const result of results) {
     if (result.status === 'fulfilled') {
-      if (result.value.status === 'failed') {
+      const r = result.value
+      if (r.status === 'failed') {
         failedCount++
       } else {
         successCount++
       }
-      totalInserted += result.value.counts.inserted
-      totalDuplicates += result.value.counts.duplicate
-      totalHeld += result.value.counts.held
+      totalFetched += r.counts.fetched
+      totalInserted += r.counts.inserted
+      totalDuplicates += r.counts.duplicate
+      totalHeld += r.counts.held
+      details.push({
+        source: r.source_name,
+        status: r.status,
+        fetched: r.counts.fetched,
+        inserted: r.counts.inserted,
+        duplicate: r.counts.duplicate,
+        error: r.error,
+      })
     } else {
       failedCount++
       console.error('[크롤러] 예기치 않은 소스 처리 오류:', result.reason)
+      details.push({
+        source: '(unknown)',
+        status: 'failed',
+        fetched: 0,
+        inserted: 0,
+        duplicate: 0,
+        error: String(result.reason),
+      })
     }
   }
 
@@ -281,8 +313,10 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
     sources_total: dueSources.length,
     success: successCount,
     failed: failedCount,
+    fetched: totalFetched,
     inserted: totalInserted,
     duplicates: totalDuplicates,
     held: totalHeld,
+    details,
   }
 }
