@@ -1,5 +1,4 @@
 import Parser from 'rss-parser'
-import { extract } from '@extractus/article-extractor'
 import type { SourceAdapter, RawItem } from '../types'
 import type { Source } from '@/lib/types'
 
@@ -62,20 +61,10 @@ const newsSiteAdapter: SourceAdapter = {
       const originalUrl = item.link ?? item.guid
       if (!originalUrl) continue
 
-      const rawBody = item.contentSnippet ?? item.content ?? ''
-
-      // 본문 폴백: 200자 미만이면 원문 fetch → 본문 추출 시도
-      let body = rawBody
-      if (body.length < 200) {
-        try {
-          const extracted = await extract(originalUrl)
-          if (extracted?.content && extracted.content.length > body.length) {
-            body = extracted.content
-          }
-        } catch {
-          // 폴백 실패 시 RSS 값 유지 (오류 전파 금지, best-effort)
-        }
-      }
+      // 본문은 RSS 제공분(content > snippet)만 사용.
+      // 풀페이지 본문 추출은 기사마다 외부 fetch 가 필요해 서버리스 타임아웃을 유발 →
+      // 수집 핫패스에서 제외. 풀본문은 후속 enrichment 단계로 분리(별도 작업).
+      const body = item.content ?? item.contentSnippet ?? ''
 
       const title = item.title ?? ''
       const author = item.creator ?? item['dc:creator'] ?? item.author ?? undefined
