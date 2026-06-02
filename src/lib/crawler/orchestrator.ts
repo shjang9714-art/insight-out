@@ -45,6 +45,15 @@ function getTodayStartKst(): string {
 }
 
 /**
+ * N일 전 KST 0시를 UTC ISO 로 반환 (최초 구축·소급 수집용).
+ * PRD 4.2: 최초/신규 소스는 admin 이 최대 30일 소급 지정 가능.
+ */
+function getDaysAgoStartKst(days: number): string {
+  const todayStartMs = new Date(getTodayStartKst()).getTime()
+  return new Date(todayStartMs - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+/**
  * 지수 백오프 재시도.
  * @param fn 실행할 비동기 함수
  * @param maxAttempts 최대 시도 횟수
@@ -203,10 +212,15 @@ async function crawlOne(
   }
 }
 
-/** 전체 크롤 실행 — Orchestrator 진입점 */
-export async function runCrawl(): Promise<CrawlSummary> {
+/** 전체 크롤 실행 — Orchestrator 진입점
+ *  @param options.backfillDays 소급 수집 일수(1~30). 미지정/0 이면 당일(KST 0시 이후)만. */
+export async function runCrawl(options?: { backfillDays?: number }): Promise<CrawlSummary> {
   const admin = createAdminClient()
-  const since = getTodayStartKst()
+  const backfillDays =
+    options?.backfillDays && options.backfillDays > 0
+      ? Math.min(Math.floor(options.backfillDays), 30)
+      : 0
+  const since = backfillDays > 0 ? getDaysAgoStartKst(backfillDays) : getTodayStartKst()
 
   // 활성 + crawl_interval_minutes 가 설정된 소스 조회
   const { data: rawSources, error: sourcesError } = await admin
