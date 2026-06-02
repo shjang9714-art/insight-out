@@ -162,6 +162,13 @@ async function crawlOne(
           continue
         }
 
+        // published_at 을 ISO 로 정규화 (RFC822 등 비ISO 문자열 → timestamptz 적재 실패 방어)
+        let publishedAt: string | null = null
+        if (item.published_at) {
+          const d = new Date(item.published_at)
+          publishedAt = isNaN(d.getTime()) ? null : d.toISOString()
+        }
+
         // 콘텐츠 행 구성
         // - status·cluster_id·view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값·기존값 보존
         // - is_published 컬럼 없음 (status enum 사용)
@@ -176,21 +183,21 @@ async function crawlOne(
           thumbnail_url: item.thumbnail_url ?? null,
           title_hash: tHash,
           body_hash: bHash,
-          published_at: item.published_at ?? null,
+          published_at: publishedAt,
           collected_at: new Date().toISOString(),
         }
 
-        // 멱등 upsert: URL 충돌 시 메타데이터만 갱신 (사용자 파생 컬럼 보존)
-        const { error: upsertError } = await admin
-          .from('contents')
-          .upsert(row, {
-            onConflict: 'original_url',
-            ignoreDuplicates: false,
-          })
-
-        if (upsertError) {
-          console.error(`[크롤러] upsert 오류 (${url}):`, upsertError.message)
-          crawlStatus = 'partial'
+        // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
+        // upsert ON CONFLICT 와 호환되지 않음 → insert 사용. URL 중복(23505)은 멱등 스킵.
+        const { error: insertError } = await admin.from('contents').insert(row)
+        if (insertError) {
+          if (insertError.code === '23505') {
+            counts.duplicate++   // 같은 original_url 이미 존재 → 멱등 스킵
+          } else {
+            console.error(`[크롤러] insert 오류 (${url}):`, insertError.message)
+            crawlStatus = 'partial'
+            if (!errorMessage) errorMessage = `${insertError.code ?? ''} ${insertError.message}`.trim()
+          }
         } else {
           counts.inserted++
         }
@@ -198,6 +205,7 @@ async function crawlOne(
         // 개별 아이템 오류는 partial 처리 후 계속
         console.error('[크롤러] 아이템 처리 오류:', itemErr)
         crawlStatus = 'partial'
+        if (!errorMessage) errorMessage = itemErr instanceof Error ? itemErr.message : String(itemErr)
       }
     }
 
