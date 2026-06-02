@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdapter } from './adapters'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
-import { findByTitleHash, findByBodyHash } from './dedup'
+import { findByUrl, findByTitleHash, findByBodyHash } from './dedup'
 import type { CrawlCounts } from './types'
 import type { Source } from '@/lib/types'
 
@@ -151,6 +151,11 @@ async function crawlOne(
         const tHash = titleHash(item.title)
         const bHash = bodyHash(item.body)
 
+        // 1단계: 원문 URL 존재 확인 (멱등의 결정적 기준)
+        if (await findByUrl(admin, url)) {
+          counts.duplicate++
+          continue
+        }
         // 2단계: 본문 해시 완전일치 중복 확인
         if (await findByBodyHash(admin, bHash)) {
           counts.duplicate++
