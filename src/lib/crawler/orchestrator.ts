@@ -235,15 +235,18 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
 
   const allSources = (rawSources ?? []) as Source[]
 
-  // 주기 도래 여부를 JS에서 판정
-  // (Supabase 쿼리로 interval * minutes 계산이 어려워 JS 필터 사용)
-  const dueSources = allSources.filter(s => {
-    if (!s.crawl_interval_minutes) return false
-    if (!s.last_crawled_at) return true   // 한 번도 수집하지 않은 소스 포함
-    const intervalMs = s.crawl_interval_minutes * 60 * 1000
-    const elapsed = Date.now() - new Date(s.last_crawled_at).getTime()
-    return elapsed >= intervalMs
-  })
+  // 소급(backfill) 호출은 강제 전체 재수집: due-체크를 건너뛰고 활성 소스 전부 실행.
+  // (수동 검증·최초 구축 소급 시 last_crawled_at 이 최근이라도 돌려야 하므로)
+  // 일반(정기 크론) 호출은 주기 도래분만 — JS에서 interval 판정.
+  const dueSources = backfillDays > 0
+    ? allSources
+    : allSources.filter(s => {
+        if (!s.crawl_interval_minutes) return false
+        if (!s.last_crawled_at) return true   // 한 번도 수집하지 않은 소스 포함
+        const intervalMs = s.crawl_interval_minutes * 60 * 1000
+        const elapsed = Date.now() - new Date(s.last_crawled_at).getTime()
+        return elapsed >= intervalMs
+      })
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   const results = await Promise.allSettled(
