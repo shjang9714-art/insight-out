@@ -28,10 +28,12 @@ export async function GET(request: NextRequest) {
     const summary = await runCrawl()
     return Response.json(summary)
   } catch (err) {
-    // 스택·비밀키는 콘솔에만 출력, 응답에는 일반 메시지만
+    // 이 라우트는 CRON_SECRET 으로 이미 인증됨(비밀키 보유자만 도달).
+    // Vercel 로그 접근이 제한적이라, 인증된 호출자에게는 원인 메시지를 반환해 진단 가능하게 함.
     console.error('[크론/crawl] 크롤러 실행 오류:', err)
+    const message = err instanceof Error ? err.message : String(err)
     return Response.json(
-      { ok: false, error: '크롤러 실행 중 오류가 발생했습니다.' },
+      { ok: false, error: '크롤러 실행 중 오류가 발생했습니다.', detail: message },
       { status: 500 }
     )
   }
