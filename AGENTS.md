@@ -514,7 +514,8 @@ git push
 
 ### 20.8 작업 후 기록 (필수, 2단계) — 담당: **Sonnet(Claude Code)**
 
-> **기록 담당 = Claude Code(Sonnet).** Notion(① 개발 일지 · ② 작업 DB · 작업계획서 신호등)과 git `docs/작업계획서.md` 동기화는 **Sonnet 이 수행**한다(Claude Code 에 Notion 커넥터 연결됨). Opus(Cowork)는 **무엇을 기록할지 지시서로 넘기고 직접 기록하지 않는다.** 예외: 커넥터 장애 등으로 Sonnet 이 못 할 때만 Opus 가 대행.
+> **기록 담당 = Claude Code(Sonnet).** Notion(① 개발 일지 · ② 작업 DB · 작업계획서 신호등)과 git `docs/작업계획서.md` 동기화는 **Sonnet 이 수행**한다(Claude Code 에 Notion 커넥터 연결됨). Opus(Cowork)는 **직접 기록하지 않는다.**
+> **표준 루틴**: [`docs/기록-동기화-루틴.md`](./기록-동기화-루틴.md) (Notion id·속성·매핑·절차 SOP). David 트리거 한 줄 = `"기록 동기화 루틴대로 동기화해줘"`. 개별 동기화 지시서는 더 만들지 않고 이 루틴을 따른다. 예외: 커넥터 장애 시에만 Opus 대행.
 
 push 끝나면 노션에 두 가지를 갱신한다. ①은 모든 push 후 필수, ②는 작업 DB 항목이 있을 때만.
 
