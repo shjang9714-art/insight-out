@@ -20,7 +20,8 @@ export interface SourceAdapter {
 /** 소스 1개 크롤 결과 카운터 */
 export interface CrawlCounts {
   fetched: number     // 수집한 원시 건수
-  inserted: number    // 신규 적재 건수
-  duplicate: number   // 중복 스킵 건수
-  held: number        // 보류 건수 — 이번(#4)엔 항상 0, #13에서 사용
+  inserted: number    // 신규 적재 건수 (status='published')
+  duplicate: number   // 중복 스킵 건수 (미적재)
+  held: number        // 보류 건수 (status='pending', #13)
+  rejected: number    // 광고·짧은 글 제외 건수 (미적재, #13)
 }

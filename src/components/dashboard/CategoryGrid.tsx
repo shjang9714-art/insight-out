@@ -5,6 +5,13 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentCategory } from '@/lib/types'
 
+function todayStartKstIso(): string {
+  const now = Date.now()
+  const kst = new Date(now + 9 * 60 * 60 * 1000)
+  const midnightUtc = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 60 * 60 * 1000
+  return new Date(midnightUtc).toISOString()
+}
+
 // ─── mock taxonomy (아이콘·표시 레이블·순서만 여기서 관리) ────────────────────
 
 const CATEGORY_DEFS: {
@@ -31,22 +38,23 @@ interface Props {
 }
 
 export default function CategoryGrid({ activeService = 'all' }: Props) {
-  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [todayCounts, setTodayCounts] = useState<Record<string, number>>({})
 
-  // 카테고리별 실제 콘텐츠 건수 로드
+  // 오늘 KST 0시 이후 수집된 카테고리별 신규 건수 로드
   useEffect(() => {
     const supabase = createClient()
     supabase
       .from('contents')
-      .select('category')
+      .select('category, collected_at')
       .eq('status', 'published')
+      .gte('collected_at', todayStartKstIso())
       .then(({ data }) => {
         if (!data) return
         const c: Record<string, number> = {}
         for (const row of data) {
           c[row.category] = (c[row.category] ?? 0) + 1
         }
-        setCounts(c)
+        setTodayCounts(c)
       })
   }, [])
 
@@ -61,21 +69,16 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
             ? `/dashboard/youtube${svcSuffix}`
             : `/dashboard/contents?category=${encodeURIComponent(cat.category)}${activeService !== 'all' ? `&service=${activeService}` : ''}`
 
-        const count = cat.category ? (counts[cat.category] ?? 0) : 0
+        const today = cat.category ? (todayCounts[cat.category] ?? 0) : 0
+        const todayText = today > 0 ? `오늘 ${today}건 업데이트` : '업데이트 없음'
 
         const inner = (
           <>
-            <div className="relative">
-              <span className="text-2xl">{cat.icon}</span>
-              {count > 0 && (
-                <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
-                  {count > 99 ? '99+' : count}
-                </span>
-              )}
-            </div>
+            <span className="text-2xl">{cat.icon}</span>
             <span className="text-xs font-medium leading-tight text-gray-700 group-hover:text-brand-600">
               {cat.label}
             </span>
+            <span className="text-[11px] text-gray-400">{todayText}</span>
           </>
         )
 

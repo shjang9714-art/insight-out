@@ -4,6 +4,7 @@ import { getAdapter } from './adapters'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
+import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD } from './quality'
 import type { CrawlCounts } from './types'
 import type { Source } from '@/lib/types'
 
@@ -23,6 +24,7 @@ export interface CrawlSourceDetail {
   fetched: number
   inserted: number
   duplicate: number
+  rejected: number
   error?: string
 }
 
@@ -35,6 +37,7 @@ export interface CrawlSummary {
   fetched: number
   inserted: number
   duplicates: number
+  rejected: number
   held: number
   details: CrawlSourceDetail[]
 }
@@ -121,10 +124,11 @@ async function writeCrawlLog(
 async function crawlOne(
   admin: SupabaseClient,
   source: Source,
-  since: string
+  since: string,
+  keywords: string[]
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
-  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0 }
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let crawlStatus: 'success' | 'partial' | 'failed' = 'success'
   let errorMessage: string | undefined
 
@@ -168,6 +172,14 @@ async function crawlOne(
           continue
         }
 
+        // 품질 필터 단계 1: 광고성·짧은 글 제외 (#13)
+        // 완전중복이 아닌 것 중 품질 기준 미달은 미적재(rejected).
+        const qText = `${item.title} ${item.body ?? ''}`
+        if (isAdLike(qText) || effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH) {
+          counts.rejected++
+          continue
+        }
+
         // published_at 을 ISO 로 정규화 (RFC822 등 비ISO 문자열 → timestamptz 적재 실패 방어)
         let publishedAt: string | null = null
         if (item.published_at) {
@@ -196,9 +208,16 @@ async function crawlOne(
           console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
         }
 
+        // 품질 필터 단계 2: 키워드 관련도 보류 판정 (#13)
+        // keywords 가 0건이면 relatednessScore = null → 게이팅 OFF(전부 published).
+        const score = relatednessScore(qText, keywords)
+        const contentStatus: 'pending' | 'published' =
+          score !== null && score < RELATEDNESS_THRESHOLD ? 'pending' : 'published'
+
         // 콘텐츠 행 구성
-        // - status·view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
+        // - view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
         // - cluster_id 는 near-dup 그룹핑 결과 직접 포함 (신규 행에만 적용)
+        // - status 는 품질 필터 결과 포함 (published | pending)
         // - is_published 컬럼 없음 (status enum 사용)
         const row = {
           category: '뉴스' as const,
@@ -214,6 +233,7 @@ async function crawlOne(
           published_at: publishedAt,
           collected_at: new Date().toISOString(),
           cluster_id: clusterId,
+          status: contentStatus,
         }
 
         // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
@@ -228,7 +248,9 @@ async function crawlOne(
             if (!errorMessage) errorMessage = `${insertError.code ?? ''} ${insertError.message}`.trim()
           }
         } else {
-          counts.inserted++
+          // 보류(pending)이면 held, 게시(published)이면 inserted 로 집계
+          if (contentStatus === 'pending') counts.held++
+          else counts.inserted++
         }
       } catch (itemErr) {
         // 개별 아이템 오류는 partial 처리 후 계속
@@ -282,6 +304,10 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
     throw new Error(`소스 조회 오류: ${sourcesError.message}`)
   }
 
+  // 키워드 1회 로드 — 관련도 게이팅용. 0건이면 게이팅 OFF(전부 published).
+  const { data: rawKeywords } = await admin.from('keywords').select('name')
+  const keywords = (rawKeywords ?? []).map((k: { name: string }) => k.name)
+
   const allSources = (rawSources ?? []) as Source[]
 
   // 소급(backfill) 호출은 강제 전체 재수집: due-체크를 건너뛰고 활성 소스 전부 실행.
@@ -299,7 +325,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   const results = await Promise.allSettled(
-    dueSources.map(s => crawlOne(admin, s, since))
+    dueSources.map(s => crawlOne(admin, s, since, keywords))
   )
 
   // 결과 집계
@@ -308,6 +334,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
   let totalFetched = 0
   let totalInserted = 0
   let totalDuplicates = 0
+  let totalRejected = 0
   let totalHeld = 0
   const details: CrawlSourceDetail[] = []
 
@@ -322,6 +349,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
       totalFetched += r.counts.fetched
       totalInserted += r.counts.inserted
       totalDuplicates += r.counts.duplicate
+      totalRejected += r.counts.rejected
       totalHeld += r.counts.held
       details.push({
         source: r.source_name,
@@ -329,6 +357,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
         fetched: r.counts.fetched,
         inserted: r.counts.inserted,
         duplicate: r.counts.duplicate,
+        rejected: r.counts.rejected,
         error: r.error,
       })
     } else {
@@ -340,6 +369,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
         fetched: 0,
         inserted: 0,
         duplicate: 0,
+        rejected: 0,
         error: String(result.reason),
       })
     }
@@ -353,6 +383,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
     fetched: totalFetched,
     inserted: totalInserted,
     duplicates: totalDuplicates,
+    rejected: totalRejected,
     held: totalHeld,
     details,
   }
