@@ -2,7 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdapter } from './adapters'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
-import { findByUrl, findByTitleHash, findByBodyHash } from './dedup'
+import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
+import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
 import type { CrawlCounts } from './types'
 import type { Source } from '@/lib/types'
 
@@ -174,8 +175,30 @@ async function crawlOne(
           publishedAt = isNaN(d.getTime()) ? null : d.toISOString()
         }
 
+        // near-dup 그룹핑 (#12)
+        // 해시 완전일치는 통과했지만 제목 유사도 ≥ SIMILARITY_THRESHOLD 인 관련 기사 확인.
+        // 스킵하지 않고 cluster_id 를 부여해 "대표 1건 + 관련 N건" 구조로 적재.
+        const candidates = await findSimilarCandidates(admin, publishedAt)
+        const match = candidates.find(
+          c => titleSimilarity(c.title, item.title) >= SIMILARITY_THRESHOLD
+        )
+        let clusterId: string | null = null
+        if (match) {
+          const repId = match.cluster_id ?? match.id  // 그룹이면 그 대표, 아니면 match 자신이 대표
+          if (!match.cluster_id) {
+            // match 가 단독 기사였으면 대표로 승격 (자기참조)
+            await admin
+              .from('contents')
+              .update({ cluster_id: repId })
+              .eq('id', match.id)
+          }
+          clusterId = repId
+          console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
+        }
+
         // 콘텐츠 행 구성
-        // - status·cluster_id·view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값·기존값 보존
+        // - status·view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
+        // - cluster_id 는 near-dup 그룹핑 결과 직접 포함 (신규 행에만 적용)
         // - is_published 컬럼 없음 (status enum 사용)
         const row = {
           category: '뉴스' as const,
@@ -190,6 +213,7 @@ async function crawlOne(
           body_hash: bHash,
           published_at: publishedAt,
           collected_at: new Date().toISOString(),
+          cluster_id: clusterId,
         }
 
         // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
