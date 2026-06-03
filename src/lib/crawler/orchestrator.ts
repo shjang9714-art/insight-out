@@ -4,9 +4,51 @@ import { getAdapter } from './adapters'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD } from './quality'
+import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED } from './quality'
 import type { CrawlCounts } from './types'
 import type { Source } from '@/lib/types'
+
+/** 키워드 로드 시 사용하는 최소 객체 타입 */
+interface CrawlKeyword {
+  id: string
+  name: string
+  service_id: string | null
+}
+
+/**
+ * 적재된 콘텐츠에 키워드/서비스 태그를 자동 부여한다 (#24).
+ * - 매칭 0건이면 아무것도 하지 않음(정상 종료).
+ * - 태깅 오류는 로그만 — 적재 결과를 막지 않음.
+ */
+async function tagContent(
+  admin: SupabaseClient,
+  contentId: string,
+  text: string,
+  keywords: CrawlKeyword[]
+): Promise<void> {
+  try {
+    const lower = text.toLowerCase()
+    const matched = keywords.filter(k => lower.includes(k.name.toLowerCase()))
+    if (matched.length === 0) return
+
+    // content_keywords (PK: content_id, keyword_id)
+    await admin.from('content_keywords').upsert(
+      matched.map(k => ({ content_id: contentId, keyword_id: k.id })),
+      { onConflict: 'content_id,keyword_id', ignoreDuplicates: true }
+    )
+
+    // content_services (PK: content_id, service_id) — 매칭 키워드의 distinct service_id
+    const serviceIds = [...new Set(matched.map(k => k.service_id).filter((v): v is string => !!v))]
+    if (serviceIds.length) {
+      await admin.from('content_services').upsert(
+        serviceIds.map(sid => ({ content_id: contentId, service_id: sid })),
+        { onConflict: 'content_id,service_id', ignoreDuplicates: true }
+      )
+    }
+  } catch (err) {
+    console.error('[크롤러] 태깅 오류 (contentId:', contentId, '):', err)
+  }
+}
 
 /** 소스별 크롤 결과 */
 export interface SourceCrawlResult {
@@ -125,7 +167,7 @@ async function crawlOne(
   admin: SupabaseClient,
   source: Source,
   since: string,
-  keywords: string[]
+  keywords: CrawlKeyword[]
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -209,10 +251,12 @@ async function crawlOne(
         }
 
         // 품질 필터 단계 2: 키워드 관련도 보류 판정 (#13)
-        // keywords 가 0건이면 relatednessScore = null → 게이팅 OFF(전부 published).
-        const score = relatednessScore(qText, keywords)
+        // RELATEDNESS_GATING_ENABLED = false 이면 전부 published(게이트 OFF).
+        // 키워드 커버리지 충분 + 어드민 승인 큐 구축 후 true 로 전환.
+        const score = relatednessScore(qText, keywords.map(k => k.name))
         const contentStatus: 'pending' | 'published' =
-          score !== null && score < RELATEDNESS_THRESHOLD ? 'pending' : 'published'
+          (RELATEDNESS_GATING_ENABLED && score !== null && score < RELATEDNESS_THRESHOLD)
+            ? 'pending' : 'published'
 
         // 콘텐츠 행 구성
         // - view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
@@ -238,7 +282,10 @@ async function crawlOne(
 
         // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
         // upsert ON CONFLICT 와 호환되지 않음 → insert 사용. URL 중복(23505)은 멱등 스킵.
-        const { error: insertError } = await admin.from('contents').insert(row)
+        const { data: insertedRows, error: insertError } = await admin
+          .from('contents')
+          .insert(row)
+          .select('id')
         if (insertError) {
           if (insertError.code === '23505') {
             counts.duplicate++   // 같은 original_url 이미 존재 → 멱등 스킵
@@ -251,6 +298,9 @@ async function crawlOne(
           // 보류(pending)이면 held, 게시(published)이면 inserted 로 집계
           if (contentStatus === 'pending') counts.held++
           else counts.inserted++
+          // 신규 적재 성공 시 서비스/키워드 태깅 (#24)
+          const newId = insertedRows?.[0]?.id as string | undefined
+          if (newId) await tagContent(admin, newId, qText, keywords)
         }
       } catch (itemErr) {
         // 개별 아이템 오류는 partial 처리 후 계속
@@ -304,9 +354,9 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
     throw new Error(`소스 조회 오류: ${sourcesError.message}`)
   }
 
-  // 키워드 1회 로드 — 관련도 게이팅용. 0건이면 게이팅 OFF(전부 published).
-  const { data: rawKeywords } = await admin.from('keywords').select('name')
-  const keywords = (rawKeywords ?? []).map((k: { name: string }) => k.name)
+  // 키워드 1회 로드 — 관련도 게이팅·서비스 태깅 공용. 0건이면 게이팅 OFF(전부 published).
+  const { data: rawKeywords } = await admin.from('keywords').select('id, name, service_id')
+  const keywords: CrawlKeyword[] = (rawKeywords ?? []) as CrawlKeyword[]
 
   const allSources = (rawSources ?? []) as Source[]
 

@@ -14,6 +14,13 @@ export const MIN_EFFECTIVE_LENGTH = 30
 export const RELATEDNESS_THRESHOLD = 0.3
 
 /**
+ * 관련도 게이팅 활성화 여부.
+ * false(현재): 게이트 OFF — 모든 기사를 published 로 적재, 태깅만 수행.
+ * 키워드 커버리지 충분 + 어드민 승인 큐 구축 후 true 로 전환.
+ */
+export const RELATEDNESS_GATING_ENABLED = false
+
+/**
  * 광고성 패턴 (초기 상수).
  * admin 관리화(패턴 목록 DB화)는 #23 어드민 페이지 이후.
  */
