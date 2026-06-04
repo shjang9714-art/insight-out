@@ -3,8 +3,9 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
-import { ExternalLink, ArrowLeft } from 'lucide-react'
+import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
 import { ensureFullBody } from '@/lib/contents/full-body'
+import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -19,8 +20,10 @@ interface ContentDetail {
   id: string
   title: string
   category: ContentCategory
+  summary_ko: string | null
   body_original: string | null
   body_fetched_at: string | null
+  file_path: string | null
   original_url: string | null
   author: string | null
   published_at: string | null
@@ -99,8 +102,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
     .from('contents')
     .select(`
       id, title, category,
-      body_original, body_fetched_at,
-      original_url, author, published_at,
+      summary_ko, body_original, body_fetched_at,
+      file_path, original_url, author, published_at,
       sources(name),
       content_services(services(name)),
       content_keywords(keywords(name))
@@ -115,26 +118,38 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
   const content = data as unknown as ContentDetail
 
-  const body = await ensureFullBody({
-    ...content,
-    source_id: null,
-    title_original: null,
-    summary_ko: null,
-    body_translated_ko: null,
-    original_language: 'ko',
-    thumbnail_url: null,
-    file_path: null,
-    title_hash: null,
-    body_hash: null,
-    view_count: 0,
-    bookmark_count: 0,
-    is_editor_pick: false,
-    cluster_id: null,
-    status: 'published',
-    collected_at: '',
-    created_at: '',
-    updated_at: '',
-  })
+  // ── 리포트(file_path) vs 뉴스(original_url) 분기 ─────────────────────────
+  const isReport = Boolean(content.file_path)
+
+  let body = ''
+  let signedUrl: string | null = null
+  let isPdf = false
+
+  if (isReport) {
+    // 비공개 버킷 서명 URL 생성 (실패 시 null → 폴백 메시지)
+    signedUrl = await getReportSignedUrl(content.file_path!)
+    isPdf = content.file_path!.toLowerCase().endsWith('.pdf')
+  } else {
+    // 뉴스: 기존 풀본문 추출·캐시
+    body = await ensureFullBody({
+      ...content,
+      source_id: null,
+      title_original: null,
+      body_translated_ko: null,
+      original_language: 'ko',
+      thumbnail_url: null,
+      title_hash: null,
+      body_hash: null,
+      view_count: 0,
+      bookmark_count: 0,
+      is_editor_pick: false,
+      cluster_id: null,
+      status: 'published',
+      collected_at: '',
+      created_at: '',
+      updated_at: '',
+    })
+  }
 
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-gray-50 text-gray-600 border-gray-100'
@@ -218,13 +233,67 @@ export default async function ContentDetailPage({ params }: PageProps) {
         {/* 구분선 */}
         <div className="mb-6 border-t border-gray-100" />
 
-        {/* 본문 */}
-        {body ? (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-            {body}
-          </p>
+        {/* ── 리포트 뷰어 ─────────────────────────────────────────────────── */}
+        {isReport ? (
+          <>
+            {/* 요약 (있을 때만) */}
+            {content.summary_ko && (
+              <p className="mb-6 text-sm leading-relaxed text-gray-600">
+                {content.summary_ko}
+              </p>
+            )}
+
+            {signedUrl && isPdf ? (
+              /* PDF iframe 미리보기 */
+              <div>
+                <iframe
+                  src={signedUrl}
+                  className="w-full rounded-lg border border-gray-200"
+                  style={{ height: '80vh' }}
+                  title={content.title}
+                />
+                <div className="mt-3 flex justify-end">
+                  <a
+                    href={signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    새 탭에서 열기
+                  </a>
+                </div>
+              </div>
+            ) : signedUrl && !isPdf ? (
+              /* PDF 외 파일: 다운로드 안내 */
+              <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-gray-200 py-12 text-center">
+                <FileText className="h-10 w-10 text-gray-300" />
+                <p className="text-sm text-gray-500">이 파일은 미리보기를 지원하지 않습니다.</p>
+                <a
+                  href={signedUrl}
+                  download
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                >
+                  <Download className="h-4 w-4" />
+                  파일 다운로드
+                </a>
+              </div>
+            ) : (
+              /* 서명 URL 생성 실패 */
+              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-400">
+                파일을 불러올 수 없습니다.
+              </div>
+            )}
+          </>
         ) : (
-          <p className="text-sm text-gray-400">본문 내용을 불러올 수 없습니다.</p>
+          /* ── 뉴스 본문 ───────────────────────────────────────────────────── */
+          body ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+              {body}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400">본문 내용을 불러올 수 없습니다.</p>
+          )
         )}
 
         {/* 하단 액션 */}
@@ -237,7 +306,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
             목록으로
           </Link>
 
-          {content.original_url && (
+          {/* 뉴스에만 원문 보기 링크 표시 */}
+          {!isReport && content.original_url && (
             <a
               href={content.original_url}
               target="_blank"
