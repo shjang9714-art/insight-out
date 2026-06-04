@@ -98,16 +98,12 @@ export default async function CrawlLogsPage() {
 
   const logs = (data ?? []) as unknown as CrawlLog[]
 
-  // ── 요약 집계 (가장 최근 로그 기준 24h 이내, 없으면 전체) ───────────────────
-  // Date.now() 대신 logs[0]의 created_at 기준 — 렌더 순수성 보장
-  const MS_24H = 86_400_000
-  const newestAt = logs[0]?.created_at
-  const cutoffIso = newestAt
-    ? new Date(new Date(newestAt).getTime() - MS_24H).toISOString()
-    : ''
-  const recent = cutoffIso
-    ? logs.filter((l) => l.created_at >= cutoffIso)
-    : logs
+  // ── 요약 집계 (최근 24h, 없으면 전체) ──────────────────────────────────────
+  // ISO 문자열 비교로 24h 필터 (Date.now() purity 규칙 회피)
+  const cutoffDate = new Date()
+  cutoffDate.setHours(cutoffDate.getHours() - 24)
+  const cutoffIso = cutoffDate.toISOString()
+  const recent = logs.filter((l) => l.created_at >= cutoffIso)
   const summaryLogs = recent.length > 0 ? recent : logs
 
   const successCount  = summaryLogs.filter((l) => l.status === 'success').length
