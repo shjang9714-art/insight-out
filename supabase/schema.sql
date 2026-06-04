@@ -306,7 +306,8 @@ create table public.contents (
   title              text not null,
   title_original     text,                              -- 영문 원제(번역 시)
   summary_ko         text,                              -- 한국어 요약 (결정 F)
-  body_original      text,                              -- 원문 본문 (결정 F)
+  body_original      text,                              -- 원문 본문 (결정 F) — 초기 RSS 스니펫, 상세 조회 시 풀본문으로 갱신
+  body_fetched_at    timestamptz,                       -- 지연 풀본문 추출 시도 시각(null=미추출/스니펫, 값=추출 시도 완료)
   body_translated_ko text,                              -- 번역본 (결정 F)
   original_language  text not null default 'ko',        -- 'ko' | 'en' ...
   author             text,
