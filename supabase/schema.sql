@@ -433,22 +433,6 @@ create unique index ai_report_sources_content_key
 create unique index ai_report_sources_youtube_key
   on public.ai_report_sources (ai_report_id, youtube_video_id) where youtube_video_id is not null;
 
--- 크롤링 실행 로그 (#3 §6) — 어드민 "크롤링 현황"(#23) 데이터 소스
-create table public.crawl_logs (
-  id              uuid primary key default gen_random_uuid(),
-  source_id       uuid references public.sources (id) on delete set null,
-  status          crawl_status not null,
-  fetched_count   integer not null default 0,   -- 가져온 raw 건수
-  inserted_count  integer not null default 0,   -- 신규 적재
-  duplicate_count integer not null default 0,   -- 중복 스킵
-  held_count      integer not null default 0,   -- 보류(pending) 적재
-  error_message   text,
-  started_at      timestamptz not null default now(),
-  finished_at     timestamptz,
-  created_at      timestamptz not null default now()
-);
-create index crawl_logs_source_idx on public.crawl_logs (source_id, created_at desc);
-
 
 -- ============================================================
 -- ============================================================
@@ -591,7 +575,6 @@ alter table public.crawl_logs        enable row level security;
 alter table public.content_services  enable row level security;
 alter table public.content_keywords  enable row level security;
 alter table public.youtube_videos    enable row level security;
-alter table public.crawl_logs        enable row level security;
 alter table public.ai_reports        enable row level security;
 alter table public.ai_report_sources enable row level security;
 alter table public.bookmarks         enable row level security;
@@ -617,9 +600,6 @@ create policy "contents: admin 전체 조회"
   on public.contents for select using (public.is_admin());
 create policy "contents: admin 관리"
   on public.contents for all using (public.is_admin()) with check (public.is_admin());
-
-create policy "crawl_logs: admin 조회"
-  on public.crawl_logs for select using (public.is_admin());
 
 create policy "content_services: 인증 사용자 조회"
   on public.content_services for select using (auth.role() = 'authenticated');
