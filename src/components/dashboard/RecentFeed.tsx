@@ -148,11 +148,9 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
           {items.map((item) => {
             const catColor =
               CATEGORY_COLOR[item.category] ?? 'bg-gray-100 text-gray-600'
-            return (
-              <div
-                key={item.id}
-                className="group cursor-pointer py-3.5 first:pt-0 last:pb-0"
-              >
+            const isYoutube = item.category === '유튜브'
+            const itemContent = (
+              <>
                 <div className="mb-1.5 flex items-center gap-2">
                   <span
                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}
@@ -176,7 +174,24 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
                 <span className="text-xs text-gray-400">
                   {timeAgo(item.published_at)}
                 </span>
+              </>
+            )
+
+            return isYoutube ? (
+              <div
+                key={item.id}
+                className="group py-3.5 first:pt-0 last:pb-0"
+              >
+                {itemContent}
               </div>
+            ) : (
+              <Link
+                key={item.id}
+                href={`/dashboard/contents/${item.id}`}
+                className="group py-3.5 first:pt-0 last:pb-0"
+              >
+                {itemContent}
+              </Link>
             )
           })}
         </div>

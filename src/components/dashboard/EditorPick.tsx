@@ -72,9 +72,10 @@ export default function EditorPick() {
       ) : (
         <div className="flex flex-col gap-3">
           {items.map((item, idx) => (
-            <div
+            <Link
               key={item.id}
-              className="group -mx-1 flex cursor-pointer gap-3 rounded-xl p-3 transition-colors hover:bg-gray-50"
+              href={`/dashboard/contents/${item.id}`}
+              className="group -mx-1 flex gap-3 rounded-xl p-3 transition-colors hover:bg-gray-50"
             >
               <div className="flex h-7 w-12 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-[10px] font-bold text-white">
                 PICK {String(idx + 1).padStart(2, '0')}
@@ -91,7 +92,7 @@ export default function EditorPick() {
                   {formatDate(item.published_at) && <span>{formatDate(item.published_at)}</span>}
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

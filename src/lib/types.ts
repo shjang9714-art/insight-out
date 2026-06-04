@@ -116,6 +116,7 @@ export interface Content {
   title_original?: string | null
   summary_ko?: string | null
   body_original?: string | null
+  body_fetched_at?: string | null
   body_translated_ko?: string | null
   original_language: string
   author?: string | null

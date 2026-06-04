@@ -112,46 +112,57 @@ function ContentCard({ item }: { item: ContentItem }) {
   const catStyle =
     CATEGORY_STYLE[item.category] ?? 'bg-gray-50 text-gray-600 border-gray-100'
   const dateStr = formatDate(item.published_at)
+  const isYoutube = item.category === '유튜브'
+
+  const innerContent = (
+    <div className="min-w-0 flex-1">
+      {/* 뱃지 */}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <span
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${catStyle}`}
+        >
+          {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
+        </span>
+        {item.is_editor_pick && (
+          <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            ⭐ 에디터 픽
+          </span>
+        )}
+      </div>
+
+      {/* 제목 */}
+      <h2 className="mb-1.5 text-sm font-semibold leading-snug text-gray-900 transition-colors group-hover:text-brand-600">
+        {item.title}
+      </h2>
+
+      {/* 요약 */}
+      {item.summary_ko && (
+        <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">
+          {item.summary_ko}
+        </p>
+      )}
+
+      {/* 메타 */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-gray-400">
+        {item.sources?.name && (
+          <span className="font-medium text-gray-500">{item.sources.name}</span>
+        )}
+        {item.author && !item.sources?.name && <span>{item.author}</span>}
+        {dateStr && <span>{dateStr}</span>}
+      </div>
+    </div>
+  )
 
   return (
     <article className="group rounded-xl border border-gray-100 bg-white p-5 transition-shadow hover:shadow-sm">
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          {/* 뱃지 */}
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            <span
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${catStyle}`}
-            >
-              {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
-            </span>
-            {item.is_editor_pick && (
-              <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                ⭐ 에디터 픽
-              </span>
-            )}
-          </div>
-
-          {/* 제목 */}
-          <h2 className="mb-1.5 text-sm font-semibold leading-snug text-gray-900 transition-colors group-hover:text-brand-600">
-            {item.title}
-          </h2>
-
-          {/* 요약 */}
-          {item.summary_ko && (
-            <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">
-              {item.summary_ko}
-            </p>
-          )}
-
-          {/* 메타 */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-gray-400">
-            {item.sources?.name && (
-              <span className="font-medium text-gray-500">{item.sources.name}</span>
-            )}
-            {item.author && !item.sources?.name && <span>{item.author}</span>}
-            {dateStr && <span>{dateStr}</span>}
-          </div>
-        </div>
+        {isYoutube ? (
+          innerContent
+        ) : (
+          <Link href={`/dashboard/contents/${item.id}`} className="min-w-0 flex-1">
+            {innerContent}
+          </Link>
+        )}
 
         {/* 액션 버튼 */}
         <div className="shrink-0 pt-0.5">
