@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdapter } from './adapters'
+import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
@@ -333,6 +334,90 @@ async function crawlOne(
   }
 }
 
+/**
+ * YouTube 채널 소스 1개 수집 — youtube_videos 에 멱등 적재.
+ * - video_id 유니크 제약(23505) = 중복, 그 외 오류 = partial.
+ * - since 필터 없음(video_id 유니크로 멱등 보장).
+ */
+async function crawlYoutube(
+  admin: SupabaseClient,
+  source: Source
+): Promise<SourceCrawlResult> {
+  const startedAt = new Date().toISOString()
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  let crawlStatus: 'success' | 'partial' | 'failed' = 'success'
+  let errorMessage: string | undefined
+
+  try {
+    // 3회 지수 백오프 재시도 (0.5s · 1s · 2s) — 뉴스 경로와 동일
+    const { feedTitle, items } = await withRetry(
+      () => fetchYoutubeChannel(source),
+      3,
+      [500, 1000, 2000]
+    )
+    counts.fetched = items.length
+
+    for (const item of items) {
+      try {
+        const row = {
+          source_id:        source.id,
+          video_id:         item.videoId,
+          title:            item.title,
+          channel_name:     feedTitle,
+          channel_id:       item.channelId,
+          description:      null,
+          thumbnail_url:    `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+          duration_seconds: null,
+          view_count:       null,
+          published_at:     item.published_at,
+          collected_at:     new Date().toISOString(),
+        }
+
+        const { error: insertError } = await admin
+          .from('youtube_videos')
+          .insert(row)
+
+        if (insertError) {
+          if (insertError.code === '23505') {
+            counts.duplicate++   // video_id 이미 존재 → 멱등 스킵
+          } else {
+            console.error(`[크롤러] youtube_videos insert 오류 (${item.videoId}):`, insertError.message)
+            crawlStatus = 'partial'
+            if (!errorMessage) errorMessage = `${insertError.code ?? ''} ${insertError.message}`.trim()
+          }
+        } else {
+          counts.inserted++
+        }
+      } catch (itemErr) {
+        console.error('[크롤러] 유튜브 아이템 처리 오류:', itemErr)
+        crawlStatus = 'partial'
+        if (!errorMessage) errorMessage = itemErr instanceof Error ? itemErr.message : String(itemErr)
+      }
+    }
+
+    // 성공·부분성공 시 last_crawled_at 갱신
+    await admin
+      .from('sources')
+      .update({ last_crawled_at: new Date().toISOString() })
+      .eq('id', source.id)
+  } catch (err) {
+    crawlStatus = 'failed'
+    errorMessage = err instanceof Error ? err.message : String(err)
+    console.error(`[크롤러] 유튜브 소스 "${source.name}" 수집 실패:`, errorMessage)
+  }
+
+  const finishedAt = new Date().toISOString()
+  await writeCrawlLog(admin, source.id, crawlStatus, counts, startedAt, finishedAt, errorMessage)
+
+  return {
+    source_id:   source.id,
+    source_name: source.name,
+    status:      crawlStatus,
+    counts,
+    error:       errorMessage,
+  }
+}
+
 /** 전체 크롤 실행 — Orchestrator 진입점
  *  @param options.backfillDays 소급 수집 일수(1~30). 미지정/0 이면 당일(KST 0시 이후)만. */
 export async function runCrawl(options?: { backfillDays?: number }): Promise<CrawlSummary> {
@@ -374,8 +459,13 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
       })
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
+  // youtube_channel → crawlYoutube, 그 외(news_site 등) → crawlOne
   const results = await Promise.allSettled(
-    dueSources.map(s => crawlOne(admin, s, since, keywords))
+    dueSources.map(s =>
+      s.type === 'youtube_channel'
+        ? crawlYoutube(admin, s)
+        : crawlOne(admin, s, since, keywords)
+    )
   )
 
   // 결과 집계
