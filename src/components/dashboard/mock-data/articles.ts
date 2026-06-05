@@ -105,35 +105,73 @@ export const EDITOR_PICKS = [
   },
 ]
 
-export const COMPETITOR_TRENDS = [
+export type CompetitorGroup = 'telecom' | 'bigtech'
+
+export interface CompetitorTrend {
+  id: string
+  company: string
+  logo: string
+  color: string
+  group: CompetitorGroup
+  items: { text: string; time: string }[]
+}
+
+// 국내 통신사(telecom): 매일 디폴트로 노출 — U+ 제외 SKT·KT
+// 글로벌 빅테크(bigtech): 매일 최신 뉴스/이슈 기반으로 갱신 (현재는 정적 샘플)
+export const COMPETITOR_TRENDS: CompetitorTrend[] = [
   {
-    id: '1',
+    id: 'skt',
+    company: 'SK텔레콤',
+    logo: 'SKT',
+    color: 'red',
+    group: 'telecom',
+    items: [
+      { text: '에이닷(A.) 엔터프라이즈 — 기업용 AI 비서·AICC 패키지 영업 확대', time: '오늘' },
+      { text: 'AI 데이터센터(AIDC) 투자 확대 — GPU 클라우드 사업 본격화', time: '오늘' },
+    ],
+  },
+  {
+    id: 'kt',
     company: 'KT',
     logo: 'KT',
-    color: 'red',
+    color: 'rose',
+    group: 'telecom',
     items: [
-      { text: 'AI 콜센터 솔루션 "KT AI Contact" 기업 무상 체험 프로그램 런칭', time: '1일 전' },
-      { text: '클라우드 관리형 보안 서비스(MSSP) 신규 패키지 출시 — 중견기업 타깃', time: '3일 전' },
+      { text: 'AI 콜센터 "KT AICC" 기업 무상 체험 프로그램 운영 중', time: '오늘' },
+      { text: '클라우드 관리형 보안(MSSP) 패키지 — 중견기업 타깃 영업', time: '오늘' },
     ],
   },
   {
-    id: '2',
-    company: 'LG U+',
-    logo: 'U+',
-    color: 'pink',
+    id: 'anthropic',
+    company: 'Anthropic',
+    logo: 'A',
+    color: 'orange',
+    group: 'bigtech',
     items: [
-      { text: 'Private 5G 기반 스마트팩토리 레퍼런스 확보 — 현대제철 구축 완료', time: '2일 전' },
-      { text: 'M2M 차량 관제 플랫폼 신규 고객 20개사 확보 발표', time: '5일 전' },
+      { text: 'Claude 엔터프라이즈 — 기업용 에이전트·코드 자동화 수요 확대', time: '최신' },
+      { text: 'MCP 기반 사내 데이터 연동 생태계 확장', time: '최신' },
     ],
   },
   {
-    id: '3',
+    id: 'google',
+    company: 'Google',
+    logo: 'G',
+    color: 'blue',
+    group: 'bigtech',
+    items: [
+      { text: 'Gemini 기업용 워크스페이스 통합 — 생산성 시장 공략', time: '최신' },
+      { text: 'Vertex AI 에이전트 빌더 — 기업 맞춤 AI 구축 지원', time: '최신' },
+    ],
+  },
+  {
+    id: 'aws',
     company: 'AWS',
     logo: 'AWS',
-    color: 'orange',
+    color: 'amber',
+    group: 'bigtech',
     items: [
-      { text: 'Amazon Bedrock 멀티 에이전트 서비스 국내 GA — AICC 시장 공략 본격화', time: '2시간 전' },
-      { text: 'AWS Seoul Region 두 번째 AZ 추가 — 금융·공공 워크로드 타깃', time: '4일 전' },
+      { text: 'Amazon Bedrock 멀티 에이전트 — AICC 시장 공략 본격화', time: '최신' },
+      { text: 'AWS Seoul Region 증설 — 금융·공공 워크로드 타깃', time: '최신' },
     ],
   },
 ]

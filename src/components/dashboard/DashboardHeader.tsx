@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, startTransition } from 'react'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Menu } from 'lucide-react'
@@ -13,11 +12,6 @@ interface Props {
 }
 
 export default function DashboardHeader({ onMenuClick }: Props) {
-  const router       = useRouter()
-  const searchParams = useSearchParams()
-  const pathname     = usePathname()
-
-  const [searchQuery, setSearchQuery] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
   const [userName, setUserName] = useState('—')
   const [userTeam, setUserTeam] = useState('')
@@ -30,22 +24,6 @@ export default function DashboardHeader({ onMenuClick }: Props) {
     day: 'numeric',
     weekday: 'short',
   })
-
-  // 검색 페이지 진입 시 URL 의 q 파라미터로 입력창 동기화
-  useEffect(() => {
-    if (pathname === '/dashboard/search') {
-      const q = searchParams.get('q') ?? ''
-      startTransition(() => setSearchQuery(q))
-    }
-  }, [pathname, searchParams])
-
-  // Enter 또는 폼 제출 → 검색 결과 페이지로 이동
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    const q = searchQuery.trim()
-    if (!q) return
-    router.push(`/dashboard/search?q=${encodeURIComponent(q)}`)
-  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -96,48 +74,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             className="h-8 w-auto"
           />
           <span className="hidden text-xs text-gray-400 sm:block">B2B Intelligence</span>
-          <span className="hidden sm:inline-block bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider">
-            DEMO
-          </span>
         </Link>
-
-        {/* Search */}
-        <form onSubmit={handleSearch} className="max-w-xl flex-1">
-          <div className="relative">
-            <svg
-              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="콘텐츠 제목·요약 검색 (Enter)"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-8 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                aria-label="검색어 지우기"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </form>
 
         {/* Right side */}
         <div className="ml-auto flex shrink-0 items-center gap-4">
