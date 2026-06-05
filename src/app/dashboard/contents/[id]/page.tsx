@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -71,6 +72,53 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '유튜브':    'bg-red-50 text-red-700 border-red-100',
 }
 
+// ─── 본문 로딩 fallback: 스니펫을 즉시 표시 ─────────────────────────────────
+
+function ArticleBodyFallback({ snippet }: { snippet: string }) {
+  if (!snippet) {
+    return <p className="text-sm text-gray-400">본문을 불러오는 중입니다…</p>
+  }
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+        {snippet}
+      </p>
+      <p className="mt-3 text-xs text-gray-400">본문 불러오는 중…</p>
+    </div>
+  )
+}
+
+// ─── 풀본문 async 서버 컴포넌트 (Suspense 스트리밍) ──────────────────────────
+
+async function ArticleBody({ content }: { content: ContentDetail }) {
+  const body = await ensureFullBody({
+    ...content,
+    source_id: null,
+    title_original: null,
+    body_translated_ko: null,
+    original_language: 'ko',
+    thumbnail_url: null,
+    title_hash: null,
+    body_hash: null,
+    view_count: 0,
+    bookmark_count: 0,
+    is_editor_pick: false,
+    cluster_id: null,
+    status: 'published',
+    collected_at: '',
+    created_at: '',
+    updated_at: '',
+  })
+
+  return body ? (
+    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+      {body}
+    </p>
+  ) : (
+    <p className="text-sm text-gray-400">본문 내용을 불러올 수 없습니다.</p>
+  )
+}
+
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -121,7 +169,6 @@ export default async function ContentDetailPage({ params }: PageProps) {
   // ── 리포트(file_path) vs 뉴스(original_url) 분기 ─────────────────────────
   const isReport = Boolean(content.file_path)
 
-  let body = ''
   let signedUrl: string | null = null
   let isPdf = false
 
@@ -129,27 +176,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
     // 비공개 버킷 서명 URL 생성 (실패 시 null → 폴백 메시지)
     signedUrl = await getReportSignedUrl(content.file_path!)
     isPdf = content.file_path!.toLowerCase().endsWith('.pdf')
-  } else {
-    // 뉴스: 기존 풀본문 추출·캐시
-    body = await ensureFullBody({
-      ...content,
-      source_id: null,
-      title_original: null,
-      body_translated_ko: null,
-      original_language: 'ko',
-      thumbnail_url: null,
-      title_hash: null,
-      body_hash: null,
-      view_count: 0,
-      bookmark_count: 0,
-      is_editor_pick: false,
-      cluster_id: null,
-      status: 'published',
-      collected_at: '',
-      created_at: '',
-      updated_at: '',
-    })
   }
+  // 뉴스 분기: ensureFullBody 는 ArticleBody 안에서 스트리밍 — 이 시점엔 호출하지 않음
 
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-gray-50 text-gray-600 border-gray-100'
@@ -286,14 +314,16 @@ export default async function ContentDetailPage({ params }: PageProps) {
             )}
           </>
         ) : (
-          /* ── 뉴스 본문 ───────────────────────────────────────────────────── */
-          body ? (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-              {body}
-            </p>
-          ) : (
-            <p className="text-sm text-gray-400">본문 내용을 불러올 수 없습니다.</p>
-          )
+          /* ── 뉴스 본문: Suspense 스트리밍 ───────────────────────────────── */
+          <Suspense
+            fallback={
+              <ArticleBodyFallback
+                snippet={content.summary_ko ?? content.body_original ?? ''}
+              />
+            }
+          >
+            <ArticleBody content={content} />
+          </Suspense>
         )}
 
         {/* 하단 액션 */}
