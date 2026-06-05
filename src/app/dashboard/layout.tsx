@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
@@ -17,8 +17,18 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const [reports, setReports] = useState<AIReport[]>(AI_REPORTS)
   const [showGenerate, setShowGenerate] = useState(false)
   const [selectedReport, setSelectedReport] = useState<AIReport | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const activeService = searchParams.get('service') ?? 'all'
+
+  // ESC 로 모바일 드로어 닫기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   function handleServiceChange(serviceId: string) {
     const params = new URLSearchParams(searchParams.toString())
@@ -34,18 +44,38 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     openReportDetail: (r: AIReport) => setSelectedReport(r),
   }
 
+  const sidebarProps = {
+    activeService,
+    onServiceChange: handleServiceChange,
+    reports,
+    onSelectReport: (r: AIReport) => setSelectedReport(r),
+    onOpenGenerate: () => setShowGenerate(true),
+  }
+
   return (
     <DashboardContext.Provider value={ctx}>
       <div className="min-h-screen bg-gray-50">
-        <DashboardHeader />
+        <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
         <div className="flex">
-          <Sidebar
-            activeService={activeService}
-            onServiceChange={handleServiceChange}
-            reports={reports}
-            onSelectReport={(r) => setSelectedReport(r)}
-            onOpenGenerate={() => setShowGenerate(true)}
-          />
+          {/* 데스크톱(lg+) 고정 사이드바 */}
+          <div className="hidden lg:block">
+            <Sidebar {...sidebarProps} />
+          </div>
+
+          {/* 모바일 드로어 */}
+          {sidebarOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-30 bg-black/30 lg:hidden"
+                onClick={() => setSidebarOpen(false)}
+                aria-hidden="true"
+              />
+              <div className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-white lg:hidden">
+                <Sidebar {...sidebarProps} onClose={() => setSidebarOpen(false)} />
+              </div>
+            </>
+          )}
+
           <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>

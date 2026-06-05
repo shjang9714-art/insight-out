@@ -364,7 +364,7 @@ function ContentsContent() {
     : '전체 콘텐츠'
 
   return (
-    <div className="px-6 py-6">
+    <div className="px-4 py-6 sm:px-6">
       {/* 브레드크럼 */}
       <div className="mb-5 flex items-center gap-2 text-sm text-gray-400">
         <Link href="/dashboard" className="transition-colors hover:text-brand-600">

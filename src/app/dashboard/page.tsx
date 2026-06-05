@@ -15,7 +15,7 @@ function DashboardContent() {
   const { reports, openGenerateModal, openReportDetail } = useDashboard()
 
   return (
-    <div className="space-y-6 px-6 py-6">
+    <div className="space-y-6 px-4 py-6 sm:px-6">
       <CategoryGrid activeService={activeService} />
       <TrendKeywords />
 

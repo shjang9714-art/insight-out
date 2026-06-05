@@ -4,10 +4,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
+import { Menu } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { NOTIFICATIONS, TODAY_UPDATES } from './mock-data'
 
-export default function DashboardHeader() {
+interface Props {
+  onMenuClick?: () => void
+}
+
+export default function DashboardHeader({ onMenuClick }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const pathname     = usePathname()
@@ -69,9 +74,18 @@ export default function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
-      <div className="flex h-14 items-center gap-4 px-5">
+      <div className="flex h-14 items-center gap-4 px-4 sm:px-5">
+        {/* 모바일 햄버거 버튼 */}
+        <button
+          onClick={onMenuClick}
+          className="rounded-lg p-2 transition-colors hover:bg-gray-100 lg:hidden"
+          aria-label="메뉴 열기"
+        >
+          <Menu className="h-5 w-5 text-gray-600" />
+        </button>
+
         {/* Logo */}
-        <Link href="/dashboard" className="flex w-52 shrink-0 items-center gap-2.5">
+        <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 lg:w-52">
           <Image
             src="/logo.png"
             alt="Insight Out"

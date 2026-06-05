@@ -61,7 +61,7 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
   const svcSuffix = activeService !== 'all' ? `?service=${activeService}` : ''
 
   return (
-    <div className="grid grid-cols-8 gap-3">
+    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
       {CATEGORY_DEFS.map((cat) => {
         // 유튜브는 기존 별도 페이지로
         const href =

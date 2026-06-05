@@ -84,7 +84,7 @@ function YoutubeContent() {
     activeService !== 'all' ? `/dashboard?service=${activeService}` : '/dashboard'
 
   return (
-    <div className="px-6 py-6">
+    <div className="px-4 py-6 sm:px-6">
       {/* Breadcrumb */}
       <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
         <Link href={dashboardHref} className="transition-colors hover:text-brand-600">

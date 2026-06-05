@@ -8,9 +8,10 @@ interface Props {
   reports: AIReport[]
   onSelectReport: (report: AIReport) => void
   onOpenGenerate: () => void
+  onClose?: () => void
 }
 
-export default function Sidebar({ activeService, onServiceChange, reports, onSelectReport, onOpenGenerate }: Props) {
+export default function Sidebar({ activeService, onServiceChange, reports, onSelectReport, onOpenGenerate, onClose }: Props) {
   return (
     <aside className="w-56 shrink-0 border-r border-gray-100 bg-white">
       <div className="sticky top-14 h-[calc(100vh-56px)] space-y-5 overflow-y-auto px-3 py-4">
@@ -26,7 +27,7 @@ export default function Sidebar({ activeService, onServiceChange, reports, onSel
               return (
                 <button
                   key={svc.id}
-                  onClick={() => onServiceChange(svc.id)}
+                  onClick={() => { onServiceChange(svc.id); onClose?.() }}
                   className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors ${
                     isActive
                       ? 'bg-brand-50 font-medium text-brand-600'
@@ -125,7 +126,7 @@ export default function Sidebar({ activeService, onServiceChange, reports, onSel
             {reports.map((r) => (
               <button
                 key={r.id}
-                onClick={() => onSelectReport(r)}
+                onClick={() => { onSelectReport(r); onClose?.() }}
                 className="group w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-brand-50"
               >
                 <p className="line-clamp-1 text-xs font-medium text-gray-800 group-hover:text-brand-600">
