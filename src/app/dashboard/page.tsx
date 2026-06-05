@@ -27,18 +27,18 @@ function DashboardContent() {
     <div className="space-y-6 px-4 py-6 sm:px-6">
       <CategoryGrid activeService={activeService} />
 
-      {/* 아카이빙 콘텐츠 메일 발송 (구 AI 보고서 자리) */}
+      {/* 서비스 가로 탭 + 콘텐츠 검색 */}
+      <div className="space-y-3 border-t border-gray-100 pt-6">
+        <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
+        <SearchBar />
+      </div>
+
+      {/* 아카이빙 콘텐츠 메일 발송 */}
       <EmailArchiveWidget />
 
       {/* 최근 피드 → 그 아래 경쟁사 동향 */}
       <RecentFeed activeService={activeService} />
       <CompetitorTrends />
-
-      {/* 서비스 가로 탭 + 콘텐츠 검색 (콘텐츠 하단) */}
-      <div className="space-y-3 border-t border-gray-100 pt-6">
-        <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
-        <SearchBar />
-      </div>
     </div>
   )
 }
