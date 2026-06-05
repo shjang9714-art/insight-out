@@ -123,7 +123,7 @@ export default function MyPage() {
         supabase.from('newsletter_subscriptions').select('frequency, newsletter_email').eq('user_id', user.id).single(),
         supabase
           .from('archives')
-          .select(`id, name, description, created_at, archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
+          .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
           .order('created_at', { ascending: false }),
       ])
 
