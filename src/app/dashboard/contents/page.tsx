@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -226,7 +226,7 @@ function ContentsContent() {
   )
 
   // ── keyword 디바운스 ─────────────────────────────────────────────────────────
-  useEffect(() => { setKwInput(kw) }, [kw])
+  useEffect(() => { startTransition(() => setKwInput(kw)) }, [kw])
 
   const handleKwChange = (val: string) => {
     setKwInput(val)

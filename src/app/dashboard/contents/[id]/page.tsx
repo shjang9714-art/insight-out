@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
 import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
+import ArchiveButton from '@/components/archive/ArchiveButton'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
@@ -336,18 +337,23 @@ export default async function ContentDetailPage({ params }: PageProps) {
             목록으로
           </Link>
 
-          {/* 뉴스에만 원문 보기 링크 표시 */}
-          {!isReport && content.original_url && (
-            <a
-              href={content.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
-            >
-              <ExternalLink className="h-4 w-4" />
-              원문 보기
-            </a>
-          )}
+          <div className="flex items-center gap-2">
+            {/* 아카이빙 담기 */}
+            <ArchiveButton contentId={content.id} />
+
+            {/* 뉴스에만 원문 보기 링크 표시 */}
+            {!isReport && content.original_url && (
+              <a
+                href={content.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+              >
+                <ExternalLink className="h-4 w-4" />
+                원문 보기
+              </a>
+            )}
+          </div>
         </div>
       </article>
     </div>

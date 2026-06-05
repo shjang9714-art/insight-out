@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { ChevronDown, ChevronRight, Mail, Trash2, X } from 'lucide-react'
 import type {
   Department,
   ContentFilterMode,
@@ -82,6 +83,26 @@ export default function MyPage() {
   const [newsletterStatus, setNewsletterStatus] = useState<SaveStatus>('idle')
   const [newsletterError, setNewsletterError] = useState<string | null>(null)
 
+  // ── 아카이브 ──────────────────────────────────────────────────────────────
+  interface ArchiveWithItems {
+    id: string
+    name: string
+    description: string | null
+    created_at: string
+    items: {
+      content_id: string | null
+      youtube_video_id: string | null
+      added_at: string
+      contents: { id: string; title: string; category: string; original_url: string | null } | null
+    }[]
+  }
+  const [archives, setArchives]             = useState<ArchiveWithItems[]>([])
+  const [archivesLoading, setArchivesLoading] = useState(true)
+  const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null)
+  const [archiveError, setArchiveError]     = useState<string | null>(null)
+  const [sendingArchiveId, setSendingArchiveId] = useState<string | null>(null)
+  const [sendResult, setSendResult]         = useState<{ archiveId: string; to: string } | null>(null)
+
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -94,11 +115,16 @@ export default function MyPage() {
         { data: userServices },
         { data: allServices },
         { data: sub },
+        { data: archivesData },
       ] = await Promise.all([
         supabase.from('users').select('name, department, team, position, content_filter_mode').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
         supabase.from('services').select('*').order('order'),
         supabase.from('newsletter_subscriptions').select('frequency, newsletter_email').eq('user_id', user.id).single(),
+        supabase
+          .from('archives')
+          .select(`id, name, description, created_at, archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
+          .order('created_at', { ascending: false }),
       ])
 
       if (userRow) {
@@ -113,6 +139,8 @@ export default function MyPage() {
 
       if (allServices) setServices(allServices)
       if (userServices) setSelectedServiceIds(new Set(userServices.map((r) => r.service_id)))
+      if (archivesData) setArchives(archivesData as unknown as ArchiveWithItems[])
+      setArchivesLoading(false)
 
       if (sub) {
         setNewsletter({
@@ -250,6 +278,64 @@ export default function MyPage() {
     } catch (err) {
       setNewsletterError(err instanceof Error ? err.message : '오류가 발생했습니다.')
       setNewsletterStatus('error')
+    }
+  }
+
+  // ── 아카이브 핸들러 ──────────────────────────────────────────────────────
+  async function handleDeleteArchive(archiveId: string) {
+    if (!window.confirm('아카이브를 삭제하면 담긴 항목도 모두 사라집니다. 계속할까요?')) return
+    setArchiveError(null)
+    const { error } = await supabase.from('archives').delete().eq('id', archiveId)
+    if (error) {
+      setArchiveError('삭제에 실패했습니다. 잠시 후 다시 시도해주세요.')
+    } else {
+      setArchives((prev) => prev.filter((a) => a.id !== archiveId))
+      if (expandedArchiveId === archiveId) setExpandedArchiveId(null)
+    }
+  }
+
+  async function handleRemoveItem(archiveId: string, contentId: string | null, youtubeId: string | null) {
+    setArchiveError(null)
+    let query = supabase.from('archive_items').delete().eq('archive_id', archiveId)
+    if (contentId) query = query.eq('content_id', contentId)
+    else if (youtubeId) query = query.eq('youtube_video_id', youtubeId)
+
+    const { error } = await query
+    if (error) {
+      setArchiveError('항목 제거에 실패했습니다.')
+    } else {
+      setArchives((prev) =>
+        prev.map((a) =>
+          a.id === archiveId
+            ? {
+                ...a,
+                items: a.items.filter((item) =>
+                  contentId ? item.content_id !== contentId : item.youtube_video_id !== youtubeId
+                ),
+              }
+            : a
+        )
+      )
+    }
+  }
+
+  async function handleSendEmail(archiveId: string) {
+    setSendingArchiveId(archiveId)
+    setArchiveError(null)
+    setSendResult(null)
+    try {
+      const res = await fetch('/api/email/send-archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archiveId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? '발송에 실패했습니다.')
+      setSendResult({ archiveId, to: data.to })
+    } catch (err) {
+      setArchiveError(err instanceof Error ? err.message : '이메일 발송에 실패했습니다.')
+    } finally {
+      setSendingArchiveId(null)
     }
   }
 
@@ -495,6 +581,128 @@ export default function MyPage() {
               {newsletterStatus === 'saving' ? '저장 중...' : newsletterStatus === 'saved' ? '저장되었습니다!' : '뉴스레터 설정 저장'}
             </Button>
           </form>
+        </section>
+
+        {/* 내 아카이브 */}
+        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5">
+            <h2 className="text-base font-semibold text-gray-900">내 아카이브</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              담아둔 콘텐츠 모음입니다. 아카이브 단위로 이메일로 받아볼 수 있습니다.
+            </p>
+          </div>
+
+          {archivesLoading ? (
+            <p className="py-4 text-center text-sm text-gray-400">불러오는 중...</p>
+          ) : archives.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              아직 담아둔 아카이브가 없습니다. 콘텐츠 상세 페이지에서 &quot;아카이빙 담기&quot;를 눌러 보세요.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {archives.map((archive) => (
+                <div key={archive.id} className="overflow-hidden rounded-xl border border-gray-100">
+                  {/* 아카이브 헤더 */}
+                  <div className="flex items-center justify-between bg-gray-50 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedArchiveId(
+                          expandedArchiveId === archive.id ? null : archive.id
+                        )
+                      }
+                      className="flex items-center gap-2 text-sm font-medium text-gray-800 hover:text-brand-600"
+                    >
+                      {expandedArchiveId === archive.id
+                        ? <ChevronDown className="h-4 w-4" />
+                        : <ChevronRight className="h-4 w-4" />}
+                      {archive.name}
+                      <span className="text-xs font-normal text-gray-400">
+                        {archive.items.length}건
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {/* 이메일로 받기 */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSendEmail(archive.id)}
+                        disabled={sendingArchiveId === archive.id}
+                        className="h-7 text-xs"
+                      >
+                        <Mail className="mr-1 h-3.5 w-3.5" />
+                        {sendingArchiveId === archive.id ? '발송 중...' : '이메일로 받기'}
+                      </Button>
+                      {/* 삭제 */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteArchive(archive.id)}
+                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        title="아카이브 삭제"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 발송 완료 메시지 */}
+                  {sendResult?.archiveId === archive.id && (
+                    <p className="bg-green-50 px-4 py-2 text-xs text-green-600">
+                      {sendResult.to} 으로 발송되었습니다.
+                    </p>
+                  )}
+
+                  {/* 항목 목록 */}
+                  {expandedArchiveId === archive.id && (
+                    <div className="divide-y divide-gray-50">
+                      {archive.items.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-gray-400">담긴 콘텐츠가 없습니다.</p>
+                      ) : (
+                        archive.items.map((item) => (
+                          <div
+                            key={item.content_id ?? item.youtube_video_id}
+                            className="flex items-start justify-between gap-2 px-4 py-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              {item.contents ? (
+                                <a
+                                  href={`/dashboard/contents/${item.contents.id}`}
+                                  className="line-clamp-1 text-sm font-medium text-gray-800 hover:text-brand-600"
+                                >
+                                  {item.contents.title}
+                                </a>
+                              ) : (
+                                <span className="text-sm text-gray-400">(삭제된 콘텐츠)</span>
+                              )}
+                              <p className="mt-0.5 text-xs text-gray-400">
+                                {item.contents?.category} ·{' '}
+                                {new Date(item.added_at).toLocaleDateString('ko-KR')}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRemoveItem(archive.id, item.content_id, item.youtube_video_id)
+                              }
+                              className="shrink-0 rounded p-1 text-gray-300 transition-colors hover:text-red-400"
+                              title="목록에서 제거"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {archiveError && (
+            <p className="mt-3 text-xs text-red-500">{archiveError}</p>
+          )}
         </section>
       </div>
     </div>

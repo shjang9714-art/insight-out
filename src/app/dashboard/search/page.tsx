@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, startTransition } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -153,13 +153,11 @@ function SearchContent() {
 
   useEffect(() => {
     if (!q) {
-      setResults(null)
-      setLoading(false)
+      startTransition(() => { setResults(null); setLoading(false) })
       return
     }
 
-    setLoading(true)
-    setError(null)
+    startTransition(() => { setLoading(true); setError(null) })
 
     const supabase = createClient()
     supabase

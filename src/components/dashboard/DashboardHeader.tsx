@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, startTransition } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -34,7 +34,8 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   // 검색 페이지 진입 시 URL 의 q 파라미터로 입력창 동기화
   useEffect(() => {
     if (pathname === '/dashboard/search') {
-      setSearchQuery(searchParams.get('q') ?? '')
+      const q = searchParams.get('q') ?? ''
+      startTransition(() => setSearchQuery(q))
     }
   }, [pathname, searchParams])
 
