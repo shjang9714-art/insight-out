@@ -1,12 +1,40 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { Suspense } from 'react'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
 import MorningBriefingPlayer from '@/components/dashboard/MorningBriefingPlayer'
+import CategoryGrid from '@/components/dashboard/CategoryGrid'
+import ServiceTabs from '@/components/dashboard/ServiceTabs'
+import SearchBar from '@/components/dashboard/SearchBar'
+
+// 상단 네비게이션을 숨길 경로
+// - /dashboard/mypage : 설정 페이지
+// - /dashboard/contents/[id] : 콘텐츠 상세 페이지
+function shouldHideTopNav(pathname: string): boolean {
+  if (pathname.startsWith('/dashboard/mypage')) return true
+  if (/^\/dashboard\/contents\/.+/.test(pathname)) return true
+  return false
+}
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const searchParams  = useSearchParams()
+  const router        = useRouter()
+  const pathname      = usePathname()
+
+  const activeService = searchParams.get('service') ?? 'all'
+  const hideTopNav    = shouldHideTopNav(pathname)
+
+  function handleServiceChange(serviceId: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (serviceId === 'all') params.delete('service')
+    else params.set('service', serviceId)
+    const qs = params.toString()
+    router.push(`${pathname}${qs ? `?${qs}` : ''}`)
+  }
 
   // ESC 로 모바일 드로어 닫기
   useEffect(() => {
@@ -20,6 +48,18 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+
+      {/* ── 영구 상단 네비게이션 (카테고리·서비스·검색) ─────────────────── */}
+      {!hideTopNav && (
+        <div className="border-b border-gray-100 bg-white px-4 py-4 sm:px-6">
+          <CategoryGrid activeService={activeService} />
+          <div className="mt-3 space-y-2.5 border-t border-gray-100 pt-3">
+            <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
+            <SearchBar />
+          </div>
+        </div>
+      )}
+
       <div className="flex">
         {/* 데스크톱(lg+) 고정 사이드바 */}
         <div className="hidden lg:block">
@@ -43,7 +83,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <main className="min-w-0 flex-1">{children}</main>
       </div>
 
-      {/* audioUrl prop을 실제 URL로 교체하면 Coming Soon → 재생 가능 상태로 전환 */}
       <MorningBriefingPlayer />
     </div>
   )
