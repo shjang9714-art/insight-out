@@ -7,6 +7,8 @@ export const metadata: Metadata = {
 }
 
 const NAV_ITEMS = [
+  { href: '/admin',            label: '어드민 홈' },
+  { href: '/admin/contents',   label: '콘텐츠 관리' },
   { href: '/admin/upload',     label: '리포트 업로드' },
   { href: '/admin/sources',    label: '소스 관리' },
   { href: '/admin/keywords',   label: '키워드 관리' },
@@ -18,12 +20,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
-          <div className="flex items-center gap-2 shrink-0">
+          <Link href="/admin" className="flex shrink-0 items-center gap-2">
             <span className="font-bold text-gray-900">Insight Out</span>
             <span className="text-gray-300 text-sm">·</span>
             <span className="text-sm font-medium text-brand-600">어드민</span>
-          </div>
-          <nav className="flex items-center gap-1">
+          </Link>
+          <nav className="flex items-center gap-1 overflow-x-auto">
             {NAV_ITEMS.map((item) => (
               <Link
                 key={item.href}
@@ -36,7 +38,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>
