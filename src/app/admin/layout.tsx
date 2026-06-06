@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/admin/sources',    label: '소스 관리' },
   { href: '/admin/keywords',   label: '키워드 관리' },
   { href: '/admin/crawl-logs', label: '크롤링 현황' },
+  { href: '/admin/translation', label: '번역 상태' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

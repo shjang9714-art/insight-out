@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import {
   FileText,
+  Languages,
   ListChecks,
   Newspaper,
   Rss,
@@ -47,6 +48,12 @@ const MENU_ITEMS = [
     label: '리포트 업로드',
     description: '리서치 문서 직접 등록',
     icon: FileText,
+  },
+  {
+    href: '/admin/translation',
+    label: '번역 상태',
+    description: '번역 연결 상태와 월간 사용량',
+    icon: Languages,
   },
 ]
 

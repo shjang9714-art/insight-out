@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import deeplProvider from '@/lib/translate/providers/deepl'
 import googleProvider from '@/lib/translate/providers/google-unofficial'
@@ -6,13 +8,13 @@ import type { TranslateProvider } from '@/lib/translate/types'
 
 export const TRANSLATION_SEPARATOR = '\n\n__INSIGHT_OUT_BODY_7F3A__\n\n'
 
-const PROVIDERS: TranslateProvider[] = [
+export const TRANSLATION_PROVIDERS: TranslateProvider[] = [
   deeplProvider,
   papagoProvider,
   googleProvider,
 ]
 
-function getKstPeriod(): string {
+export function getKstPeriod(): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
     year: 'numeric',
@@ -26,27 +28,47 @@ export async function translateToKorean(text: string): Promise<string | null> {
   try {
     const admin = createAdminClient()
     const period = getKstPeriod()
-    const { data, error } = await admin
-      .from('translation_usage')
-      .select('provider, chars')
-      .eq('period', period)
+    const [usageResult, settingsResult] = await Promise.all([
+      admin
+        .from('translation_usage')
+        .select('provider, chars')
+        .eq('period', period),
+      admin
+        .from('translation_settings')
+        .select('provider, enabled'),
+    ])
 
-    if (error) {
-      console.error('[번역] 사용량 조회 실패:', error.message)
+    if (usageResult.error) {
+      console.error('[번역] 사용량 조회 실패:', usageResult.error.message)
       return null
     }
 
     const usage = new Map<string, number>(
-      (data ?? []).map((row) => [
+      (usageResult.data ?? []).map((row) => [
         String(row.provider),
         Number(row.chars) || 0,
       ])
     )
+    const enabledSettings = new Map<string, boolean>(
+      (settingsResult.data ?? []).map((row) => [
+        String(row.provider),
+        Boolean(row.enabled),
+      ])
+    )
 
-    for (const provider of PROVIDERS) {
+    if (settingsResult.error) {
+      console.warn(
+        '[번역] 활성 설정 조회 실패, 모든 공급자를 활성 상태로 처리합니다.:',
+        settingsResult.error.message
+      )
+    }
+
+    for (const provider of TRANSLATION_PROVIDERS) {
       const monthUsed = usage.get(provider.name) ?? 0
+      const isEnabled = enabledSettings.get(provider.name) ?? true
       if (
         !provider.isConfigured() ||
+        !isEnabled ||
         monthUsed + text.length > provider.monthlyCharLimit
       ) {
         continue

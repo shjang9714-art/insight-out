@@ -390,6 +390,19 @@ create table public.translation_usage (
   primary key (provider, period)
 );
 
+-- 번역 공급자 활성 설정 (API 키는 환경변수로만 관리)
+create table public.translation_settings (
+  provider text primary key,
+  enabled boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.translation_settings (provider, enabled)
+values
+  ('deepl', true),
+  ('papago', true),
+  ('google', true);
+
 create or replace function public.increment_translation_usage(
   p_provider text,
   p_period text,
@@ -604,6 +617,7 @@ alter table public.keywords          enable row level security;
 alter table public.contents          enable row level security;
 alter table public.crawl_logs        enable row level security;
 alter table public.translation_usage enable row level security;
+alter table public.translation_settings enable row level security;
 alter table public.content_services  enable row level security;
 alter table public.content_keywords  enable row level security;
 alter table public.youtube_videos    enable row level security;
@@ -654,6 +668,9 @@ create policy "crawl_logs: admin 조회"
 
 revoke all on table public.translation_usage from anon, authenticated;
 grant select, insert, update on table public.translation_usage to service_role;
+
+revoke all on table public.translation_settings from anon, authenticated;
+grant select, insert, update on table public.translation_settings to service_role;
 
 -- ---------- AI 보고서: 본인 데이터 + admin 전체 ----------
 
