@@ -77,6 +77,10 @@ function formatKst(iso: string | null): string {
   })
 }
 
+function needsRssUrl(type: SourceType): boolean {
+  return type === 'news_site' || type === 'youtube_channel'
+}
+
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function SourceManager() {
@@ -92,6 +96,9 @@ export default function SourceManager() {
   const [form,       setForm]       = useState<SourceForm>(FORM_INIT)
   const [formError,  setFormError]  = useState<string | null>(null)
   const [isSaving,   setIsSaving]   = useState(false)
+
+  // 유형 필터 상태 (§A)
+  const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set())
 
   // ── 목록 로드 ─────────────────────────────────────────────────────────────
 
@@ -241,7 +248,62 @@ export default function SourceManager() {
 
   // ── RSS 경고 ──────────────────────────────────────────────────────────────
 
-  const rssWarning = form.type === 'news_site' && !form.rss_url.trim()
+  const rssWarning = needsRssUrl(form.type) && !form.rss_url.trim()
+
+  // ── 유형 필터 (§A) ────────────────────────────────────────────────────────
+
+  const toggleTypeFilter = (type: SourceType) => {
+    setSelectedTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }
+
+  const clearTypeFilter = () => setSelectedTypes(new Set())
+
+  // 유형별 개수 계산
+  const typeCounts = SOURCE_TYPES.reduce((acc, type) => {
+    acc[type] = sources.filter(s => s.type === type).length
+    return acc
+  }, {} as Record<SourceType, number>)
+
+  // 필터링된 소스 목록
+  const filteredSources = selectedTypes.size === 0
+    ? sources
+    : sources.filter(s => selectedTypes.has(s.type))
+
+  // ── 크롤링 트리거 (§B) ────────────────────────────────────────────────────
+
+  const [isCrawling, setIsCrawling] = useState(false)
+  const [crawlResult, setCrawlResult] = useState<string | null>(null)
+
+  const handleCrawlNow = async () => {
+    if (!window.confirm('모든 활성 소스를 지금 수집하시겠습니까?')) return
+
+    setIsCrawling(true)
+    setCrawlResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/crawl-now', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
+
+      const { success, failed, inserted, duplicates, rejected } = data
+      setCrawlResult(
+        `✓ 성공 ${success}개 · 실패 ${failed}개 · 신규 ${inserted}건 · 중복 ${duplicates}건 · 제외 ${rejected}건`
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '수집 중 오류가 발생했습니다.')
+    } finally {
+      setIsCrawling(false)
+      await loadSources()  // 목록 새로고침
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -309,9 +371,9 @@ export default function SourceManager() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {form.type !== 'news_site' && (
+                  {!needsRssUrl(form.type) && (
                     <p className="text-[11px] text-amber-600">
-                      현재 자동 수집은 뉴스(news_site)만 지원합니다.
+                      현재 이 유형의 자동 수집 어댑터는 준비 중입니다.
                     </p>
                   )}
                 </div>
@@ -336,7 +398,7 @@ export default function SourceManager() {
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-rss">
                     RSS URL{' '}
-                    {form.type === 'news_site' ? (
+                    {needsRssUrl(form.type) ? (
                       <span className="text-[11px] text-red-500">수집에 필요</span>
                     ) : (
                       <span className="text-xs font-normal text-gray-400">(선택)</span>
@@ -409,17 +471,87 @@ export default function SourceManager() {
         </Card>
       )}
 
+      {/* ── 유형 필터 칩 (§A) ── */}
+      {!showForm && (
+        <div className="rounded-lg border border-gray-100 bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">유형:</span>
+            <button
+              onClick={clearTypeFilter}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                selectedTypes.size === 0
+                  ? 'border-brand-600 bg-brand-600 text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+              )}
+            >
+              전체 {sources.length}
+            </button>
+            {SOURCE_TYPES.map(type => {
+              const count = typeCounts[type]
+              const selected = selectedTypes.has(type)
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleTypeFilter(type)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    selected
+                      ? 'border-brand-600 bg-brand-600 text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                  )}
+                >
+                  {SOURCE_TYPE_LABELS[type]} {count}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── 크롤링 결과 알림 (§B) ── */}
+      {crawlResult && (
+        <div className="flex items-start justify-between rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <span>{crawlResult}</span>
+          <button
+            onClick={() => setCrawlResult(null)}
+            className="ml-4 shrink-0 text-green-400 underline hover:text-green-700"
+          >
+            닫기
+          </button>
+        </div>
+      )}
+
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">
-          {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스`}
+          {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스${selectedTypes.size > 0 ? ` (${filteredSources.length}개 표시)` : ''}`}
         </p>
-        {!showForm && (
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            소스 추가
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {!showForm && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCrawlNow}
+                disabled={isCrawling}
+              >
+                {isCrawling ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    수집 중...
+                  </>
+                ) : (
+                  '지금 수집'
+                )}
+              </Button>
+              <Button size="sm" onClick={openAdd}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                소스 추가
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── 목록 테이블 ── */}
@@ -431,6 +563,10 @@ export default function SourceManager() {
       ) : sources.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
           등록된 소스가 없습니다. 소스 추가 버튼으로 첫 번째 소스를 등록해보세요.
+        </div>
+      ) : filteredSources.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
+          선택한 유형의 소스가 없습니다.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
@@ -447,7 +583,7 @@ export default function SourceManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {sources.map(src => (
+              {filteredSources.map(src => (
                 <tr key={src.id} className="hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-3 font-medium text-gray-900">{src.name}</td>
                   <td className="px-4 py-3">

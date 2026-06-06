@@ -30,6 +30,7 @@ type ReportCategory = (typeof REPORT_CATEGORIES)[number]['value']
 const ACCEPTED_EXTS = ['pdf', 'pptx', 'docx', 'xlsx']
 const ACCEPT_ATTR   = '.pdf,.pptx,.docx,.xlsx'
 const MAX_MB        = 50
+const EMPTY_SOURCE_VALUE = 'none'
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ const FORM_INIT: FormState = {
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function ReportUploadForm() {
-  const supabase = createClient()
+  const [supabase] = useState(createClient)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [services, setServices]   = useState<Service[]>([])
@@ -108,7 +109,7 @@ export default function ReportUploadForm() {
       if (srcData) setSources(srcData as Source[])
     }
     load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase])
 
   // ── 파일 처리 ──────────────────────────────────────────────────────────────
 
@@ -145,7 +146,11 @@ export default function ReportUploadForm() {
   const toggleService = (id: string) => {
     setServiceIds(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }
@@ -443,14 +448,17 @@ export default function ReportUploadForm() {
                 <span className="text-xs font-normal text-gray-400">(선택)</span>
               </Label>
               <Select
-                value={form.sourceId}
-                onValueChange={(v) => setForm(p => ({ ...p, sourceId: v }))}
+                value={form.sourceId || EMPTY_SOURCE_VALUE}
+                onValueChange={(v) => setForm(p => ({
+                  ...p,
+                  sourceId: v === EMPTY_SOURCE_VALUE ? '' : v,
+                }))}
               >
                 <SelectTrigger id="sourceId">
                   <SelectValue placeholder={sources.length === 0 ? '출처 없음' : '선택'} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">없음</SelectItem>
+                  <SelectItem value={EMPTY_SOURCE_VALUE}>없음</SelectItem>
                   {sources.map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
