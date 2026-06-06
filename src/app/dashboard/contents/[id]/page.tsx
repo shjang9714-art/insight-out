@@ -6,6 +6,7 @@ import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
 import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
+import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
@@ -21,9 +22,12 @@ interface PageProps {
 interface ContentDetail {
   id: string
   title: string
+  title_original: string | null
   category: ContentCategory
   summary_ko: string | null
   body_original: string | null
+  body_translated_ko: string | null
+  original_language: string | null
   body_fetched_at: string | null
   file_path: string | null
   original_url: string | null
@@ -94,10 +98,8 @@ function ArticleBodyFallback({ snippet }: { snippet: string }) {
 async function ArticleBody({ content }: { content: ContentDetail }) {
   const body = await ensureFullBody({
     ...content,
+    original_language: content.original_language ?? 'ko',
     source_id: null,
-    title_original: null,
-    body_translated_ko: null,
-    original_language: 'ko',
     thumbnail_url: null,
     title_hash: null,
     body_hash: null,
@@ -150,8 +152,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
   const { data, error } = await supabase
     .from('contents')
     .select(`
-      id, title, category,
-      summary_ko, body_original, body_fetched_at,
+      id, title, title_original, category,
+      summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
       file_path, original_url, author, published_at,
       sources(name),
       content_services(services(name)),
@@ -169,6 +171,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
   // ── 리포트(file_path) vs 뉴스(original_url) 분기 ─────────────────────────
   const isReport = Boolean(content.file_path)
+  const hasKoreanTranslation =
+    content.original_language === 'en' &&
+    Boolean(content.body_translated_ko)
 
   let signedUrl: string | null = null
   let isPdf = false
@@ -219,112 +224,150 @@ export default async function ContentDetailPage({ params }: PageProps) {
           >
             {CONTENT_CATEGORY_LABEL[content.category] ?? content.category}
           </span>
+          {content.original_language === 'en' && (
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
+              영어 원문
+            </span>
+          )}
         </div>
 
-        {/* 제목 */}
-        <h1 className="mb-4 text-xl font-bold leading-snug text-gray-900">
-          {content.title}
-        </h1>
+        {hasKoreanTranslation && !isReport ? (
+          <TranslatedArticle
+            translatedTitle={content.title}
+            originalTitle={content.title_original ?? content.title}
+            translatedBody={content.body_translated_ko ?? ''}
+            originalBody={content.body_original ?? ''}
+          >
+            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+              {content.sources?.name && (
+                <span className="font-medium text-gray-700">{content.sources.name}</span>
+              )}
+              {content.author && <span>{content.author}</span>}
+              {dateStr && <span>{dateStr}</span>}
+            </div>
 
-        {/* 메타 라인 */}
-        <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-          {content.sources?.name && (
-            <span className="font-medium text-gray-700">{content.sources.name}</span>
-          )}
-          {content.author && (
-            <span>{content.author}</span>
-          )}
-          {dateStr && <span>{dateStr}</span>}
-        </div>
-
-        {/* 서비스·키워드 태그 */}
-        {(serviceNames.length > 0 || keywordNames.length > 0) && (
-          <div className="mb-6 flex flex-wrap gap-1.5">
-            {serviceNames.map((name) => (
-              <span
-                key={name}
-                className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
-              >
-                {name}
-              </span>
-            ))}
-            {keywordNames.map((name) => (
-              <span
-                key={name}
-                className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] text-gray-600"
-              >
-                #{name}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* 구분선 */}
-        <div className="mb-6 border-t border-gray-100" />
-
-        {/* ── 리포트 뷰어 ─────────────────────────────────────────────────── */}
-        {isReport ? (
-          <>
-            {/* 요약 (있을 때만) */}
-            {content.summary_ko && (
-              <p className="mb-6 text-sm leading-relaxed text-gray-600">
-                {content.summary_ko}
-              </p>
+            {(serviceNames.length > 0 || keywordNames.length > 0) && (
+              <div className="mb-6 flex flex-wrap gap-1.5">
+                {serviceNames.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
+                  >
+                    {name}
+                  </span>
+                ))}
+                {keywordNames.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] text-gray-600"
+                  >
+                    #{name}
+                  </span>
+                ))}
+              </div>
             )}
 
-            {signedUrl && isPdf ? (
-              /* PDF iframe 미리보기 */
-              <div>
-                <iframe
-                  src={signedUrl}
-                  className="w-full rounded-lg border border-gray-200"
-                  style={{ height: '80vh' }}
-                  title={content.title}
-                />
-                <div className="mt-3 flex justify-end">
-                  <a
-                    href={signedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+            <div className="mb-6 border-t border-gray-100" />
+          </TranslatedArticle>
+        ) : (
+          <>
+            <h1 className="mb-4 text-xl font-bold leading-snug text-gray-900">
+              {content.title}
+            </h1>
+
+            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+              {content.sources?.name && (
+                <span className="font-medium text-gray-700">{content.sources.name}</span>
+              )}
+              {content.author && <span>{content.author}</span>}
+              {dateStr && <span>{dateStr}</span>}
+            </div>
+
+            {(serviceNames.length > 0 || keywordNames.length > 0) && (
+              <div className="mb-6 flex flex-wrap gap-1.5">
+                {serviceNames.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
                   >
-                    <ExternalLink className="h-4 w-4" />
-                    새 탭에서 열기
-                  </a>
-                </div>
+                    {name}
+                  </span>
+                ))}
+                {keywordNames.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] text-gray-600"
+                  >
+                    #{name}
+                  </span>
+                ))}
               </div>
-            ) : signedUrl && !isPdf ? (
+            )}
+
+            <div className="mb-6 border-t border-gray-100" />
+
+            {isReport ? (
+              <>
+                {content.summary_ko && (
+                  <p className="mb-6 text-sm leading-relaxed text-gray-600">
+                    {content.summary_ko}
+                  </p>
+                )}
+
+                {signedUrl && isPdf ? (
+              /* PDF iframe 미리보기 */
+                  <div>
+                    <iframe
+                      src={signedUrl}
+                      className="w-full rounded-lg border border-gray-200"
+                      style={{ height: '80vh' }}
+                      title={content.title}
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <a
+                        href={signedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        새 탭에서 열기
+                      </a>
+                    </div>
+                  </div>
+                ) : signedUrl && !isPdf ? (
               /* PDF 외 파일: 다운로드 안내 */
-              <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-gray-200 py-12 text-center">
-                <FileText className="h-10 w-10 text-gray-300" />
-                <p className="text-sm text-gray-500">이 파일은 미리보기를 지원하지 않습니다.</p>
-                <a
-                  href={signedUrl}
-                  download
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
-                >
-                  <Download className="h-4 w-4" />
-                  파일 다운로드
-                </a>
-              </div>
-            ) : (
+                  <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-gray-200 py-12 text-center">
+                    <FileText className="h-10 w-10 text-gray-300" />
+                    <p className="text-sm text-gray-500">이 파일은 미리보기를 지원하지 않습니다.</p>
+                    <a
+                      href={signedUrl}
+                      download
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                    >
+                      <Download className="h-4 w-4" />
+                      파일 다운로드
+                    </a>
+                  </div>
+                ) : (
               /* 서명 URL 생성 실패 */
-              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-400">
-                파일을 불러올 수 없습니다.
-              </div>
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-400">
+                    파일을 불러올 수 없습니다.
+                  </div>
+                )}
+              </>
+            ) : (
+              <Suspense
+                fallback={
+                  <ArticleBodyFallback
+                    snippet={content.summary_ko ?? content.body_original ?? ''}
+                  />
+                }
+              >
+                <ArticleBody content={content} />
+              </Suspense>
             )}
           </>
-        ) : (
-          /* ── 뉴스 본문: Suspense 스트리밍 ───────────────────────────────── */
-          <Suspense
-            fallback={
-              <ArticleBodyFallback
-                snippet={content.summary_ko ?? content.body_original ?? ''}
-              />
-            }
-          >
-            <ArticleBody content={content} />
-          </Suspense>
         )}
 
         {/* 하단 액션 */}

@@ -8,6 +8,53 @@ import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
 import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED } from './quality'
 import type { CrawlCounts } from './types'
 import type { Source } from '@/lib/types'
+import {
+  TRANSLATION_SEPARATOR,
+  translateToKorean,
+} from '@/lib/translate'
+
+const MAX_TRANSLATIONS_PER_CRAWL = 20
+
+interface TranslationBudget {
+  remaining: number
+}
+
+interface TranslatedContent {
+  title: string
+  body: string
+}
+
+async function translateEnglishContent(
+  title: string,
+  body: string,
+  budget: TranslationBudget
+): Promise<TranslatedContent | null> {
+  if (budget.remaining <= 0) return null
+
+  budget.remaining -= 1
+  const translated = await translateToKorean(
+    `${title}${TRANSLATION_SEPARATOR}${body}`
+  )
+  if (!translated) return null
+
+  const separatorIndex = translated.indexOf(TRANSLATION_SEPARATOR)
+  if (separatorIndex < 0) {
+    console.warn('[번역] 제목과 본문 구분자를 찾지 못해 원문으로 적재합니다.')
+    return null
+  }
+
+  const translatedTitle = translated.slice(0, separatorIndex).trim()
+  const translatedBody = translated
+    .slice(separatorIndex + TRANSLATION_SEPARATOR.length)
+    .trim()
+
+  if (!translatedTitle || !translatedBody) {
+    console.warn('[번역] 번역 결과가 비어 있어 원문으로 적재합니다.')
+    return null
+  }
+
+  return { title: translatedTitle, body: translatedBody }
+}
 
 /** 키워드 로드 시 사용하는 최소 객체 타입 */
 interface CrawlKeyword {
@@ -168,7 +215,8 @@ async function crawlOne(
   admin: SupabaseClient,
   source: Source,
   since: string,
-  keywords: CrawlKeyword[]
+  keywords: CrawlKeyword[],
+  translationBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -259,6 +307,15 @@ async function crawlOne(
           (RELATEDNESS_GATING_ENABLED && score !== null && score < RELATEDNESS_THRESHOLD)
             ? 'pending' : 'published'
 
+        const translatedContent =
+          item.language === 'en' && item.body
+            ? await translateEnglishContent(
+                item.title,
+                item.body,
+                translationBudget
+              )
+            : null
+
         // 콘텐츠 행 구성
         // - view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
         // - cluster_id 는 near-dup 그룹핑 결과 직접 포함 (신규 행에만 적용)
@@ -267,8 +324,10 @@ async function crawlOne(
         const row = {
           category: '뉴스' as const,
           source_id: source.id,
-          title: item.title,
+          title: translatedContent?.title ?? item.title,
+          title_original: translatedContent ? item.title : null,
           body_original: item.body ?? null,
+          body_translated_ko: translatedContent?.body ?? null,
           original_url: url,
           original_language: item.language ?? 'ko',
           author: item.author ?? null,
@@ -442,6 +501,9 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
   // 키워드 1회 로드 — 관련도 게이팅·서비스 태깅 공용. 0건이면 게이팅 OFF(전부 published).
   const { data: rawKeywords } = await admin.from('keywords').select('id, name, service_id')
   const keywords: CrawlKeyword[] = (rawKeywords ?? []) as CrawlKeyword[]
+  const translationBudget: TranslationBudget = {
+    remaining: MAX_TRANSLATIONS_PER_CRAWL,
+  }
 
   const allSources = (rawSources ?? []) as Source[]
 
@@ -464,7 +526,7 @@ export async function runCrawl(options?: { backfillDays?: number }): Promise<Cra
     dueSources.map(s =>
       s.type === 'youtube_channel'
         ? crawlYoutube(admin, s)
-        : crawlOne(admin, s, since, keywords)
+        : crawlOne(admin, s, since, keywords, translationBudget)
     )
   )
 

@@ -381,6 +381,37 @@ create table public.crawl_logs (
 );
 create index crawl_logs_source_idx on public.crawl_logs (source_id, created_at desc);
 
+-- 번역 공급자별 월간 문자 사용량 (service_role 전용)
+create table public.translation_usage (
+  provider text not null,
+  period text not null,
+  chars bigint not null default 0 check (chars >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (provider, period)
+);
+
+create or replace function public.increment_translation_usage(
+  p_provider text,
+  p_period text,
+  p_chars bigint
+)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.translation_usage (period, provider, chars, updated_at)
+  values (p_period, p_provider, greatest(p_chars, 0), now())
+  on conflict (period, provider) do update
+  set chars = public.translation_usage.chars + excluded.chars,
+      updated_at = now();
+$$;
+
+revoke all on function public.increment_translation_usage(text, text, bigint)
+  from public, anon, authenticated;
+grant execute on function public.increment_translation_usage(text, text, bigint)
+  to service_role;
+
 -- 유튜브 영상 (결정 A: 별도 테이블 — 영상 메타 구조 상이)
 create table public.youtube_videos (
   id               uuid primary key default gen_random_uuid(),
@@ -572,6 +603,7 @@ alter table public.sources           enable row level security;
 alter table public.keywords          enable row level security;
 alter table public.contents          enable row level security;
 alter table public.crawl_logs        enable row level security;
+alter table public.translation_usage enable row level security;
 alter table public.content_services  enable row level security;
 alter table public.content_keywords  enable row level security;
 alter table public.youtube_videos    enable row level security;
@@ -619,6 +651,9 @@ create policy "youtube_videos: admin 관리"
 -- crawl_logs: 크롤러는 service_role 로 적재(RLS 우회), 조회는 admin 만
 create policy "crawl_logs: admin 조회"
   on public.crawl_logs for select using (public.is_admin());
+
+revoke all on table public.translation_usage from anon, authenticated;
+grant select, insert, update on table public.translation_usage to service_role;
 
 -- ---------- AI 보고서: 본인 데이터 + admin 전체 ----------
 
