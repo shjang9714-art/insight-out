@@ -14,8 +14,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
+import { FileUp, Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
 import type { SourceType } from '@/lib/types'
+import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export default function SourceManager() {
   const [form,       setForm]       = useState<SourceForm>(FORM_INIT)
   const [formError,  setFormError]  = useState<string | null>(null)
   const [isSaving,   setIsSaving]   = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   // 유형 필터 상태 (§A)
   const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set())
@@ -545,6 +547,14 @@ export default function SourceManager() {
                   '지금 수집'
                 )}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowImport(true)}
+              >
+                <FileUp className="mr-1.5 h-4 w-4" />
+                대량 등록
+              </Button>
               <Button size="sm" onClick={openAdd}>
                 <Plus className="mr-1.5 h-4 w-4" />
                 소스 추가
@@ -646,6 +656,12 @@ export default function SourceManager() {
           </table>
         </div>
       )}
+
+      <SourceImportDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={loadSources}
+      />
     </div>
   )
 }

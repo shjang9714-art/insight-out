@@ -286,6 +286,8 @@ create table public.sources (
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
+create unique index sources_rss_url_key
+  on public.sources (rss_url) where rss_url is not null;
 
 -- 키워드 카탈로그 (결정 E) — 트렌드 분석·경쟁사 추적용
 create table public.keywords (
