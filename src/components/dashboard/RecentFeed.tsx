@@ -37,14 +37,18 @@ interface FeedItem {
 }
 
 function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return ''
+  if (!dateStr) return '발행일 미상'
   const diff = Date.now() - new Date(dateStr).getTime()
   const h = Math.floor(diff / 3_600_000)
   if (h < 1)   return '방금 전'
   if (h < 24)  return `${h}시간 전`
   const d = Math.floor(h / 24)
   if (d < 7)   return `${d}일 전`
-  return new Date(dateStr).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  return new Date(dateStr).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 interface Props {
@@ -172,7 +176,9 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
                   </p>
                 )}
                 <span className="text-xs text-gray-400">
-                  {timeAgo(item.published_at)}
+                  {item.published_at
+                    ? `발행 ${timeAgo(item.published_at)}`
+                    : '발행일 미상'}
                 </span>
               </>
             )

@@ -1,6 +1,7 @@
 import Parser from 'rss-parser'
 import type { SourceAdapter, RawItem } from '../types'
 import type { Source } from '@/lib/types'
+import { getPublishedAtSince } from '@/lib/crawler/publication-date'
 
 // rss-parser 커스텀 필드 포함 아이템 타입
 type RssItem = Parser.Item & {
@@ -47,16 +48,13 @@ const newsSiteAdapter: SourceAdapter = {
     }
 
     const feed = await parser.parseURL(source.rss_url)
-    const sinceDate = new Date(since)
     const items: RawItem[] = []
 
     for (const item of feed.items) {
-      // 발행일 필터: since 이전 발행분 제외 (발행일 없으면 보수적으로 포함)
+      // 당일 발행 정책: 발행일 누락·파싱 실패·기준일 이전 항목은 제외
       const pubDateStr = item.isoDate ?? item.pubDate
-      if (pubDateStr) {
-        const pubDate = new Date(pubDateStr)
-        if (!isNaN(pubDate.getTime()) && pubDate < sinceDate) continue
-      }
+      const publishedAt = getPublishedAtSince(pubDateStr, since)
+      if (!publishedAt) continue
 
       const originalUrl = item.link ?? item.guid
       if (!originalUrl) continue
@@ -74,7 +72,7 @@ const newsSiteAdapter: SourceAdapter = {
         title,
         body: body || undefined,
         author: typeof author === 'string' ? author : undefined,
-        published_at: pubDateStr ?? undefined,
+        published_at: publishedAt,
         thumbnail_url: extractThumbnail(item),
         language: detectLanguage(title + ' ' + body),
       })

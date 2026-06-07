@@ -2,21 +2,7 @@
 import { extract } from '@extractus/article-extractor'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Content } from '@/lib/types'
-
-/** HTML 태그를 제거하고 줄바꿈을 보존하는 간단한 변환 */
-function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<\/?(p|div|br|h[1-6]|li|tr|td|th)[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
+import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 
 /**
  * 풀본문을 보장해서 반환한다.
@@ -27,14 +13,14 @@ function htmlToPlainText(html: string): string {
  */
 export async function ensureFullBody(content: Content): Promise<string> {
   if (content.body_fetched_at) {
-    return content.body_original ?? ''
+    return cleanBodyText(htmlToPlainText(content.body_original ?? ''))
   }
 
   if (!content.original_url) {
-    return content.body_original ?? ''
+    return cleanBodyText(htmlToPlainText(content.body_original ?? ''))
   }
 
-  const existingBody = content.body_original ?? ''
+  const existingBody = cleanBodyText(htmlToPlainText(content.body_original ?? ''))
 
   try {
     let extracted: string | null = null
@@ -46,7 +32,7 @@ export async function ensureFullBody(content: Content): Promise<string> {
         { signal: AbortSignal.timeout(6000) }
       )
       if (result?.content) {
-        extracted = htmlToPlainText(result.content)
+        extracted = cleanBodyText(htmlToPlainText(result.content))
       }
     } catch {
       // 타임아웃 또는 추출 실패 — 아래에서 body_fetched_at=now 처리

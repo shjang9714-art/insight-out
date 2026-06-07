@@ -9,6 +9,10 @@ import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELA
 import type { CrawlCounts } from './types'
 import type { Source } from '@/lib/types'
 import {
+  selectCrawlSources,
+  type CrawlScheduleOptions,
+} from '@/lib/crawler/schedule'
+import {
   TRANSLATION_SEPARATOR,
   translateToKorean,
 } from '@/lib/translate'
@@ -131,6 +135,8 @@ export interface CrawlSummary {
   held: number
   details: CrawlSourceDetail[]
 }
+
+export type RunCrawlOptions = CrawlScheduleOptions
 
 /**
  * KST 오늘 00:00 을 UTC ISO 문자열로 변환.
@@ -478,47 +484,44 @@ async function crawlYoutube(
 }
 
 /** 전체 크롤 실행 — Orchestrator 진입점
- *  @param options.backfillDays 소급 수집 일수(1~30). 미지정/0 이면 당일(KST 0시 이후)만. */
-export async function runCrawl(options?: { backfillDays?: number }): Promise<CrawlSummary> {
-  const admin = createAdminClient()
+ *  @param options.backfillDays 소급 수집 일수(1~30). 미지정/0 이면 당일(KST 0시 이후)만.
+ *  @param options.force true 이면 주기와 관계없이 활성 소스를 모두 실행. */
+export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSummary> {
   const backfillDays =
-    options?.backfillDays && options.backfillDays > 0
+    options.backfillDays && options.backfillDays > 0
       ? Math.min(Math.floor(options.backfillDays), 30)
       : 0
   const since = backfillDays > 0 ? getDaysAgoStartKst(backfillDays) : getTodayStartKst()
 
-  // 활성 + crawl_interval_minutes 가 설정된 소스 조회
-  const { data: rawSources, error: sourcesError } = await admin
-    .from('sources')
-    .select('*')
-    .eq('is_active', true)
-    .not('crawl_interval_minutes', 'is', null)
+  let admin: SupabaseClient
+  let rawSources: Source[]
+  let keywords: CrawlKeyword[]
 
-  if (sourcesError) {
-    throw new Error(`소스 조회 오류: ${sourcesError.message}`)
+  try {
+    admin = createAdminClient()
+    const [sourcesResult, keywordsResult] = await Promise.all([
+      admin.from('sources').select('*').eq('is_active', true),
+      admin.from('keywords').select('id, name, service_id'),
+    ])
+
+    if (sourcesResult.error) throw sourcesResult.error
+    if (keywordsResult.error) throw keywordsResult.error
+
+    rawSources = (sourcesResult.data ?? []) as Source[]
+    keywords = (keywordsResult.data ?? []) as CrawlKeyword[]
+  } catch (error) {
+    console.error('[크롤러] 수집 준비 단계 오류:', error)
+    throw new Error('수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.')
   }
 
-  // 키워드 1회 로드 — 관련도 게이팅·서비스 태깅 공용. 0건이면 게이팅 OFF(전부 published).
-  const { data: rawKeywords } = await admin.from('keywords').select('id, name, service_id')
-  const keywords: CrawlKeyword[] = (rawKeywords ?? []) as CrawlKeyword[]
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
 
-  const allSources = (rawSources ?? []) as Source[]
-
-  // 소급(backfill) 호출은 강제 전체 재수집: due-체크를 건너뛰고 활성 소스 전부 실행.
-  // (수동 검증·최초 구축 소급 시 last_crawled_at 이 최근이라도 돌려야 하므로)
-  // 일반(정기 크론) 호출은 주기 도래분만 — JS에서 interval 판정.
-  const dueSources = backfillDays > 0
-    ? allSources
-    : allSources.filter(s => {
-        if (!s.crawl_interval_minutes) return false
-        if (!s.last_crawled_at) return true   // 한 번도 수집하지 않은 소스 포함
-        const intervalMs = s.crawl_interval_minutes * 60 * 1000
-        const elapsed = Date.now() - new Date(s.last_crawled_at).getTime()
-        return elapsed >= intervalMs
-      })
+  const dueSources = selectCrawlSources(
+    rawSources,
+    { backfillDays, force: options.force }
+  )
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   // youtube_channel → crawlYoutube, 그 외(news_site 등) → crawlOne

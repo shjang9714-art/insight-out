@@ -57,6 +57,7 @@ const PAGE_SIZE = 20
 function formatDate(d: string | null) {
   if (!d) return null
   return new Date(d).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -148,7 +149,7 @@ function ContentCard({ item }: { item: ContentItem }) {
           <span className="font-medium text-gray-500">{item.sources.name}</span>
         )}
         {item.author && !item.sources?.name && <span>{item.author}</span>}
-        {dateStr && <span>{dateStr}</span>}
+        <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
       </div>
     </div>
   )

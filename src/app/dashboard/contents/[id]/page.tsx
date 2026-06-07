@@ -8,6 +8,7 @@ import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import { ensureFullBody } from '@/lib/contents/full-body'
+import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
@@ -43,6 +44,7 @@ interface ContentDetail {
 function formatDate(d: string | null) {
   if (!d) return null
   return new Date(d).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -236,14 +238,16 @@ export default async function ContentDetailPage({ params }: PageProps) {
             translatedTitle={content.title}
             originalTitle={content.title_original ?? content.title}
             translatedBody={content.body_translated_ko ?? ''}
-            originalBody={content.body_original ?? ''}
+            originalBody={cleanBodyText(
+              htmlToPlainText(content.body_original ?? '')
+            )}
           >
             <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
               {content.sources?.name && (
                 <span className="font-medium text-gray-700">{content.sources.name}</span>
               )}
               {content.author && <span>{content.author}</span>}
-              {dateStr && <span>{dateStr}</span>}
+              <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
             </div>
 
             {(serviceNames.length > 0 || keywordNames.length > 0) && (
@@ -280,7 +284,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <span className="font-medium text-gray-700">{content.sources.name}</span>
               )}
               {content.author && <span>{content.author}</span>}
-              {dateStr && <span>{dateStr}</span>}
+              <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
             </div>
 
             {(serviceNames.length > 0 || keywordNames.length > 0) && (

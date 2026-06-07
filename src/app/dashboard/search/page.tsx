@@ -42,6 +42,7 @@ const MAX_RESULTS = 30
 function formatDate(dateStr: string | null): string | null {
   if (!dateStr) return null
   return new Date(dateStr).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -113,7 +114,7 @@ function ResultCard({ item }: { item: SearchResult }) {
               <span className="font-medium text-gray-500">{item.sources.name}</span>
             )}
             {item.author && !item.sources?.name && <span>{item.author}</span>}
-            {dateStr && <span>{dateStr}</span>}
+            <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
           </div>
         </div>
 

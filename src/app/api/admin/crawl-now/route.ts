@@ -53,13 +53,13 @@ export async function POST() {
     }
 
     // 크롤링 실행 (당일분만, backfillDays 없음)
-    const summary = await runCrawl()
+    const summary = await runCrawl({ force: true })
 
     return NextResponse.json(summary, { status: 200 })
   } catch (err) {
     console.error('[/api/admin/crawl-now] 오류:', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : '수집 중 오류가 발생했습니다.' },
+      { error: '수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.' },
       { status: 500 }
     )
   }
