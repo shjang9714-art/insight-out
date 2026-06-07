@@ -2,6 +2,19 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceRoleClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
+import { sha256 } from '@/lib/crawler/normalize'
+
+function safeSegment(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9._-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^[._-]+|[._-]+$/g, '')
+
+  return normalized || `pub-${sha256(value).slice(0, 8)}`
+}
 
 /**
  * POST /api/admin/upload
@@ -11,7 +24,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  *
  * 흐름:
  *   1. 세션 + 관리자 역할 확인 (서버 클라이언트 · anon key)
- *   2. 스토리지 경로 생성: {category}/{year}/{uuid}.{ext}
+ *   2. 스토리지 경로 생성: {safeCategory}/{year}/{uuid}.{ext}
  *   3. service_role 키로 createSignedUploadUrl 호출
  *   4. { token, storagePath } 반환 → 클라이언트가 uploadToSignedUrl 로 직접 업로드
  *
@@ -89,9 +102,11 @@ export async function POST(request: NextRequest) {
     serviceRoleKey
   )
 
-  const ext         = filename.split('.').pop()?.toLowerCase() ?? 'bin'
+  const ext =
+    filename.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
+  const safeCategory = safeSegment(category)
   const year        = new Date().getFullYear()
-  const storagePath = `${category}/${year}/${crypto.randomUUID()}.${ext}`
+  const storagePath = `${safeCategory}/${year}/${crypto.randomUUID()}.${ext}`
 
   const { data: signedData, error: signedErr } = await adminClient.storage
     .from('reports')
