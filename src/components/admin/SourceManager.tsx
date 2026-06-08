@@ -14,9 +14,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { FileUp, Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
+import {
+  CheckCircle2,
+  FileUp,
+  Loader2,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  XCircle,
+} from 'lucide-react'
 import type { SourceType } from '@/lib/types'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
+import type {
+  CrawlJob,
+  CrawlProgress,
+} from '@/lib/crawler/progress'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +44,7 @@ const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
 const SOURCE_TYPES: SourceType[] = [
   'news_site', 'report_publisher', 'opinion_channel', 'newsletter', 'youtube_channel',
 ]
+const CRAWL_JOB_STORAGE_KEY = 'insight-out:admin-crawl-job'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -281,31 +295,126 @@ export default function SourceManager() {
 
   // ── 크롤링 트리거 (§B) ────────────────────────────────────────────────────
 
-  const [isCrawling, setIsCrawling] = useState(false)
-  const [crawlResult, setCrawlResult] = useState<string | null>(null)
+  const [isStartingCrawl, setIsStartingCrawl] = useState(false)
+  const [crawlJob, setCrawlJob] = useState<CrawlJob | null>(null)
+  const [crawlProgress, setCrawlProgress] = useState<CrawlProgress | null>(null)
+
+  useEffect(() => {
+    const savedJob = window.localStorage.getItem(CRAWL_JOB_STORAGE_KEY)
+    if (!savedJob) return
+
+    let restoreTimer: number | null = null
+    try {
+      const parsedJob = JSON.parse(savedJob) as CrawlJob
+      restoreTimer = window.setTimeout(() => setCrawlJob(parsedJob), 0)
+    } catch {
+      window.localStorage.removeItem(CRAWL_JOB_STORAGE_KEY)
+    }
+
+    return () => {
+      if (restoreTimer !== null) window.clearTimeout(restoreTimer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!crawlJob || (
+      crawlProgress
+      && crawlProgress.status !== 'running'
+    )) return
+
+    let cancelled = false
+
+    const pollProgress = async () => {
+      try {
+        const params = new URLSearchParams({
+          startedAt: crawlJob.startedAt,
+          sourcesTotal: String(crawlJob.sourcesTotal),
+        })
+        const response = await fetch(`/api/admin/crawl-now?${params}`)
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error ?? '수집 진행 상태 조회 실패')
+        }
+        if (cancelled) return
+
+        const progress = data as CrawlProgress
+        setCrawlProgress(progress)
+
+        if (progress.status !== 'running') {
+          window.localStorage.removeItem(CRAWL_JOB_STORAGE_KEY)
+          await loadSources()
+        }
+      } catch (pollError) {
+        if (!cancelled) {
+          setCrawlProgress({
+            status: 'failed',
+            startedAt: crawlJob.startedAt,
+            sourcesTotal: crawlJob.sourcesTotal,
+            completed: 0,
+            success: 0,
+            partial: 0,
+            failed: 0,
+            fetched: 0,
+            inserted: 0,
+            duplicates: 0,
+            held: 0,
+            latestSource: null,
+            message: pollError instanceof Error
+              ? pollError.message
+              : '수집 진행 상태를 확인하지 못했습니다.',
+          })
+          window.localStorage.removeItem(CRAWL_JOB_STORAGE_KEY)
+        }
+      }
+    }
+
+    void pollProgress()
+    const intervalId = window.setInterval(() => {
+      if (crawlProgress?.status === 'running' || !crawlProgress) {
+        void pollProgress()
+      }
+    }, 1500)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [crawlJob, crawlProgress?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCrawlNow = async () => {
     if (!window.confirm('모든 활성 소스를 지금 수집하시겠습니까?')) return
 
-    setIsCrawling(true)
-    setCrawlResult(null)
+    setIsStartingCrawl(true)
+    setCrawlProgress(null)
     setError(null)
     try {
       const res = await fetch('/api/admin/crawl-now', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
 
-      const { success, failed, inserted, duplicates, rejected } = data
-      setCrawlResult(
-        `✓ 성공 ${success}개 · 실패 ${failed}개 · 신규 ${inserted}건 · 중복 ${duplicates}건 · 제외 ${rejected}건`
-      )
+      const job = data as CrawlJob
+      window.localStorage.setItem(CRAWL_JOB_STORAGE_KEY, JSON.stringify(job))
+      setCrawlJob(job)
     } catch (err) {
       setError(err instanceof Error ? err.message : '수집 중 오류가 발생했습니다.')
     } finally {
-      setIsCrawling(false)
-      await loadSources()  // 목록 새로고침
+      setIsStartingCrawl(false)
     }
   }
+
+  const closeCrawlProgress = () => {
+    if (crawlProgress?.status === 'running') return
+    setCrawlProgress(null)
+    setCrawlJob(null)
+  }
+
+  const progressPercent = crawlProgress?.sourcesTotal
+    ? Math.round(
+        (crawlProgress.completed / crawlProgress.sourcesTotal) * 100
+      )
+    : crawlProgress?.status === 'completed'
+      ? 100
+      : 0
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -511,19 +620,6 @@ export default function SourceManager() {
         </div>
       )}
 
-      {/* ── 크롤링 결과 알림 (§B) ── */}
-      {crawlResult && (
-        <div className="flex items-start justify-between rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <span>{crawlResult}</span>
-          <button
-            onClick={() => setCrawlResult(null)}
-            className="ml-4 shrink-0 text-green-400 underline hover:text-green-700"
-          >
-            닫기
-          </button>
-        </div>
-      )}
-
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">
@@ -536,12 +632,12 @@ export default function SourceManager() {
                 size="sm"
                 variant="outline"
                 onClick={handleCrawlNow}
-                disabled={isCrawling}
+                disabled={isStartingCrawl || crawlProgress?.status === 'running'}
               >
-                {isCrawling ? (
+                {isStartingCrawl ? (
                   <>
                     <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                    수집 중...
+                    시작 중...
                   </>
                 ) : (
                   '지금 수집'
@@ -662,6 +758,96 @@ export default function SourceManager() {
         onClose={() => setShowImport(false)}
         onImported={loadSources}
       />
+
+      {crawlJob && crawlProgress && (
+        <div className="fixed bottom-5 right-5 z-50 w-[calc(100%-2.5rem)] max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {crawlProgress.status === 'running' ? (
+                <Loader2 className="size-5 animate-spin text-brand-600" />
+              ) : crawlProgress.status === 'completed' ? (
+                <CheckCircle2 className="size-5 text-green-600" />
+              ) : (
+                <XCircle className="size-5 text-red-600" />
+              )}
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {crawlProgress.status === 'running'
+                    ? '콘텐츠 수집 중'
+                    : crawlProgress.status === 'completed'
+                      ? '콘텐츠 수집 완료'
+                      : '콘텐츠 수집 확인 필요'}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {crawlProgress.completed}/{crawlProgress.sourcesTotal}개 소스 처리
+                </p>
+              </div>
+            </div>
+            {crawlProgress.status !== 'running' && (
+              <button
+                type="button"
+                onClick={closeCrawlProgress}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="수집 현황 닫기"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className={cn(
+                'h-full rounded-full transition-[width] duration-500',
+                crawlProgress.status === 'failed'
+                  ? 'bg-red-500'
+                  : 'bg-brand-600'
+              )}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+            <div className="rounded-lg bg-gray-50 px-2 py-2">
+              <p className="text-[10px] text-gray-400">가져옴</p>
+              <p className="text-xs font-semibold text-gray-700">
+                {crawlProgress.fetched}
+              </p>
+            </div>
+            <div className="rounded-lg bg-green-50 px-2 py-2">
+              <p className="text-[10px] text-green-600">신규</p>
+              <p className="text-xs font-semibold text-green-700">
+                {crawlProgress.inserted}
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-2">
+              <p className="text-[10px] text-gray-400">중복</p>
+              <p className="text-xs font-semibold text-gray-700">
+                {crawlProgress.duplicates}
+              </p>
+            </div>
+            <div className="rounded-lg bg-red-50 px-2 py-2">
+              <p className="text-[10px] text-red-600">실패</p>
+              <p className="text-xs font-semibold text-red-700">
+                {crawlProgress.failed}
+              </p>
+            </div>
+          </div>
+
+          {crawlProgress.status === 'running' && (
+            <p className="mt-3 truncate text-xs text-gray-500">
+              {crawlProgress.latestSource
+                ? `최근 완료: ${crawlProgress.latestSource}`
+                : '활성 소스 연결을 준비하고 있습니다.'}
+            </p>
+          )}
+          {crawlProgress.message && (
+            <p className="mt-3 text-xs leading-relaxed text-red-600">
+              {crawlProgress.message}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
