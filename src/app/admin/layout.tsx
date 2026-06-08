@@ -16,6 +16,7 @@ const NAV_ITEMS = [
 
   { href: '/admin/translation', label: '번역 상태' },
   { href: '/admin/users',      label: '사용자 관리' },
+  { href: '/admin/newsletter', label: '뉴스레터' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

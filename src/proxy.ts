@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
 
   // /api/cron/* 는 자체 CRON_SECRET 로 인증, /api/version 은 공개 배포정보 →
   // 로그인 가드에서 제외 (제외 안 하면 세션 없는 요청이 /login 으로 리다이렉트됨)
-  const publicPaths = ['/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe']
+  const publicPaths = ['/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe', '/api/webhooks/resend']
   if (!user && !publicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
