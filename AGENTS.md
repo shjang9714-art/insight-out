@@ -315,13 +315,17 @@ const handleSubmit = async (e: React.FormEvent) => {
 - 품질 필터: 본문 300자 미만 자동 제외, 광고 키워드 패턴 제외
 - 다국어: 영문 컨텐츠는 LLM 으로 **한국어 요약** 자동 생성, **전문 번역은 온디맨드**
 
-## 14. 뉴스레터 발송 (Phase 3 예정)
+## 14. 뉴스레터 발송 (Phase 3-A 구현 완료)
 
-- 발송 시각: 매일 오전 8시 (수신 동의 사용자에게)
-- 주기 옵션: `daily` / `weekly` (월요일 오전 8시) / `none`
-- 발송 채널: Resend 또는 SendGrid
-- 템플릿: React Email
-- 수신 거부 링크 **법적 필수**
+- 발송 설정: **어드민 전역 설정** (`newsletter_settings`) — on/off, 요일, 카드 수, 제목 템플릿
+- 발송 시각: Hobby 플랜 일 1회 `0 23 * * *` (= 08:00 KST). Pro 전환 시 `vercel.json` 크론 수정으로 자유 설정 가능
+- 발송 채널: **Resend** (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`)
+- 템플릿: **HTML 빌더** (`src/lib/email/newsletter-template.ts`) — React Email 미사용, 인라인 스타일 테이블 레이아웃
+- 발송 코어: `src/lib/newsletter/dispatch.ts` — 멱등(last_sent_on), 요일 체크, 부분 실패 집계
+- 수신 거부: `/api/newsletter/unsubscribe?token=` — 토큰 기반, 비로그인 허용, **법적 필수**
+- 어드민 관리: `/admin/newsletter` — 설정·미리보기·수동발송·이력·오픈율
+- 오픈율 추적: Resend webhook → `/api/webhooks/resend` (Svix 서명 검증, `RESEND_WEBHOOK_SECRET`)
+- per-user 주기 선택 폐기: 온보딩 주기 단계 제거, 마이페이지는 수신 on/off만
 
 ## 15. 자주 하는 실수 모음
 
