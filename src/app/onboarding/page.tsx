@@ -5,23 +5,16 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Progress } from '@/components/ui/progress'
 import Step1Profile from '@/components/onboarding/Step1Profile'
-import Step3Newsletter from '@/components/onboarding/Step3Newsletter'
-import type {
-  OnboardingStep1,
-  OnboardingStep3,
-  NewsletterFrequency,
-} from '@/lib/types'
+import type { OnboardingStep1 } from '@/lib/types'
 
-const STEPS = ['프로필 등록', '뉴스레터']
+const STEPS = ['프로필 등록']
 
 export default function OnboardingPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [authEmail, setAuthEmail] = useState('')
 
   const [step1Data, setStep1Data] = useState<OnboardingStep1>({
     name: '',
@@ -32,19 +25,13 @@ export default function OnboardingPage() {
   })
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email) setAuthEmail(user.email)
-    })
+    // 로그인 이메일 확보 불필요 — 뉴스레터 단계 제거로 authEmail 미사용
   }, [])
 
-  const progress = (currentStep / STEPS.length) * 100
+  const progress = 100
 
-  const handleStep1Next = (data: OnboardingStep1) => {
+  const handleStep1Submit = async (data: OnboardingStep1) => {
     setStep1Data(data)
-    setCurrentStep(2)
-  }
-
-  const handleStep2Submit = async (data: OnboardingStep3) => {
     setIsSubmitting(true)
     setError(null)
 
@@ -55,11 +42,11 @@ export default function OnboardingPage() {
       const upsertPayload = {
         id: user.id,
         email: user.email!,
-        name: step1Data.name,
+        name: data.name,
         department: '기타',
-        team: step1Data.team,
-        position: step1Data.position || null,
-        content_filter_mode: step1Data.content_filter_mode,
+        team: data.team,
+        position: data.position || null,
+        content_filter_mode: data.content_filter_mode,
         onboarding_completed: true,
       }
       console.log('[onboarding] users upsert payload:', upsertPayload)
@@ -76,11 +63,11 @@ export default function OnboardingPage() {
         )
       }
 
-      if (step1Data.content_filter_mode === 'my_services' && step1Data.selected_services.length > 0) {
+      if (data.content_filter_mode === 'my_services' && data.selected_services.length > 0) {
         const { data: matchedServices, error: servicesError } = await supabase
           .from('services')
           .select('id, name')
-          .in('name', step1Data.selected_services)
+          .in('name', data.selected_services)
         if (servicesError) {
           console.error('[onboarding] services 조회 오류:', servicesError)
           throw new Error('담당 서비스 정보를 불러오는 데 실패했습니다.')
@@ -102,25 +89,20 @@ export default function OnboardingPage() {
         }
       }
 
-      const isActive = data.frequency !== 'none'
-      const newsletterPayload = {
-        user_id: user.id,
-        frequency: data.frequency as NewsletterFrequency,
-        is_active: isActive,
-        newsletter_email: isActive ? data.newsletter_email : null,
-      }
-      console.log('[onboarding] newsletter upsert payload:', newsletterPayload)
-
+      // 뉴스레터 구독 기본 등록 (is_active=true, 로그인 이메일)
       const { error: newsletterError } = await supabase
         .from('newsletter_subscriptions')
-        .upsert(newsletterPayload, { onConflict: 'user_id' })
+        .upsert(
+          {
+            user_id: user.id,
+            is_active: true,
+            newsletter_email: user.email,
+          },
+          { onConflict: 'user_id' }
+        )
       if (newsletterError) {
         console.error('[onboarding] newsletter upsert error:', JSON.stringify(newsletterError, null, 2))
-        throw new Error(
-          `뉴스레터 설정 실패: ${newsletterError.message}` +
-          (newsletterError.code ? ` (code: ${newsletterError.code})` : '') +
-          (newsletterError.hint ? ` — ${newsletterError.hint}` : '')
-        )
+        // 뉴스레터 실패는 온보딩을 막지 않음 — 경고만
       }
 
       router.refresh()
@@ -141,7 +123,7 @@ export default function OnboardingPage() {
             Insight Out 시작하기
           </h1>
           <p className="text-sm text-gray-500">
-            {currentStep}단계 / {STEPS.length}단계 — {STEPS[currentStep - 1]}
+            1단계 / {STEPS.length}단계 — {STEPS[0]}
           </p>
         </div>
 
@@ -154,33 +136,14 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {currentStep === 1 && (
-            <Step1Profile
-              defaultValues={step1Data}
-              onNext={handleStep1Next}
-            />
-          )}
-          {currentStep === 2 && (
-            <Step3Newsletter
-              defaultEmail={authEmail}
-              onSubmit={handleStep2Submit}
-              onBack={() => setCurrentStep(1)}
-              isSubmitting={isSubmitting}
-            />
-          )}
+          <Step1Profile
+            defaultValues={step1Data}
+            onNext={handleStep1Submit}
+          />
         </div>
 
         <div className="mt-6 flex justify-center gap-2">
-          {STEPS.map((_, i) => (
-            <div
-              key={i}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                i + 1 <= currentStep
-                  ? 'w-6 bg-blue-600'
-                  : 'w-1.5 bg-gray-200'
-              }`}
-            />
-          ))}
+          <div className="h-1.5 rounded-full w-6 bg-blue-600" />
         </div>
       </div>
     </div>
