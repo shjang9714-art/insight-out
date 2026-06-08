@@ -18,10 +18,8 @@ import { ChevronDown, ChevronRight, Mail, Trash2, X } from 'lucide-react'
 import type {
   Department,
   ContentFilterMode,
-  NewsletterFrequency,
   Service,
 } from '@/lib/types'
-import type { Metadata } from 'next'
 
 const DEPARTMENTS: Department[] = [
   'Enterprise사업부문',
@@ -32,12 +30,6 @@ const DEPARTMENTS: Department[] = [
   '기타',
 ]
 
-const FREQUENCY_OPTIONS: { value: NewsletterFrequency; label: string; description: string }[] = [
-  { value: 'daily', label: '매일', description: '매일 오전 8시' },
-  { value: 'twice_weekly', label: '주 2회', description: '화·목 오전 8시' },
-  { value: 'weekly', label: '주 1회', description: '매주 월요일 오전 8시' },
-  { value: 'none', label: '구독 안 함', description: '뉴스레터를 받지 않습니다' },
-]
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -50,7 +42,7 @@ interface ProfileForm {
 }
 
 interface NewsletterForm {
-  frequency: NewsletterFrequency
+  is_active: boolean
   newsletter_email: string
 }
 
@@ -77,7 +69,7 @@ export default function MyPage() {
   const [servicesError, setServicesError] = useState<string | null>(null)
 
   const [newsletter, setNewsletter] = useState<NewsletterForm>({
-    frequency: 'weekly',
+    is_active: true,
     newsletter_email: '',
   })
   const [newsletterStatus, setNewsletterStatus] = useState<SaveStatus>('idle')
@@ -120,7 +112,7 @@ export default function MyPage() {
         supabase.from('users').select('name, department, team, position, content_filter_mode').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
         supabase.from('services').select('*').order('order'),
-        supabase.from('newsletter_subscriptions').select('frequency, newsletter_email').eq('user_id', user.id).single(),
+        supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
         supabase
           .from('archives')
           .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
@@ -144,7 +136,7 @@ export default function MyPage() {
 
       if (sub) {
         setNewsletter({
-          frequency: (sub.frequency as NewsletterFrequency) ?? 'weekly',
+          is_active: sub.is_active ?? true,
           newsletter_email: sub.newsletter_email ?? (user.email ?? ''),
         })
       } else {
@@ -240,7 +232,7 @@ export default function MyPage() {
   const handleNewsletterSave = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (newsletter.frequency !== 'none') {
+    if (newsletter.is_active) {
       if (!newsletter.newsletter_email.trim()) {
         setNewsletterError('수신할 이메일 주소를 입력해주세요.')
         return
@@ -258,15 +250,13 @@ export default function MyPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
 
-      const isActive = newsletter.frequency !== 'none'
       const { error } = await supabase
         .from('newsletter_subscriptions')
         .upsert(
           {
             user_id: user.id,
-            frequency: newsletter.frequency,
-            is_active: isActive,
-            newsletter_email: isActive ? newsletter.newsletter_email.trim() : null,
+            is_active: newsletter.is_active,
+            newsletter_email: newsletter.is_active ? newsletter.newsletter_email.trim() : null,
           },
           { onConflict: 'user_id' }
         )
@@ -521,36 +511,31 @@ export default function MyPage() {
           <h2 className="mb-5 text-base font-semibold text-gray-900">뉴스레터 설정</h2>
 
           <form onSubmit={handleNewsletterSave} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>수신 주기</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {FREQUENCY_OPTIONS.map((opt) => {
-                  const isSelected = newsletter.frequency === opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setNewsletter({ ...newsletter, frequency: opt.value })}
-                      className={cn(
-                        'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-all',
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                      )}
-                    >
-                      <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-gray-800')}>
-                        {opt.label}
-                      </span>
-                      <span className={cn('text-xs', isSelected ? 'text-blue-700' : 'text-gray-400')}>
-                        {opt.description}
-                      </span>
-                    </button>
-                  )
-                })}
+            <div className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
+              <div>
+                <p className="text-sm font-medium text-gray-800">뉴스레터 수신</p>
+                <p className="text-xs text-gray-400 mt-0.5">어드민 설정 일정에 따라 자동 발송됩니다.</p>
               </div>
+              <button
+                type="button"
+                onClick={() => setNewsletter({ ...newsletter, is_active: !newsletter.is_active })}
+                className={cn(
+                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                  newsletter.is_active ? 'bg-blue-600' : 'bg-gray-200'
+                )}
+                role="switch"
+                aria-checked={newsletter.is_active}
+              >
+                <span
+                  className={cn(
+                    'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+                    newsletter.is_active ? 'translate-x-5' : 'translate-x-0'
+                  )}
+                />
+              </button>
             </div>
 
-            {newsletter.frequency !== 'none' && (
+            {newsletter.is_active && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="newsletter-email">
                   수신 이메일 <span className="text-red-500">*</span>
