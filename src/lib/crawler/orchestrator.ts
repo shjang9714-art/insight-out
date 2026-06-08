@@ -7,7 +7,7 @@ import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } fro
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
 import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED } from './quality'
 import type { CrawlCounts } from './types'
-import type { Source } from '@/lib/types'
+import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
   selectCrawlSources,
   type CrawlScheduleOptions,
@@ -18,6 +18,7 @@ import {
 } from '@/lib/translate'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
+const OPINION_LOOKBACK_DAYS = 7
 
 interface TranslationBudget {
   remaining: number
@@ -163,6 +164,21 @@ function getTodayStartKst(): string {
 function getDaysAgoStartKst(days: number): string {
   const todayStartMs = new Date(getTodayStartKst()).getTime()
   return new Date(todayStartMs - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+function categoryForSourceType(type: SourceType): ContentCategory {
+  return type === 'opinion_channel' ? '오피니언' : '뉴스'
+}
+
+function sinceForSource(
+  source: Source,
+  defaultSince: string,
+  backfillDays: number
+): string {
+  if (backfillDays === 0 && source.type === 'opinion_channel') {
+    return getDaysAgoStartKst(OPINION_LOOKBACK_DAYS)
+  }
+  return defaultSince
 }
 
 /**
@@ -328,7 +344,7 @@ async function crawlOne(
         // - status 는 품질 필터 결과 포함 (published | pending)
         // - is_published 컬럼 없음 (status enum 사용)
         const row = {
-          category: '뉴스' as const,
+          category: categoryForSourceType(source.type),
           source_id: source.id,
           title: translatedContent?.title ?? item.title,
           title_original: translatedContent ? item.title : null,
@@ -529,7 +545,13 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     dueSources.map(s =>
       s.type === 'youtube_channel'
         ? crawlYoutube(admin, s)
-        : crawlOne(admin, s, since, keywords, translationBudget)
+        : crawlOne(
+            admin,
+            s,
+            sinceForSource(s, since, backfillDays),
+            keywords,
+            translationBudget
+          )
     )
   )
 
