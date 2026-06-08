@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -75,6 +76,31 @@ export default function MyPage() {
   const [newsletterStatus, setNewsletterStatus] = useState<SaveStatus>('idle')
   const [newsletterError, setNewsletterError] = useState<string | null>(null)
 
+  // ── 북마크 ──────────────────────────────────────────────────────────────
+  interface BookmarkWithItem {
+    id: string
+    content_id: string | null
+    youtube_video_id: string | null
+    created_at: string
+    contents: {
+      id: string
+      title: string
+      category: string
+      original_url: string | null
+      published_at: string | null
+    } | null
+    youtube_videos: {
+      id: string
+      video_id: string
+      title: string
+      channel_name: string
+      published_at: string | null
+    } | null
+  }
+  const [bookmarks, setBookmarks] = useState<BookmarkWithItem[]>([])
+  const [bookmarksLoading, setBookmarksLoading] = useState(true)
+  const [bookmarkError, setBookmarkError] = useState<string | null>(null)
+
   // ── 아카이브 ──────────────────────────────────────────────────────────────
   interface ArchiveWithItems {
     id: string
@@ -107,12 +133,21 @@ export default function MyPage() {
         { data: userServices },
         { data: allServices },
         { data: sub },
+        { data: bookmarksData },
         { data: archivesData },
       ] = await Promise.all([
         supabase.from('users').select('name, department, team, position, content_filter_mode').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
         supabase.from('services').select('*').order('order'),
         supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
+        supabase
+          .from('bookmarks')
+          .select(`
+            id, content_id, youtube_video_id, created_at,
+            contents(id, title, category, original_url, published_at),
+            youtube_videos(id, video_id, title, channel_name, published_at)
+          `)
+          .order('created_at', { ascending: false }),
         supabase
           .from('archives')
           .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
@@ -131,6 +166,8 @@ export default function MyPage() {
 
       if (allServices) setServices(allServices)
       if (userServices) setSelectedServiceIds(new Set(userServices.map((r) => r.service_id)))
+      if (bookmarksData) setBookmarks(bookmarksData as unknown as BookmarkWithItem[])
+      setBookmarksLoading(false)
       if (archivesData) setArchives(archivesData as unknown as ArchiveWithItems[])
       setArchivesLoading(false)
 
@@ -268,6 +305,17 @@ export default function MyPage() {
     } catch (err) {
       setNewsletterError(err instanceof Error ? err.message : '오류가 발생했습니다.')
       setNewsletterStatus('error')
+    }
+  }
+
+  // ── 북마크 핸들러 ──────────────────────────────────────────────────────
+  async function handleRemoveBookmark(bookmarkId: string) {
+    setBookmarkError(null)
+    const { error } = await supabase.from('bookmarks').delete().eq('id', bookmarkId)
+    if (error) {
+      setBookmarkError('북마크 해제에 실패했습니다. 잠시 후 다시 시도해주세요.')
+    } else {
+      setBookmarks((prev) => prev.filter((bookmark) => bookmark.id !== bookmarkId))
     }
   }
 
@@ -566,6 +614,80 @@ export default function MyPage() {
               {newsletterStatus === 'saving' ? '저장 중...' : newsletterStatus === 'saved' ? '저장되었습니다!' : '뉴스레터 설정 저장'}
             </Button>
           </form>
+        </section>
+
+        {/* 내 북마크 */}
+        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5">
+            <h2 className="text-base font-semibold text-gray-900">내 북마크</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              빠르게 다시 볼 콘텐츠와 영상을 모아둔 목록입니다.
+            </p>
+          </div>
+
+          {bookmarksLoading ? (
+            <p className="py-4 text-center text-sm text-gray-400">불러오는 중...</p>
+          ) : bookmarks.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              아직 저장한 북마크가 없습니다. 콘텐츠 상세 페이지에서 &quot;북마크&quot;를 눌러 보세요.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50 rounded-xl border border-gray-100">
+              {bookmarks.map((bookmark) => {
+                const content = bookmark.contents
+                const video = bookmark.youtube_videos
+                const youtubeUrl = video
+                  ? `https://www.youtube.com/watch?v=${video.video_id}`
+                  : null
+                const date = content?.published_at ?? video?.published_at ?? bookmark.created_at
+
+                return (
+                  <div
+                    key={bookmark.id}
+                    className="flex items-start justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      {content ? (
+                        <Link
+                          href={`/dashboard/contents/${content.id}`}
+                          className="line-clamp-1 text-sm font-medium text-gray-800 hover:text-brand-600"
+                        >
+                          {content.title}
+                        </Link>
+                      ) : video && youtubeUrl ? (
+                        <a
+                          href={youtubeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="line-clamp-1 text-sm font-medium text-gray-800 hover:text-brand-600"
+                        >
+                          {video.title}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-gray-400">(삭제된 항목)</span>
+                      )}
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {content?.category ?? video?.channel_name ?? '북마크'} ·{' '}
+                        {new Date(date).toLocaleDateString('ko-KR')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveBookmark(bookmark.id)}
+                      className="shrink-0 rounded p-1 text-gray-300 transition-colors hover:text-red-400"
+                      title="북마크 해제"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {bookmarkError && (
+            <p className="mt-3 text-xs text-red-500">{bookmarkError}</p>
+          )}
         </section>
 
         {/* 내 아카이브 */}

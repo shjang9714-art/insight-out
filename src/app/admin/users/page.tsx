@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   description: '전체 사용자 목록 및 권한(role)을 관리합니다.',
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminUsersPage() {
   const svc = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

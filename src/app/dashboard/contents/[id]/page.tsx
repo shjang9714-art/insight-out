@@ -6,6 +6,7 @@ import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
 import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
+import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
@@ -385,6 +386,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
           </Link>
 
           <div className="flex items-center gap-2">
+            {/* 북마크 저장 */}
+            <BookmarkButton contentId={content.id} />
+
             {/* 아카이빙 담기 */}
             <ArchiveButton contentId={content.id} />
 
