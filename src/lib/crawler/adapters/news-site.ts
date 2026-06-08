@@ -13,6 +13,7 @@ type RssItem = Parser.Item & {
 }
 
 const parser = new Parser<Record<string, unknown>, RssItem>({
+  timeout: 12_000,
   customFields: {
     item: [
       ['media:content', 'mediaContent'],
