@@ -140,10 +140,10 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mb-5">
-            <p className="text-[15px] font-medium tracking-tight text-gray-900">
+            <p className="text-xl font-semibold tracking-tight text-gray-900">
               흩어진 인텔리전스를 하나의 흐름으로,
             </p>
-            <p className="mt-1 text-[13px] italic tracking-wide text-gray-400">
+            <p className="mt-1 text-[15px] italic tracking-wide text-gray-400">
               Intelligence, from the inside out.
             </p>
           </div>
