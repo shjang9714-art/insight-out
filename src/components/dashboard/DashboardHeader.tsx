@@ -64,16 +64,16 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         </button>
 
         {/* Logo */}
-        <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 lg:w-52">
+        <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:w-52">
           <Image
-            src="/logo.png"
+            src="/brand/logo-mark.png"
             alt="Insight Out"
-            width={976}
-            height={286}
+            width={32}
+            height={32}
             priority
-            className="h-8 w-auto"
+            className="h-8 w-8 shrink-0"
           />
-          <span className="hidden text-xs text-gray-400 sm:block">B2B Intelligence</span>
+          <span className="font-semibold text-foreground">Insight Out</span>
         </Link>
 
         {/* Right side */}
