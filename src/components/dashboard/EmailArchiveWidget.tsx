@@ -13,26 +13,33 @@ interface ArchiveRow {
 
 export default function EmailArchiveWidget() {
   const [archives, setArchives] = useState<ArchiveRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]   = useState(true)
   const [sendingId, setSendingId] = useState<string | null>(null)
-  const [result, setResult] = useState<{ id: string; to: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [result, setResult]       = useState<{ id: string; to: string } | null>(null)
+  const [error, setError]         = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
-    supabase
-      .from('archives')
-      .select('id, name, archive_items(content_id)')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        const rows = (data ?? []).map((a: { id: string; name: string; archive_items: unknown[] }) => ({
-          id: a.id,
-          name: a.name,
-          itemCount: Array.isArray(a.archive_items) ? a.archive_items.length : 0,
-        }))
-        setArchives(rows)
-        setLoading(false)
-      })
+
+    const loadArchives = () => {
+      supabase
+        .from('archives')
+        .select('id, name, archive_items(content_id)')
+        .order('created_at', { ascending: false })
+        .then(({ data }) => {
+          const rows = (data ?? []).map((a: { id: string; name: string; archive_items: unknown[] }) => ({
+            id: a.id,
+            name: a.name,
+            itemCount: Array.isArray(a.archive_items) ? a.archive_items.length : 0,
+          }))
+          setArchives(rows)
+          setLoading(false)
+        })
+    }
+
+    loadArchives()
+    window.addEventListener('archive:changed', loadArchives)
+    return () => window.removeEventListener('archive:changed', loadArchives)
   }, [])
 
   async function handleSend(archiveId: string) {
@@ -111,7 +118,7 @@ export default function EmailArchiveWidget() {
 
       {result && (
         <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-600">
-          {result.to} 으로 발송되었습니다.
+          발송되었습니다. 받은 편지함을 확인해 보세요.
         </p>
       )}
       {error && (

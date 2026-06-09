@@ -39,38 +39,48 @@ export default function Sidebar({ onClose }: Props) {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase
-      .from('archives')
-      .select('archive_items(added_at, contents(id, title, category))')
-      .then(({ data }) => {
-        const items: ArchivedItem[] = []
-        for (const archive of (data ?? []) as unknown as {
-          archive_items: {
-            added_at: string
-            contents: { id: string; title: string; category: string | null } | null
-          }[]
-        }[]) {
-          for (const ai of archive.archive_items ?? []) {
-            if (ai.contents) {
-              items.push({
-                id: ai.contents.id,
-                title: ai.contents.title,
-                category: ai.contents.category,
-                addedAt: ai.added_at,
-              })
-            }
+
+    const loadArchives = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setLoading(false); return }
+
+      const { data } = await supabase
+        .from('archives')
+        .select('archive_items(added_at, contents(id, title, category))')
+        .eq('user_id', user.id)
+
+      const items: ArchivedItem[] = []
+      for (const archive of (data ?? []) as unknown as {
+        archive_items: {
+          added_at: string
+          contents: { id: string; title: string; category: string | null } | null
+        }[]
+      }[]) {
+        for (const ai of archive.archive_items ?? []) {
+          if (ai.contents) {
+            items.push({
+              id: ai.contents.id,
+              title: ai.contents.title,
+              category: ai.contents.category,
+              addedAt: ai.added_at,
+            })
           }
         }
-        items.sort((a, b) => +new Date(b.addedAt) - +new Date(a.addedAt))
-        const seen = new Set<string>()
-        const unique = items.filter((it) => {
-          if (seen.has(it.id)) return false
-          seen.add(it.id)
-          return true
-        })
-        setArchived(unique.slice(0, 8))
-        setLoading(false)
+      }
+      items.sort((a, b) => +new Date(b.addedAt) - +new Date(a.addedAt))
+      const seen = new Set<string>()
+      const unique = items.filter((it) => {
+        if (seen.has(it.id)) return false
+        seen.add(it.id)
+        return true
       })
+      setArchived(unique.slice(0, 8))
+      setLoading(false)
+    }
+
+    loadArchives()
+    window.addEventListener('archive:changed', loadArchives)
+    return () => window.removeEventListener('archive:changed', loadArchives)
   }, [])
 
   useEffect(() => {

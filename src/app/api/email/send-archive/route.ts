@@ -5,8 +5,37 @@ import { Resend } from 'resend'
 import { buildArchiveEmailHtml, type ArchiveEmailItem } from '@/lib/email/archive-template'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 
+// sendError.name/message → 사용자 노출 메시지로 카테고리화
+function categorizeSendError(err: { name?: string; message?: string }): string {
+  const msg = (err.message ?? '').toLowerCase()
+  const name = (err.name ?? '').toLowerCase()
+
+  if (name === 'missing_required_field' || msg.includes('from') || msg.includes('domain')) {
+    return '발신 도메인이 검증되지 않았습니다. 관리자에게 문의하세요.'
+  }
+  if (msg.includes('not allowed') || msg.includes('unauthorized') || msg.includes('forbidden')) {
+    return '발신 권한이 없습니다. Resend 도메인 검증 후 이용 가능합니다.'
+  }
+  if (msg.includes('invalid') && msg.includes('email')) {
+    return '수신 이메일 주소가 올바르지 않습니다.'
+  }
+  if (msg.includes('blocked') || msg.includes('bounce') || msg.includes('suppressed')) {
+    return '수신 거부 또는 반송 이력이 있는 이메일 주소입니다.'
+  }
+  if (msg.includes('rate') || msg.includes('limit')) {
+    return '발송 한도에 도달했습니다. 잠시 후 다시 시도해주세요.'
+  }
+  return '이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+}
+
 export async function POST(req: NextRequest) {
   try {
+    // ── 0. 발신자 환경변수 가드 ────────────────────────────────────────────
+    const fromEmail = process.env.RESEND_FROM_EMAIL
+    if (!fromEmail) {
+      console.warn('[send-archive] RESEND_FROM_EMAIL 미설정 — Resend 샌드박스 발신자 사용 시 본인 이메일 외 수신 불가')
+    }
+
     // ── 1. 인증 ──────────────────────────────────────────────────────────
     const cookieStore = await cookies()
     const supabase = createServerClient(
@@ -44,7 +73,7 @@ export async function POST(req: NextRequest) {
         )
       `)
       .eq('id', archiveId)
-      .eq('user_id', user.id)  // 본인 아카이브 확인
+      .eq('user_id', user.id)
       .single()
 
     if (archiveErr || !archive) {
@@ -116,15 +145,20 @@ export async function POST(req: NextRequest) {
     })
 
     const { error: sendError } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev',
+      from: fromEmail ?? 'onboarding@resend.dev',
       to: toEmail,
       subject: `[Insight Out] ${archive.name} — ${items.length}건의 인사이트`,
       html,
     })
 
     if (sendError) {
-      console.error('[send-archive] Resend 오류:', sendError)
-      return NextResponse.json({ error: '이메일 발송에 실패했습니다.' }, { status: 500 })
+      // 수신자는 서버 로그에만 기록 (응답 본문 노출 금지)
+      console.error('[send-archive] Resend 발송 실패 | to=<hidden> | name=%s | message=%s',
+        sendError.name, sendError.message)
+      console.error('[send-archive] 수신자 도메인: %s', toEmail.split('@')[1] ?? 'unknown')
+
+      const userMessage = categorizeSendError(sendError)
+      return NextResponse.json({ error: userMessage }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, to: toEmail, count: items.length })

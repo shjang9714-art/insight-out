@@ -52,6 +52,10 @@ export async function POST(request: NextRequest) {
       .from('newsletter_recipients')
       .update({ status: 'bounced', error: '이메일 반송' })
       .eq('resend_message_id', messageId)
+  } else if (type === 'email.complained') {
+    console.warn('[resend-webhook] 수신 거부(complaint) | messageId=%s', messageId)
+  } else {
+    console.log('[resend-webhook] 미처리 이벤트 | type=%s | messageId=%s', type, messageId)
   }
 
   return NextResponse.json({ ok: true })

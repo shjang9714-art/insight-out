@@ -65,6 +65,7 @@ export default function ArchiveButton({ contentId }: ArchiveButtonProps) {
       setError('저장에 실패했습니다. 잠시 후 다시 시도해주세요.')
     } else {
       setSavedIds((prev) => new Set([...prev, archiveId]))
+      window.dispatchEvent(new CustomEvent('archive:changed'))
     }
     setLoading(false)
   }
@@ -88,7 +89,7 @@ export default function ArchiveButton({ contentId }: ArchiveButtonProps) {
       return
     }
     setArchives((prev) => [archive as Archive, ...prev])
-    await handleAdd(archive.id)
+    await handleAdd(archive.id)  // handleAdd 내에서 archive:changed 발행
     setNewName('')
     setLoading(false)
   }
