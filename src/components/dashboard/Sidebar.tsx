@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, startTransition } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { RECENT_VIEWS } from './mock-data'
+import { getRecentViews, type RecentView } from '@/lib/recent-views'
 
 interface Props {
   onClose?: () => void
@@ -20,9 +20,22 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
 
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts
+  const m = Math.floor(diff / 60_000)
+  if (m < 1)  return '방금 전'
+  if (m < 60) return `${m}분 전`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}시간 전`
+  const d = Math.floor(h / 24)
+  if (d < 7)  return `${d}일 전`
+  return new Date(ts).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+}
+
 export default function Sidebar({ onClose }: Props) {
-  const [archived, setArchived] = useState<ArchivedItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [archived, setArchived]       = useState<ArchivedItem[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [recentViews, setRecentViews] = useState<RecentView[]>([])
 
   useEffect(() => {
     const supabase = createClient()
@@ -49,7 +62,6 @@ export default function Sidebar({ onClose }: Props) {
           }
         }
         items.sort((a, b) => +new Date(b.addedAt) - +new Date(a.addedAt))
-        // 중복 콘텐츠 제거
         const seen = new Set<string>()
         const unique = items.filter((it) => {
           if (seen.has(it.id)) return false
@@ -59,6 +71,18 @@ export default function Sidebar({ onClose }: Props) {
         setArchived(unique.slice(0, 8))
         setLoading(false)
       })
+  }, [])
+
+  useEffect(() => {
+    startTransition(() => setRecentViews(getRecentViews()))
+
+    const reload = () => startTransition(() => setRecentViews(getRecentViews()))
+    window.addEventListener('recent-views:changed', reload)
+    window.addEventListener('storage', reload)
+    return () => {
+      window.removeEventListener('recent-views:changed', reload)
+      window.removeEventListener('storage', reload)
+    }
   }, [])
 
   return (
@@ -116,18 +140,27 @@ export default function Sidebar({ onClose }: Props) {
           <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             최근 본 항목
           </h3>
-          <div className="space-y-0.5">
-            {RECENT_VIEWS.map((item) => (
-              <div
-                key={item.id}
-                title="상세 보기 곧 제공"
-                className="w-full rounded-lg px-2 py-2 cursor-default"
-              >
-                <p className="line-clamp-2 text-xs leading-snug text-foreground/90">{item.title}</p>
-                <span className="mt-0.5 inline-block text-[10px] text-muted-foreground">{item.time}</span>
-              </div>
-            ))}
-          </div>
+          {recentViews.length === 0 ? (
+            <p className="px-2 text-[11px] leading-relaxed text-muted-foreground">
+              최근 본 콘텐츠가 없습니다.
+            </p>
+          ) : (
+            <div className="space-y-0.5">
+              {recentViews.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/dashboard/contents/${item.id}`}
+                  onClick={() => onClose?.()}
+                  className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
+                >
+                  <p className="line-clamp-2 text-xs leading-snug text-foreground/90">{item.title}</p>
+                  <span className="mt-0.5 inline-block text-[10px] text-muted-foreground">
+                    {item.category ? `${item.category} · ` : ''}{timeAgo(item.viewedAt)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </aside>

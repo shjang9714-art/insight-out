@@ -4,12 +4,6 @@ export const BOOKMARKED_ARTICLES = [
   { id: '3', title: 'Gartner: 2026 AICC 시장 규모 전망', category: '가트너 리포트', date: '2026.05.15' },
 ]
 
-export const RECENT_VIEWS = [
-  { id: '1', title: 'Gartner: 2026년까지 기업의 75%가 제로 트러스트 도입 예정', time: '10분 전' },
-  { id: '2', title: 'AWS Bedrock 멀티 에이전트 서비스 국내 GA', time: '1시간 전' },
-  { id: '3', title: 'Private 5G vs Wi-Fi 6E — 제조현장 선택 기준', time: '어제' },
-]
-
 export const TREND_KEYWORDS = [
   { keyword: 'AI 에이전트', count: 142, size: 'xl' as const },
   { keyword: 'Private 5G', count: 98, size: 'lg' as const },

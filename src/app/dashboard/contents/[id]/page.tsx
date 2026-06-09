@@ -8,6 +8,7 @@ import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
+import RecordRecentView from '@/components/contents/RecordRecentView'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
@@ -218,6 +219,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
           {content.title}
         </span>
       </div>
+
+      <RecordRecentView id={content.id} title={content.title} category={content.category} />
 
       <article>
         {/* 카테고리 뱃지 */}

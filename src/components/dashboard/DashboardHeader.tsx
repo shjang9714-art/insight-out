@@ -5,25 +5,64 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Menu } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { NOTIFICATIONS, TODAY_UPDATES } from './mock-data'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 
 interface Props {
   onMenuClick?: () => void
 }
 
+interface NotifItem {
+  id: string
+  title: string
+  href: string
+  time: string
+}
+
+const READ_KEY = 'io:read-notifications'
+
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const m = Math.floor(diff / 60_000)
+  if (m < 1)  return '방금 전'
+  if (m < 60) return `${m}분 전`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}시간 전`
+  const d = Math.floor(h / 24)
+  if (d < 7)  return `${d}일 전`
+  return new Date(dateStr).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
+  })
+}
+
+function getReadIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(READ_KEY)
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function markRead(id: string) {
+  if (typeof window === 'undefined') return
+  const ids = getReadIds()
+  ids.add(id)
+  localStorage.setItem(READ_KEY, JSON.stringify([...ids]))
+}
+
 export default function DashboardHeader({ onMenuClick }: Props) {
   const [showNotifications, setShowNotifications] = useState(false)
-  const [userName, setUserName] = useState('—')
-  const [userTeam, setUserTeam] = useState('')
+  const [userName, setUserName]   = useState('—')
+  const [userTeam, setUserTeam]   = useState('')
+  const [notifications, setNotifications] = useState<NotifItem[]>([])
+  const [readIds, setReadIds]     = useState<Set<string>>(new Set())
+  const [todayCount, setTodayCount] = useState(0)
   const notifRef = useRef<HTMLDivElement>(null)
 
-  const unreadCount = NOTIFICATIONS.filter((n) => !n.read).length
-
   const today = new Date().toLocaleDateString('ko-KR', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
+    month: 'long', day: 'numeric', weekday: 'short',
   })
 
   useEffect(() => {
@@ -43,6 +82,48 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   }, [])
 
   useEffect(() => {
+    const supabase = createClient()
+
+    const load = async () => {
+      // KST 오늘 0시 ISO 문자열 계산
+      const kstOffset = 9 * 60 * 60 * 1000
+      const nowKst = new Date(Date.now() + kstOffset)
+      const kstDateStr = nowKst.toISOString().slice(0, 10) // YYYY-MM-DD
+      const kstMidnightUtc = new Date(`${kstDateStr}T00:00:00+09:00`).toISOString()
+
+      // 최근 8건 콘텐츠 (유튜브 제외)
+      const { data } = await supabase
+        .from('contents')
+        .select('id, title, category, created_at')
+        .eq('status', 'published')
+        .neq('category', '유튜브')
+        .order('created_at', { ascending: false })
+        .limit(8)
+
+      if (!data) return
+
+      const items: NotifItem[] = data.map((row) => ({
+        id: row.id,
+        title: row.title,
+        href: `/dashboard/contents/${row.id}`,
+        time: timeAgo(row.created_at),
+      }))
+      setNotifications(items)
+      setReadIds(getReadIds())
+
+      // 오늘 카운트: 별도 쿼리
+      const { count } = await supabase
+        .from('contents')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'published')
+        .gte('created_at', kstMidnightUtc)
+      setTodayCount(count ?? 0)
+    }
+
+    load()
+  }, [])
+
+  useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setShowNotifications(false)
@@ -51,6 +132,14 @@ export default function DashboardHeader({ onMenuClick }: Props) {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  const unreadCount = notifications.filter((n) => !readIds.has(n.id)).length
+
+  function handleNotifClick(id: string) {
+    markRead(id)
+    setReadIds(getReadIds())
+    setShowNotifications(false)
+  }
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm">
@@ -82,9 +171,11 @@ export default function DashboardHeader({ onMenuClick }: Props) {
           {/* Date + updates */}
           <div className="hidden flex-col items-end md:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
-            <span className="text-[11px] font-medium text-brand-600">
-              오늘 업데이트 {TODAY_UPDATES}건
-            </span>
+            {todayCount > 0 && (
+              <span className="text-[11px] font-medium text-brand-600">
+                오늘 업데이트 {todayCount}건
+              </span>
+            )}
           </div>
 
           {/* 테마 토글 */}
@@ -119,18 +210,27 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             {showNotifications && (
               <div className="absolute right-0 top-11 z-30 w-72 rounded-xl border border-border bg-card shadow-xl">
                 <div className="border-b border-border px-4 py-3">
-                  <span className="text-sm font-semibold text-foreground">알림</span>
+                  <span className="text-sm font-semibold text-foreground">최근 콘텐츠</span>
                 </div>
                 <div className="max-h-64 divide-y divide-border overflow-y-auto">
-                  {NOTIFICATIONS.map((n) => (
-                    <div key={n.id} className={`px-4 py-3 ${n.read ? '' : 'bg-brand-50/60'}`}>
-                      <p className="text-xs leading-snug text-foreground">{n.text}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{n.time}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="px-4 py-2 border-t border-border text-[11px] text-amber-600">
-                  표시되는 알림은 샘플 데이터입니다
+                  {notifications.length === 0 ? (
+                    <p className="px-4 py-4 text-xs text-muted-foreground">새 콘텐츠가 없습니다.</p>
+                  ) : (
+                    notifications.map((n) => {
+                      const isRead = readIds.has(n.id)
+                      return (
+                        <Link
+                          key={n.id}
+                          href={n.href}
+                          onClick={() => handleNotifClick(n.id)}
+                          className={`block px-4 py-3 transition-colors hover:bg-accent ${isRead ? '' : 'bg-brand-50/60 dark:bg-brand-950/20'}`}
+                        >
+                          <p className="line-clamp-2 text-xs leading-snug text-foreground">{n.title}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">{n.time}</p>
+                        </Link>
+                      )
+                    })
+                  )}
                 </div>
               </div>
             )}
