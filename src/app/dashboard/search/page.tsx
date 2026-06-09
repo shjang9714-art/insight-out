@@ -168,7 +168,7 @@ function SearchContent() {
       )
       .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
       .eq('status', 'published')
-      .order('published_at', { ascending: false })
+      .order('published_at', { ascending: false, nullsFirst: false })
       .limit(MAX_RESULTS)
       .then(({ data, error: err }) => {
         if (err) {

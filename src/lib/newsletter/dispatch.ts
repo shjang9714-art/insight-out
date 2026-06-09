@@ -82,7 +82,7 @@ export async function runNewsletterDispatch({
     .eq('status', 'published')
     .order('is_editor_pick', { ascending: false })
     .order('view_count', { ascending: false })
-    .order('published_at', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
     .limit(settings.card_count ?? 5)
 
   if (!contents || contents.length === 0) {

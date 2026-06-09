@@ -100,7 +100,7 @@ export async function getPreviewHtml() {
     .select('id, title, category, summary_ko, original_url, sources(name)')
     .eq('status', 'published')
     .order('is_editor_pick', { ascending: false })
-    .order('published_at', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
     .limit(settings?.card_count ?? 5)
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'

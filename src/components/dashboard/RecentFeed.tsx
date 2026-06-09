@@ -99,7 +99,7 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
         .from('contents')
         .select('id, title, summary_ko, category, published_at, sources(name)')
         .eq('status', 'published')
-        .order('published_at', { ascending: false })
+        .order('published_at', { ascending: false, nullsFirst: false })
         .limit(5)
 
       if (contentIds) q = q.in('id', contentIds)

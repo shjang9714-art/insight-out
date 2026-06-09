@@ -107,7 +107,7 @@ export default async function YoutubePage() {
   const { data: rawVideos, error } = await supabase
     .from('youtube_videos')
     .select('id, video_id, title, channel_name, thumbnail_url, published_at')
-    .order('published_at', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
     .limit(60)
 
   if (error) {

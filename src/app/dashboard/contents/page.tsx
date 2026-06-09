@@ -302,7 +302,7 @@ function ContentsContent() {
           { count: 'exact' }
         )
         .eq('status', 'published')
-        .order('published_at', { ascending: false })
+        .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
       if (category) q = q.eq('category', category)
