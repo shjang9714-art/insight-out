@@ -144,7 +144,7 @@ export default function LoginPage() {
               흩어진 인텔리전스를 하나의 흐름으로,
             </p>
             <p className="mt-1 text-[15px] italic tracking-wide text-gray-400">
-              Intelligence, from the inside out.
+              Intelligence in. Insight out.
             </p>
           </div>
           <Image src="/brand/logo-hero.png" alt="Insight Out" width={846} height={1392} priority className="mx-auto mb-4 h-32 w-auto" />
