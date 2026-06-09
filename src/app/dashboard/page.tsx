@@ -24,7 +24,7 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-gray-400">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">로딩 중...</div>}>
       <DashboardContent />
     </Suspense>
   )

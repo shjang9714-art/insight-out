@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Menu } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { NOTIFICATIONS, TODAY_UPDATES } from './mock-data'
+import { ThemeToggle } from '@/components/theme/ThemeToggle'
 
 interface Props {
   onMenuClick?: () => void
@@ -52,15 +53,15 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   }, [])
 
   return (
-    <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
+    <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm">
       <div className="flex h-14 items-center gap-4 px-4 sm:px-5">
         {/* 모바일 햄버거 버튼 */}
         <button
           onClick={onMenuClick}
-          className="rounded-lg p-2 transition-colors hover:bg-gray-100 lg:hidden"
+          className="rounded-lg p-2 transition-colors hover:bg-accent lg:hidden"
           aria-label="메뉴 열기"
         >
-          <Menu className="h-5 w-5 text-gray-600" />
+          <Menu className="h-5 w-5 text-muted-foreground" />
         </button>
 
         {/* Logo */}
@@ -80,20 +81,23 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         <div className="ml-auto flex shrink-0 items-center gap-4">
           {/* Date + updates */}
           <div className="hidden flex-col items-end md:flex">
-            <span className="text-xs font-medium text-gray-700">{today}</span>
+            <span className="text-xs font-medium text-foreground">{today}</span>
             <span className="text-[11px] font-medium text-brand-600">
               오늘 업데이트 {TODAY_UPDATES}건
             </span>
           </div>
 
+          {/* 테마 토글 */}
+          <ThemeToggle />
+
           {/* Notification */}
           <div className="relative" ref={notifRef}>
             <button
               onClick={() => setShowNotifications((v) => !v)}
-              className="relative rounded-lg p-2 transition-colors hover:bg-gray-100"
+              className="relative rounded-lg p-2 transition-colors hover:bg-accent"
             >
               <svg
-                className="h-5 w-5 text-gray-600"
+                className="h-5 w-5 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -113,19 +117,19 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 top-11 z-30 w-72 rounded-xl border border-gray-100 bg-white shadow-xl">
-                <div className="border-b border-gray-50 px-4 py-3">
-                  <span className="text-sm font-semibold text-gray-900">알림</span>
+              <div className="absolute right-0 top-11 z-30 w-72 rounded-xl border border-border bg-card shadow-xl">
+                <div className="border-b border-border px-4 py-3">
+                  <span className="text-sm font-semibold text-foreground">알림</span>
                 </div>
-                <div className="max-h-64 divide-y divide-gray-50 overflow-y-auto">
+                <div className="max-h-64 divide-y divide-border overflow-y-auto">
                   {NOTIFICATIONS.map((n) => (
                     <div key={n.id} className={`px-4 py-3 ${n.read ? '' : 'bg-brand-50/60'}`}>
-                      <p className="text-xs leading-snug text-gray-800">{n.text}</p>
-                      <p className="mt-1 text-[11px] text-gray-400">{n.time}</p>
+                      <p className="text-xs leading-snug text-foreground">{n.text}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{n.time}</p>
                     </div>
                   ))}
                 </div>
-                <div className="px-4 py-2 border-t border-gray-100 text-[11px] text-amber-600">
+                <div className="px-4 py-2 border-t border-border text-[11px] text-amber-600">
                   표시되는 알림은 샘플 데이터입니다
                 </div>
               </div>
@@ -135,12 +139,12 @@ export default function DashboardHeader({ onMenuClick }: Props) {
           {/* User */}
           <Link
             href="/dashboard/mypage"
-            className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-gray-100"
+            className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-accent"
             title="마이페이지"
           >
             <div className="hidden flex-col items-end sm:flex">
-              <span className="text-xs font-semibold text-gray-800">{userName}</span>
-              {userTeam && <span className="text-[11px] text-gray-400">{userTeam}</span>}
+              <span className="text-xs font-semibold text-foreground">{userName}</span>
+              {userTeam && <span className="text-[11px] text-muted-foreground">{userTeam}</span>}
             </div>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
               {userName !== '—' ? userName[0] : '?'}

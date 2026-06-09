@@ -62,13 +62,13 @@ export default function Sidebar({ onClose }: Props) {
   }, [])
 
   return (
-    <aside className="w-56 shrink-0 border-r border-gray-100 bg-white">
+    <aside className="w-56 shrink-0 border-r border-border bg-card">
       <div className="sticky top-14 h-[calc(100vh-56px)] space-y-5 overflow-y-auto px-3 py-4">
 
         {/* 아카이빙 콘텐츠 */}
         <section>
           <div className="mb-2 flex items-center justify-between px-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               아카이빙 콘텐츠
             </h3>
             <Link
@@ -83,11 +83,11 @@ export default function Sidebar({ onClose }: Props) {
           {loading ? (
             <div className="space-y-2 px-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-8 animate-pulse rounded bg-gray-100" />
+                <div key={i} className="h-8 animate-pulse rounded bg-muted" />
               ))}
             </div>
           ) : archived.length === 0 ? (
-            <p className="px-2 text-[11px] leading-relaxed text-gray-400">
+            <p className="px-2 text-[11px] leading-relaxed text-muted-foreground">
               담아둔 콘텐츠가 없습니다. 콘텐츠 상세에서 &quot;아카이빙 담기&quot;를 눌러 보세요.
             </p>
           ) : (
@@ -99,8 +99,8 @@ export default function Sidebar({ onClose }: Props) {
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >
-                  <p className="line-clamp-2 text-xs leading-snug text-gray-700">{item.title}</p>
-                  <span className="mt-0.5 inline-block text-[10px] text-gray-400">
+                  <p className="line-clamp-2 text-xs leading-snug text-foreground/90">{item.title}</p>
+                  <span className="mt-0.5 inline-block text-[10px] text-muted-foreground">
                     {item.category ? `${item.category} · ` : ''}{formatDate(item.addedAt)}
                   </span>
                 </Link>
@@ -109,11 +109,11 @@ export default function Sidebar({ onClose }: Props) {
           )}
         </section>
 
-        <div className="border-t border-gray-100" />
+        <div className="border-t border-border" />
 
         {/* 최근 본 항목 */}
         <section>
-          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             최근 본 항목
           </h3>
           <div className="space-y-0.5">
@@ -123,8 +123,8 @@ export default function Sidebar({ onClose }: Props) {
                 title="상세 보기 곧 제공"
                 className="w-full rounded-lg px-2 py-2 cursor-default"
               >
-                <p className="line-clamp-2 text-xs leading-snug text-gray-700">{item.title}</p>
-                <span className="mt-0.5 inline-block text-[10px] text-gray-400">{item.time}</span>
+                <p className="line-clamp-2 text-xs leading-snug text-foreground/90">{item.title}</p>
+                <span className="mt-0.5 inline-block text-[10px] text-muted-foreground">{item.time}</span>
               </div>
             ))}
           </div>

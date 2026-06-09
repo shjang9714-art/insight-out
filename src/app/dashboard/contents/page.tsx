@@ -94,16 +94,16 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 
 function SkeletonCard() {
   return (
-    <div className="animate-pulse rounded-xl border border-gray-100 bg-white p-5">
-      <div className="mb-3 h-5 w-16 rounded-full bg-gray-100" />
-      <div className="mb-2 h-5 w-3/4 rounded bg-gray-100" />
+    <div className="animate-pulse rounded-xl border border-border bg-card p-5">
+      <div className="mb-3 h-5 w-16 rounded-full bg-muted" />
+      <div className="mb-2 h-5 w-3/4 rounded bg-muted" />
       <div className="space-y-1.5">
-        <div className="h-4 w-full rounded bg-gray-100" />
-        <div className="h-4 w-5/6 rounded bg-gray-100" />
+        <div className="h-4 w-full rounded bg-muted" />
+        <div className="h-4 w-5/6 rounded bg-muted" />
       </div>
       <div className="mt-3 flex gap-3">
-        <div className="h-3.5 w-20 rounded bg-gray-100" />
-        <div className="h-3.5 w-24 rounded bg-gray-100" />
+        <div className="h-3.5 w-20 rounded bg-muted" />
+        <div className="h-3.5 w-24 rounded bg-muted" />
       </div>
     </div>
   )
@@ -111,7 +111,7 @@ function SkeletonCard() {
 
 function ContentCard({ item }: { item: ContentItem }) {
   const catStyle =
-    CATEGORY_STYLE[item.category] ?? 'bg-gray-50 text-gray-600 border-gray-100'
+    CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground border-border'
   const dateStr = formatDate(item.published_at)
   const isYoutube = item.category === '유튜브'
 
@@ -132,21 +132,21 @@ function ContentCard({ item }: { item: ContentItem }) {
       </div>
 
       {/* 제목 */}
-      <h2 className="mb-1.5 text-sm font-semibold leading-snug text-gray-900 transition-colors group-hover:text-brand-600">
+      <h2 className="mb-1.5 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
         {item.title}
       </h2>
 
       {/* 요약 */}
       {item.summary_ko && (
-        <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">
+        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {item.summary_ko}
         </p>
       )}
 
       {/* 메타 */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-gray-400">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
         {item.sources?.name && (
-          <span className="font-medium text-gray-500">{item.sources.name}</span>
+          <span className="font-medium text-muted-foreground">{item.sources.name}</span>
         )}
         {item.author && !item.sources?.name && <span>{item.author}</span>}
         <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
@@ -155,7 +155,7 @@ function ContentCard({ item }: { item: ContentItem }) {
   )
 
   return (
-    <article className="group rounded-xl border border-gray-100 bg-white p-5 transition-shadow hover:shadow-sm">
+    <article className="group rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
       <div className="flex items-start justify-between gap-4">
         {isYoutube ? (
           innerContent
@@ -172,13 +172,13 @@ function ContentCard({ item }: { item: ContentItem }) {
               href={item.original_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               원문
             </a>
           ) : item.file_path ? (
-            <span className="flex items-center gap-1.5 rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">
+            <span className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
               <FileText className="h-3.5 w-3.5" />
               리포트
             </span>
@@ -367,31 +367,31 @@ function ContentsContent() {
   return (
     <div className="px-4 py-6 sm:px-6">
       {/* 브레드크럼 */}
-      <div className="mb-5 flex items-center gap-2 text-sm text-gray-400">
+      <div className="mb-5 flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/dashboard" className="transition-colors hover:text-brand-600">
           대시보드
         </Link>
         <span>›</span>
-        <span className="font-medium text-gray-700">{pageTitle}</span>
+        <span className="font-medium text-foreground">{pageTitle}</span>
       </div>
 
       {/* 제목 + 건수 */}
       <div className="mb-5">
-        <h1 className="text-lg font-bold text-gray-900">{pageTitle}</h1>
+        <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
         {!isLoading && total !== null && (
-          <p className="mt-0.5 text-xs text-gray-400">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {total > 0 ? `총 ${total.toLocaleString()}건` : ''}
           </p>
         )}
       </div>
 
       {/* ─── 필터 바 ─────────────────────────────────────────────────────────── */}
-      <div className="mb-5 rounded-xl border border-gray-100 bg-white px-4 py-3.5">
+      <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
 
           {/* 날짜 */}
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-gray-400">날짜</span>
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">날짜</span>
             <div className="flex gap-1">
               {DATE_OPTIONS.map((opt) => (
                 <button
@@ -403,7 +403,7 @@ function ContentsContent() {
                     'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
                     date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
                       ? 'bg-brand-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      : 'bg-muted text-muted-foreground hover:bg-accent'
                   )}
                 >
                   {opt.label}
@@ -412,15 +412,15 @@ function ContentsContent() {
             </div>
           </div>
 
-          <div className="h-4 w-px bg-gray-200" />
+          <div className="h-4 w-px bg-border" />
 
           {/* 서비스 */}
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-gray-400">서비스</span>
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">서비스</span>
             <select
               value={svc}
               onChange={(e) => updateParam('svc', e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-gray-700 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:text-gray-400"
+              className="rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-7 text-xs text-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:text-muted-foreground"
               disabled={services.length === 0}
             >
               <option value="">전체</option>
@@ -434,11 +434,11 @@ function ContentsContent() {
 
           {/* 출처 */}
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-gray-400">출처</span>
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>
             <select
               value={src}
               onChange={(e) => updateParam('src', e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-gray-700 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:text-gray-400"
+              className="rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-7 text-xs text-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:text-muted-foreground"
               disabled={sources.length === 0}
             >
               <option value="">전체</option>
@@ -452,19 +452,19 @@ function ContentsContent() {
 
           {/* 키워드 */}
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-gray-400">키워드</span>
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">키워드</span>
             <div className="relative">
               <input
                 type="text"
                 value={kwInput}
                 onChange={(e) => handleKwChange(e.target.value)}
                 placeholder="예: AI 에이전트"
-                className="w-32 rounded-lg border border-gray-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-gray-700 placeholder-gray-400 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                className="w-32 rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-7 text-xs text-foreground placeholder-muted-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100"
               />
               {kwInput && (
                 <button
                   onClick={() => { setKwInput(''); updateParam('kw', '') }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   aria-label="키워드 지우기"
                 >
                   <X className="h-3 w-3" />
@@ -476,8 +476,8 @@ function ContentsContent() {
 
         {/* 활성 필터 chips */}
         {activeFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-50 pt-3">
-            <span className="text-[11px] text-gray-400">적용 중:</span>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <span className="text-[11px] text-muted-foreground">적용 중:</span>
             {activeFilters.map((f) => (
               <FilterChip
                 key={f.key}
@@ -493,7 +493,7 @@ function ContentsContent() {
                 setKwInput('')
                 router.push(pathname)
               }}
-              className="text-[11px] text-gray-400 underline hover:text-gray-600"
+              className="text-[11px] text-muted-foreground underline hover:text-foreground"
             >
               전체 초기화
             </button>
@@ -509,10 +509,10 @@ function ContentsContent() {
           ))}
         </div>
       ) : items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-gray-100 bg-white py-24 text-center">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <span className="text-4xl">📭</span>
-          <p className="text-sm font-medium text-gray-700">해당하는 콘텐츠가 없습니다</p>
-          <p className="text-xs text-gray-400">필터 조건을 변경해보세요</p>
+          <p className="text-sm font-medium text-foreground">해당하는 콘텐츠가 없습니다</p>
+          <p className="text-xs text-muted-foreground">필터 조건을 변경해보세요</p>
         </div>
       ) : (
         <>
@@ -528,7 +528,7 @@ function ContentsContent() {
               <button
                 onClick={handleLoadMore}
                 disabled={isLoading}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600 disabled:opacity-50"
               >
                 {isLoading ? (
                   <>
@@ -551,7 +551,7 @@ function ContentsContent() {
 
 export default function ContentsPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-gray-400">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">로딩 중...</div>}>
       <ContentsContent />
     </Suspense>
   )

@@ -56,14 +56,14 @@ export default function EmailArchiveWidget() {
   }
 
   return (
-    <div className="rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 to-pink-50 px-6 py-5">
+    <div className="rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 to-pink-50 dark:from-card dark:to-card px-6 py-5">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-lg">📩</span>
-            <h2 className="text-sm font-semibold text-gray-900">아카이빙 콘텐츠 메일로 받기</h2>
+            <h2 className="text-sm font-semibold text-foreground">아카이빙 콘텐츠 메일로 받기</h2>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             담아둔 아카이브를 골라 등록된 이메일로 바로 보내보세요
           </p>
         </div>
@@ -82,7 +82,7 @@ export default function EmailArchiveWidget() {
           ))}
         </div>
       ) : archives.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-brand-200 bg-white/60 px-4 py-5 text-center text-xs text-gray-500">
+        <p className="rounded-xl border border-dashed border-brand-200 bg-background/60 px-4 py-5 text-center text-xs text-muted-foreground">
           아직 담아둔 아카이브가 없습니다. 콘텐츠 상세에서 &quot;아카이빙 담기&quot;를 눌러 보세요.
         </p>
       ) : (
@@ -90,11 +90,11 @@ export default function EmailArchiveWidget() {
           {archives.map((a) => (
             <div
               key={a.id}
-              className="flex w-48 shrink-0 flex-col justify-between rounded-xl border border-brand-100 bg-white px-3 py-2.5"
+              className="flex w-48 shrink-0 flex-col justify-between rounded-xl border border-brand-100 bg-card px-3 py-2.5"
             >
               <div>
-                <p className="truncate text-xs font-medium text-gray-800">{a.name}</p>
-                <span className="text-[10px] text-gray-400">{a.itemCount}건</span>
+                <p className="truncate text-xs font-medium text-foreground">{a.name}</p>
+                <span className="text-[10px] text-muted-foreground">{a.itemCount}건</span>
               </div>
               <button
                 onClick={() => handleSend(a.id)}

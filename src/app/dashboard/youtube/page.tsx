@@ -45,7 +45,7 @@ function VideoCard({ video }: { video: VideoRow }) {
       className="group block"
     >
       {/* 썸네일 */}
-      <div className="relative mb-3 overflow-hidden rounded-2xl bg-gray-100">
+      <div className="relative mb-3 overflow-hidden rounded-2xl bg-muted">
         {video.thumbnail_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
@@ -56,8 +56,8 @@ function VideoCard({ video }: { video: VideoRow }) {
           />
         ) : (
           /* 썸네일 없을 때 폴백 */
-          <div className="flex aspect-video w-full items-center justify-center bg-gray-200">
-            <svg className="h-10 w-10 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+          <div className="flex aspect-video w-full items-center justify-center bg-muted">
+            <svg className="h-10 w-10 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
@@ -73,11 +73,11 @@ function VideoCard({ video }: { video: VideoRow }) {
       </div>
 
       {/* 정보 */}
-      <p className="mb-1.5 line-clamp-2 text-sm font-medium leading-snug text-gray-900 group-hover:text-brand-600">
+      <p className="mb-1.5 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
         {video.title}
       </p>
-      <div className="flex items-center gap-1.5 text-xs text-gray-400">
-        <span className="font-medium text-gray-500">{video.channel_name}</span>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="font-medium text-muted-foreground">{video.channel_name}</span>
         <span>·</span>
         <span>{formatDate(video.published_at)}</span>
       </div>
@@ -119,12 +119,12 @@ export default async function YoutubePage() {
   return (
     <div className="px-4 py-6 sm:px-6">
       {/* Breadcrumb */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
+      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/dashboard" className="transition-colors hover:text-brand-600">
           대시보드
         </Link>
         <span>›</span>
-        <span className="font-medium text-gray-700">유튜브 영상</span>
+        <span className="font-medium text-foreground">유튜브 영상</span>
       </div>
 
       {/* 헤더 */}
@@ -133,17 +133,17 @@ export default async function YoutubePage() {
           ▶
         </span>
         <div>
-          <h1 className="text-lg font-bold text-gray-900">유튜브 영상</h1>
-          <p className="text-xs text-gray-400">전체 · {videos.length}개 영상</p>
+          <h1 className="text-lg font-bold text-foreground">유튜브 영상</h1>
+          <p className="text-xs text-muted-foreground">전체 · {videos.length}개 영상</p>
         </div>
       </div>
 
       {/* 영상 그리드 */}
       {videos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-white py-20 text-center">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card py-20 text-center">
           <span className="text-4xl">📭</span>
-          <p className="text-sm font-medium text-gray-500">아직 수집된 유튜브 영상이 없습니다.</p>
-          <p className="text-xs text-gray-400">어드민에서 유튜브 채널 소스를 추가하세요.</p>
+          <p className="text-sm font-medium text-muted-foreground">아직 수집된 유튜브 영상이 없습니다.</p>
+          <p className="text-xs text-muted-foreground">어드민에서 유튜브 채널 소스를 추가하세요.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

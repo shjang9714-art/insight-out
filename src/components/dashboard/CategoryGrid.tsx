@@ -31,7 +31,7 @@ const CATEGORY_DEFS: {
 ]
 
 const ITEM_CLASS =
-  'flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white p-4 text-center transition-all hover:border-brand-200 hover:shadow-sm group'
+  'flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-4 text-center transition-all hover:border-brand-200 hover:shadow-sm group'
 
 interface Props {
   activeService?: string
@@ -75,10 +75,10 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
         const inner = (
           <>
             <span className="text-2xl">{cat.icon}</span>
-            <span className="text-xs font-medium leading-tight text-gray-700 group-hover:text-brand-600">
+            <span className="text-xs font-medium leading-tight text-foreground group-hover:text-brand-600">
               {cat.label}
             </span>
-            <span className="text-[11px] text-gray-400">{todayText}</span>
+            <span className="text-[11px] text-muted-foreground">{todayText}</span>
           </>
         )
 

@@ -121,9 +121,9 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
       : '/dashboard/contents'
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-5">
+    <div className="rounded-2xl border border-border bg-card p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">최근 피드</h2>
+        <h2 className="text-sm font-semibold text-foreground">최근 피드</h2>
         <Link href={contentsHref} className="text-xs text-brand-600 hover:underline">
           전체 보기
         </Link>
@@ -134,24 +134,24 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse space-y-1.5">
               <div className="flex gap-2">
-                <div className="h-4 w-14 rounded-full bg-gray-100" />
-                <div className="h-4 w-16 rounded-full bg-gray-100" />
+                <div className="h-4 w-14 rounded-full bg-muted" />
+                <div className="h-4 w-16 rounded-full bg-muted" />
               </div>
-              <div className="h-4 w-full rounded bg-gray-100" />
-              <div className="h-4 w-5/6 rounded bg-gray-100" />
-              <div className="h-3 w-1/3 rounded bg-gray-100" />
+              <div className="h-4 w-full rounded bg-muted" />
+              <div className="h-4 w-5/6 rounded bg-muted" />
+              <div className="h-3 w-1/3 rounded bg-muted" />
             </div>
           ))}
         </div>
       ) : items.length === 0 ? (
-        <p className="py-8 text-center text-xs text-gray-400">
+        <p className="py-8 text-center text-xs text-muted-foreground">
           해당 서비스의 최근 피드가 없습니다
         </p>
       ) : (
-        <div className="flex flex-col divide-y divide-gray-50">
+        <div className="flex flex-col divide-y divide-border">
           {items.map((item) => {
             const catColor =
-              CATEGORY_COLOR[item.category] ?? 'bg-gray-100 text-gray-600'
+              CATEGORY_COLOR[item.category] ?? 'bg-muted text-muted-foreground'
             const isYoutube = item.category === '유튜브'
             const itemContent = (
               <>
@@ -162,20 +162,20 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
                     {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
                   </span>
                   {item.sources?.name && (
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                       {item.sources.name}
                     </span>
                   )}
                 </div>
-                <p className="mb-1 line-clamp-2 text-sm font-medium leading-snug text-gray-900 group-hover:text-brand-600">
+                <p className="mb-1 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
                   {item.title}
                 </p>
                 {item.summary_ko && (
-                  <p className="mb-1.5 line-clamp-1 text-xs text-gray-500">
+                  <p className="mb-1.5 line-clamp-1 text-xs text-muted-foreground">
                     {item.summary_ko}
                   </p>
                 )}
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-muted-foreground">
                   {item.published_at
                     ? `발행 ${timeAgo(item.published_at)}`
                     : '발행일 미상'}

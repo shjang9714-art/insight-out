@@ -17,7 +17,7 @@ export default function ServiceTabs({ activeService, onChange }: Props) {
           className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
             activeService === service.id
               ? 'bg-brand-600 text-white'
-              : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              : 'bg-card text-muted-foreground border border-border hover:border-border hover:bg-accent'
           }`}
         >
           {service.label}

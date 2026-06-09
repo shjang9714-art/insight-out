@@ -46,14 +46,14 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
       {/* ── 영구 상단 네비게이션 (카테고리·서비스·검색) ─────────────────── */}
       {!hideTopNav && (
-        <div className="border-b border-gray-100 bg-white px-4 py-4 sm:px-6">
+        <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
           <CategoryGrid activeService={activeService} />
-          <div className="mt-3 space-y-2.5 border-t border-gray-100 pt-3">
+          <div className="mt-3 space-y-2.5 border-t border-border pt-3">
             <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
             <SearchBar />
           </div>
@@ -74,7 +74,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               onClick={() => setSidebarOpen(false)}
               aria-hidden="true"
             />
-            <div className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-white lg:hidden">
+            <div className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-card lg:hidden">
               <Sidebar onClose={() => setSidebarOpen(false)} />
             </div>
           </>
@@ -90,7 +90,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
       <DashboardShell>{children}</DashboardShell>
     </Suspense>
   )
