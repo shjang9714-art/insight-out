@@ -63,23 +63,24 @@ export default function CategoryGrid() {
           <Link
             key={cat.id}
             href={href}
-            className={`flex min-w-0 flex-1 flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-colors ${
+            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
               isActive
                 ? 'border-brand-600 text-brand-600'
                 : 'border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'
             }`}
           >
-            <span className="text-base leading-none">{cat.icon}</span>
-            <span className="text-center text-[10px] font-medium leading-tight">{cat.label}</span>
+            {/* 오늘 건수 — 좌측 상단 뱃지 */}
             {count > 0 && (
               <span
-                className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
-                  isActive ? 'bg-brand-600 text-white' : 'bg-brand-100 text-brand-700'
+                className={`absolute left-1 top-1 flex min-w-[16px] items-center justify-center rounded-full px-1 py-0.5 text-[9px] font-bold leading-none ${
+                  isActive ? 'bg-brand-600 text-white' : 'bg-brand-500 text-white'
                 }`}
               >
                 {count}
               </span>
             )}
+            <span className="text-xl leading-none">{cat.icon}</span>
+            <span className="text-center text-xs font-medium leading-tight">{cat.label}</span>
           </Link>
         )
       })}
