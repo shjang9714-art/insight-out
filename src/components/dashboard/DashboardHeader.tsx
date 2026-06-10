@@ -3,11 +3,26 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu, Search, Home } from 'lucide-react'
+import { Menu, Search, Home, ChevronRight } from 'lucide-react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { getKstTodayStartIso } from '@/lib/date'
 import SearchBar from '@/components/dashboard/SearchBar'
+import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+
+function getPageLabel(pathname: string, category: string): string | null {
+  if (pathname === '/dashboard') return null
+  if (/^\/dashboard\/contents\/.+/.test(pathname)) return '콘텐츠 상세'
+  if (pathname.startsWith('/dashboard/contents')) {
+    if (!category) return '전체 콘텐츠'
+    return CONTENT_CATEGORY_LABEL[category as ContentCategory] ?? category
+  }
+  if (pathname.startsWith('/dashboard/youtube')) return '유튜브 영상'
+  if (pathname.startsWith('/dashboard/search'))  return '검색'
+  if (pathname.startsWith('/dashboard/mypage'))  return '마이페이지'
+  return null
+}
 
 interface Props {
   onMenuClick?: () => void
@@ -55,6 +70,11 @@ function markRead(id: string) {
 }
 
 export default function DashboardHeader({ onMenuClick }: Props) {
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+  const category     = searchParams.get('category') ?? ''
+  const pageLabel    = getPageLabel(pathname, category)
+
   const [showNotifications, setShowNotifications] = useState(false)
   const [userName, setUserName]   = useState('—')
   const [userTeam, setUserTeam]   = useState('')
@@ -160,15 +180,25 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             />
             <span className="font-semibold text-foreground">Insight Out</span>
           </Link>
-          {/* 홈버튼 (명시적 대시보드 이동) */}
-          <Link
-            href="/dashboard"
-            className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
-            aria-label="홈으로"
-          >
-            <Home className="h-4 w-4" />
-            <span>홈</span>
-          </Link>
+          {/* 홈 + 브레드크럼 */}
+          <div className="hidden items-center gap-0.5 lg:flex">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="홈으로"
+            >
+              <Home className="h-3.5 w-3.5" />
+              <span>홈</span>
+            </Link>
+            {pageLabel && (
+              <>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-border" />
+                <span className="rounded-lg px-2 py-1.5 text-xs font-semibold text-brand-600">
+                  {pageLabel}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* 중앙: 검색 (md+) */}

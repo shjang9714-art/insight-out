@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react'
+import { Suspense, useState, useEffect, useCallback, useMemo, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -31,11 +31,6 @@ interface ServiceOption {
   icon?: string | null
 }
 
-interface SourceOption {
-  id: string
-  name: string
-}
-
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
 const DATE_OPTIONS = [
@@ -49,16 +44,6 @@ type DateFilter = (typeof DATE_OPTIONS)[number]['value']
 type ContentView = 'card' | 'list'
 const VIEW_KEY = 'io:content-view'
 
-const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
-  '뉴스':      'bg-blue-50 text-blue-700 border-blue-100',
-  '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
-  'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
-  '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
-  '오피니언':  'bg-green-50 text-green-700 border-green-100',
-  '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
-  'AI보고서':  'bg-pink-50 text-pink-700 border-pink-100',
-  '유튜브':    'bg-red-50 text-red-700 border-red-100',
-}
 
 const PAGE_SIZE = 20
 
@@ -151,7 +136,6 @@ function SkeletonRow() {
 }
 
 function ContentCard({ item }: { item: ContentItem }) {
-  const catStyle  = CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground'
   const dateStr   = formatDate(item.published_at)
   const isYoutube = item.category === '유튜브'
   const keywords  = getKeywords(item).slice(0, 4)
@@ -160,11 +144,11 @@ function ContentCard({ item }: { item: ContentItem }) {
     <div className="flex h-full flex-col p-5">
       {/* 상단: 해시태그 라벨 */}
       {keywords.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
+        <div className="mb-2.5 flex flex-wrap gap-1">
           {keywords.map((kw) => (
             <span
               key={kw}
-              className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400"
+              className="rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400"
             >
               #{kw}
             </span>
@@ -172,18 +156,15 @@ function ContentCard({ item }: { item: ContentItem }) {
         </div>
       )}
 
-      {/* 중간: 카테고리 배지 + 제목 */}
+      {/* 중간: 에디터픽 배지 + 제목 */}
       <div className="mb-3">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${catStyle}`}>
-            {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
-          </span>
-          {item.is_editor_pick && (
-            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+        {item.is_editor_pick && (
+          <div className="mb-1.5">
+            <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
               ⭐ 에디터 픽
             </span>
-          )}
-        </div>
+          </div>
+        )}
         <h2 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
           {item.title}
         </h2>
@@ -251,8 +232,6 @@ function ContentsContent() {
   const date     = (searchParams.get('date') ?? 'all') as DateFilter
   const svcParam = searchParams.get('svc') ?? ''
   const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
-  const src      = searchParams.get('src') ?? ''
-  const kw       = searchParams.get('kw') ?? ''
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
@@ -260,10 +239,7 @@ function ContentsContent() {
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
   const [services, setServices]   = useState<ServiceOption[]>([])
-  const [sources, setSources]     = useState<SourceOption[]>([])
-  const [kwInput, setKwInput]     = useState(kw)
   const [contentView, setContentView] = useState<ContentView>('card')
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
   useEffect(() => {
@@ -287,35 +263,11 @@ function ContentsContent() {
     [router, pathname, searchParams]
   )
 
-  // ── 서비스 pill 토글 ────────────────────────────────────────────────────────
-  const toggleService = useCallback(
-    (id: string) => {
-      const next = svcIds.includes(id)
-        ? svcIds.filter((s) => s !== id)
-        : [...svcIds, id]
-      updateParam('svc', next.join(','))
-    },
-    [svcIds, updateParam]
-  )
-
-  // ── keyword 디바운스 ─────────────────────────────────────────────────────────
-  useEffect(() => { startTransition(() => setKwInput(kw)) }, [kw])
-
-  const handleKwChange = (val: string) => {
-    setKwInput(val)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => updateParam('kw', val.trim()), 500)
-  }
-
-  // ── 서비스·소스 목록 로드 (1회) ──────────────────────────────────────────────
+  // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient()
-    Promise.all([
-      supabase.from('services').select('id, name, icon').order('order'),
-      supabase.from('sources').select('id, name').order('name'),
-    ]).then(([{ data: svcs }, { data: srcs }]) => {
-      if (svcs) setServices(svcs as ServiceOption[])
-      if (srcs) setSources(srcs as SourceOption[])
+    supabase.from('services').select('id, name, icon').order('order').then(({ data }) => {
+      if (data) setServices(data as ServiceOption[])
     })
   }, [])
 
@@ -337,26 +289,7 @@ function ContentsContent() {
         svcContentIds = [...new Set(data?.map((r) => r.content_id) ?? [])]
       }
 
-      // ② 키워드 필터: content_ids 구하기
-      let kwContentIds: string[] | null = null
-      if (kw) {
-        const { data: kwRows } = await supabase
-          .from('keywords')
-          .select('id')
-          .ilike('name', `%${kw}%`)
-        const kwIds = kwRows?.map((k) => k.id) ?? []
-        if (kwIds.length > 0) {
-          const { data: ckRows } = await supabase
-            .from('content_keywords')
-            .select('content_id')
-            .in('keyword_id', kwIds)
-          kwContentIds = [...new Set(ckRows?.map((r) => r.content_id) ?? [])]
-        } else {
-          kwContentIds = []
-        }
-      }
-
-      if (svcContentIds?.length === 0 || kwContentIds?.length === 0) {
+      if (svcContentIds?.length === 0) {
         if (!cancelled) {
           if (page === 1) setItems([])
           setTotal(0)
@@ -376,13 +309,11 @@ function ContentsContent() {
         .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-      if (category)      q = q.eq('category', category)
-      if (src)           q = q.eq('source_id', src)
+      if (category) q = q.eq('category', category)
 
       const dateStart = getDateStart(date)
-      if (dateStart)       q = q.gte('published_at', dateStart)
-      if (svcContentIds)   q = q.in('id', svcContentIds)
-      if (kwContentIds)    q = q.in('id', kwContentIds)
+      if (dateStart)      q = q.gte('published_at', dateStart)
+      if (svcContentIds)  q = q.in('id', svcContentIds)
 
       const { data, count, error } = await q
 
@@ -400,7 +331,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, src, kw, page])
+  }, [category, date, svcIds, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -420,23 +351,12 @@ function ContentsContent() {
     activeFilters.push({
       key: `svc-${id}`,
       label: `사업: ${svcName}`,
-      onRemove: () => toggleService(id),
+      onRemove: () => {
+        const next = svcIds.filter((x) => x !== id)
+        updateParam('svc', next.join(','))
+      },
     })
   }
-
-  if (src) {
-    const srcName = sources.find((s) => s.id === src)?.name ?? '출처'
-    activeFilters.push({
-      key: 'src',
-      label: `출처: ${srcName}`,
-      onRemove: () => updateParam('src', ''),
-    })
-  }
-  if (kw) activeFilters.push({
-    key: 'kw',
-    label: `키워드: ${kw}`,
-    onRemove: () => { setKwInput(''); updateParam('kw', '') },
-  })
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
   const pageTitle = category
@@ -512,50 +432,6 @@ function ContentsContent() {
             </div>
           </div>
 
-          <div className="h-4 w-px self-center bg-border" />
-
-          {/* 출처 */}
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>
-            <select
-              value={src}
-              onChange={(e) => updateParam('src', e.target.value)}
-              className="rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-7 text-xs text-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:text-muted-foreground"
-              disabled={sources.length === 0}
-            >
-              <option value="">전체</option>
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="h-4 w-px self-center bg-border" />
-
-          {/* 키워드 */}
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">키워드</span>
-            <div className="relative">
-              <input
-                type="text"
-                value={kwInput}
-                onChange={(e) => handleKwChange(e.target.value)}
-                placeholder="예: AI 에이전트"
-                className="w-32 rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-7 text-xs text-foreground placeholder-muted-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100"
-              />
-              {kwInput && (
-                <button
-                  onClick={() => { setKwInput(''); updateParam('kw', '') }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label="키워드 지우기"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* 사업키워드(서비스) 멀티셀렉트 pill 행 */}
@@ -579,7 +455,13 @@ function ContentsContent() {
                 return (
                   <button
                     key={s.id}
-                    onClick={() => toggleService(s.id)}
+                    type="button"
+                    onClick={() => {
+                      const next = svcIds.includes(s.id)
+                        ? svcIds.filter((x) => x !== s.id)
+                        : [...svcIds, s.id]
+                      updateParam('svc', next.join(','))
+                    }}
                     className={cn(
                       'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
                       isActive
@@ -600,17 +482,10 @@ function ContentsContent() {
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <span className="text-[11px] text-muted-foreground">적용 중:</span>
             {activeFilters.map((f) => (
-              <FilterChip
-                key={f.key}
-                label={f.label}
-                onRemove={f.onRemove}
-              />
+              <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
             ))}
             <button
-              onClick={() => {
-                setKwInput('')
-                router.push(pathname + (category ? `?category=${encodeURIComponent(category)}` : ''))
-              }}
+              onClick={() => router.push(pathname + (category ? `?category=${encodeURIComponent(category)}` : ''))}
               className="text-[11px] text-muted-foreground underline hover:text-foreground"
             >
               전체 초기화
