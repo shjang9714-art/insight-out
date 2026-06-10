@@ -475,24 +475,6 @@ function ContentsContent() {
 
           <div className="h-4 w-px bg-border" />
 
-          {/* 서비스 */}
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">서비스</span>
-            <select
-              value={svc}
-              onChange={(e) => updateParam('svc', e.target.value)}
-              className="rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-7 text-xs text-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:text-muted-foreground"
-              disabled={services.length === 0}
-            >
-              <option value="">전체</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.icon ? `${s.icon} ${s.name}` : s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* 출처 */}
           <div className="flex items-center gap-2">
             <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>

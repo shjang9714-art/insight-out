@@ -393,7 +393,7 @@ export default function ReportUploadForm() {
           </div>
 
           {/* 카테고리 + 발행일 */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category">
                 카테고리 <span className="text-red-500">*</span>
@@ -428,7 +428,7 @@ export default function ReportUploadForm() {
           </div>
 
           {/* 저자 + 출처 */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="author">
                 저자/기관{' '}

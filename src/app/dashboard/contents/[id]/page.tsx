@@ -161,7 +161,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
 
       {/* 브레드크럼 */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <Link href="/dashboard" className="transition-colors hover:text-brand-600">
           대시보드
         </Link>

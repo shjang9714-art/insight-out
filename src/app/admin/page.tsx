@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { getKstTodayStartIso } from '@/lib/date'
 import {
   FileText,
   Languages,
@@ -57,17 +58,6 @@ const MENU_ITEMS = [
   },
 ]
 
-function getTodayStartInKst(): string {
-  const now = new Date()
-  const kstParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now)
-  return new Date(`${kstParts}T00:00:00+09:00`).toISOString()
-}
-
 export default async function AdminPage() {
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -87,7 +77,7 @@ export default async function AdminPage() {
     }
   )
 
-  const todayStart = getTodayStartInKst()
+  const todayStart = getKstTodayStartIso()
   const [totalResult, todayResult, activeSourcesResult, pendingResult] =
     await Promise.all([
       supabase.from('contents').select('*', { count: 'exact', head: true }),

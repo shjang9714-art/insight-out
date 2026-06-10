@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu } from 'lucide-react'
+import { Menu, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
+import { getKstTodayStartIso } from '@/lib/date'
+import SearchBar from '@/components/dashboard/SearchBar'
 
 interface Props {
   onMenuClick?: () => void
@@ -88,12 +90,6 @@ export default function DashboardHeader({ onMenuClick }: Props) {
     const supabase = createClient()
 
     const load = async () => {
-      // KST 오늘 0시 ISO 문자열 계산
-      const kstOffset = 9 * 60 * 60 * 1000
-      const nowKst = new Date(Date.now() + kstOffset)
-      const kstDateStr = nowKst.toISOString().slice(0, 10) // YYYY-MM-DD
-      const kstMidnightUtc = new Date(`${kstDateStr}T00:00:00+09:00`).toISOString()
-
       // 최근 8건 콘텐츠 (유튜브 제외)
       const { data } = await supabase
         .from('contents')
@@ -114,12 +110,12 @@ export default function DashboardHeader({ onMenuClick }: Props) {
       setNotifications(items)
       setReadIds(getReadIds())
 
-      // 오늘 카운트: 별도 쿼리
+      // 오늘 카운트: 별도 쿼리 (collected_at 기준 — CategoryGrid·어드민과 통일)
       const { count } = await supabase
         .from('contents')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'published')
-        .gte('created_at', kstMidnightUtc)
+        .gte('collected_at', getKstTodayStartIso())
       setTodayCount(count ?? 0)
     }
 
@@ -146,33 +142,49 @@ export default function DashboardHeader({ onMenuClick }: Props) {
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm">
-      <div className="flex h-14 items-center gap-4 px-4 sm:px-5">
-        {/* 모바일 햄버거 버튼 */}
-        <button
-          onClick={onMenuClick}
-          className="rounded-lg p-2 transition-colors hover:bg-accent lg:hidden"
-          aria-label="메뉴 열기"
-        >
-          <Menu className="h-5 w-5 text-muted-foreground" />
-        </button>
+      <div className="flex h-14 items-center px-4 sm:px-5">
+        {/* 좌측: 햄버거(모바일) + 로고 */}
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={onMenuClick}
+            className="rounded-lg p-2 transition-colors hover:bg-accent lg:hidden"
+            aria-label="메뉴 열기"
+          >
+            <Menu className="h-5 w-5 text-muted-foreground" />
+          </button>
+          <Link href="/dashboard" className="flex items-center gap-2 lg:w-52">
+            <Image
+              src="/brand/logo-mark.png"
+              alt="Insight Out"
+              width={32}
+              height={32}
+              priority
+              className="h-8 w-8 shrink-0"
+            />
+            <span className="font-semibold text-foreground">Insight Out</span>
+          </Link>
+        </div>
 
-        {/* Logo */}
-        <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:w-52">
-          <Image
-            src="/brand/logo-mark.png"
-            alt="Insight Out"
-            width={32}
-            height={32}
-            priority
-            className="h-8 w-8 shrink-0"
-          />
-          <span className="font-semibold text-foreground">Insight Out</span>
-        </Link>
+        {/* 중앙: 검색 (md+) */}
+        <div className="mx-4 hidden flex-1 md:block">
+          <div className="mx-auto max-w-md">
+            <SearchBar />
+          </div>
+        </div>
 
-        {/* Right side */}
-        <div className="ml-auto flex shrink-0 items-center gap-4">
+        {/* 우측: 액션 */}
+        <div className="ml-auto flex shrink-0 items-center gap-3 md:ml-0">
+          {/* 모바일 검색 아이콘 */}
+          <Link
+            href="/dashboard/search"
+            className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
+            aria-label="검색"
+          >
+            <Search className="h-5 w-5 text-muted-foreground" />
+          </Link>
+
           {/* Date + updates */}
-          <div className="hidden flex-col items-end md:flex">
+          <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
             {todayCount > 0 && (
               <span className="text-[11px] font-medium text-brand-600">
