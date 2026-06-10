@@ -47,7 +47,7 @@ export default function CategoryGrid() {
   }, [])
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+    <div className="flex items-stretch gap-1.5 overflow-x-auto scrollbar-hide">
       {CATEGORY_DEFS.map((cat) => {
         const href =
           cat.category === null
@@ -63,7 +63,7 @@ export default function CategoryGrid() {
           <Link
             key={cat.id}
             href={href}
-            className={`flex w-16 shrink-0 flex-col items-center gap-1.5 rounded-xl border px-2 py-2.5 transition-colors ${
+            className={`flex min-w-0 flex-1 flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-colors ${
               isActive
                 ? 'border-brand-600 text-brand-600'
                 : 'border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'

@@ -118,98 +118,124 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   )
 }
 
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse rounded-2xl border border-border bg-card p-5">
+      <div className="mb-3 flex gap-1.5">
+        <div className="h-5 w-14 rounded-md bg-muted" />
+        <div className="h-5 w-20 rounded-md bg-muted" />
+      </div>
+      <div className="mb-2 h-5 w-full rounded bg-muted" />
+      <div className="mb-1 h-5 w-4/5 rounded bg-muted" />
+      <div className="mt-3 space-y-1.5">
+        <div className="h-3.5 w-full rounded bg-muted" />
+        <div className="h-3.5 w-5/6 rounded bg-muted" />
+        <div className="h-3.5 w-2/3 rounded bg-muted" />
+      </div>
+      <div className="mt-4 h-3 w-1/3 rounded bg-muted" />
+    </div>
+  )
+}
+
 function SkeletonRow() {
   return (
-    <div className="animate-pulse rounded-xl border border-border bg-card px-5 py-3.5">
-      <div className="mb-1.5 h-4 w-16 rounded-full bg-muted" />
-      <div className="mb-1 h-4 w-3/4 rounded bg-muted" />
-      <div className="h-3 w-1/3 rounded bg-muted" />
+    <div className="animate-pulse rounded-xl border border-border bg-card px-5 py-4">
+      <div className="mb-2 flex gap-1.5">
+        <div className="h-4 w-14 rounded-md bg-muted" />
+        <div className="h-4 w-16 rounded-md bg-muted" />
+      </div>
+      <div className="mb-1.5 h-4 w-3/4 rounded bg-muted" />
+      <div className="h-3 w-1/2 rounded bg-muted" />
     </div>
   )
 }
 
 function ContentCard({ item }: { item: ContentItem }) {
-  const catStyle = CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground border-border'
-  const dateStr  = formatDate(item.published_at)
+  const catStyle  = CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground'
+  const dateStr   = formatDate(item.published_at)
   const isYoutube = item.category === '유튜브'
-  const keywords = getKeywords(item).slice(0, 4)
+  const keywords  = getKeywords(item).slice(0, 4)
 
-  const innerContent = (
-    <div className="min-w-0 flex-1">
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <span
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${catStyle}`}
-        >
-          {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
-        </span>
-        {item.is_editor_pick && (
-          <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-            ⭐ 에디터 픽
-          </span>
-        )}
-      </div>
-
-      <h2 className="mb-1.5 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-        {item.title}
-      </h2>
-
-      {item.summary_ko && (
-        <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-          {item.summary_ko}
-        </p>
-      )}
-
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
-        {item.sources?.name && (
-          <span className="font-medium text-muted-foreground">{item.sources.name}</span>
-        )}
-        {item.author && !item.sources?.name && <span>{item.author}</span>}
-        <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
-      </div>
-
+  const inner = (
+    <div className="flex h-full flex-col p-5">
+      {/* 상단: 해시태그 라벨 */}
       {keywords.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mb-3 flex flex-wrap gap-1.5">
           {keywords.map((kw) => (
-            <span key={kw} className="text-[11px] text-brand-600">
+            <span
+              key={kw}
+              className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400"
+            >
               #{kw}
             </span>
           ))}
         </div>
       )}
+
+      {/* 중간: 카테고리 배지 + 제목 */}
+      <div className="mb-3">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${catStyle}`}>
+            {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
+          </span>
+          {item.is_editor_pick && (
+            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              ⭐ 에디터 픽
+            </span>
+          )}
+        </div>
+        <h2 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
+          {item.title}
+        </h2>
+      </div>
+
+      {/* 하단: 요약 발췌 */}
+      {item.summary_ko && (
+        <p className="mb-4 line-clamp-3 flex-1 text-xs leading-relaxed text-muted-foreground">
+          {item.summary_ko}
+        </p>
+      )}
+
+      {/* 풋터: 메타 + 액션 */}
+      <div className="mt-auto flex items-center justify-between gap-2 pt-3 border-t border-border/60">
+        <p className="truncate text-[11px] text-muted-foreground">
+          {[item.sources?.name ?? item.author, dateStr ? `발행 ${dateStr}` : '발행일 미상']
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+        {item.original_url && (
+          <a
+            href={item.original_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+          >
+            <ExternalLink className="h-3 w-3" />
+            원문
+          </a>
+        )}
+        {!item.original_url && item.file_path && (
+          <span className="shrink-0 flex items-center gap-1 rounded-lg border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+            <FileText className="h-3 w-3" />
+            리포트
+          </span>
+        )}
+      </div>
     </div>
   )
 
-  return (
-    <article className="group rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        {isYoutube ? (
-          innerContent
-        ) : (
-          <Link href={`/dashboard/contents/${item.id}`} className="min-w-0 flex-1">
-            {innerContent}
-          </Link>
-        )}
+  const cardClass =
+    'group flex flex-col rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
 
-        <div className="shrink-0 pt-0.5">
-          {item.original_url ? (
-            <a
-              href={item.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              원문
-            </a>
-          ) : item.file_path ? (
-            <span className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
-              <FileText className="h-3.5 w-3.5" />
-              리포트
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </article>
+  if (isYoutube) {
+    return <article className={cardClass}>{inner}</article>
+  }
+
+  return (
+    <Link href={`/dashboard/contents/${item.id}`} className={cardClass}>
+      <article className="h-full">{inner}</article>
+    </Link>
   )
 }
 
@@ -595,11 +621,15 @@ function ContentsContent() {
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
       {isLoading && page === 1 ? (
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonRow key={i} />
-          ))}
-        </div>
+        contentView === 'card' ? (
+          <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
+          </div>
+        )
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <span className="text-4xl">📭</span>
@@ -609,7 +639,7 @@ function ContentsContent() {
       ) : (
         <>
           {contentView === 'card' ? (
-            <div className="space-y-3">
+            <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
               {items.map((item) => (
                 <ContentCard key={item.id} item={item} />
               ))}
