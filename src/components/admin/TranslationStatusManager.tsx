@@ -123,9 +123,9 @@ export default function TranslationStatusManager() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-40 items-center justify-center rounded-xl border border-gray-100 bg-white">
+      <div className="flex min-h-40 items-center justify-center rounded-xl border border-border bg-card">
         <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
-        <span className="ml-2 text-sm text-gray-500">번역 상태를 불러오는 중입니다.</span>
+        <span className="ml-2 text-sm text-muted-foreground">번역 상태를 불러오는 중입니다.</span>
       </div>
     )
   }
@@ -139,17 +139,17 @@ export default function TranslationStatusManager() {
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white">
-        <div className="border-b border-gray-100 px-5 py-4">
-          <p className="text-sm font-medium text-gray-700">
+      <div className="rounded-xl border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <p className="text-sm font-medium text-foreground">
             {period ? `${period} 사용량` : '이번 달 사용량'}
           </p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             키 값은 표시하거나 저장하지 않으며 Vercel 환경변수로만 관리합니다.
           </p>
         </div>
 
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-border">
           {providers.map((provider) => {
             const isUnlimited = provider.name === 'google'
             const percentage = isUnlimited
@@ -164,7 +164,7 @@ export default function TranslationStatusManager() {
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-gray-900">
+                    <h2 className="font-semibold text-foreground">
                       {PROVIDER_LABELS[provider.name]}
                     </h2>
                     <span
@@ -172,7 +172,7 @@ export default function TranslationStatusManager() {
                         'inline-flex items-center gap-1 text-xs font-medium',
                         provider.configured
                           ? 'text-green-700'
-                          : 'text-gray-400'
+                          : 'text-muted-foreground'
                       )}
                     >
                       {provider.configured ? (
@@ -183,7 +183,7 @@ export default function TranslationStatusManager() {
                       {provider.configured ? '연결됨' : '키 미설정'}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                     <KeyRound className="h-3.5 w-3.5" />
                     <span className="font-mono">
                       {PROVIDER_ENV_NAMES[provider.name]}
@@ -193,12 +193,12 @@ export default function TranslationStatusManager() {
 
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       {isUnlimited
                         ? `${NUMBER_FORMATTER.format(provider.used)}자 사용 / 제한 없음`
                         : `${NUMBER_FORMATTER.format(provider.used)} / ${NUMBER_FORMATTER.format(provider.limit)}자`}
                     </span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       {isUnlimited
                         ? '최종 폴백'
                         : `${percentage.toFixed(1)}% · ${NUMBER_FORMATTER.format(provider.remaining)}자 남음`}
@@ -215,7 +215,7 @@ export default function TranslationStatusManager() {
                   <span
                     className={cn(
                       'text-xs font-medium',
-                      provider.enabled ? 'text-green-700' : 'text-gray-400'
+                      provider.enabled ? 'text-green-700' : 'text-muted-foreground'
                     )}
                   >
                     {provider.enabled ? '사용 중' : '중지됨'}

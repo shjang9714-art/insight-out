@@ -437,7 +437,7 @@ export default function SourceManager() {
       {showForm && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-gray-700">
+            <CardTitle className="text-sm font-semibold text-foreground">
               {editingId ? '소스 수정' : '새 소스 추가'}
             </CardTitle>
           </CardHeader>
@@ -495,7 +495,7 @@ export default function SourceManager() {
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-url">
                     사이트 URL{' '}
-                    <span className="text-xs font-normal text-gray-400">(선택)</span>
+                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                   </Label>
                   <Input
                     id="src-url"
@@ -512,7 +512,7 @@ export default function SourceManager() {
                     {needsRssUrl(form.type) ? (
                       <span className="text-[11px] text-red-500">수집에 필요</span>
                     ) : (
-                      <span className="text-xs font-normal text-gray-400">(선택)</span>
+                      <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                     )}
                   </Label>
                   <Input
@@ -536,7 +536,7 @@ export default function SourceManager() {
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-interval">
                     수집 주기(분){' '}
-                    <span className="text-xs font-normal text-gray-400">기본 720 = 12시간</span>
+                    <span className="text-xs font-normal text-muted-foreground">기본 720 = 12시간</span>
                   </Label>
                   <Input
                     id="src-interval"
@@ -554,9 +554,9 @@ export default function SourceManager() {
                       type="checkbox"
                       checked={form.is_active}
                       onChange={(e) => setForm(p => ({ ...p, is_active: e.target.checked }))}
-                      className="h-4 w-4 rounded border-gray-300 accent-[--color-brand-600]"
+                      className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
                     />
-                    <span className="text-sm text-gray-700">활성화 (자동 수집 대상)</span>
+                    <span className="text-sm text-foreground">활성화 (자동 수집 대상)</span>
                   </label>
                 </div>
               </div>
@@ -584,16 +584,16 @@ export default function SourceManager() {
 
       {/* ── 유형 필터 칩 (§A) ── */}
       {!showForm && (
-        <div className="rounded-lg border border-gray-100 bg-white px-4 py-3">
+        <div className="rounded-lg border border-border bg-card px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-gray-700">유형:</span>
+            <span className="text-sm font-medium text-foreground">유형:</span>
             <button
               onClick={clearTypeFilter}
               className={cn(
                 'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                 selectedTypes.size === 0
                   ? 'border-brand-600 bg-brand-600 text-white'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                  : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
               )}
             >
               전체 {sources.length}
@@ -609,7 +609,7 @@ export default function SourceManager() {
                     'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                     selected
                       ? 'border-brand-600 bg-brand-600 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
                   )}
                 >
                   {SOURCE_TYPE_LABELS[type]} {count}
@@ -622,7 +622,7 @@ export default function SourceManager() {
 
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스${selectedTypes.size > 0 ? ` (${filteredSources.length}개 표시)` : ''}`}
         </p>
         <div className="flex items-center gap-2">
@@ -662,23 +662,23 @@ export default function SourceManager() {
 
       {/* ── 목록 테이블 ── */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-gray-400">
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           소스 목록 로드 중...
         </div>
       ) : sources.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           등록된 소스가 없습니다. 소스 추가 버튼으로 첫 번째 소스를 등록해보세요.
         </div>
       ) : filteredSources.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           선택한 유형의 소스가 없습니다.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[700px] text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">유형</th>
                 <th className="px-4 py-3 max-w-[200px]">RSS URL</th>
@@ -688,25 +688,25 @@ export default function SourceManager() {
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {filteredSources.map(src => (
-                <tr key={src.id} className="hover:bg-gray-50/60 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">{src.name}</td>
+                <tr key={src.id} className="hover:bg-accent/50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-foreground">{src.name}</td>
                   <td className="px-4 py-3">
-                    <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
+                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                       {SOURCE_TYPE_LABELS[src.type]}
                     </span>
                   </td>
                   <td className="px-4 py-3 max-w-[200px]">
                     {src.rss_url ? (
                       <span
-                        className="block max-w-[180px] truncate text-xs text-gray-500"
+                        className="block max-w-[180px] truncate text-xs text-muted-foreground"
                         title={src.rss_url}
                       >
                         {src.rss_url}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-muted-foreground/40">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -716,30 +716,30 @@ export default function SourceManager() {
                         'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                         src.is_active
                           ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          : 'bg-muted text-muted-foreground hover:bg-accent'
                       )}
                     >
                       {src.is_active ? '활성' : '비활성'}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
                     {src.crawl_interval_minutes ?? '—'}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                  <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
                     {formatKst(src.last_crawled_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-0.5">
                       <button
                         onClick={() => openEdit(src)}
-                        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                         title="수정"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => handleDelete(src)}
-                        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
                         title="삭제"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -760,7 +760,7 @@ export default function SourceManager() {
       />
 
       {crawlJob && crawlProgress && (
-        <div className="fixed bottom-5 right-5 z-50 w-[calc(100%-2.5rem)] max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+        <div className="fixed bottom-5 right-5 z-50 w-[calc(100%-2.5rem)] max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
               {crawlProgress.status === 'running' ? (
@@ -771,14 +771,14 @@ export default function SourceManager() {
                 <XCircle className="size-5 text-red-600" />
               )}
               <div>
-                <p className="text-sm font-semibold text-gray-900">
+                <p className="text-sm font-semibold text-foreground">
                   {crawlProgress.status === 'running'
                     ? '콘텐츠 수집 중'
                     : crawlProgress.status === 'completed'
                       ? '콘텐츠 수집 완료'
                       : '콘텐츠 수집 확인 필요'}
                 </p>
-                <p className="mt-0.5 text-xs text-gray-500">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   {crawlProgress.completed}/{crawlProgress.sourcesTotal}개 소스 처리
                 </p>
               </div>
@@ -787,7 +787,7 @@ export default function SourceManager() {
               <button
                 type="button"
                 onClick={closeCrawlProgress}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 aria-label="수집 현황 닫기"
               >
                 <X className="size-4" />
@@ -795,7 +795,7 @@ export default function SourceManager() {
             )}
           </div>
 
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
             <div
               className={cn(
                 'h-full rounded-full transition-[width] duration-500',
@@ -808,9 +808,9 @@ export default function SourceManager() {
           </div>
 
           <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg bg-gray-50 px-2 py-2">
-              <p className="text-[10px] text-gray-400">가져옴</p>
-              <p className="text-xs font-semibold text-gray-700">
+            <div className="rounded-lg bg-muted px-2 py-2">
+              <p className="text-[10px] text-muted-foreground">가져옴</p>
+              <p className="text-xs font-semibold text-foreground">
                 {crawlProgress.fetched}
               </p>
             </div>
@@ -820,9 +820,9 @@ export default function SourceManager() {
                 {crawlProgress.inserted}
               </p>
             </div>
-            <div className="rounded-lg bg-gray-50 px-2 py-2">
-              <p className="text-[10px] text-gray-400">중복</p>
-              <p className="text-xs font-semibold text-gray-700">
+            <div className="rounded-lg bg-muted px-2 py-2">
+              <p className="text-[10px] text-muted-foreground">중복</p>
+              <p className="text-xs font-semibold text-foreground">
                 {crawlProgress.duplicates}
               </p>
             </div>
@@ -835,7 +835,7 @@ export default function SourceManager() {
           </div>
 
           {crawlProgress.status === 'running' && (
-            <p className="mt-3 truncate text-xs text-gray-500">
+            <p className="mt-3 truncate text-xs text-muted-foreground">
               {crawlProgress.latestSource
                 ? `최근 완료: ${crawlProgress.latestSource}`
                 : '활성 소스 연결을 준비하고 있습니다.'}

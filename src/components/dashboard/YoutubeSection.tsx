@@ -55,14 +55,14 @@ export default async function YoutubeSection() {
   if (videos.length === 0) return null
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-5">
+    <div className="rounded-2xl border border-border bg-card p-5">
       {/* 섹션 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="flex h-5 w-5 items-center justify-center rounded bg-red-600 text-[10px] font-bold text-white">
             ▶
           </span>
-          <h2 className="text-sm font-semibold text-gray-900">유튜브 영상</h2>
+          <h2 className="text-sm font-semibold text-foreground">유튜브 영상</h2>
         </div>
         <Link
           href="/dashboard/youtube"
@@ -85,7 +85,7 @@ export default async function YoutubeSection() {
               className="group block"
             >
               {/* 썸네일 */}
-              <div className="relative mb-2.5 overflow-hidden rounded-xl bg-gray-100">
+              <div className="relative mb-2.5 overflow-hidden rounded-xl bg-muted">
                 {video.thumbnail_url ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
@@ -95,8 +95,8 @@ export default async function YoutubeSection() {
                     loading="lazy"
                   />
                 ) : (
-                  <div className="flex aspect-video w-full items-center justify-center bg-gray-200">
-                    <svg className="h-8 w-8 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                  <div className="flex aspect-video w-full items-center justify-center bg-muted">
+                    <svg className="h-8 w-8 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M8 5v14l11-7z" />
                     </svg>
                   </div>
@@ -104,10 +104,10 @@ export default async function YoutubeSection() {
               </div>
 
               {/* 제목·메타 */}
-              <p className="mb-1 line-clamp-2 text-xs font-medium leading-snug text-gray-900 group-hover:text-brand-600">
+              <p className="mb-1 line-clamp-2 text-xs font-medium leading-snug text-foreground group-hover:text-brand-600">
                 {video.title}
               </p>
-              <div className="flex items-center gap-1 text-[11px] text-gray-400">
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <span className="truncate">{video.channel_name}</span>
                 {video.published_at && (
                   <>

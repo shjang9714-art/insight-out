@@ -85,14 +85,14 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
 
 function ArticleBodyFallback({ snippet }: { snippet: string }) {
   if (!snippet) {
-    return <p className="text-sm text-gray-400">본문을 불러오는 중입니다…</p>
+    return <p className="text-sm text-muted-foreground">본문을 불러오는 중입니다…</p>
   }
   return (
     <div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {snippet}
       </p>
-      <p className="mt-3 text-xs text-gray-400">본문 불러오는 중…</p>
+      <p className="mt-3 text-xs text-muted-foreground">본문 불러오는 중…</p>
     </div>
   )
 }
@@ -118,11 +118,11 @@ async function ArticleBody({ content }: { content: ContentDetail }) {
   })
 
   return body ? (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
       {body}
     </p>
   ) : (
-    <p className="text-sm text-gray-400">본문 내용을 불러올 수 없습니다.</p>
+    <p className="text-sm text-muted-foreground">본문 내용을 불러올 수 없습니다.</p>
   )
 }
 
@@ -190,7 +190,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
   // 뉴스 분기: ensureFullBody 는 ArticleBody 안에서 스트리밍 — 이 시점엔 호출하지 않음
 
   const catStyle =
-    CATEGORY_STYLE[content.category] ?? 'bg-gray-50 text-gray-600 border-gray-100'
+    CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
 
   const serviceNames = content.content_services
     .map((cs) => cs.services?.name)
@@ -206,7 +206,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
 
       {/* 브레드크럼 */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
+      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/dashboard" className="transition-colors hover:text-brand-600">
           대시보드
         </Link>
@@ -215,7 +215,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
           전체 콘텐츠
         </Link>
         <span>›</span>
-        <span className="line-clamp-1 max-w-[200px] font-medium text-gray-700">
+        <span className="line-clamp-1 max-w-[200px] font-medium text-foreground">
           {content.title}
         </span>
       </div>
@@ -231,7 +231,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
             {CONTENT_CATEGORY_LABEL[content.category] ?? content.category}
           </span>
           {content.original_language === 'en' && (
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
+            <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
               영어 원문
             </span>
           )}
@@ -246,9 +246,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
               htmlToPlainText(content.body_original ?? '')
             )}
           >
-            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               {content.sources?.name && (
-                <span className="font-medium text-gray-700">{content.sources.name}</span>
+                <span className="font-medium text-foreground">{content.sources.name}</span>
               )}
               {content.author && <span>{content.author}</span>}
               <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
@@ -267,7 +267,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 {keywordNames.map((name) => (
                   <span
                     key={name}
-                    className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] text-gray-600"
+                    className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
                   >
                     #{name}
                   </span>
@@ -275,17 +275,17 @@ export default async function ContentDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            <div className="mb-6 border-t border-gray-100" />
+            <div className="mb-6 border-t border-border" />
           </TranslatedArticle>
         ) : (
           <>
-            <h1 className="mb-4 text-xl font-bold leading-snug text-gray-900">
+            <h1 className="mb-4 text-xl font-bold leading-snug text-foreground">
               {content.title}
             </h1>
 
-            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               {content.sources?.name && (
-                <span className="font-medium text-gray-700">{content.sources.name}</span>
+                <span className="font-medium text-foreground">{content.sources.name}</span>
               )}
               {content.author && <span>{content.author}</span>}
               <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
@@ -304,7 +304,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 {keywordNames.map((name) => (
                   <span
                     key={name}
-                    className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] text-gray-600"
+                    className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
                   >
                     #{name}
                   </span>
@@ -312,12 +312,12 @@ export default async function ContentDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            <div className="mb-6 border-t border-gray-100" />
+            <div className="mb-6 border-t border-border" />
 
             {isReport ? (
               <>
                 {content.summary_ko && (
-                  <p className="mb-6 text-sm leading-relaxed text-gray-600">
+                  <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
                     {content.summary_ko}
                   </p>
                 )}
@@ -327,7 +327,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                   <div>
                     <iframe
                       src={signedUrl}
-                      className="w-full rounded-lg border border-gray-200"
+                      className="w-full rounded-lg border border-border"
                       style={{ height: '80vh' }}
                       title={content.title}
                     />
@@ -336,7 +336,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                         href={signedUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
                       >
                         <ExternalLink className="h-4 w-4" />
                         새 탭에서 열기
@@ -345,13 +345,13 @@ export default async function ContentDetailPage({ params }: PageProps) {
                   </div>
                 ) : signedUrl && !isPdf ? (
               /* PDF 외 파일: 다운로드 안내 */
-                  <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-gray-200 py-12 text-center">
-                    <FileText className="h-10 w-10 text-gray-300" />
-                    <p className="text-sm text-gray-500">이 파일은 미리보기를 지원하지 않습니다.</p>
+                  <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-12 text-center">
+                    <FileText className="h-10 w-10 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">이 파일은 미리보기를 지원하지 않습니다.</p>
                     <a
                       href={signedUrl}
                       download
-                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
                     >
                       <Download className="h-4 w-4" />
                       파일 다운로드
@@ -359,7 +359,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                   </div>
                 ) : (
               /* 서명 URL 생성 실패 */
-                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-400">
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                     파일을 불러올 수 없습니다.
                   </div>
                 )}
@@ -379,10 +379,10 @@ export default async function ContentDetailPage({ params }: PageProps) {
         )}
 
         {/* 하단 액션 */}
-        <div className="mt-10 flex items-center justify-between border-t border-gray-100 pt-6">
+        <div className="mt-10 flex items-center justify-between border-t border-border pt-6">
           <Link
             href="/dashboard/contents"
-            className="flex items-center gap-1.5 text-sm text-gray-500 transition-colors hover:text-brand-600"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
           >
             <ArrowLeft className="h-4 w-4" />
             목록으로
@@ -401,7 +401,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 href={content.original_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
               >
                 <ExternalLink className="h-4 w-4" />
                 원문 보기

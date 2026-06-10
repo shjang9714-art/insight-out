@@ -234,14 +234,14 @@ export default function KeywordManager() {
                 className={
                   count === 0
                     ? 'rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-600'
-                    : 'rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600'
+                    : 'rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground'
                 }
               >
                 {s.name} {count}개
               </span>
             )
           })}
-          <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-400">
+          <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
             미지정 {serviceCounts[''] ?? 0}개
           </span>
         </div>
@@ -251,7 +251,7 @@ export default function KeywordManager() {
       {showForm && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-gray-700">
+            <CardTitle className="text-sm font-semibold text-foreground">
               {editingId ? '키워드 수정' : '새 키워드 추가'}
             </CardTitle>
           </CardHeader>
@@ -280,7 +280,7 @@ export default function KeywordManager() {
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="kw-service">
                     서비스{' '}
-                    <span className="text-xs font-normal text-gray-400">(선택)</span>
+                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                   </Label>
                   <Select
                     value={form.service_id || '__none__'}
@@ -310,10 +310,10 @@ export default function KeywordManager() {
                     type="checkbox"
                     checked={form.is_competitor}
                     onChange={(e) => setForm(p => ({ ...p, is_competitor: e.target.checked }))}
-                    className="h-4 w-4 rounded border-gray-300 accent-[--color-brand-600]"
+                    className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
                   />
-                  <span className="text-sm text-gray-700">경쟁사 키워드</span>
-                  <span className="text-xs text-gray-400">(경쟁사 분석 태깅에 사용)</span>
+                  <span className="text-sm text-foreground">경쟁사 키워드</span>
+                  <span className="text-xs text-muted-foreground">(경쟁사 분석 태깅에 사용)</span>
                 </label>
               </div>
 
@@ -340,7 +340,7 @@ export default function KeywordManager() {
 
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           {isLoading ? '불러오는 중…' : `총 ${keywords.length}개 키워드`}
         </p>
         {!showForm && (
@@ -353,36 +353,36 @@ export default function KeywordManager() {
 
       {/* ── 목록 테이블 ── */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-gray-400">
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           키워드 목록 로드 중...
         </div>
       ) : keywords.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           등록된 키워드가 없습니다. 키워드 추가 버튼으로 첫 번째 키워드를 등록해보세요.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[600px] text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">키워드</th>
                 <th className="px-4 py-3">서비스</th>
                 <th className="px-4 py-3">경쟁사</th>
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {keywords.map(kw => (
-                <tr key={kw.id} className="transition-colors hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-medium text-gray-900">{kw.name}</td>
+                <tr key={kw.id} className="transition-colors hover:bg-accent/50">
+                  <td className="px-4 py-3 font-medium text-foreground">{kw.name}</td>
                   <td className="px-4 py-3">
                     {kw.services?.[0]?.name ? (
-                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                         {kw.services?.[0]?.name}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-muted-foreground/40">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -391,21 +391,21 @@ export default function KeywordManager() {
                         경쟁사
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-muted-foreground/40">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-0.5">
                       <button
                         onClick={() => openEdit(kw)}
-                        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                         title="수정"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => handleDelete(kw)}
-                        className="rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
                         title="삭제"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

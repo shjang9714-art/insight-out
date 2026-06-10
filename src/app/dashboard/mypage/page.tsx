@@ -380,7 +380,7 @@ export default function MyPage() {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-sm text-gray-400">불러오는 중...</p>
+        <p className="text-sm text-muted-foreground">불러오는 중...</p>
       </div>
     )
   }
@@ -391,21 +391,21 @@ export default function MyPage() {
         <button
           type="button"
           onClick={() => router.push('/dashboard')}
-          className="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 transition-colors"
+          className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-600 transition-colors"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           대시보드로 돌아가기
         </button>
-        <h1 className="text-xl font-bold text-gray-900">마이페이지</h1>
-        <p className="mt-1 text-sm text-gray-500">{authEmail}</p>
+        <h1 className="text-xl font-bold text-foreground">마이페이지</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{authEmail}</p>
       </div>
 
       <div className="space-y-6">
         {/* 프로필 정보 */}
-        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-base font-semibold text-gray-900">프로필 정보</h2>
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-5 text-base font-semibold text-foreground">프로필 정보</h2>
 
           <form onSubmit={handleProfileSave} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -449,7 +449,7 @@ export default function MyPage() {
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="position">
-                직책 <span className="text-xs font-normal text-gray-400">(선택)</span>
+                직책 <span className="text-xs font-normal text-muted-foreground">(선택)</span>
               </Label>
               <Input
                 id="position"
@@ -478,7 +478,7 @@ export default function MyPage() {
                         'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all',
                         isSelected
                           ? 'border-blue-500 bg-blue-50 text-blue-900'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                          : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
                       )}
                     >
                       {opt.label}
@@ -503,16 +503,16 @@ export default function MyPage() {
         </section>
 
         {/* 담당 서비스 */}
-        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5">
-            <h2 className="text-base font-semibold text-gray-900">담당 서비스</h2>
-            <p className="mt-1 text-xs text-gray-500">
+            <h2 className="text-base font-semibold text-foreground">담당 서비스</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
               담당하거나 관심 있는 서비스를 선택하세요. 인사이동 시 여기서 업데이트하세요.
             </p>
           </div>
 
           {services.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">등록된 서비스가 없습니다.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">등록된 서비스가 없습니다.</p>
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {services.map((svc) => {
@@ -526,13 +526,13 @@ export default function MyPage() {
                       'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-all',
                       isSelected
                         ? 'border-blue-500 bg-blue-50 text-blue-900'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
                     )}
                   >
                     {svc.icon && <span className="text-lg">{svc.icon}</span>}
                     <span className="text-sm font-medium leading-tight">{svc.name}</span>
                     {svc.description && (
-                      <span className="text-xs text-gray-400 line-clamp-1">{svc.description}</span>
+                      <span className="text-xs text-muted-foreground line-clamp-1">{svc.description}</span>
                     )}
                   </button>
                 )
@@ -555,21 +555,21 @@ export default function MyPage() {
         </section>
 
         {/* 뉴스레터 설정 */}
-        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-base font-semibold text-gray-900">뉴스레터 설정</h2>
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-5 text-base font-semibold text-foreground">뉴스레터 설정</h2>
 
           <form onSubmit={handleNewsletterSave} className="flex flex-col gap-4">
-            <div className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between rounded-xl border border-border p-4">
               <div>
-                <p className="text-sm font-medium text-gray-800">뉴스레터 수신</p>
-                <p className="text-xs text-gray-400 mt-0.5">어드민 설정 일정에 따라 자동 발송됩니다.</p>
+                <p className="text-sm font-medium text-foreground">뉴스레터 수신</p>
+                <p className="text-xs text-muted-foreground mt-0.5">어드민 설정 일정에 따라 자동 발송됩니다.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setNewsletter({ ...newsletter, is_active: !newsletter.is_active })}
                 className={cn(
                   'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                  newsletter.is_active ? 'bg-blue-600' : 'bg-gray-200'
+                  newsletter.is_active ? 'bg-blue-600' : 'bg-muted'
                 )}
                 role="switch"
                 aria-checked={newsletter.is_active}
@@ -588,7 +588,7 @@ export default function MyPage() {
                 <Label htmlFor="newsletter-email">
                   수신 이메일 <span className="text-red-500">*</span>
                 </Label>
-                <p className="text-xs text-gray-500">Gmail 또는 사내 이메일로 받아보실 수 있습니다.</p>
+                <p className="text-xs text-muted-foreground">Gmail 또는 사내 이메일로 받아보실 수 있습니다.</p>
                 <Input
                   id="newsletter-email"
                   type="email"
@@ -617,22 +617,22 @@ export default function MyPage() {
         </section>
 
         {/* 내 북마크 */}
-        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5">
-            <h2 className="text-base font-semibold text-gray-900">내 북마크</h2>
-            <p className="mt-1 text-xs text-gray-500">
+            <h2 className="text-base font-semibold text-foreground">내 북마크</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
               빠르게 다시 볼 콘텐츠와 영상을 모아둔 목록입니다.
             </p>
           </div>
 
           {bookmarksLoading ? (
-            <p className="py-4 text-center text-sm text-gray-400">불러오는 중...</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
           ) : bookmarks.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               아직 저장한 북마크가 없습니다. 콘텐츠 상세 페이지에서 &quot;북마크&quot;를 눌러 보세요.
             </div>
           ) : (
-            <div className="divide-y divide-gray-50 rounded-xl border border-gray-100">
+            <div className="divide-y divide-border rounded-xl border border-border">
               {bookmarks.map((bookmark) => {
                 const content = bookmark.contents
                 const video = bookmark.youtube_videos
@@ -650,7 +650,7 @@ export default function MyPage() {
                       {content ? (
                         <Link
                           href={`/dashboard/contents/${content.id}`}
-                          className="line-clamp-1 text-sm font-medium text-gray-800 hover:text-brand-600"
+                          className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
                         >
                           {content.title}
                         </Link>
@@ -659,14 +659,14 @@ export default function MyPage() {
                           href={youtubeUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="line-clamp-1 text-sm font-medium text-gray-800 hover:text-brand-600"
+                          className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
                         >
                           {video.title}
                         </a>
                       ) : (
-                        <span className="text-sm text-gray-400">(삭제된 항목)</span>
+                        <span className="text-sm text-muted-foreground">(삭제된 항목)</span>
                       )}
-                      <p className="mt-0.5 text-xs text-gray-400">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {content?.category ?? video?.channel_name ?? '북마크'} ·{' '}
                         {new Date(date).toLocaleDateString('ko-KR')}
                       </p>
@@ -674,7 +674,7 @@ export default function MyPage() {
                     <button
                       type="button"
                       onClick={() => handleRemoveBookmark(bookmark.id)}
-                      className="shrink-0 rounded p-1 text-gray-300 transition-colors hover:text-red-400"
+                      className="shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:text-red-400"
                       title="북마크 해제"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -691,16 +691,16 @@ export default function MyPage() {
         </section>
 
         {/* 내 아카이브 */}
-        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5">
-            <h2 className="text-base font-semibold text-gray-900">내 아카이브</h2>
-            <p className="mt-1 text-xs text-gray-500">
+            <h2 className="text-base font-semibold text-foreground">내 아카이브</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
               담아둔 콘텐츠 모음입니다. 아카이브 단위로 이메일로 받아볼 수 있습니다.
             </p>
           </div>
 
           {archivesLoading ? (
-            <p className="py-4 text-center text-sm text-gray-400">불러오는 중...</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
           ) : archives.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               아직 담아둔 아카이브가 없습니다. 콘텐츠 상세 페이지에서 &quot;아카이빙 담기&quot;를 눌러 보세요.
@@ -708,9 +708,9 @@ export default function MyPage() {
           ) : (
             <div className="flex flex-col gap-3">
               {archives.map((archive) => (
-                <div key={archive.id} className="overflow-hidden rounded-xl border border-gray-100">
+                <div key={archive.id} className="overflow-hidden rounded-xl border border-border">
                   {/* 아카이브 헤더 */}
-                  <div className="flex items-center justify-between bg-gray-50 px-4 py-3">
+                  <div className="flex items-center justify-between bg-muted px-4 py-3">
                     <button
                       type="button"
                       onClick={() =>
@@ -718,13 +718,13 @@ export default function MyPage() {
                           expandedArchiveId === archive.id ? null : archive.id
                         )
                       }
-                      className="flex items-center gap-2 text-sm font-medium text-gray-800 hover:text-brand-600"
+                      className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-brand-600"
                     >
                       {expandedArchiveId === archive.id
                         ? <ChevronDown className="h-4 w-4" />
                         : <ChevronRight className="h-4 w-4" />}
                       {archive.name}
-                      <span className="text-xs font-normal text-gray-400">
+                      <span className="text-xs font-normal text-muted-foreground">
                         {archive.items.length}건
                       </span>
                     </button>
@@ -745,7 +745,7 @@ export default function MyPage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteArchive(archive.id)}
-                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-red-50/80 hover:text-red-500"
                         title="아카이브 삭제"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -762,9 +762,9 @@ export default function MyPage() {
 
                   {/* 항목 목록 */}
                   {expandedArchiveId === archive.id && (
-                    <div className="divide-y divide-gray-50">
+                    <div className="divide-y divide-border">
                       {archive.items.length === 0 ? (
-                        <p className="px-4 py-3 text-xs text-gray-400">담긴 콘텐츠가 없습니다.</p>
+                        <p className="px-4 py-3 text-xs text-muted-foreground">담긴 콘텐츠가 없습니다.</p>
                       ) : (
                         archive.items.map((item) => (
                           <div
@@ -775,14 +775,14 @@ export default function MyPage() {
                               {item.contents ? (
                                 <a
                                   href={`/dashboard/contents/${item.contents.id}`}
-                                  className="line-clamp-1 text-sm font-medium text-gray-800 hover:text-brand-600"
+                                  className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
                                 >
                                   {item.contents.title}
                                 </a>
                               ) : (
-                                <span className="text-sm text-gray-400">(삭제된 콘텐츠)</span>
+                                <span className="text-sm text-muted-foreground">(삭제된 콘텐츠)</span>
                               )}
-                              <p className="mt-0.5 text-xs text-gray-400">
+                              <p className="mt-0.5 text-xs text-muted-foreground">
                                 {item.contents?.category} ·{' '}
                                 {new Date(item.added_at).toLocaleDateString('ko-KR')}
                               </p>
@@ -792,7 +792,7 @@ export default function MyPage() {
                               onClick={() =>
                                 handleRemoveItem(archive.id, item.content_id, item.youtube_video_id)
                               }
-                              className="shrink-0 rounded p-1 text-gray-300 transition-colors hover:text-red-400"
+                              className="shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:text-red-400"
                               title="목록에서 제거"
                             >
                               <X className="h-3.5 w-3.5" />

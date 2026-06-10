@@ -21,12 +21,12 @@ const NAV_ITEMS = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-10 border-b border-border bg-card">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
           <Link href="/admin" className="flex shrink-0 items-center gap-2">
-            <span className="font-bold text-gray-900">Insight Out</span>
-            <span className="text-gray-300 text-sm">·</span>
+            <span className="font-bold text-foreground">Insight Out</span>
+            <span className="text-muted-foreground/30 text-sm">·</span>
             <span className="text-sm font-medium text-brand-600">어드민</span>
           </Link>
           <nav className="flex items-center gap-1 overflow-x-auto">
@@ -34,7 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-lg px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 {item.label}
               </Link>

@@ -15,7 +15,7 @@ function CompetitorBlock({ competitor }: { competitor: CompetitorTrend }) {
       <div className="flex items-center gap-2 mb-2">
         <div
           className={`flex h-6 w-10 items-center justify-center rounded-md text-[11px] font-bold text-white ${
-            LOGO_COLORS[competitor.color] ?? 'bg-gray-500'
+            LOGO_COLORS[competitor.color] ?? 'bg-muted-foreground'
           }`}
         >
           {competitor.logo}

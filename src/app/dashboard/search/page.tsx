@@ -53,18 +53,18 @@ function formatDate(dateStr: string | null): string | null {
 
 function SkeletonCard() {
   return (
-    <div className="animate-pulse rounded-xl border border-gray-100 bg-white p-5">
+    <div className="animate-pulse rounded-xl border border-border bg-card p-5">
       <div className="mb-3 flex gap-2">
-        <div className="h-5 w-16 rounded-full bg-gray-100" />
+        <div className="h-5 w-16 rounded-full bg-muted" />
       </div>
-      <div className="mb-2 h-5 w-3/4 rounded bg-gray-100" />
+      <div className="mb-2 h-5 w-3/4 rounded bg-muted" />
       <div className="space-y-1.5">
-        <div className="h-4 w-full rounded bg-gray-100" />
-        <div className="h-4 w-5/6 rounded bg-gray-100" />
+        <div className="h-4 w-full rounded bg-muted" />
+        <div className="h-4 w-5/6 rounded bg-muted" />
       </div>
       <div className="mt-3 flex gap-3">
-        <div className="h-3.5 w-20 rounded bg-gray-100" />
-        <div className="h-3.5 w-24 rounded bg-gray-100" />
+        <div className="h-3.5 w-20 rounded bg-muted" />
+        <div className="h-3.5 w-24 rounded bg-muted" />
       </div>
     </div>
   )
@@ -74,11 +74,11 @@ function SkeletonCard() {
 
 function ResultCard({ item }: { item: SearchResult }) {
   const categoryStyle =
-    CATEGORY_STYLE[item.category] ?? 'bg-gray-50 text-gray-600 border-gray-100'
+    CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground border-border'
   const dateStr = formatDate(item.published_at)
 
   return (
-    <article className="group rounded-xl border border-gray-100 bg-white p-5 transition-shadow hover:shadow-sm">
+    <article className="group rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
       <div className="flex items-start justify-between gap-4">
         {/* 왼쪽: 텍스트 */}
         <div className="min-w-0 flex-1">
@@ -97,21 +97,21 @@ function ResultCard({ item }: { item: SearchResult }) {
           </div>
 
           {/* 제목 */}
-          <h2 className="mb-1.5 text-sm font-semibold leading-snug text-gray-900 transition-colors group-hover:text-brand-600">
+          <h2 className="mb-1.5 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
             {item.title}
           </h2>
 
           {/* 요약 */}
           {item.summary_ko && (
-            <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">
+            <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
               {item.summary_ko}
             </p>
           )}
 
           {/* 메타 */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-gray-400">
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
             {item.sources?.name && (
-              <span className="font-medium text-gray-500">{item.sources.name}</span>
+              <span className="font-medium text-foreground">{item.sources.name}</span>
             )}
             {item.author && !item.sources?.name && <span>{item.author}</span>}
             <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
@@ -125,13 +125,13 @@ function ResultCard({ item }: { item: SearchResult }) {
               href={item.original_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-brand-600 hover:text-brand-600"
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               원문
             </a>
           ) : item.file_path ? (
-            <span className="flex items-center gap-1.5 rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">
+            <span className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
               <FileText className="h-3.5 w-3.5" />
               리포트
             </span>
@@ -184,12 +184,12 @@ function SearchContent() {
   return (
     <div className="px-4 py-6 sm:px-6">
       {/* 브레드크럼 */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-gray-400">
+      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/dashboard" className="transition-colors hover:text-brand-600">
           대시보드
         </Link>
         <span>›</span>
-        <span className="font-medium text-gray-700">검색</span>
+        <span className="font-medium text-foreground">검색</span>
         {q && (
           <>
             <span>›</span>
@@ -202,15 +202,15 @@ function SearchContent() {
 
       {/* 헤더 */}
       <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100">
-          <Search className="h-4 w-4 text-gray-500" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted">
+          <Search className="h-4 w-4 text-muted-foreground" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900">
+          <h1 className="text-lg font-bold text-foreground">
             {q ? `"${q}" 검색 결과` : '콘텐츠 검색'}
           </h1>
           {!isLoading && results !== null && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-muted-foreground">
               총 {results.length}건
               {results.length === MAX_RESULTS && ' (최대 30건 표시)'}
             </p>
@@ -220,10 +220,10 @@ function SearchContent() {
 
       {/* 검색어 없음 */}
       {!q && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-200 py-24 text-center">
-          <Search className="h-8 w-8 text-gray-300" />
-          <p className="text-sm font-medium text-gray-500">검색어를 입력해주세요</p>
-          <p className="text-xs text-gray-400">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border py-24 text-center">
+          <Search className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-muted-foreground">검색어를 입력해주세요</p>
+          <p className="text-xs text-muted-foreground">
             상단 검색창에 제목이나 요약 키워드를 입력하고 Enter 를 누르세요
           </p>
         </div>
@@ -247,13 +247,13 @@ function SearchContent() {
 
       {/* 결과 없음 */}
       {q && !isLoading && results !== null && results.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-gray-100 bg-white py-24 text-center">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <span className="text-4xl">🔍</span>
-          <p className="text-sm font-medium text-gray-700">
+          <p className="text-sm font-medium text-foreground">
             <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가
             없습니다
           </p>
-          <p className="text-xs text-gray-400">다른 키워드로 다시 검색해보세요</p>
+          <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
         </div>
       )}
 
@@ -273,7 +273,7 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-gray-400">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">로딩 중...</div>}>
       <SearchContent />
     </Suspense>
   )

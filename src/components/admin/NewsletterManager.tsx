@@ -149,25 +149,25 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
   return (
     <div className="space-y-6">
       {/* 발송 설정 */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 text-base font-semibold text-gray-900">발송 설정</h2>
+      <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <h2 className="mb-1 text-base font-semibold text-foreground">발송 설정</h2>
         <p className="mb-5 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
           ⚠️ 현재 Hobby 플랜에서는 일 1회(08:00 KST) 고정 발송됩니다. 시각 설정은 Pro 전환 후 적용됩니다.
         </p>
 
         <form onSubmit={handleSaveSettings} className="flex flex-col gap-4">
           {/* on/off */}
-          <div className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between rounded-xl border border-border p-4">
             <div>
-              <p className="text-sm font-medium text-gray-800">자동 발송</p>
-              <p className="text-xs text-gray-400 mt-0.5">매일 크론이 설정 요일에 자동 발송합니다.</p>
+              <p className="text-sm font-medium text-foreground">자동 발송</p>
+              <p className="text-xs text-muted-foreground mt-0.5">매일 크론이 설정 요일에 자동 발송합니다.</p>
             </div>
             <button
               type="button"
               onClick={() => setSettings((s) => ({ ...s, is_enabled: !s.is_enabled }))}
               className={cn(
                 'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                settings.is_enabled ? 'bg-blue-600' : 'bg-gray-200'
+                settings.is_enabled ? 'bg-blue-600' : 'bg-muted'
               )}
               role="switch"
               aria-checked={settings.is_enabled}
@@ -186,7 +186,7 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
               id="send-hour"
               value={settings.send_hour_kst}
               onChange={(e) => setSettings((s) => ({ ...s, send_hour_kst: Number(e.target.value) }))}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-lg border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {Array.from({ length: 24 }, (_, i) => (
                 <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
@@ -209,7 +209,7 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
                       'flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-medium transition-all',
                       selected
                         ? 'border-blue-500 bg-blue-50 text-blue-900'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                        : 'border-border bg-card text-muted-foreground hover:border-border'
                     )}
                   >
                     {d.label}
@@ -235,7 +235,7 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
           {/* 제목 템플릿 */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="subject-tpl">제목 템플릿</Label>
-            <p className="text-xs text-gray-400">{'{date}'} 는 발송일(YYYY-MM-DD)로 치환됩니다.</p>
+            <p className="text-xs text-muted-foreground">{'{date}'} 는 발송일(YYYY-MM-DD)로 치환됩니다.</p>
             <Input
               id="subject-tpl"
               value={settings.subject_tpl}
@@ -253,8 +253,8 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
       </section>
 
       {/* 미리보기 + 수동 발송 */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-5 text-base font-semibold text-gray-900">미리보기 / 수동 발송</h2>
+      <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <h2 className="mb-5 text-base font-semibold text-foreground">미리보기 / 수동 발송</h2>
 
         <div className="flex gap-3">
           <Button
@@ -287,10 +287,10 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
 
         {previewHtml && (
           <div className="mt-4">
-            <p className="mb-2 text-xs text-gray-400">미리보기 (실제 메일 렌더링)</p>
+            <p className="mb-2 text-xs text-muted-foreground">미리보기 (실제 메일 렌더링)</p>
             <iframe
               srcDoc={previewHtml}
-              className="w-full rounded-lg border border-gray-200"
+              className="w-full rounded-lg border border-border"
               style={{ height: '600px' }}
               title="뉴스레터 미리보기"
             />
@@ -299,8 +299,8 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
       </section>
 
       {/* 발송 이력 */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-5 text-base font-semibold text-gray-900">발송 이력</h2>
+      <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <h2 className="mb-5 text-base font-semibold text-foreground">발송 이력</h2>
 
         {issues.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -310,7 +310,7 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-400">
+                <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="pb-2 text-left font-medium">발송일</th>
                   <th className="pb-2 text-left font-medium">제목</th>
                   <th className="pb-2 text-center font-medium">수신자</th>
@@ -325,24 +325,24 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
                     <tr
                       key={issue.id}
                       onClick={() => handleSelectIssue(issue.id)}
-                      className="cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                      className="cursor-pointer border-b border-border hover:bg-accent/50 transition-colors"
                     >
-                      <td className="py-3 text-gray-700">{issue.sent_on}</td>
-                      <td className="py-3 text-gray-700 max-w-xs truncate">{issue.subject}</td>
-                      <td className="py-3 text-center text-gray-600">{issue.recipient_cnt}</td>
+                      <td className="py-3 text-foreground">{issue.sent_on}</td>
+                      <td className="py-3 text-foreground max-w-xs truncate">{issue.subject}</td>
+                      <td className="py-3 text-center text-muted-foreground">{issue.recipient_cnt}</td>
                       <td className="py-3 text-center">
                         <span className={cn(
                           'rounded-full px-2 py-0.5 text-xs font-medium',
                           issue.status === 'sent' ? 'bg-green-100 text-green-700' :
                           issue.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
                           issue.status === 'failed' ? 'bg-red-100 text-red-700' :
-                          'bg-gray-100 text-gray-600'
+                          'bg-muted text-muted-foreground'
                         )}>
                           {issue.status}
                         </span>
                       </td>
-                      <td className="py-3 text-center text-gray-500 text-xs">{issue.triggered_by}</td>
-                      <td className="py-3 text-center text-gray-600 text-xs">
+                      <td className="py-3 text-center text-muted-foreground text-xs">{issue.triggered_by}</td>
+                      <td className="py-3 text-center text-muted-foreground text-xs">
                         {selectedIssueId === issue.id
                           ? recipientsLoading ? '...' : openRate(issue.id) ?? '-'
                           : '클릭해서 확인'}

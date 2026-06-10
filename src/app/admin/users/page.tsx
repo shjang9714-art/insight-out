@@ -23,8 +23,8 @@ export default async function AdminUsersPage() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">사용자 관리</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-xl font-bold text-foreground">사용자 관리</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           전체 사용자 목록과 권한(admin / user)을 관리합니다.
         </p>
       </div>

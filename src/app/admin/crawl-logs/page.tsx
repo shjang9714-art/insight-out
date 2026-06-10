@@ -125,8 +125,8 @@ export default async function CrawlLogsPage() {
     <>
       {/* 헤더 */}
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">크롤링 현황</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-xl font-bold text-foreground">크롤링 현황</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           소스별 자동 수집 실행 로그입니다. 최근 100건, 마지막 24시간 기준 요약.
         </p>
       </div>
@@ -136,10 +136,10 @@ export default async function CrawlLogsPage() {
         {summaryCards.map((card) => (
           <div
             key={card.label}
-            className="rounded-xl border border-gray-100 bg-white p-4"
+            className="rounded-xl border border-border bg-card p-4"
           >
-            <p className="mb-1 text-[11px] font-medium text-gray-400">{card.label}</p>
-            <p className={`text-sm font-semibold text-gray-900 ${card.accent ?? ''}`}>
+            <p className="mb-1 text-[11px] font-medium text-muted-foreground">{card.label}</p>
+            <p className={`text-sm font-semibold text-foreground ${card.accent ?? ''}`}>
               {card.value}
             </p>
           </div>
@@ -152,10 +152,10 @@ export default async function CrawlLogsPage() {
           아직 수집 기록이 없습니다.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-border bg-muted text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">실행 시각 (KST)</th>
                 <th className="px-4 py-3">소스</th>
                 <th className="px-4 py-3">상태</th>
@@ -167,21 +167,21 @@ export default async function CrawlLogsPage() {
                 <th className="px-4 py-3">에러</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {logs.map((log) => {
                 const badge = STATUS_BADGE[log.status] ?? STATUS_BADGE.failed
                 return (
                   <tr
                     key={log.id}
-                    className="transition-colors hover:bg-gray-50"
+                    className="transition-colors hover:bg-accent/50"
                   >
                     {/* 실행 시각 */}
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
                       {formatKST(log.created_at)}
                     </td>
 
                     {/* 소스명 */}
-                    <td className="px-4 py-3 text-xs font-medium text-gray-700">
+                    <td className="px-4 py-3 text-xs font-medium text-foreground">
                       {log.sources?.name ?? '—'}
                     </td>
 
@@ -195,7 +195,7 @@ export default async function CrawlLogsPage() {
                     </td>
 
                     {/* 가져옴 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums text-gray-600">
+                    <td className="px-4 py-3 text-right text-xs tabular-nums text-foreground">
                       {log.fetched_count.toLocaleString()}
                     </td>
 
@@ -205,17 +205,17 @@ export default async function CrawlLogsPage() {
                     </td>
 
                     {/* 중복 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums text-gray-400">
+                    <td className="px-4 py-3 text-right text-xs tabular-nums text-muted-foreground">
                       {log.duplicate_count.toLocaleString()}
                     </td>
 
                     {/* 보류 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums text-gray-400">
+                    <td className="px-4 py-3 text-right text-xs tabular-nums text-muted-foreground">
                       {log.held_count.toLocaleString()}
                     </td>
 
                     {/* 소요 */}
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-gray-400">
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
                       {elapsedSec(log.started_at, log.finished_at)}
                     </td>
 

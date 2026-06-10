@@ -62,7 +62,7 @@ export default function Step3Newsletter({ defaultEmail, onSubmit, onBack, isSubm
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-muted-foreground">
         Insight Out 뉴스레터를 얼마나 자주 받아보고 싶으신가요?
       </p>
 
@@ -78,13 +78,13 @@ export default function Step3Newsletter({ defaultEmail, onSubmit, onBack, isSubm
                 'flex flex-col gap-0.5 rounded-xl border p-4 text-left transition-all',
                 isSelected
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                  : 'border-border bg-card hover:border-border hover:bg-accent'
               )}
             >
-              <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-gray-800')}>
+              <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-foreground')}>
                 {option.label}
               </span>
-              <span className={cn('text-xs', isSelected ? 'text-blue-700' : 'text-gray-400')}>
+              <span className={cn('text-xs', isSelected ? 'text-blue-700' : 'text-muted-foreground')}>
                 {option.description}
               </span>
             </button>
@@ -97,7 +97,7 @@ export default function Step3Newsletter({ defaultEmail, onSubmit, onBack, isSubm
           <Label htmlFor="newsletter-email">
             수신 이메일 <span className="text-red-500">*</span>
           </Label>
-          <p className="text-xs text-gray-500">Gmail 또는 사내 이메일로 받아보실 수 있습니다.</p>
+          <p className="text-xs text-muted-foreground">Gmail 또는 사내 이메일로 받아보실 수 있습니다.</p>
           <Input
             id="newsletter-email"
             type="email"

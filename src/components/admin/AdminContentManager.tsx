@@ -159,9 +159,9 @@ export default function AdminContentManager() {
         </div>
       )}
 
-      <div className="grid gap-3 rounded-xl border border-gray-100 bg-white p-4 md:grid-cols-[1fr_180px_180px]">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_180px_180px]">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
@@ -197,7 +197,7 @@ export default function AdminContentManager() {
         </Select>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted-foreground">
         최근 콘텐츠 100건 중 {filteredContents.length}건을 표시합니다.
       </p>
 
@@ -206,10 +206,10 @@ export default function AdminContentManager() {
           조건에 맞는 콘텐츠가 없습니다.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[920px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-semibold text-gray-500">
+              <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
                 <th className="px-4 py-3">제목</th>
                 <th className="px-4 py-3">카테고리</th>
                 <th className="px-4 py-3">소스</th>
@@ -218,19 +218,19 @@ export default function AdminContentManager() {
                 <th className="px-4 py-3 text-right">관리</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {filteredContents.map((content) => {
                 const isWorking = workingId === content.id
                 const statusStyle = STATUS_STYLE[content.status]
                 return (
-                  <tr key={content.id} className="hover:bg-gray-50">
-                    <td className="max-w-md px-4 py-3 font-medium text-gray-900">
+                  <tr key={content.id} className="hover:bg-accent/50">
+                    <td className="max-w-md px-4 py-3 font-medium text-foreground">
                       <span className="line-clamp-2">{content.title}</span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {CONTENT_CATEGORY_LABEL[content.category]}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-500">
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {content.sources?.name ?? '—'}
                     </td>
                     <td className="px-4 py-3">
@@ -243,7 +243,7 @@ export default function AdminContentManager() {
                         {statusStyle.label}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
                       {formatKst(content.collected_at)}
                     </td>
                     <td className="px-4 py-3">
@@ -281,7 +281,7 @@ export default function AdminContentManager() {
                           disabled={isWorking}
                           onClick={() => handleDelete(content)}
                           aria-label={`${content.title} 삭제`}
-                          className="text-gray-400 hover:text-red-600"
+                          className="text-muted-foreground/40 hover:text-red-600"
                         >
                           {isWorking ? (
                             <Loader2 className="h-4 w-4 animate-spin" />

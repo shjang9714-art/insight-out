@@ -85,7 +85,7 @@ export default function EmailArchiveWidget() {
       {loading ? (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {[1, 2].map((i) => (
-            <div key={i} className="h-16 w-44 shrink-0 animate-pulse rounded-xl bg-white/60" />
+            <div key={i} className="h-16 w-44 shrink-0 animate-pulse rounded-xl bg-muted/60" />
           ))}
         </div>
       ) : archives.length === 0 ? (

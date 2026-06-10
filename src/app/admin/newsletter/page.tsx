@@ -35,8 +35,8 @@ export default async function AdminNewsletterPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">뉴스레터 관리</h1>
-        <p className="mt-1 text-sm text-gray-500">발송 설정, 미리보기, 수동 발송, 발송 이력을 관리합니다.</p>
+        <h1 className="text-xl font-bold text-foreground">뉴스레터 관리</h1>
+        <p className="mt-1 text-sm text-muted-foreground">발송 설정, 미리보기, 수동 발송, 발송 이력을 관리합니다.</p>
       </div>
 
       <NewsletterManager

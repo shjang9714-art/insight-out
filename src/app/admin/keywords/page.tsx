@@ -10,8 +10,8 @@ export default function AdminKeywordsPage() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">키워드 관리</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-xl font-bold text-foreground">키워드 관리</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           크롤러가 이 키워드로 콘텐츠를 서비스에 자동 태깅합니다.
         </p>
       </div>

@@ -116,7 +116,7 @@ export default function BookmarkButton({
           'flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
           isBookmarked
             ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100'
-            : 'border-gray-200 bg-white text-gray-600 hover:border-brand-600 hover:text-brand-600'
+            : 'border-border bg-card text-muted-foreground hover:border-brand-600 hover:text-brand-600'
         )}
       >
         {saving || loading ? (
@@ -130,7 +130,7 @@ export default function BookmarkButton({
       </button>
 
       {error && (
-        <p className="absolute right-0 top-11 z-20 w-56 rounded-lg border border-red-100 bg-white px-3 py-2 text-xs text-red-500 shadow-sm">
+        <p className="absolute right-0 top-11 z-20 w-56 rounded-lg border border-red-100 bg-card px-3 py-2 text-xs text-red-500 shadow-sm">
           {error}
         </p>
       )}

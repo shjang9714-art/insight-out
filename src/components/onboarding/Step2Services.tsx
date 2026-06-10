@@ -44,18 +44,18 @@ export default function Step2Services({ defaultValues, onNext, onBack }: Props) 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-muted-foreground mb-4">
           주로 담당하거나 관심 있는 서비스를 선택해주세요. 여러 개 선택 가능합니다.
         </p>
 
         {loading ? (
           <div className="grid grid-cols-2 gap-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-14 rounded-xl bg-gray-100 animate-pulse" />
+              <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />
             ))}
           </div>
         ) : services.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">등록된 서비스가 없습니다.</p>
+          <p className="text-sm text-muted-foreground text-center py-8">등록된 서비스가 없습니다.</p>
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {services.map((service) => {
@@ -68,13 +68,13 @@ export default function Step2Services({ defaultValues, onNext, onBack }: Props) 
                   className={`flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-all ${
                     isSelected
                       ? 'border-blue-500 bg-blue-50 text-blue-900'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
                   }`}
                 >
                   {service.icon && <span className="text-lg">{service.icon}</span>}
                   <span className="text-sm font-medium leading-tight">{service.name}</span>
                   {service.description && (
-                    <span className="text-xs text-gray-400 line-clamp-1">{service.description}</span>
+                    <span className="text-xs text-muted-foreground line-clamp-1">{service.description}</span>
                   )}
                 </button>
               )

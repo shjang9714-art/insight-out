@@ -111,7 +111,7 @@ export default function UserManager({ initialUsers }: Props) {
       {/* ── 이메일로 admin 추가 폼 ── */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-gray-700">
+          <CardTitle className="text-sm font-semibold text-foreground">
             이메일로 admin 권한 부여
           </CardTitle>
         </CardHeader>
@@ -154,21 +154,21 @@ export default function UserManager({ initialUsers }: Props) {
 
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           전체 {users.length}명 · admin {adminCount}명
         </p>
       </div>
 
       {/* ── 사용자 테이블 ── */}
       {users.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           등록된 사용자가 없습니다.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[700px] text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">이메일</th>
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">부서</th>
@@ -177,18 +177,18 @@ export default function UserManager({ initialUsers }: Props) {
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {users.map(u => (
-                <tr key={u.id} className="transition-colors hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-medium text-gray-900">{u.email}</td>
-                  <td className="px-4 py-3 text-gray-600">{u.name || <span className="text-gray-300">—</span>}</td>
+                <tr key={u.id} className="transition-colors hover:bg-accent/50">
+                  <td className="px-4 py-3 font-medium text-foreground">{u.email}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{u.name || <span className="text-muted-foreground/40">—</span>}</td>
                   <td className="px-4 py-3">
                     {u.department ? (
-                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                         {u.department}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-muted-foreground/40">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -198,12 +198,12 @@ export default function UserManager({ initialUsers }: Props) {
                         admin
                       </span>
                     ) : (
-                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500">
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                         user
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-400">
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
                     {new Date(u.created_at).toLocaleDateString('ko-KR')}
                   </td>
                   <td className="px-4 py-3 text-right">

@@ -23,7 +23,7 @@ export default function TranslatedArticle({
   return (
     <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <h1 className="min-w-0 flex-1 text-xl font-bold leading-snug text-gray-900">
+        <h1 className="min-w-0 flex-1 text-xl font-bold leading-snug text-foreground">
           {showOriginal ? originalTitle : translatedTitle}
         </h1>
         <Button
@@ -38,7 +38,7 @@ export default function TranslatedArticle({
 
       {children}
 
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {showOriginal ? originalBody : translatedBody}
       </p>
     </>

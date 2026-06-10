@@ -115,24 +115,24 @@ export default async function AdminPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">어드민 홈</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-foreground">어드민 홈</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           콘텐츠 수집 현황과 운영 기능을 한곳에서 관리합니다.
         </p>
       </div>
 
       <section aria-labelledby="metrics-heading">
-        <h2 id="metrics-heading" className="mb-3 text-sm font-semibold text-gray-700">
+        <h2 id="metrics-heading" className="mb-3 text-sm font-semibold text-foreground">
           운영 현황
         </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {metrics.map((metric) => (
             <div
               key={metric.label}
-              className="rounded-xl border border-gray-100 bg-white p-5"
+              className="rounded-xl border border-border bg-card p-5"
             >
-              <p className="text-xs font-medium text-gray-500">{metric.label}</p>
-              <p className="mt-2 text-2xl font-bold text-gray-900">
+              <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
+              <p className="mt-2 text-2xl font-bold text-foreground">
                 {metric.value.toLocaleString()}
               </p>
             </div>
@@ -141,7 +141,7 @@ export default async function AdminPage() {
       </section>
 
       <section aria-labelledby="menu-heading">
-        <h2 id="menu-heading" className="mb-3 text-sm font-semibold text-gray-700">
+        <h2 id="menu-heading" className="mb-3 text-sm font-semibold text-foreground">
           관리 메뉴
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -151,15 +151,15 @@ export default async function AdminPage() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="group rounded-xl border border-gray-100 bg-white p-5 transition-colors hover:border-brand-200 hover:bg-brand-50"
+                className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-200 hover:bg-brand-50"
               >
                 <div className="flex items-start gap-4">
-                  <span className="rounded-lg bg-gray-100 p-2.5 text-gray-600 transition-colors group-hover:bg-white group-hover:text-brand-600">
+                  <span className="rounded-lg bg-muted p-2.5 text-muted-foreground transition-colors group-hover:bg-card group-hover:text-brand-600">
                     <Icon className="h-5 w-5" />
                   </span>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{item.label}</h3>
-                    <p className="mt-1 text-sm text-gray-500">{item.description}</p>
+                    <h3 className="font-semibold text-foreground">{item.label}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
                   </div>
                 </div>
               </Link>

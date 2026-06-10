@@ -116,20 +116,20 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          <h1 className="text-2xl font-bold text-foreground mb-1">
             Insight Out 시작하기
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             1단계 / {STEPS.length}단계 — {STEPS[0]}
           </p>
         </div>
 
         <Progress value={progress} className="mb-8 h-1.5" />
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        <div className="bg-card rounded-2xl shadow-sm border border-border p-8">
           {error && (
             <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600">
               {error}

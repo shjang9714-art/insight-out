@@ -294,8 +294,8 @@ export default function ReportUploadForm() {
     return (
       <Card className="max-w-md mx-auto text-center py-12 px-8">
         <CheckCircle className="mx-auto mb-4 h-12 w-12 text-green-500" />
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">업로드 완료</h2>
-        <p className="text-sm text-gray-500 mb-6">
+        <h2 className="text-lg font-semibold text-foreground mb-1">업로드 완료</h2>
+        <p className="text-sm text-muted-foreground mb-6">
           리포트가 성공적으로 등록됐습니다.
         </p>
         <Button onClick={() => setSuccess(false)}>다른 파일 업로드</Button>
@@ -316,22 +316,22 @@ export default function ReportUploadForm() {
       {/* ───────── 파일 ───────── */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-gray-700">파일 선택</CardTitle>
+          <CardTitle className="text-sm font-semibold text-foreground">파일 선택</CardTitle>
         </CardHeader>
         <CardContent>
           {file ? (
-            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-3">
               <FileText className="h-8 w-8 shrink-0 text-brand-600" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-900">{file.name}</p>
-                <p className="text-xs text-gray-400">
+                <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
+                <p className="text-xs text-muted-foreground">
                   {extLabel(file.name)} · {(file.size / 1024 / 1024).toFixed(1)} MB
                 </p>
               </div>
               <button
                 type="button"
                 onClick={clearFile}
-                className="shrink-0 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="shrink-0 rounded-full p-1 text-muted-foreground/40 hover:bg-accent hover:text-foreground"
                 aria-label="파일 제거"
               >
                 <X className="h-4 w-4" />
@@ -350,15 +350,15 @@ export default function ReportUploadForm() {
                 'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed py-10 transition-colors',
                 isDragOver
                   ? 'border-brand-600 bg-brand-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                  : 'border-border bg-card hover:border-border hover:bg-accent/50'
               )}
             >
-              <Upload className={cn('h-8 w-8', isDragOver ? 'text-brand-600' : 'text-gray-300')} />
-              <p className="text-sm font-medium text-gray-700">
+              <Upload className={cn('h-8 w-8', isDragOver ? 'text-brand-600' : 'text-muted-foreground/40')} />
+              <p className="text-sm font-medium text-foreground">
                 파일을 드래그하거나{' '}
                 <span className="text-brand-600">클릭해서 선택</span>
               </p>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 PDF · PPTX · DOCX · XLSX · 최대 {MAX_MB} MB
               </p>
             </div>
@@ -376,7 +376,7 @@ export default function ReportUploadForm() {
       {/* ───────── 기본 정보 ───────── */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-gray-700">기본 정보</CardTitle>
+          <CardTitle className="text-sm font-semibold text-foreground">기본 정보</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* 제목 */}
@@ -416,7 +416,7 @@ export default function ReportUploadForm() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="publishedAt">
                 발행일{' '}
-                <span className="text-xs font-normal text-gray-400">(선택)</span>
+                <span className="text-xs font-normal text-muted-foreground">(선택)</span>
               </Label>
               <Input
                 id="publishedAt"
@@ -432,7 +432,7 @@ export default function ReportUploadForm() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="author">
                 저자/기관{' '}
-                <span className="text-xs font-normal text-gray-400">(선택)</span>
+                <span className="text-xs font-normal text-muted-foreground">(선택)</span>
               </Label>
               <Input
                 id="author"
@@ -445,7 +445,7 @@ export default function ReportUploadForm() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sourceId">
                 출처{' '}
-                <span className="text-xs font-normal text-gray-400">(선택)</span>
+                <span className="text-xs font-normal text-muted-foreground">(선택)</span>
               </Label>
               <Select
                 value={form.sourceId || EMPTY_SOURCE_VALUE}
@@ -471,7 +471,7 @@ export default function ReportUploadForm() {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="summary">
               요약{' '}
-              <span className="text-xs font-normal text-gray-400">(선택)</span>
+              <span className="text-xs font-normal text-muted-foreground">(선택)</span>
             </Label>
             <textarea
               id="summary"
@@ -489,9 +489,9 @@ export default function ReportUploadForm() {
               type="checkbox"
               checked={form.isEditorPick}
               onChange={(e) => setForm(p => ({ ...p, isEditorPick: e.target.checked }))}
-              className="h-4 w-4 rounded border-gray-300 accent-[--color-brand-600]"
+              className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
             />
-            <span className="text-sm text-gray-700">에디터 픽으로 등록</span>
+            <span className="text-sm text-foreground">에디터 픽으로 등록</span>
           </label>
         </CardContent>
       </Card>
@@ -499,7 +499,7 @@ export default function ReportUploadForm() {
       {/* ───────── 담당 서비스 ───────── */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-gray-700">담당 서비스 태그</CardTitle>
+          <CardTitle className="text-sm font-semibold text-foreground">담당 서비스 태그</CardTitle>
         </CardHeader>
         <CardContent>
           {services.length === 0 ? (
@@ -517,7 +517,7 @@ export default function ReportUploadForm() {
                       'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
                       selected
                         ? 'border-brand-600 bg-brand-600 text-white'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
                     )}
                   >
                     {svc.icon && <span>{svc.icon}</span>}
@@ -533,7 +533,7 @@ export default function ReportUploadForm() {
       {/* ───────── 키워드 ───────── */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-gray-700">키워드 태그</CardTitle>
+          <CardTitle className="text-sm font-semibold text-foreground">키워드 태그</CardTitle>
         </CardHeader>
         <CardContent>
           {/* 태그 입력 박스 */}
@@ -547,7 +547,7 @@ export default function ReportUploadForm() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setKeywords(prev => prev.filter(k => k !== kw)) }}
-                  className="rounded-full p-0.5 hover:bg-gray-300"
+                  className="rounded-full p-0.5 hover:bg-accent"
                   aria-label={`${kw} 삭제`}
                 >
                   <X className="h-3 w-3" />

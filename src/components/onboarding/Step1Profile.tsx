@@ -88,7 +88,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="position">직책 <span className="text-gray-400 font-normal text-xs">(선택)</span></Label>
+        <Label htmlFor="position">직책 <span className="text-muted-foreground font-normal text-xs">(선택)</span></Label>
         <Input
           id="position"
           placeholder="예: 팀장, 매니저"
@@ -99,7 +99,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
 
       <div className="flex flex-col gap-2">
         <Label>콘텐츠 보기 방식 <span className="text-red-500">*</span></Label>
-        <p className="text-xs text-gray-500">대시보드에서 어떤 범위의 콘텐츠를 기본으로 보시겠어요?</p>
+        <p className="text-xs text-muted-foreground">대시보드에서 어떤 범위의 콘텐츠를 기본으로 보시겠어요?</p>
         <div className="flex gap-2">
           {FILTER_OPTIONS.map((opt) => {
             const isSelected = form.content_filter_mode === opt.value
@@ -112,13 +112,13 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
                   'flex flex-1 flex-col gap-0.5 rounded-xl border p-3 text-left transition-all',
                   isSelected
                     ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    : 'border-border bg-card hover:border-border hover:bg-accent'
                 )}
               >
-                <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-gray-800')}>
+                <span className={cn('text-sm font-semibold', isSelected ? 'text-blue-900' : 'text-foreground')}>
                   {opt.label}
                 </span>
-                <span className={cn('text-xs leading-snug', isSelected ? 'text-blue-700' : 'text-gray-400')}>
+                <span className={cn('text-xs leading-snug', isSelected ? 'text-blue-700' : 'text-muted-foreground')}>
                   {opt.description}
                 </span>
               </button>
@@ -128,7 +128,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
 
         {form.content_filter_mode === 'my_services' && (
           <div className="flex flex-col gap-2 mt-1">
-            <p className="text-xs text-gray-500">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
+            <p className="text-xs text-muted-foreground">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
             <div className="flex flex-wrap gap-2">
               {SERVICE_OPTIONS.map((service) => {
                 const isSelected = form.selected_services.includes(service)
@@ -141,7 +141,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
                       'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
                       isSelected
                         ? 'border-blue-500 bg-blue-50 text-blue-900'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
                     )}
                   >
                     {service}
@@ -149,7 +149,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
                 )
               })}
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-muted-foreground">
               가입 이후 프로필에서 담당 서비스를 변경할 수 있습니다.
             </p>
           </div>
