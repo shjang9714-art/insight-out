@@ -1,12 +1,13 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef, useCallback, startTransition } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { ExternalLink, FileText, X, Loader2 } from 'lucide-react'
+import { ExternalLink, FileText, X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ContentRow from '@/components/dashboard/ContentRow'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -21,12 +22,18 @@ interface ContentItem {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
+  content_keywords: { keywords: { name: string } | null }[]
 }
 
-interface DropdownOption {
+interface ServiceOption {
   id: string
   name: string
   icon?: string | null
+}
+
+interface SourceOption {
+  id: string
+  name: string
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -39,15 +46,18 @@ const DATE_OPTIONS = [
 ] as const
 type DateFilter = (typeof DATE_OPTIONS)[number]['value']
 
+type ContentView = 'card' | 'list'
+const VIEW_KEY = 'io:content-view'
+
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
-  '뉴스':     'bg-blue-50 text-blue-700 border-blue-100',
-  '가트너':   'bg-purple-50 text-purple-700 border-purple-100',
-  'KRG':     'bg-orange-50 text-orange-700 border-orange-100',
+  '뉴스':      'bg-blue-50 text-blue-700 border-blue-100',
+  '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
+  'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
   '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
-  '오피니언': 'bg-green-50 text-green-700 border-green-100',
-  '뉴스레터': 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  'AI보고서': 'bg-pink-50 text-pink-700 border-pink-100',
-  '유튜브':   'bg-red-50 text-red-700 border-red-100',
+  '오피니언':  'bg-green-50 text-green-700 border-green-100',
+  '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
+  'AI보고서':  'bg-pink-50 text-pink-700 border-pink-100',
+  '유튜브':    'bg-red-50 text-red-700 border-red-100',
 }
 
 const PAGE_SIZE = 20
@@ -75,6 +85,22 @@ function getDateStart(filter: string): string | null {
   return null
 }
 
+function getSavedView(): ContentView {
+  if (typeof window === 'undefined') return 'card'
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'list' ? 'list' : 'card'
+  } catch {
+    return 'card'
+  }
+}
+
+function getKeywords(item: ContentItem): string[] {
+  return item.content_keywords
+    .map((ck) => ck.keywords?.name)
+    .filter((n): n is string => Boolean(n))
+}
+
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
@@ -92,32 +118,24 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   )
 }
 
-function SkeletonCard() {
+function SkeletonRow() {
   return (
-    <div className="animate-pulse rounded-xl border border-border bg-card p-5">
-      <div className="mb-3 h-5 w-16 rounded-full bg-muted" />
-      <div className="mb-2 h-5 w-3/4 rounded bg-muted" />
-      <div className="space-y-1.5">
-        <div className="h-4 w-full rounded bg-muted" />
-        <div className="h-4 w-5/6 rounded bg-muted" />
-      </div>
-      <div className="mt-3 flex gap-3">
-        <div className="h-3.5 w-20 rounded bg-muted" />
-        <div className="h-3.5 w-24 rounded bg-muted" />
-      </div>
+    <div className="animate-pulse rounded-xl border border-border bg-card px-5 py-3.5">
+      <div className="mb-1.5 h-4 w-16 rounded-full bg-muted" />
+      <div className="mb-1 h-4 w-3/4 rounded bg-muted" />
+      <div className="h-3 w-1/3 rounded bg-muted" />
     </div>
   )
 }
 
 function ContentCard({ item }: { item: ContentItem }) {
-  const catStyle =
-    CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground border-border'
-  const dateStr = formatDate(item.published_at)
+  const catStyle = CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground border-border'
+  const dateStr  = formatDate(item.published_at)
   const isYoutube = item.category === '유튜브'
+  const keywords = getKeywords(item).slice(0, 4)
 
   const innerContent = (
     <div className="min-w-0 flex-1">
-      {/* 뱃지 */}
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <span
           className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${catStyle}`}
@@ -131,19 +149,16 @@ function ContentCard({ item }: { item: ContentItem }) {
         )}
       </div>
 
-      {/* 제목 */}
       <h2 className="mb-1.5 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
         {item.title}
       </h2>
 
-      {/* 요약 */}
       {item.summary_ko && (
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {item.summary_ko}
         </p>
       )}
 
-      {/* 메타 */}
       <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
         {item.sources?.name && (
           <span className="font-medium text-muted-foreground">{item.sources.name}</span>
@@ -151,6 +166,16 @@ function ContentCard({ item }: { item: ContentItem }) {
         {item.author && !item.sources?.name && <span>{item.author}</span>}
         <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
       </div>
+
+      {keywords.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {keywords.map((kw) => (
+            <span key={kw} className="text-[11px] text-brand-600">
+              #{kw}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 
@@ -165,7 +190,6 @@ function ContentCard({ item }: { item: ContentItem }) {
           </Link>
         )}
 
-        {/* 액션 버튼 */}
         <div className="shrink-0 pt-0.5">
           {item.original_url ? (
             <a
@@ -197,24 +221,35 @@ function ContentsContent() {
   const searchParams = useSearchParams()
 
   // ── URL 파라미터 ─────────────────────────────────────────────────────────────
-  // svc/src 는 UUID (sidebar의 ?service=mockId 와 별도 파라미터 사용)
   const category = (searchParams.get('category') ?? '') as ContentCategory | ''
   const date     = (searchParams.get('date') ?? 'all') as DateFilter
-  const svc      = searchParams.get('svc') ?? ''      // service UUID
-  const src      = searchParams.get('src') ?? ''      // source UUID
-  const kw       = searchParams.get('kw') ?? ''       // keyword text
+  const svcParam = searchParams.get('svc') ?? ''
+  const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
+  const src      = searchParams.get('src') ?? ''
+  const kw       = searchParams.get('kw') ?? ''
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
   const [items, setItems]         = useState<ContentItem[]>([])
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
-  const [services, setServices]   = useState<DropdownOption[]>([])
-  const [sources, setSources]     = useState<DropdownOption[]>([])
+  const [services, setServices]   = useState<ServiceOption[]>([])
+  const [sources, setSources]     = useState<SourceOption[]>([])
   const [kwInput, setKwInput]     = useState(kw)
+  const [contentView, setContentView] = useState<ContentView>('card')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── URL 업데이트 헬퍼 (필터 바뀌면 page 초기화) ──────────────────────────────
+  // localStorage에서 뷰 설정 복원 (SSR 가드)
+  useEffect(() => {
+    startTransition(() => setContentView(getSavedView()))
+  }, [])
+
+  const handleViewChange = (v: ContentView) => {
+    setContentView(v)
+    try { localStorage.setItem(VIEW_KEY, v) } catch { /* noop */ }
+  }
+
+  // ── URL 업데이트 헬퍼 ────────────────────────────────────────────────────────
   const updateParam = useCallback(
     (key: string, value: string) => {
       const p = new URLSearchParams(searchParams.toString())
@@ -224,6 +259,17 @@ function ContentsContent() {
       router.push(`${pathname}?${p.toString()}`)
     },
     [router, pathname, searchParams]
+  )
+
+  // ── 서비스 pill 토글 ────────────────────────────────────────────────────────
+  const toggleService = useCallback(
+    (id: string) => {
+      const next = svcIds.includes(id)
+        ? svcIds.filter((s) => s !== id)
+        : [...svcIds, id]
+      updateParam('svc', next.join(','))
+    },
+    [svcIds, updateParam]
   )
 
   // ── keyword 디바운스 ─────────────────────────────────────────────────────────
@@ -242,8 +288,8 @@ function ContentsContent() {
       supabase.from('services').select('id, name, icon').order('order'),
       supabase.from('sources').select('id, name').order('name'),
     ]).then(([{ data: svcs }, { data: srcs }]) => {
-      if (svcs) setServices(svcs as DropdownOption[])
-      if (srcs) setSources(srcs as DropdownOption[])
+      if (svcs) setServices(svcs as ServiceOption[])
+      if (srcs) setSources(srcs as SourceOption[])
     })
   }, [])
 
@@ -255,14 +301,14 @@ function ContentsContent() {
       setLoading(true)
       const supabase = createClient()
 
-      // ① 서비스 필터: content_ids 구하기
+      // ① 서비스 멀티셀렉트 필터: 선택된 svcIds 중 하나라도 매핑된 content_ids
       let svcContentIds: string[] | null = null
-      if (svc) {
+      if (svcIds.length > 0) {
         const { data } = await supabase
           .from('content_services')
           .select('content_id')
-          .eq('service_id', svc)
-        svcContentIds = data?.map((r) => r.content_id) ?? []
+          .in('service_id', svcIds)
+        svcContentIds = [...new Set(data?.map((r) => r.content_id) ?? [])]
       }
 
       // ② 키워드 필터: content_ids 구하기
@@ -284,7 +330,6 @@ function ContentsContent() {
         }
       }
 
-      // early return — 서비스 또는 키워드 조건에 해당하는 콘텐츠 없음
       if (svcContentIds?.length === 0 || kwContentIds?.length === 0) {
         if (!cancelled) {
           if (page === 1) setItems([])
@@ -294,19 +339,19 @@ function ContentsContent() {
         return
       }
 
-      // ③ 메인 쿼리
+      // ③ 메인 쿼리 (keywords 조인 추가)
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)',
+          'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name))',
           { count: 'exact' }
         )
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-      if (category) q = q.eq('category', category)
-      if (src)      q = q.eq('source_id', src)
+      if (category)      q = q.eq('category', category)
+      if (src)           q = q.eq('source_id', src)
 
       const dateStart = getDateStart(date)
       if (dateStart)       q = q.gte('published_at', dateStart)
@@ -329,34 +374,42 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svc, src, kw, page])
+  }, [category, date, svcIds, src, kw, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
   const hasMore = total !== null && items.length < total
 
-  // ── 활성 필터 chip 목록 ──────────────────────────────────────────────────────
-  const activeFilters: { key: string; label: string; reset?: () => void }[] = []
-  if (category) activeFilters.push({
-    key: 'category',
-    label: `카테고리: ${CONTENT_CATEGORY_LABEL[category] ?? category}`,
-  })
+  // ── 활성 필터 chip 목록 (카테고리 칩 제거, 서비스는 선택된 것만) ──────────────
+  const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
+
   if (date !== 'all') activeFilters.push({
     key: 'date',
     label: DATE_OPTIONS.find((d) => d.value === date)?.label ?? date,
+    onRemove: () => updateParam('date', ''),
   })
-  if (svc) {
-    const svcName = services.find((s) => s.id === svc)?.name ?? '서비스'
-    activeFilters.push({ key: 'svc', label: `서비스: ${svcName}` })
+
+  for (const id of svcIds) {
+    const svcName = services.find((s) => s.id === id)?.name ?? '서비스'
+    activeFilters.push({
+      key: `svc-${id}`,
+      label: `사업: ${svcName}`,
+      onRemove: () => toggleService(id),
+    })
   }
+
   if (src) {
     const srcName = sources.find((s) => s.id === src)?.name ?? '출처'
-    activeFilters.push({ key: 'src', label: `출처: ${srcName}` })
+    activeFilters.push({
+      key: 'src',
+      label: `출처: ${srcName}`,
+      onRemove: () => updateParam('src', ''),
+    })
   }
   if (kw) activeFilters.push({
     key: 'kw',
     label: `키워드: ${kw}`,
-    reset: () => setKwInput(''),
+    onRemove: () => { setKwInput(''); updateParam('kw', '') },
   })
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
@@ -366,28 +419,51 @@ function ContentsContent() {
 
   return (
     <div className="px-4 py-6 sm:px-6">
-      {/* 브레드크럼 */}
-      <div className="mb-5 flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/dashboard" className="transition-colors hover:text-brand-600">
-          대시보드
-        </Link>
-        <span>›</span>
-        <span className="font-medium text-foreground">{pageTitle}</span>
-      </div>
+      {/* 제목 + 건수 + 뷰 토글 */}
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
+          {!isLoading && total !== null && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {total > 0 ? `총 ${total.toLocaleString()}건` : ''}
+            </p>
+          )}
+        </div>
 
-      {/* 제목 + 건수 */}
-      <div className="mb-5">
-        <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
-        {!isLoading && total !== null && (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {total > 0 ? `총 ${total.toLocaleString()}건` : ''}
-          </p>
-        )}
+        {/* 카드/목록 토글 */}
+        <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+          <button
+            onClick={() => handleViewChange('card')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+              contentView === 'card'
+                ? 'bg-brand-600 text-white'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            aria-label="카드 뷰"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            카드
+          </button>
+          <button
+            onClick={() => handleViewChange('list')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+              contentView === 'list'
+                ? 'bg-brand-600 text-white'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            aria-label="목록 뷰"
+          >
+            <List className="h-3.5 w-3.5" />
+            목록
+          </button>
+        </div>
       </div>
 
       {/* ─── 필터 바 ─────────────────────────────────────────────────────────── */}
       <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <div className="flex flex-wrap items-start gap-x-5 gap-y-3">
 
           {/* 날짜 */}
           <div className="flex items-center gap-2">
@@ -396,9 +472,7 @@ function ContentsContent() {
               {DATE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
-                  onClick={() =>
-                    updateParam('date', opt.value === 'all' ? '' : opt.value)
-                  }
+                  onClick={() => updateParam('date', opt.value === 'all' ? '' : opt.value)}
                   className={cn(
                     'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
                     date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
@@ -412,7 +486,7 @@ function ContentsContent() {
             </div>
           </div>
 
-          <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px self-center bg-border" />
 
           {/* 출처 */}
           <div className="flex items-center gap-2">
@@ -431,6 +505,8 @@ function ContentsContent() {
               ))}
             </select>
           </div>
+
+          <div className="h-4 w-px self-center bg-border" />
 
           {/* 키워드 */}
           <div className="flex items-center gap-2">
@@ -456,6 +532,43 @@ function ContentsContent() {
           </div>
         </div>
 
+        {/* 사업키워드(서비스) 멀티셀렉트 pill 행 */}
+        {services.length > 0 && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">사업</span>
+              <button
+                onClick={() => updateParam('svc', '')}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  svcIds.length === 0
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-muted text-muted-foreground hover:bg-accent'
+                )}
+              >
+                전체
+              </button>
+              {services.map((s) => {
+                const isActive = svcIds.includes(s.id)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => toggleService(s.id)}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      isActive
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    {s.icon ? `${s.icon} ${s.name}` : s.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* 활성 필터 chips */}
         {activeFilters.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -464,16 +577,13 @@ function ContentsContent() {
               <FilterChip
                 key={f.key}
                 label={f.label}
-                onRemove={() => {
-                  f.reset?.()
-                  updateParam(f.key, '')
-                }}
+                onRemove={f.onRemove}
               />
             ))}
             <button
               onClick={() => {
                 setKwInput('')
-                router.push(pathname)
+                router.push(pathname + (category ? `?category=${encodeURIComponent(category)}` : ''))
               }}
               className="text-[11px] text-muted-foreground underline hover:text-foreground"
             >
@@ -485,9 +595,9 @@ function ContentsContent() {
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
       {isLoading && page === 1 ? (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonCard key={i} />
+            <SkeletonRow key={i} />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -498,11 +608,32 @@ function ContentsContent() {
         </div>
       ) : (
         <>
-          <div className="space-y-3">
-            {items.map((item) => (
-              <ContentCard key={item.id} item={item} />
-            ))}
-          </div>
+          {contentView === 'card' ? (
+            <div className="space-y-3">
+              {items.map((item) => (
+                <ContentCard key={item.id} item={item} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item) => (
+                <ContentRow
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  summaryKo={item.summary_ko}
+                  category={item.category}
+                  publishedAt={item.published_at}
+                  originalUrl={item.original_url}
+                  filePath={item.file_path}
+                  isEditorPick={item.is_editor_pick}
+                  author={item.author}
+                  sourceName={item.sources?.name ?? null}
+                  keywords={getKeywords(item)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* 더 보기 */}
           {hasMore && (

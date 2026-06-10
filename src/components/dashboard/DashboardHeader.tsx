@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu, Search } from 'lucide-react'
+import { Menu, Search, Home } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { getKstTodayStartIso } from '@/lib/date'
@@ -140,7 +140,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm">
       <div className="flex h-14 items-center px-4 sm:px-5">
-        {/* 좌측: 햄버거(모바일) + 로고 */}
+        {/* 좌측: 햄버거(모바일) + 로고 + 홈버튼 */}
         <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={onMenuClick}
@@ -159,6 +159,15 @@ export default function DashboardHeader({ onMenuClick }: Props) {
               className="h-8 w-8 shrink-0"
             />
             <span className="font-semibold text-foreground">Insight Out</span>
+          </Link>
+          {/* 홈버튼 (명시적 대시보드 이동) */}
+          <Link
+            href="/dashboard"
+            className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
+            aria-label="홈으로"
+          >
+            <Home className="h-4 w-4" />
+            <span>홈</span>
           </Link>
         </div>
 

@@ -33,11 +33,7 @@ function CardSkeleton() {
   )
 }
 
-interface Props {
-  activeService?: string
-}
-
-export default function RecentFeed({ activeService = 'all' }: Props) {
+export default function RecentFeed() {
   const [items, setItems]       = useState<FeedItem[]>([])
   const [isLoading, setLoading] = useState(true)
 
@@ -48,32 +44,13 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
       setLoading(true)
       const supabase = createClient()
 
-      // 서비스 필터: activeService는 UUID 또는 'all'
-      let contentIds: string[] | null = null
-
-      if (activeService !== 'all') {
-        const { data: cs } = await supabase
-          .from('content_services')
-          .select('content_id')
-          .eq('service_id', activeService)
-        contentIds = cs?.map((r) => r.content_id) ?? []
-      }
-
-      if (contentIds !== null && contentIds.length === 0) {
-        if (!cancelled) { setItems([]); setLoading(false) }
-        return
-      }
-
-      let q = supabase
+      const { data } = await supabase
         .from('contents')
         .select('id, title, summary_ko, category, published_at, thumbnail_url, sources(name)')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(6)
 
-      if (contentIds) q = q.in('id', contentIds)
-
-      const { data } = await q
       if (!cancelled) {
         setItems((data ?? []) as unknown as FeedItem[])
         setLoading(false)
@@ -82,12 +59,9 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
 
     load()
     return () => { cancelled = true }
-  }, [activeService])
+  }, [])
 
-  const contentsHref =
-    activeService !== 'all'
-      ? `/dashboard/contents?svc=${activeService}`
-      : '/dashboard/contents'
+  const contentsHref = '/dashboard/contents'
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
