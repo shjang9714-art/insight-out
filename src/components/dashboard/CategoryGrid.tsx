@@ -4,13 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentCategory } from '@/lib/types'
-
-function todayStartKstIso(): string {
-  const now = Date.now()
-  const kst = new Date(now + 9 * 60 * 60 * 1000)
-  const midnightUtc = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 60 * 60 * 1000
-  return new Date(midnightUtc).toISOString()
-}
+import { getKstTodayStartIso } from '@/lib/date'
 
 // ─── mock taxonomy (아이콘·표시 레이블·순서만 여기서 관리) ────────────────────
 
@@ -47,7 +41,7 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
       .from('contents')
       .select('category, collected_at')
       .eq('status', 'published')
-      .gte('collected_at', todayStartKstIso())
+      .gte('collected_at', getKstTodayStartIso())
       .then(({ data }) => {
         if (!data) return
         const c: Record<string, number> = {}

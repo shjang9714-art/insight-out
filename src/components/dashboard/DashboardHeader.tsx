@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Menu } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
+import { getKstTodayStartIso } from '@/lib/date'
 
 interface Props {
   onMenuClick?: () => void
@@ -85,12 +86,6 @@ export default function DashboardHeader({ onMenuClick }: Props) {
     const supabase = createClient()
 
     const load = async () => {
-      // KST 오늘 0시 ISO 문자열 계산
-      const kstOffset = 9 * 60 * 60 * 1000
-      const nowKst = new Date(Date.now() + kstOffset)
-      const kstDateStr = nowKst.toISOString().slice(0, 10) // YYYY-MM-DD
-      const kstMidnightUtc = new Date(`${kstDateStr}T00:00:00+09:00`).toISOString()
-
       // 최근 8건 콘텐츠 (유튜브 제외)
       const { data } = await supabase
         .from('contents')
@@ -111,12 +106,12 @@ export default function DashboardHeader({ onMenuClick }: Props) {
       setNotifications(items)
       setReadIds(getReadIds())
 
-      // 오늘 카운트: 별도 쿼리
+      // 오늘 카운트: 별도 쿼리 (collected_at 기준 — CategoryGrid·어드민과 통일)
       const { count } = await supabase
         .from('contents')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'published')
-        .gte('created_at', kstMidnightUtc)
+        .gte('collected_at', getKstTodayStartIso())
       setTodayCount(count ?? 0)
     }
 

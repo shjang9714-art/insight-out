@@ -264,7 +264,7 @@ export default function KeywordManager() {
               )}
 
               {/* 키워드명·서비스 */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="kw-name">
                     키워드명 <span className="text-red-500">*</span>

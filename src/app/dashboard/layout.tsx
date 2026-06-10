@@ -51,7 +51,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
       {/* ── 영구 상단 네비게이션 (카테고리·서비스·검색) ─────────────────── */}
       {!hideTopNav && (
-        <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
+        <div className="sticky top-14 z-10 border-b border-border bg-card px-4 py-4 sm:px-6">
           <div className="mx-auto w-full max-w-screen-xl">
             <CategoryGrid activeService={activeService} />
             <div className="mt-3 space-y-2.5 border-t border-border pt-3">
