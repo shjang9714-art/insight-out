@@ -3,7 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export default function SearchBar() {
+interface Props {
+  onClose?: () => void
+}
+
+export default function SearchBar({ onClose }: Props) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -12,6 +16,7 @@ export default function SearchBar() {
     const q = searchQuery.trim()
     if (!q) return
     router.push(`/dashboard/search?q=${encodeURIComponent(q)}`)
+    onClose?.()
   }
 
   return (

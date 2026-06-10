@@ -7,6 +7,9 @@ import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { ExternalLink, FileText, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import BookmarkButton from '@/components/bookmark/BookmarkButton'
+import ArchiveButton from '@/components/archive/ArchiveButton'
+import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -14,6 +17,7 @@ interface ContentItem {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   category: ContentCategory
   published_at: string | null
   file_path: string | null
@@ -21,6 +25,8 @@ interface ContentItem {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
+  content_services: { services: { name: string } | null }[]
+  content_keywords: { keywords: { name: string } | null }[]
 }
 
 interface DropdownOption {
@@ -115,8 +121,24 @@ function ContentCard({ item }: { item: ContentItem }) {
   const dateStr = formatDate(item.published_at)
   const isYoutube = item.category === '유튜브'
 
-  const innerContent = (
-    <div className="min-w-0 flex-1">
+  // 요약: summary_ko 없으면 body_original 정제 후 150자
+  const summaryText =
+    item.summary_ko ||
+    (item.body_original ? cleanBodyText(htmlToPlainText(item.body_original)).slice(0, 150) : null)
+
+  // 태그: 서비스 먼저, 이후 키워드 — 합계 최대 3개
+  const serviceNames = item.content_services
+    .map((cs) => cs.services?.name)
+    .filter(Boolean) as string[]
+  const keywordNames = item.content_keywords
+    .map((ck) => ck.keywords?.name)
+    .filter(Boolean) as string[]
+  const visibleServices = serviceNames.slice(0, 3)
+  const visibleKeywords = keywordNames.slice(0, Math.max(0, 3 - visibleServices.length))
+  const hasTags = visibleServices.length > 0 || visibleKeywords.length > 0
+
+  const mainContent = (
+    <div className="min-w-0">
       {/* 뱃지 */}
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <span
@@ -137,9 +159,9 @@ function ContentCard({ item }: { item: ContentItem }) {
       </h2>
 
       {/* 요약 */}
-      {item.summary_ko && (
+      {summaryText && (
         <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-          {item.summary_ko}
+          {summaryText}
         </p>
       )}
 
@@ -156,34 +178,67 @@ function ContentCard({ item }: { item: ContentItem }) {
 
   return (
     <article className="group rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        {isYoutube ? (
-          innerContent
-        ) : (
-          <Link href={`/dashboard/contents/${item.id}`} className="min-w-0 flex-1">
-            {innerContent}
-          </Link>
-        )}
+      {/* 본문 영역 — 유튜브 제외 시 상세 링크 */}
+      {isYoutube ? (
+        mainContent
+      ) : (
+        <Link href={`/dashboard/contents/${item.id}`} className="block">
+          {mainContent}
+        </Link>
+      )}
+
+      {/* 태그 + 액션 버튼 행 */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        {/* 서비스·키워드 태그 */}
+        <div className="flex flex-wrap gap-1.5">
+          {hasTags ? (
+            <>
+              {visibleServices.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+                >
+                  {name}
+                </span>
+              ))}
+              {visibleKeywords.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                >
+                  #{name}
+                </span>
+              ))}
+            </>
+          ) : (
+            <span />
+          )}
+        </div>
 
         {/* 액션 버튼 */}
-        <div className="shrink-0 pt-0.5">
-          {item.original_url ? (
-            <a
-              href={item.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              원문
-            </a>
-          ) : item.file_path ? (
-            <span className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
-              <FileText className="h-3.5 w-3.5" />
-              리포트
-            </span>
-          ) : null}
-        </div>
+        {!isYoutube && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <BookmarkButton contentId={item.id} />
+            <ArchiveButton contentId={item.id} />
+            {item.original_url && (
+              <a
+                href={item.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                title="원문 보기"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+            {item.file_path && !item.original_url && (
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground" title="리포트">
+                <FileText className="h-3.5 w-3.5" />
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </article>
   )
@@ -198,12 +253,13 @@ function ContentsContent() {
 
   // ── URL 파라미터 ─────────────────────────────────────────────────────────────
   // svc/src 는 UUID (sidebar의 ?service=mockId 와 별도 파라미터 사용)
-  const category = (searchParams.get('category') ?? '') as ContentCategory | ''
-  const date     = (searchParams.get('date') ?? 'all') as DateFilter
-  const svc      = searchParams.get('svc') ?? ''      // service UUID
-  const src      = searchParams.get('src') ?? ''      // source UUID
-  const kw       = searchParams.get('kw') ?? ''       // keyword text
-  const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+  const category  = (searchParams.get('category') ?? '') as ContentCategory | ''
+  const date      = (searchParams.get('date') ?? 'all') as DateFilter
+  const svc       = searchParams.get('svc') ?? ''      // service UUID
+  const src       = searchParams.get('src') ?? ''      // source UUID
+  const kw        = searchParams.get('kw') ?? ''       // keyword text
+  const relevant  = searchParams.get('relevant') ?? '1' // '1' = 관련 콘텐츠만, '0' = 전체
+  const page      = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
   const [items, setItems]         = useState<ContentItem[]>([])
@@ -295,10 +351,15 @@ function ContentsContent() {
       }
 
       // ③ 메인 쿼리
+      // relevant='1'이면 서비스 태그 있는 콘텐츠만 노출 (inner join)
+      const serviceJoin = relevant === '1'
+        ? 'content_services!inner(services(name))'
+        : 'content_services(services(name))'
+
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)',
+          `id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), ${serviceJoin}, content_keywords(keywords(name))`,
           { count: 'exact' }
         )
         .eq('status', 'published')
@@ -471,6 +532,23 @@ function ContentsContent() {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* 관련 콘텐츠 토글 */}
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">관련성</span>
+            <button
+              onClick={() => updateParam('relevant', relevant === '1' ? '0' : '1')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                relevant === '1'
+                  ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300 dark:hover:bg-brand-950/50'
+                  : 'border-border bg-muted text-muted-foreground hover:bg-accent'
+              )}
+              title={relevant === '1' ? '전체 콘텐츠 보기' : '관련 콘텐츠만 보기'}
+            >
+              {relevant === '1' ? '관련 콘텐츠만' : '전체 콘텐츠'}
+            </button>
           </div>
         </div>
 

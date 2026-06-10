@@ -24,6 +24,7 @@ interface FeedItem {
   published_at: string | null
   thumbnail_url: string | null
   sources: { name: string } | null
+  content_services: { service_id: string }[]
 }
 
 // ─── 카드 스켈레톤 ────────────────────────────────────────────────────────────
@@ -86,18 +87,26 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
         return
       }
 
+      // 태그 있는 콘텐츠 우선 노출을 위해 20건 조회 후 client-side 정렬
       let q = supabase
         .from('contents')
-        .select('id, title, summary_ko, category, published_at, thumbnail_url, sources(name)')
+        .select('id, title, summary_ko, category, published_at, thumbnail_url, sources(name), content_services(service_id)')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(6)
+        .limit(20)
 
       if (contentIds) q = q.in('id', contentIds)
 
       const { data } = await q
       if (!cancelled) {
-        setItems((data ?? []) as unknown as FeedItem[])
+        const raw = (data ?? []) as unknown as FeedItem[]
+        // 서비스 태그 있는 콘텐츠를 앞으로 정렬, 동순위 내에서는 published_at 순 유지
+        const sorted = [...raw].sort((a, b) => {
+          const aHasTag = a.content_services.length > 0 ? 0 : 1
+          const bHasTag = b.content_services.length > 0 ? 0 : 1
+          return aHasTag - bHasTag
+        })
+        setItems(sorted.slice(0, 6))
         setLoading(false)
       }
     }

@@ -20,6 +20,7 @@ interface SearchResult {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
+  matchedBy?: 'title' | 'summary' | 'body' | 'keyword'
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -47,6 +48,15 @@ function formatDate(dateStr: string | null): string | null {
     month: 'long',
     day: 'numeric',
   })
+}
+
+// PostgREST .or() 구문 충돌 문자 제거 + ILIKE 와일드카드 이스케이프
+function sanitizeQuery(raw: string): string {
+  return raw
+    .replace(/[,()]/g, ' ')  // , ( ) → 공백 (PostgREST 구문 충돌 방지)
+    .replace(/%/g, '\\%')    // ILIKE 와일드카드 이스케이프
+    .replace(/_/g, '\\_')
+    .trim()
 }
 
 // ─── 스켈레톤 ─────────────────────────────────────────────────────────────────
@@ -160,25 +170,101 @@ function SearchContent() {
 
     startTransition(() => { setLoading(true); setError(null) })
 
-    const supabase = createClient()
-    supabase
-      .from('contents')
-      .select(
-        'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)'
-      )
-      .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
-      .eq('status', 'published')
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(MAX_RESULTS)
-      .then(({ data, error: err }) => {
-        if (err) {
-          console.error('[search] FTS 쿼리 오류:', err)
-          setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
-        } else {
-          setResults((data ?? []) as unknown as SearchResult[])
+    let cancelled = false
+
+    const runSearch = async () => {
+      const supabase = createClient()
+      const SELECT_FIELDS = 'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)'
+
+      // ① 제목 + 요약 ILIKE
+      // ② 키워드 태그 매칭: keywords.name ILIKE → content_keywords
+      // ③ 본문 ILIKE (fallback — 결과 부족 시)
+      const sq = sanitizeQuery(q)
+
+      const [mainRes, kwRes] = await Promise.all([
+        supabase
+          .from('contents')
+          .select(SELECT_FIELDS)
+          .or(`title.ilike.%${sq}%,summary_ko.ilike.%${sq}%`)
+          .eq('status', 'published')
+          .order('published_at', { ascending: false, nullsFirst: false })
+          .limit(MAX_RESULTS),
+        supabase
+          .from('keywords')
+          .select('id')
+          .ilike('name', `%${sq}%`)
+          .limit(50),
+      ])
+
+      if (cancelled) return
+
+      const mainItems: SearchResult[] = (mainRes.data ?? []) as unknown as SearchResult[]
+      const existingIds = new Set(mainItems.map((r) => r.id))
+      let kwItems: SearchResult[] = []
+
+      // 키워드 매칭 content_ids 조회
+      if (kwRes.data && kwRes.data.length > 0) {
+        const kwIds = kwRes.data.map((k) => k.id)
+        const { data: ckData } = await supabase
+          .from('content_keywords')
+          .select('content_id')
+          .in('keyword_id', kwIds)
+          .limit(MAX_RESULTS)
+
+        if (!cancelled && ckData && ckData.length > 0) {
+          const newIds = [...new Set(ckData.map((r) => r.content_id))].filter(
+            (id) => !existingIds.has(id)
+          )
+          if (newIds.length > 0) {
+            const { data: kwContents } = await supabase
+              .from('contents')
+              .select(SELECT_FIELDS)
+              .in('id', newIds)
+              .eq('status', 'published')
+              .order('published_at', { ascending: false, nullsFirst: false })
+              .limit(MAX_RESULTS)
+            kwItems = (kwContents ?? []) as unknown as SearchResult[]
+            kwItems = kwItems.map((item) => ({ ...item, matchedBy: 'keyword' as const }))
+          }
         }
-        setLoading(false)
-      })
+      }
+
+      if (cancelled) return
+
+      const combined = [...mainItems, ...kwItems]
+
+      // 합산 결과 부족 + 본문 검색 보완 (body_original ILIKE)
+      if (combined.length < 5) {
+        const bodyIds = new Set(combined.map((r) => r.id))
+        const { data: bodyData } = await supabase
+          .from('contents')
+          .select(SELECT_FIELDS)
+          .ilike('body_original', `%${sq}%`)
+          .eq('status', 'published')
+          .order('published_at', { ascending: false, nullsFirst: false })
+          .limit(MAX_RESULTS)
+
+        if (!cancelled && bodyData) {
+          const bodyItems: SearchResult[] = (bodyData as unknown as SearchResult[])
+            .filter((r) => !bodyIds.has(r.id))
+            .map((item) => ({ ...item, matchedBy: 'body' as const }))
+          combined.push(...bodyItems)
+        }
+      }
+
+      if (cancelled) return
+
+      if (mainRes.error) {
+        console.error('[search] 쿼리 오류:', mainRes.error)
+        setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      } else {
+        setResults(combined.slice(0, MAX_RESULTS))
+      }
+      setLoading(false)
+    }
+
+    runSearch()
+    return () => { cancelled = true }
   }, [q])
 
   return (
@@ -247,13 +333,34 @@ function SearchContent() {
 
       {/* 결과 없음 */}
       {q && !isLoading && results !== null && results.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card py-16 text-center">
           <span className="text-4xl">🔍</span>
-          <p className="text-sm font-medium text-foreground">
-            <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가
-            없습니다
-          </p>
-          <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">다른 키워드로 다시 검색하거나, 서비스별로 탐색해보세요</p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link
+              href="/dashboard/contents"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+            >
+              전체 콘텐츠
+            </Link>
+            <Link
+              href="/dashboard/contents?category=%EB%89%B4%EC%8A%A4"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+            >
+              뉴스 & 미디어
+            </Link>
+            <Link
+              href="/dashboard/contents?category=%EC%9B%B9%EC%9D%B8%EC%82%AC%EC%9D%B4%ED%8A%B8"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+            >
+              웹 인사이트
+            </Link>
+          </div>
         </div>
       )}
 

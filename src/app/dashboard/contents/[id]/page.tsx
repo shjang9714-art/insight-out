@@ -1,4 +1,3 @@
-import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -9,7 +8,7 @@ import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
-import { ensureFullBody } from '@/lib/contents/full-body'
+import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
@@ -81,50 +80,6 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '유튜브':    'bg-red-50 text-red-700 border-red-100',
 }
 
-// ─── 본문 로딩 fallback: 스니펫을 즉시 표시 ─────────────────────────────────
-
-function ArticleBodyFallback({ snippet }: { snippet: string }) {
-  if (!snippet) {
-    return <p className="text-sm text-muted-foreground">본문을 불러오는 중입니다…</p>
-  }
-  return (
-    <div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {snippet}
-      </p>
-      <p className="mt-3 text-xs text-muted-foreground">본문 불러오는 중…</p>
-    </div>
-  )
-}
-
-// ─── 풀본문 async 서버 컴포넌트 (Suspense 스트리밍) ──────────────────────────
-
-async function ArticleBody({ content }: { content: ContentDetail }) {
-  const body = await ensureFullBody({
-    ...content,
-    original_language: content.original_language ?? 'ko',
-    source_id: null,
-    thumbnail_url: null,
-    title_hash: null,
-    body_hash: null,
-    view_count: 0,
-    bookmark_count: 0,
-    is_editor_pick: false,
-    cluster_id: null,
-    status: 'published',
-    collected_at: '',
-    created_at: '',
-    updated_at: '',
-  })
-
-  return body ? (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-      {body}
-    </p>
-  ) : (
-    <p className="text-sm text-muted-foreground">본문 내용을 불러올 수 없습니다.</p>
-  )
-}
 
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
 
@@ -246,20 +201,38 @@ export default async function ContentDetailPage({ params }: PageProps) {
               htmlToPlainText(content.body_original ?? '')
             )}
           >
-            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {content.sources?.name && (
-                <span className="font-medium text-foreground">{content.sources.name}</span>
-              )}
-              {content.author && <span>{content.author}</span>}
-              <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+            {/* 메타 + 상단 액션 */}
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {content.sources?.name && (
+                  <span className="font-medium text-foreground">{content.sources.name}</span>
+                )}
+                {content.author && <span>{content.author}</span>}
+                <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <BookmarkButton contentId={content.id} />
+                <ArchiveButton contentId={content.id} />
+                {content.original_url && (
+                  <a
+                    href={content.original_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    원문 보기
+                  </a>
+                )}
+              </div>
             </div>
 
             {(serviceNames.length > 0 || keywordNames.length > 0) && (
-              <div className="mb-6 flex flex-wrap gap-1.5">
+              <div className="mb-5 flex flex-wrap gap-1.5">
                 {serviceNames.map((name) => (
                   <span
                     key={name}
-                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
+                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
                   >
                     {name}
                   </span>
@@ -279,24 +252,42 @@ export default async function ContentDetailPage({ params }: PageProps) {
           </TranslatedArticle>
         ) : (
           <>
-            <h1 className="mb-4 text-xl font-bold leading-snug text-foreground">
+            <h1 className="mb-3 text-xl font-bold leading-snug text-foreground">
               {content.title}
             </h1>
 
-            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {content.sources?.name && (
-                <span className="font-medium text-foreground">{content.sources.name}</span>
-              )}
-              {content.author && <span>{content.author}</span>}
-              <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+            {/* 메타 + 상단 액션 */}
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {content.sources?.name && (
+                  <span className="font-medium text-foreground">{content.sources.name}</span>
+                )}
+                {content.author && <span>{content.author}</span>}
+                <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <BookmarkButton contentId={content.id} />
+                <ArchiveButton contentId={content.id} />
+                {!isReport && content.original_url && (
+                  <a
+                    href={content.original_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    원문 보기
+                  </a>
+                )}
+              </div>
             </div>
 
             {(serviceNames.length > 0 || keywordNames.length > 0) && (
-              <div className="mb-6 flex flex-wrap gap-1.5">
+              <div className="mb-5 flex flex-wrap gap-1.5">
                 {serviceNames.map((name) => (
                   <span
                     key={name}
-                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
+                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
                   >
                     {name}
                   </span>
@@ -365,15 +356,11 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 )}
               </>
             ) : (
-              <Suspense
-                fallback={
-                  <ArticleBodyFallback
-                    snippet={content.summary_ko ?? content.body_original ?? ''}
-                  />
-                }
-              >
-                <ArticleBody content={content} />
-              </Suspense>
+              <ArticleBodyLoader
+                contentId={content.id}
+                snippet={cleanBodyText(htmlToPlainText(content.summary_ko ?? content.body_original ?? ''))}
+                originalUrl={content.original_url}
+              />
             )}
           </>
         )}

@@ -62,12 +62,29 @@ export default function EmailArchiveWidget() {
     }
   }
 
+  // 아카이브 0건이면 한 줄 안내 배너로 축소
+  if (!loading && archives.length === 0) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+        <p className="text-xs text-muted-foreground">
+          콘텐츠를 아카이빙하면 메일로 받아볼 수 있어요
+        </p>
+        <Link
+          href="/dashboard/mypage"
+          className="ml-4 shrink-0 text-xs font-medium text-brand-600 hover:underline"
+        >
+          아카이브 관리 →
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 to-pink-50 dark:from-card dark:to-card px-6 py-5">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-lg">📩</span>
+            <Mail className="h-4 w-4 text-brand-600" />
             <h2 className="text-sm font-semibold text-foreground">아카이빙 콘텐츠 메일로 받기</h2>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -88,10 +105,6 @@ export default function EmailArchiveWidget() {
             <div key={i} className="h-16 w-44 shrink-0 animate-pulse rounded-xl bg-muted/60" />
           ))}
         </div>
-      ) : archives.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-brand-200 bg-background/60 px-4 py-5 text-center text-xs text-muted-foreground">
-          아직 담아둔 아카이브가 없습니다. 콘텐츠 상세에서 &quot;아카이빙 담기&quot;를 눌러 보세요.
-        </p>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {archives.map((a) => (

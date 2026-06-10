@@ -9,7 +9,10 @@ interface MorningBriefingPlayerProps {
 export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlayerProps) {
   const [open, setOpen] = useState(false)
   const [playing, setPlaying] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [btnVisible, setBtnVisible] = useState(true)
+  const audioRef     = useRef<HTMLAudioElement | null>(null)
+  const lastScrollY  = useRef(0)
+  const showTimeout  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isAvailable = !!audioUrl
   const today = new Date().toLocaleDateString('ko-KR', {
@@ -28,6 +31,30 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
       audioRef.current = null
     }
   }, [audioUrl])
+
+  // 아래 스크롤 시 버튼 숨김, 위 스크롤·정지 시 표시
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY
+      const delta = currentY - lastScrollY.current
+
+      if (delta > 5) {
+        setBtnVisible(false)
+      } else if (delta < -5) {
+        setBtnVisible(true)
+      }
+      lastScrollY.current = currentY
+
+      if (showTimeout.current) clearTimeout(showTimeout.current)
+      showTimeout.current = setTimeout(() => setBtnVisible(true), 1500)
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (showTimeout.current) clearTimeout(showTimeout.current)
+    }
+  }, [])
 
   function togglePlay() {
     if (!audioRef.current) return
@@ -48,11 +75,13 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
 
   return (
     <>
-      {/* Floating trigger button */}
+      {/* Floating trigger button — 아래 스크롤 시 숨김 */}
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="모닝 브리핑 열기"
-        className="fixed bottom-6 right-6 z-50 flex flex-col items-center justify-center gap-1 rounded-2xl px-4 py-3 shadow-xl transition-all hover:scale-105 hover:shadow-2xl active:scale-95"
+        className={`fixed bottom-6 right-6 z-50 flex flex-col items-center justify-center gap-1 rounded-2xl px-4 py-3 shadow-xl transition-all duration-300 hover:scale-105 hover:shadow-2xl active:scale-95 ${
+          btnVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-20 opacity-0'
+        }`}
         style={{
           background: '#1A1A4E',
           minWidth: '72px',
@@ -73,7 +102,9 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
       {/* Mini player popup */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 z-50 w-72 overflow-hidden rounded-2xl shadow-2xl"
+          className={`fixed bottom-24 right-6 z-50 w-72 overflow-hidden rounded-2xl shadow-2xl transition-all duration-300 ${
+            btnVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
           style={{ backgroundColor: '#2D2D6E' }}
         >
           {/* Header stripe */}

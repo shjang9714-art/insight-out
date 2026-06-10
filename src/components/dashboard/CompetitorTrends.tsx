@@ -9,6 +9,9 @@ const LOGO_COLORS: Record<string, string> = {
   blue: 'bg-blue-600',
 }
 
+// 자동 갱신 전 하드코딩된 큐레이션 기준일
+const CURATION_DATE = '2026-06-10'
+
 function CompetitorBlock({ competitor }: { competitor: CompetitorTrend }) {
   return (
     <div>
@@ -28,7 +31,10 @@ function CompetitorBlock({ competitor }: { competitor: CompetitorTrend }) {
             <p className="text-xs text-foreground/90 leading-snug group-hover:text-blue-700 line-clamp-2">
               {item.text}
             </p>
-            <span className="text-[11px] text-muted-foreground">{item.time}</span>
+            {/* "오늘"/"최신" 등 오해 유발 라벨은 크롤러 연동 전까지 표시하지 않음 */}
+            {item.time !== '오늘' && item.time !== '최신' && item.time && (
+              <span className="text-[11px] text-muted-foreground">{item.time}</span>
+            )}
           </div>
         ))}
       </div>
@@ -47,13 +53,12 @@ export default function CompetitorTrends() {
           <span className="text-base">🔍</span>
           <h2 className="text-sm font-semibold text-foreground">경쟁사 동향</h2>
         </div>
-        <button className="text-xs text-blue-600 hover:underline">전체 보기</button>
+        <span className="text-[11px] text-muted-foreground">큐레이션 기준일: {CURATION_DATE}</span>
       </div>
 
-      {/* 국내 통신사 — 매일 디폴트 노출 */}
-      <div className="mb-2 flex items-center gap-2">
+      {/* 국내 통신사 */}
+      <div className="mb-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">국내 통신사</h3>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">매일 기본 노출</span>
       </div>
       <div className="flex flex-col gap-5">
         {telecom.map((c) => (
@@ -63,10 +68,9 @@ export default function CompetitorTrends() {
 
       <div className="my-4 border-t border-border" />
 
-      {/* 글로벌 빅테크 — 매일 최신 이슈로 갱신 */}
-      <div className="mb-2 flex items-center gap-2">
+      {/* 글로벌 빅테크 */}
+      <div className="mb-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">글로벌 빅테크</h3>
-        <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">최신 이슈 갱신</span>
       </div>
       <div className="flex flex-col gap-5">
         {bigtech.map((c) => (

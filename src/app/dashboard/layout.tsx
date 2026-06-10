@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Suspense } from 'react'
+import { Search } from 'lucide-react'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
 import MorningBriefingPlayer from '@/components/dashboard/MorningBriefingPlayer'
@@ -20,7 +21,8 @@ function shouldHideTopNav(pathname: string): boolean {
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen]     = useState(false)
+  const [searchExpanded, setSearchExpanded] = useState(false)
   const searchParams  = useSearchParams()
   const router        = useRouter()
   const pathname      = usePathname()
@@ -36,10 +38,12 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     router.push(`${pathname}${qs ? `?${qs}` : ''}`)
   }
 
-  // ESC 로 모바일 드로어 닫기
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSidebarOpen(false)
+      if (e.key === 'Escape') {
+        setSidebarOpen(false)
+        setSearchExpanded(false)
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
@@ -49,14 +53,38 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
-      {/* ── 영구 상단 네비게이션 (카테고리·서비스·검색) ─────────────────── */}
+      {/* ── 스티키 서브 네비 (서비스 탭 + 검색창) — 헤더(56px) 바로 아래 ── */}
       {!hideTopNav && (
-        <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
-          <CategoryGrid activeService={activeService} />
-          <div className="mt-3 space-y-2.5 border-t border-border pt-3">
-            <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
-            <SearchBar />
+        <div className="sticky top-14 z-10 border-b border-border bg-card/90 backdrop-blur-sm">
+          <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
+            {/* 서비스 탭: 검색 펼쳐진 모바일에서는 숨김 */}
+            <div className={`min-w-0 flex-1 ${searchExpanded ? 'hidden sm:block' : ''}`}>
+              <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
+            </div>
+
+            {/* 검색창: sm+ 항상 표시 / 모바일은 펼칠 때만 표시 */}
+            <div className={`${searchExpanded ? 'flex-1' : 'hidden'} sm:block sm:w-64 sm:flex-none`}>
+              <SearchBar onClose={() => setSearchExpanded(false)} />
+            </div>
+
+            {/* 검색 아이콘 버튼: 모바일에서 검색창 접혀 있을 때만 */}
+            {!searchExpanded && (
+              <button
+                onClick={() => setSearchExpanded(true)}
+                className="shrink-0 rounded-lg p-2 hover:bg-accent sm:hidden"
+                aria-label="검색"
+              >
+                <Search className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* ── 카테고리 칩 리스트 (스크롤 시 사라지는 일반 배치) ────────────── */}
+      {!hideTopNav && (
+        <div className="border-b border-border bg-card px-4 py-3 sm:px-6">
+          <CategoryGrid activeService={activeService} />
         </div>
       )}
 
