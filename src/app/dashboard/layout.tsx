@@ -52,10 +52,12 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       {/* ── 영구 상단 네비게이션 (카테고리·서비스·검색) ─────────────────── */}
       {!hideTopNav && (
         <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
-          <CategoryGrid activeService={activeService} />
-          <div className="mt-3 space-y-2.5 border-t border-border pt-3">
-            <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
-            <SearchBar />
+          <div className="mx-auto w-full max-w-screen-xl">
+            <CategoryGrid activeService={activeService} />
+            <div className="mt-3 space-y-2.5 border-t border-border pt-3">
+              <ServiceTabs activeService={activeService} onChange={handleServiceChange} />
+              <SearchBar />
+            </div>
           </div>
         </div>
       )}
@@ -80,7 +82,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           </>
         )}
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto w-full max-w-screen-xl">{children}</div>
+        </main>
       </div>
 
       <MorningBriefingPlayer />
