@@ -6,15 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
 import ContentCard from './ContentCard'
 
-const MOCK_ID_TO_SERVICE_NAME: Record<string, string> = {
-  connectivity:      'Connectivity',
-  'security-cloud':  '보안/클라우드',
-  m2m:               'M2M',
-  aicc:              'AICC',
-  aidc:              'AIDC',
-  mobility:          '모빌리티',
-  enterprise:        '기업솔루션',
-}
 
 interface FeedItem {
   id: string
@@ -57,28 +48,15 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
       setLoading(true)
       const supabase = createClient()
 
-      // 서비스 필터: mock serviceId → DB UUID → content_ids
+      // 서비스 필터: activeService는 UUID 또는 'all'
       let contentIds: string[] | null = null
 
       if (activeService !== 'all') {
-        const serviceName = MOCK_ID_TO_SERVICE_NAME[activeService]
-        if (serviceName) {
-          const { data: svc } = await supabase
-            .from('services')
-            .select('id')
-            .eq('name', serviceName)
-            .maybeSingle()
-
-          if (svc?.id) {
-            const { data: cs } = await supabase
-              .from('content_services')
-              .select('content_id')
-              .eq('service_id', svc.id)
-            contentIds = cs?.map((r) => r.content_id) ?? []
-          } else {
-            contentIds = []
-          }
-        }
+        const { data: cs } = await supabase
+          .from('content_services')
+          .select('content_id')
+          .eq('service_id', activeService)
+        contentIds = cs?.map((r) => r.content_id) ?? []
       }
 
       if (contentIds !== null && contentIds.length === 0) {
@@ -108,7 +86,7 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
 
   const contentsHref =
     activeService !== 'all'
-      ? `/dashboard/contents?service=${activeService}`
+      ? `/dashboard/contents?svc=${activeService}`
       : '/dashboard/contents'
 
   return (

@@ -5,9 +5,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentCategory } from '@/lib/types'
 import { getKstTodayStartIso } from '@/lib/date'
-
-// ─── mock taxonomy (아이콘·표시 레이블·순서만 여기서 관리) ────────────────────
-
 const CATEGORY_DEFS: {
   id: string
   icon: string
@@ -24,17 +21,14 @@ const CATEGORY_DEFS: {
   { id: 'youtube',     icon: '▶️', label: '유튜브 영상',     category: null },
 ]
 
-const ITEM_CLASS =
-  'flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-4 text-center transition-all hover:border-brand-200 hover:shadow-sm group'
-
 interface Props {
   activeService?: string
+  activeCategory?: string
 }
 
-export default function CategoryGrid({ activeService = 'all' }: Props) {
+export default function CategoryGrid({ activeService = 'all', activeCategory = '' }: Props) {
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({})
 
-  // 오늘 KST 0시 이후 수집된 카테고리별 신규 건수 로드
   useEffect(() => {
     const supabase = createClient()
     supabase
@@ -52,33 +46,42 @@ export default function CategoryGrid({ activeService = 'all' }: Props) {
       })
   }, [])
 
-  const svcSuffix = activeService !== 'all' ? `?service=${activeService}` : ''
+  const svcParam = activeService !== 'all' ? `&svc=${activeService}` : ''
 
   return (
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
       {CATEGORY_DEFS.map((cat) => {
-        // 유튜브는 기존 별도 페이지로
         const href =
           cat.category === null
-            ? `/dashboard/youtube${svcSuffix}`
-            : `/dashboard/contents?category=${encodeURIComponent(cat.category)}${activeService !== 'all' ? `&service=${activeService}` : ''}`
+            ? `/dashboard/youtube${activeService !== 'all' ? `?svc=${activeService}` : ''}`
+            : `/dashboard/contents?category=${encodeURIComponent(cat.category)}${svcParam}`
 
-        const today = cat.category ? (todayCounts[cat.category] ?? 0) : 0
-        const todayText = today > 0 ? `오늘 ${today}건 업데이트` : '업데이트 없음'
-
-        const inner = (
-          <>
-            <span className="text-2xl">{cat.icon}</span>
-            <span className="text-xs font-medium leading-tight text-foreground group-hover:text-brand-600">
-              {cat.label}
-            </span>
-            <span className="text-[11px] text-muted-foreground">{todayText}</span>
-          </>
-        )
+        const count = cat.category ? (todayCounts[cat.category] ?? 0) : 0
+        const isActive = cat.category
+          ? activeCategory === cat.category
+          : activeCategory === 'youtube'
 
         return (
-          <Link key={cat.id} href={href} className={ITEM_CLASS}>
-            {inner}
+          <Link
+            key={cat.id}
+            href={href}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-brand-600 text-white'
+                : 'border border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'
+            }`}
+          >
+            <span>{cat.icon}</span>
+            <span>{cat.label}</span>
+            {count > 0 && (
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-brand-100 text-brand-700'
+                }`}
+              >
+                {count}
+              </span>
+            )}
           </Link>
         )
       })}
