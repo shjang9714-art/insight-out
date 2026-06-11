@@ -160,19 +160,15 @@ export default async function ContentDetailPage({ params }: PageProps) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
 
-      {/* 브레드크럼 */}
-      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/dashboard" className="transition-colors hover:text-brand-600">
-          대시보드
+      {/* 뒤로가기 */}
+      <div className="mb-6">
+        <Link
+          href="/dashboard/contents"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          목록으로
         </Link>
-        <span>›</span>
-        <Link href="/dashboard/contents" className="transition-colors hover:text-brand-600">
-          전체 콘텐츠
-        </Link>
-        <span>›</span>
-        <span className="line-clamp-1 max-w-[200px] font-medium text-foreground">
-          {content.title}
-        </span>
       </div>
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />

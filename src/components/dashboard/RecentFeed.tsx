@@ -34,11 +34,7 @@ function CardSkeleton() {
   )
 }
 
-interface Props {
-  activeService?: string
-}
-
-export default function RecentFeed({ activeService = 'all' }: Props) {
+export default function RecentFeed() {
   const [items, setItems]       = useState<FeedItem[]>([])
   const [isLoading, setLoading] = useState(true)
 
@@ -49,33 +45,14 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
       setLoading(true)
       const supabase = createClient()
 
-      // 서비스 필터: activeService는 UUID 또는 'all'
-      let contentIds: string[] | null = null
-
-      if (activeService !== 'all') {
-        const { data: cs } = await supabase
-          .from('content_services')
-          .select('content_id')
-          .eq('service_id', activeService)
-        contentIds = cs?.map((r) => r.content_id) ?? []
-      }
-
-      if (contentIds !== null && contentIds.length === 0) {
-        if (!cancelled) { setItems([]); setLoading(false) }
-        return
-      }
-
       // 태그 있는 콘텐츠 우선 노출을 위해 20건 조회 후 client-side 정렬
-      let q = supabase
+      const { data } = await supabase
         .from('contents')
         .select('id, title, summary_ko, category, published_at, thumbnail_url, sources(name), content_services(service_id)')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(20)
 
-      if (contentIds) q = q.in('id', contentIds)
-
-      const { data } = await q
       if (!cancelled) {
         const raw = (data ?? []) as unknown as FeedItem[]
         // 서비스 태그 있는 콘텐츠를 앞으로 정렬, 동순위 내에서는 published_at 순 유지
@@ -91,12 +68,9 @@ export default function RecentFeed({ activeService = 'all' }: Props) {
 
     load()
     return () => { cancelled = true }
-  }, [activeService])
+  }, [])
 
-  const contentsHref =
-    activeService !== 'all'
-      ? `/dashboard/contents?svc=${activeService}`
-      : '/dashboard/contents'
+  const contentsHref = '/dashboard/contents'
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">

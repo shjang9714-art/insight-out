@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentCategory } from '@/lib/types'
 import { getKstTodayStartIso } from '@/lib/date'
@@ -12,25 +13,23 @@ const CATEGORY_DEFS: {
   label: string
   category: ContentCategory | null
 }[] = [
-  { id: 'news',        icon: '📰', label: '뉴스 & 미디어',   category: '뉴스' },
-  { id: 'gartner',     icon: '📊', label: '가트너 리포트',   category: '가트너' },
-  { id: 'krg',         icon: '📋', label: 'KRG 리포트',      category: 'KRG' },
-  { id: 'web-insight', icon: '💡', label: '웹 인사이트',     category: '웹인사이트' },
-  { id: 'opinion',     icon: '💼', label: '오피니언 채널',   category: '오피니언' },
-  { id: 'newsletter',  icon: '📧', label: '뉴스레터',        category: '뉴스레터' },
-  { id: 'ai-report',   icon: '🤖', label: 'AI 보고서',       category: 'AI보고서' },
-  { id: 'youtube',     icon: '▶️', label: '유튜브 영상',     category: null },
+  { id: 'news',        icon: '📰', label: '뉴스',      category: '뉴스' },
+  { id: 'gartner',     icon: '📊', label: '가트너',    category: '가트너' },
+  { id: 'krg',         icon: '📋', label: 'KRG',       category: 'KRG' },
+  { id: 'web-insight', icon: '💡', label: '웹인사이트', category: '웹인사이트' },
+  { id: 'opinion',     icon: '💼', label: '오피니언',  category: '오피니언' },
+  { id: 'newsletter',  icon: '📧', label: '뉴스레터',  category: '뉴스레터' },
+  { id: 'ai-report',   icon: '🤖', label: 'AI보고서',  category: 'AI보고서' },
+  { id: 'youtube',     icon: '▶️', label: '유튜브',    category: null },
 ]
 
-interface Props {
-  activeService?: string
-  activeCategory?: string
-}
-
-export default function CategoryGrid({ activeService = 'all', activeCategory = '' }: Props) {
+export default function CategoryGrid() {
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({})
   const [totalCounts, setTotalCounts] = useState<Record<string, number>>({})
   const [totalLoaded, setTotalLoaded] = useState(false)
+  const searchParams   = useSearchParams()
+  const pathname       = usePathname()
+  const activeCategory = searchParams.get('category') ?? ''
 
   useEffect(() => {
     const supabase = createClient()
@@ -63,47 +62,46 @@ export default function CategoryGrid({ activeService = 'all', activeCategory = '
     })
   }, [])
 
-  const svcParam = activeService !== 'all' ? `&svc=${activeService}` : ''
-
   return (
-    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+    <div className="flex items-stretch gap-1.5 overflow-x-auto scrollbar-hide">
       {CATEGORY_DEFS.map((cat) => {
         const href =
           cat.category === null
-            ? `/dashboard/youtube${activeService !== 'all' ? `?svc=${activeService}` : ''}`
-            : `/dashboard/contents?category=${encodeURIComponent(cat.category)}${svcParam}`
+            ? '/dashboard/youtube'
+            : `/dashboard/contents?category=${encodeURIComponent(cat.category)}`
 
         const count   = cat.category ? (todayCounts[cat.category] ?? 0) : 0
         const total   = cat.category ? (totalCounts[cat.category] ?? 0) : 0
         const isEmpty = totalLoaded && cat.category !== null && total === 0
         const isActive = cat.category
           ? activeCategory === cat.category
-          : activeCategory === 'youtube'
+          : pathname.startsWith('/dashboard/youtube')
 
         return (
           <Link
             key={cat.id}
             href={href}
             title={isEmpty ? '콘텐츠 준비 중' : undefined}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
               isEmpty
-                ? 'pointer-events-none border border-border text-muted-foreground/50'
+                ? 'pointer-events-none border-border text-muted-foreground/50'
                 : isActive
-                  ? 'bg-brand-600 text-white'
-                  : 'border border-border text-muted-foreground hover:border-brand-200 hover:text-foreground dark:hover:border-brand-700/50'
+                  ? 'border-brand-600 text-brand-600'
+                  : 'border-border text-foreground/70 hover:border-brand-200 hover:text-foreground dark:text-foreground/80'
             }`}
           >
-            <span>{cat.icon}</span>
-            <span>{cat.label}</span>
+            {/* 오늘 건수 — 좌측 상단 뱃지 */}
             {!isEmpty && count > 0 && (
               <span
-                className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-brand-100 text-brand-700'
+                className={`absolute left-1 top-1 flex min-w-[16px] items-center justify-center rounded-full px-1 py-0.5 text-[9px] font-bold leading-none ${
+                  isActive ? 'bg-brand-600 text-white' : 'bg-brand-500 text-white'
                 }`}
               >
                 {count}
               </span>
             )}
+            <span className="text-xl leading-none">{cat.icon}</span>
+            <span className="text-center text-xs font-medium leading-tight">{cat.label}</span>
           </Link>
         )
       })}
