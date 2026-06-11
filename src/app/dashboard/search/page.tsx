@@ -144,6 +144,8 @@ function SearchContent() {
   const [services, setServices] = useState<ServiceOption[]>([])
   const [sources, setSources]   = useState<SourceOption[]>([])
   const [contentView, setContentView] = useState<ContentView>('list')
+  // null = 카테고리 미선택(전체 출처 노출)
+  const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
 
   useEffect(() => {
     startTransition(() => setContentView(getSavedView()))
@@ -166,6 +168,23 @@ function SearchContent() {
     })
   }, [])
 
+  // 카테고리별 출처 스코프 조회
+  useEffect(() => {
+    if (!category) { startTransition(() => setScopedSourceIds(null)); return }
+    let cancelled = false
+    createClient()
+      .from('contents')
+      .select('source_id')
+      .eq('status', 'published')
+      .eq('category', category)
+      .not('source_id', 'is', null)
+      .then(({ data }) => {
+        if (cancelled) return
+        setScopedSourceIds(new Set((data ?? []).map((r) => r.source_id as string)))
+      })
+    return () => { cancelled = true }
+  }, [category])
+
   const updateParam = useCallback(
     (key: string, value: string) => {
       const p = new URLSearchParams(searchParams.toString())
@@ -175,6 +194,14 @@ function SearchContent() {
     },
     [router, pathname, searchParams]
   )
+
+  // 카테고리 전환 시 범위 밖 출처 선택 정리 (무한루프 가드: 값이 실제로 줄 때만)
+  useEffect(() => {
+    if (!scopedSourceIds || srcIds.length === 0) return
+    const kept = srcIds.filter((id) => scopedSourceIds.has(id))
+    if (kept.length < srcIds.length) updateParam('src', kept.join(','))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedSourceIds])
 
   // FTS 쿼리 (패싯 결합)
   useEffect(() => {
@@ -363,10 +390,10 @@ function SearchContent() {
                 ))}
               </div>
             </div>
-            {/* 출처 팝오버 — 우측 끝 */}
+            {/* 출처 팝오버 — 우측 끝 (카테고리 있으면 해당 카테고리 출처만) */}
             <div className="ml-auto">
               <SourcePopover
-                sources={sources}
+                sources={scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources}
                 value={srcIds}
                 onChange={(ids) => updateParam('src', ids.join(','))}
               />
