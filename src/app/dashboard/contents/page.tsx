@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { ExternalLink, FileText, X, Loader2, LayoutGrid, List, ChevronDown, Globe } from 'lucide-react'
+import { ExternalLink, FileText, X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import ArchiveButton from '@/components/archive/ArchiveButton'
@@ -36,10 +36,6 @@ interface ServiceOption {
   icon?: string | null
 }
 
-interface SourceOption {
-  id: string
-  name: string
-}
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -98,89 +94,6 @@ function getKeywords(item: ContentItem): string[] {
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
-// ─── 출처 드롭다운 ────────────────────────────────────────────────────────────
-
-function SourceDropdown({
-  sources,
-  value,
-  onChange,
-}: {
-  sources: SourceOption[]
-  value: string
-  onChange: (v: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const selected = sources.find((s) => s.id === value)
-
-  // 바깥 클릭 닫기
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      const el = document.getElementById('source-dropdown-panel')
-      const btn = document.getElementById('source-dropdown-btn')
-      if (el && !el.contains(e.target as Node) && btn && !btn.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  if (sources.length === 0) return null
-
-  return (
-    <div className="relative ml-auto">
-      <button
-        id="source-dropdown-btn"
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-          value
-            ? 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
-            : 'border-border bg-card text-muted-foreground hover:border-brand-200 hover:text-foreground'
-        )}
-      >
-        <Globe className="h-3.5 w-3.5 shrink-0" />
-        <span className="max-w-[120px] truncate">{selected?.name ?? '출처 전체'}</span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div
-          id="source-dropdown-panel"
-          className="absolute right-0 top-full z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
-        >
-          <div className="max-h-64 overflow-y-auto p-1.5">
-            <button
-              type="button"
-              onClick={() => { onChange(''); setOpen(false) }}
-              className={cn(
-                'flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
-                !value ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-400' : 'text-foreground hover:bg-accent'
-              )}
-            >
-              전체 출처
-            </button>
-            {sources.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => { onChange(s.id); setOpen(false) }}
-                className={cn(
-                  'flex w-full items-center rounded-lg px-3 py-2 text-left text-xs transition-colors',
-                  value === s.id ? 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400' : 'text-foreground hover:bg-accent'
-                )}
-              >
-                {s.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
@@ -352,7 +265,6 @@ function ContentsContent() {
   const date     = (searchParams.get('date') ?? 'all') as DateFilter
   const svcParam = searchParams.get('svc') ?? ''
   const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
-  const src      = searchParams.get('src') ?? ''
   const relevant = searchParams.get('relevant') ?? '1'
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
@@ -361,7 +273,6 @@ function ContentsContent() {
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
   const [services, setServices]   = useState<ServiceOption[]>([])
-  const [sources, setSources]     = useState<SourceOption[]>([])
   const [contentView, setContentView] = useState<ContentView>('card')
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
@@ -386,16 +297,13 @@ function ContentsContent() {
     [router, pathname, searchParams]
   )
 
-  // ── 서비스·소스 목록 로드 (1회) ────────────────────────────────────────────
+  // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient()
-    Promise.all([
-      supabase.from('services').select('id, name, icon').order('order'),
-      supabase.from('sources').select('id, name').order('name'),
-    ]).then(([{ data: svcs }, { data: srcs }]) => {
-      if (svcs) setServices(svcs as ServiceOption[])
-      if (srcs) setSources(srcs as SourceOption[])
-    })
+    supabase.from('services').select('id, name, icon').order('order')
+      .then(({ data: svcs }) => {
+        if (svcs) setServices(svcs as ServiceOption[])
+      })
   }, [])
 
   // ── 콘텐츠 쿼리 ─────────────────────────────────────────────────────────────
@@ -441,7 +349,6 @@ function ContentsContent() {
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
       if (category) q = q.eq('category', category)
-      if (src)      q = q.eq('source_id', src)
 
       const dateStart = getDateStart(date)
       if (dateStart)      q = q.gte('published_at', dateStart)
@@ -463,7 +370,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, src, relevant, page])
+  }, [category, date, svcIds, relevant, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -487,15 +394,6 @@ function ContentsContent() {
         const next = svcIds.filter((x) => x !== id)
         updateParam('svc', next.join(','))
       },
-    })
-  }
-
-  if (src) {
-    const srcName = sources.find((s) => s.id === src)?.name ?? '출처'
-    activeFilters.push({
-      key: 'src',
-      label: `출처: ${srcName}`,
-      onRemove: () => updateParam('src', ''),
     })
   }
 
@@ -572,13 +470,6 @@ function ContentsContent() {
               ))}
             </div>
           </div>
-
-          {/* 출처 드롭다운 — 우측 끝 */}
-          <SourceDropdown
-            sources={sources}
-            value={src}
-            onChange={(v) => updateParam('src', v)}
-          />
 
         </div>
 
