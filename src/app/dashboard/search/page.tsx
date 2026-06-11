@@ -1,18 +1,23 @@
 'use client'
 
-import { Suspense, useEffect, useState, startTransition } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState, useMemo, useCallback, startTransition } from 'react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { Search, ExternalLink, FileText } from 'lucide-react'
+import { Search, X, LayoutGrid, List } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import ContentRow from '@/components/dashboard/ContentRow'
+import ContentListCard from '@/components/dashboard/ContentListCard'
+import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 
-// ─── 타입 ─────────────────────────────────────────────────────────────────────
+// ─── 타입 ────────────────────────────────────────────────────────────────────
 
 interface SearchResult {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   category: ContentCategory
   published_at: string | null
   file_path: string | null
@@ -20,157 +25,206 @@ interface SearchResult {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
+  content_keywords: { keywords: { name: string } | null }[]
+  content_services: { services: { name: string } | null }[]
 }
+
+interface ServiceOption { id: string; name: string; icon?: string | null }
+interface SourceOption  { id: string; name: string }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
-const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
-  '뉴스':    'bg-blue-50 text-blue-700 border-blue-100',
-  '가트너':  'bg-purple-50 text-purple-700 border-purple-100',
-  'KRG':    'bg-orange-50 text-orange-700 border-orange-100',
-  '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
-  '오피니언': 'bg-green-50 text-green-700 border-green-100',
-  '뉴스레터': 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  'AI보고서': 'bg-pink-50 text-pink-700 border-pink-100',
-  '유튜브':  'bg-red-50 text-red-700 border-red-100',
-}
+const DATE_OPTIONS = [
+  { value: 'all',   label: '전체' },
+  { value: 'today', label: '오늘' },
+  { value: 'week',  label: '이번 주' },
+  { value: 'month', label: '이번 달' },
+] as const
+type DateFilter = (typeof DATE_OPTIONS)[number]['value']
 
+const ALL_CATEGORIES: ContentCategory[] = [
+  '뉴스', '가트너', 'KRG', '웹인사이트', '오피니언', '뉴스레터', 'AI보고서', '유튜브',
+]
+
+type ContentView = 'card' | 'list'
+const VIEW_KEY = 'io:search-view'
 const MAX_RESULTS = 30
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string | null): string | null {
-  if (!dateStr) return null
-  return new Date(dateStr).toLocaleDateString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+function getDateStart(filter: string): string | null {
+  if (filter === 'today') {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d.toISOString()
+  }
+  if (filter === 'week')  return new Date(Date.now() - 7  * 86_400_000).toISOString()
+  if (filter === 'month') return new Date(Date.now() - 30 * 86_400_000).toISOString()
+  return null
 }
 
-// ─── 스켈레톤 ─────────────────────────────────────────────────────────────────
+function getSavedView(): ContentView {
+  if (typeof window === 'undefined') return 'list'
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'card' ? 'card' : 'list'
+  } catch {
+    return 'list'
+  }
+}
 
-function SkeletonCard() {
+function getKeywords(item: SearchResult): string[] {
+  return item.content_keywords.map((ck) => ck.keywords?.name).filter((n): n is string => Boolean(n))
+}
+
+function getServices(item: SearchResult): string[] {
+  return item.content_services.map((cs) => cs.services?.name).filter((n): n is string => Boolean(n))
+}
+
+// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <div className="animate-pulse rounded-xl border border-border bg-card p-5">
-      <div className="mb-3 flex gap-2">
-        <div className="h-5 w-16 rounded-full bg-muted" />
+    <span className="flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700">
+      {label}
+      <button onClick={onRemove} className="ml-0.5 rounded-full p-0.5 hover:bg-brand-100" aria-label={`${label} 필터 제거`}>
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </span>
+  )
+}
+
+function SkeletonRow() {
+  return (
+    <div className="animate-pulse rounded-xl border border-border bg-card px-5 py-4">
+      <div className="mb-2 flex gap-1.5">
+        <div className="h-4 w-14 rounded-md bg-muted" />
+        <div className="h-4 w-16 rounded-md bg-muted" />
       </div>
-      <div className="mb-2 h-5 w-3/4 rounded bg-muted" />
-      <div className="space-y-1.5">
-        <div className="h-4 w-full rounded bg-muted" />
-        <div className="h-4 w-5/6 rounded bg-muted" />
-      </div>
-      <div className="mt-3 flex gap-3">
-        <div className="h-3.5 w-20 rounded bg-muted" />
-        <div className="h-3.5 w-24 rounded bg-muted" />
-      </div>
+      <div className="mb-1.5 h-4 w-3/4 rounded bg-muted" />
+      <div className="h-3 w-1/2 rounded bg-muted" />
     </div>
   )
 }
 
-// ─── 결과 카드 ────────────────────────────────────────────────────────────────
-
-function ResultCard({ item }: { item: SearchResult }) {
-  const categoryStyle =
-    CATEGORY_STYLE[item.category] ?? 'bg-muted text-muted-foreground border-border'
-  const dateStr = formatDate(item.published_at)
-
+function SkeletonCard() {
   return (
-    <article className="group rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        {/* 왼쪽: 텍스트 */}
-        <div className="min-w-0 flex-1">
-          {/* 뱃지 */}
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            <span
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${categoryStyle}`}
-            >
-              {CONTENT_CATEGORY_LABEL[item.category] ?? item.category}
-            </span>
-            {item.is_editor_pick && (
-              <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                ⭐ 에디터 픽
-              </span>
-            )}
-          </div>
-
-          {/* 제목 */}
-          <h2 className="mb-1.5 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-            {item.title}
-          </h2>
-
-          {/* 요약 */}
-          {item.summary_ko && (
-            <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-              {item.summary_ko}
-            </p>
-          )}
-
-          {/* 메타 */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
-            {item.sources?.name && (
-              <span className="font-medium text-foreground">{item.sources.name}</span>
-            )}
-            {item.author && !item.sources?.name && <span>{item.author}</span>}
-            <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
-          </div>
-        </div>
-
-        {/* 오른쪽: 액션 버튼 */}
-        <div className="shrink-0 pt-0.5">
-          {item.original_url ? (
-            <a
-              href={item.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              원문
-            </a>
-          ) : item.file_path ? (
-            <span className="flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
-              <FileText className="h-3.5 w-3.5" />
-              리포트
-            </span>
-          ) : null}
-        </div>
+    <div className="animate-pulse rounded-2xl border border-border bg-card p-5">
+      <div className="mb-3 flex gap-1.5">
+        <div className="h-5 w-14 rounded-md bg-muted" />
+        <div className="h-5 w-20 rounded-md bg-muted" />
       </div>
-    </article>
+      <div className="mb-2 h-5 w-full rounded bg-muted" />
+      <div className="mb-1 h-5 w-4/5 rounded bg-muted" />
+      <div className="mt-3 space-y-1.5">
+        <div className="h-3.5 w-full rounded bg-muted" />
+        <div className="h-3.5 w-5/6 rounded bg-muted" />
+        <div className="h-3.5 w-2/3 rounded bg-muted" />
+      </div>
+    </div>
   )
 }
 
 // ─── 검색 컨텐츠 ──────────────────────────────────────────────────────────────
 
 function SearchContent() {
+  const router       = useRouter()
+  const pathname     = usePathname()
   const searchParams = useSearchParams()
-  const q = searchParams.get('q')?.trim() ?? ''
+
+  const q        = searchParams.get('q')?.trim() ?? ''
+  const category = (searchParams.get('category') ?? '') as ContentCategory | ''
+  const date     = (searchParams.get('date') ?? 'all') as DateFilter
+  const svcParam = searchParams.get('svc') ?? ''
+  const srcParam = searchParams.get('src') ?? ''
+  const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
+  const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
 
   const [results, setResults]   = useState<SearchResult[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError]       = useState<string | null>(null)
+  const [services, setServices] = useState<ServiceOption[]>([])
+  const [sources, setSources]   = useState<SourceOption[]>([])
+  const [contentView, setContentView] = useState<ContentView>('list')
 
+  useEffect(() => {
+    startTransition(() => setContentView(getSavedView()))
+  }, [])
+
+  const handleViewChange = (v: ContentView) => {
+    setContentView(v)
+    try { localStorage.setItem(VIEW_KEY, v) } catch { /* noop */ }
+  }
+
+  // 서비스·소스 로드 (1회)
+  useEffect(() => {
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('services').select('id, name, icon').order('order'),
+      supabase.from('sources').select('id, name').order('name'),
+    ]).then(([{ data: svcs }, { data: srcs }]) => {
+      if (svcs) setServices(svcs as ServiceOption[])
+      if (srcs) setSources(srcs as SourceOption[])
+    })
+  }, [])
+
+  const updateParam = useCallback(
+    (key: string, value: string) => {
+      const p = new URLSearchParams(searchParams.toString())
+      if (value) p.set(key, value)
+      else p.delete(key)
+      router.push(`${pathname}?${p.toString()}`)
+    },
+    [router, pathname, searchParams]
+  )
+
+  // FTS 쿼리 (패싯 결합)
   useEffect(() => {
     if (!q) {
       startTransition(() => { setResults(null); setLoading(false) })
       return
     }
 
+    let cancelled = false
     startTransition(() => { setLoading(true); setError(null) })
 
-    const supabase = createClient()
-    supabase
-      .from('contents')
-      .select(
-        'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name)'
-      )
-      .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
-      .eq('status', 'published')
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(MAX_RESULTS)
-      .then(({ data, error: err }) => {
+    const fetchResults = async () => {
+      const supabase = createClient()
+
+      // svc 필터: 선택된 서비스와 매핑된 content_ids 선조회
+      let svcContentIds: string[] | null = null
+      if (svcIds.length > 0) {
+        const { data } = await supabase
+          .from('content_services')
+          .select('content_id')
+          .in('service_id', svcIds)
+        svcContentIds = [...new Set(data?.map((r) => r.content_id) ?? [])]
+        if (svcContentIds.length === 0) {
+          if (!cancelled) { setResults([]); setLoading(false) }
+          return
+        }
+      }
+
+      let query = supabase
+        .from('contents')
+        .select(
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
+        )
+        .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
+        .eq('status', 'published')
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(MAX_RESULTS)
+
+      if (category)          query = query.eq('category', category)
+      if (srcIds.length > 0) query = query.in('source_id', srcIds)
+
+      const dateStart = getDateStart(date)
+      if (dateStart)         query = query.gte('published_at', dateStart)
+      if (svcContentIds)     query = query.in('id', svcContentIds)
+
+      const { data, error: err } = await query
+
+      if (!cancelled) {
         if (err) {
           console.error('[search] FTS 쿼리 오류:', err)
           setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
@@ -178,45 +232,257 @@ function SearchContent() {
           setResults((data ?? []) as unknown as SearchResult[])
         }
         setLoading(false)
-      })
-  }, [q])
+      }
+    }
+
+    fetchResults()
+    return () => { cancelled = true }
+  }, [q, category, date, svcIds, srcIds])
+
+  // 활성 필터 칩
+  const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
+
+  if (category) activeFilters.push({
+    key: 'cat',
+    label: CONTENT_CATEGORY_LABEL[category] ?? category,
+    onRemove: () => updateParam('category', ''),
+  })
+
+  if (date !== 'all') activeFilters.push({
+    key: 'date',
+    label: DATE_OPTIONS.find((d) => d.value === date)?.label ?? date,
+    onRemove: () => updateParam('date', ''),
+  })
+
+  for (const id of svcIds) {
+    const svcName = services.find((s) => s.id === id)?.name ?? '서비스'
+    activeFilters.push({
+      key: `svc-${id}`,
+      label: `사업: ${svcName}`,
+      onRemove: () => {
+        const next = svcIds.filter((x) => x !== id)
+        updateParam('svc', next.join(','))
+      },
+    })
+  }
+
+  for (const id of srcIds) {
+    const srcName = sources.find((s) => s.id === id)?.name ?? '출처'
+    activeFilters.push({
+      key: `src-${id}`,
+      label: `출처: ${srcName}`,
+      onRemove: () => {
+        const next = srcIds.filter((x) => x !== id)
+        updateParam('src', next.join(','))
+      },
+    })
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6">
       {/* 브레드크럼 */}
       <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/dashboard" className="transition-colors hover:text-brand-600">
-          대시보드
-        </Link>
+        <Link href="/dashboard" className="transition-colors hover:text-brand-600">대시보드</Link>
         <span>›</span>
         <span className="font-medium text-foreground">검색</span>
         {q && (
           <>
             <span>›</span>
-            <span className="max-w-xs truncate font-medium text-brand-600">
-              &ldquo;{q}&rdquo;
-            </span>
+            <span className="max-w-xs truncate font-medium text-brand-600">&ldquo;{q}&rdquo;</span>
           </>
         )}
       </div>
 
-      {/* 헤더 */}
-      <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted">
-          <Search className="h-4 w-4 text-muted-foreground" />
+      {/* 헤더 + 뷰 토글 */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted">
+            <Search className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-foreground">
+              {q ? `"${q}" 검색 결과` : '콘텐츠 검색'}
+            </h1>
+            {!isLoading && results !== null && (
+              <p className="text-xs text-muted-foreground">
+                총 {results.length}건{results.length === MAX_RESULTS && ' (최대 30건 표시)'}
+              </p>
+            )}
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground">
-            {q ? `"${q}" 검색 결과` : '콘텐츠 검색'}
-          </h1>
-          {!isLoading && results !== null && (
-            <p className="text-xs text-muted-foreground">
-              총 {results.length}건
-              {results.length === MAX_RESULTS && ' (최대 30건 표시)'}
-            </p>
+
+        {/* 카드/목록 뷰 토글 */}
+        {q && (
+          <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+            <button
+              onClick={() => handleViewChange('card')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                contentView === 'card' ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:text-foreground'
+              )}
+              aria-label="카드 뷰"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              카드
+            </button>
+            <button
+              onClick={() => handleViewChange('list')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                contentView === 'list' ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:text-foreground'
+              )}
+              aria-label="목록 뷰"
+            >
+              <List className="h-3.5 w-3.5" />
+              목록
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 패싯 필터바 — 검색어 있을 때만 */}
+      {q && (
+        <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
+
+          {/* 날짜 */}
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">날짜</span>
+            <div className="flex gap-1">
+              {DATE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => updateParam('date', opt.value === 'all' ? '' : opt.value)}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                    date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-muted text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 카테고리 */}
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">카테고리</span>
+              <button
+                onClick={() => updateParam('category', '')}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  !category ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                )}
+              >
+                전체
+              </button>
+              {ALL_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => updateParam('category', category === cat ? '' : cat)}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                    category === cat ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  {CONTENT_CATEGORY_LABEL[cat]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 사업 */}
+          {services.length > 0 && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">사업</span>
+                <button
+                  onClick={() => updateParam('svc', '')}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                    svcIds.length === 0 ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  전체
+                </button>
+                {services.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      const next = svcIds.includes(s.id) ? svcIds.filter((x) => x !== s.id) : [...svcIds, s.id]
+                      updateParam('svc', next.join(','))
+                    }}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      svcIds.includes(s.id) ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    {s.icon ? `${s.icon} ${s.name}` : s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 출처 */}
+          {sources.length > 0 && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>
+                <button
+                  onClick={() => updateParam('src', '')}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                    srcIds.length === 0 ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  전체
+                </button>
+                {sources.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      const next = srcIds.includes(s.id) ? srcIds.filter((x) => x !== s.id) : [...srcIds, s.id]
+                      updateParam('src', next.join(','))
+                    }}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      srcIds.includes(s.id) ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 활성 필터 칩 */}
+          {activeFilters.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <span className="text-[11px] text-muted-foreground">적용 중:</span>
+              {activeFilters.map((f) => (
+                <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
+              ))}
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams()
+                  if (q) p.set('q', q)
+                  router.push(`${pathname}?${p.toString()}`)
+                }}
+                className="text-[11px] text-muted-foreground underline hover:text-foreground"
+              >
+                전체 초기화
+              </button>
+            </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* 검색어 없음 */}
       {!q && (
@@ -231,11 +497,15 @@ function SearchContent() {
 
       {/* 로딩 */}
       {q && isLoading && (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
+        contentView === 'card' ? (
+          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+          </div>
+        )
       )}
 
       {/* 에러 */}
@@ -246,12 +516,11 @@ function SearchContent() {
       )}
 
       {/* 결과 없음 */}
-      {q && !isLoading && results !== null && results.length === 0 && (
+      {q && !isLoading && results !== null && results.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <span className="text-4xl">🔍</span>
           <p className="text-sm font-medium text-foreground">
-            <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가
-            없습니다
+            <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
           </p>
           <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
         </div>
@@ -259,11 +528,46 @@ function SearchContent() {
 
       {/* 결과 목록 */}
       {q && !isLoading && results !== null && results.length > 0 && (
-        <div className="space-y-3">
-          {results.map((item) => (
-            <ResultCard key={item.id} item={item} />
-          ))}
-        </div>
+        contentView === 'card' ? (
+          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+            {results.map((item) => (
+              <ContentListCard
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                excerpt={toExcerpt(item.summary_ko, item.body_original)}
+                category={item.category}
+                publishedAt={item.published_at}
+                originalUrl={item.original_url}
+                filePath={item.file_path}
+                isEditorPick={item.is_editor_pick}
+                author={item.author}
+                sourceName={item.sources?.name ?? null}
+                tags={tagsOf(getKeywords(item), item.category, getServices(item))}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {results.map((item) => (
+              <ContentRow
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                summaryKo={item.summary_ko}
+                bodyOriginal={item.body_original}
+                category={item.category}
+                publishedAt={item.published_at}
+                originalUrl={item.original_url}
+                filePath={item.file_path}
+                isEditorPick={item.is_editor_pick}
+                author={item.author}
+                sourceName={item.sources?.name ?? null}
+                keywords={tagsOf(getKeywords(item), item.category, getServices(item))}
+              />
+            ))}
+          </div>
+        )
       )}
     </div>
   )

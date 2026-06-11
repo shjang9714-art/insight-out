@@ -2,12 +2,12 @@
 
 import { Suspense, useState, useEffect, useCallback, useMemo, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { ExternalLink, FileText, X, Loader2, LayoutGrid, List } from 'lucide-react'
+import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
+import ContentListCard from '@/components/dashboard/ContentListCard'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -56,16 +56,6 @@ const VIEW_KEY = 'io:content-view'
 const PAGE_SIZE = 20
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-function formatDate(d: string | null) {
-  if (!d) return null
-  return new Date(d).toLocaleDateString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
 
 function getDateStart(filter: string): string | null {
   if (filter === 'today') {
@@ -146,87 +136,6 @@ function SkeletonRow() {
       <div className="mb-1.5 h-4 w-3/4 rounded bg-muted" />
       <div className="h-3 w-1/2 rounded bg-muted" />
     </div>
-  )
-}
-
-function ContentCard({ item }: { item: ContentItem }) {
-  const dateStr   = formatDate(item.published_at)
-  const isYoutube = item.category === '유튜브'
-  const tags      = tagsOf(getKeywords(item), item.category, getServices(item))
-  const excerpt   = toExcerpt(item.summary_ko, item.body_original)
-
-  const inner = (
-    <div className="flex h-full flex-col p-5">
-      {/* 상단: 해시태그 + 에디터픽 */}
-      <div className="mb-3 flex flex-wrap items-center gap-1">
-        {tags.map((kw) => (
-          <span
-            key={kw}
-            className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-          >
-            #{kw}
-          </span>
-        ))}
-        {item.is_editor_pick && (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-            ⭐ 에디터 픽
-          </span>
-        )}
-        {tags.length === 0 && !item.is_editor_pick && (
-          <span className="invisible text-[11px]">placeholder</span>
-        )}
-      </div>
-
-      {/* 중간: 제목 */}
-      <h2 className="mb-2.5 line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-        {item.title}
-      </h2>
-
-      {/* 요약 발췌 */}
-      <p className="mb-4 line-clamp-3 flex-1 text-[13px] leading-relaxed text-foreground/70 dark:text-foreground/60">
-        {excerpt ?? '요약 정보가 없습니다.'}
-      </p>
-
-      {/* 풋터: 메타 + 액션 */}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-3 border-t border-border/60">
-        <p className="truncate text-[11px] text-muted-foreground">
-          {[item.sources?.name ?? item.author, dateStr ? `발행 ${dateStr}` : '발행일 미상']
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-        {item.original_url && (
-          <a
-            href={item.original_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="shrink-0 flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-          >
-            <ExternalLink className="h-3 w-3" />
-            원문
-          </a>
-        )}
-        {!item.original_url && item.file_path && (
-          <span className="shrink-0 flex items-center gap-1 rounded-lg border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-            <FileText className="h-3 w-3" />
-            리포트
-          </span>
-        )}
-      </div>
-    </div>
-  )
-
-  const cardClass =
-    'group flex flex-col rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
-
-  if (isYoutube) {
-    return <article className={cardClass}>{inner}</article>
-  }
-
-  return (
-    <Link href={`/dashboard/contents/${item.id}`} className={cardClass}>
-      <article className="h-full">{inner}</article>
-    </Link>
   )
 }
 
@@ -589,7 +498,20 @@ function ContentsContent() {
           {contentView === 'card' ? (
             <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
               {items.map((item) => (
-                <ContentCard key={item.id} item={item} />
+                <ContentListCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  excerpt={toExcerpt(item.summary_ko, item.body_original)}
+                  category={item.category}
+                  publishedAt={item.published_at}
+                  originalUrl={item.original_url}
+                  filePath={item.file_path}
+                  isEditorPick={item.is_editor_pick}
+                  author={item.author}
+                  sourceName={item.sources?.name ?? null}
+                  tags={tagsOf(getKeywords(item), item.category, getServices(item))}
+                />
               ))}
             </div>
           ) : (

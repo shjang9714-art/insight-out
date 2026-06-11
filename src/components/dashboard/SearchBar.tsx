@@ -1,17 +1,26 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function SearchBar() {
-  const router = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = searchQuery.trim()
     if (!q) return
-    router.push(`/dashboard/search?q=${encodeURIComponent(q)}`)
+
+    const p = new URLSearchParams()
+    p.set('q', q)
+
+    // 현재 URL 의 category 맥락 상속 — 칩 해제로 전체 검색 확장 가능
+    const currentCategory = searchParams.get('category')
+    if (currentCategory) p.set('category', currentCategory)
+
+    router.push(`/dashboard/search?${p.toString()}`)
   }
 
   return (
