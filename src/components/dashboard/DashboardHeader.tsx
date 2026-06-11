@@ -174,7 +174,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
           </button>
           <Link href="/dashboard" className="flex items-center gap-2 lg:w-52">
             <Image
-              src="/brand/favicon-logo.png"
+              src="/favicon-512.png"
               alt="Insight Out"
               width={32}
               height={32}
