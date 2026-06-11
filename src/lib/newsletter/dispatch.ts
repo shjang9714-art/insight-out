@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendBrevoEmail } from '@/lib/email/brevo'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
 
 export interface DispatchResult {
@@ -111,7 +111,6 @@ export async function runNewsletterDispatch({
   }
 
   // 5. 이메일 발송
-  const resend = new Resend(process.env.RESEND_API_KEY)
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'
 
   const cards = contents.map((c) => {
@@ -139,39 +138,23 @@ export async function runNewsletterDispatch({
     const html = buildNewsletterHtml({ dateLabel: todayKST, cards, unsubscribeUrl })
 
     try {
-      const { data: sendData, error: sendErr } = await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev',
-        to: sub.newsletter_email!,
-        subject,
-        html,
+      const messageId = await sendBrevoEmail({ to: sub.newsletter_email!, subject, html })
+      if (!messageId) throw new Error('messageId 없음')
+      await supabase.from('newsletter_recipients').insert({
+        issue_id: issue.id,
+        user_id: sub.user_id,
+        email: sub.newsletter_email!,
+        resend_message_id: messageId,
+        status: 'sent',
       })
-
-      if (sendErr || !sendData?.id) {
-        await supabase.from('newsletter_recipients').insert({
-          issue_id: issue.id,
-          user_id: sub.user_id,
-          email: sub.newsletter_email!,
-          status: 'failed',
-          error: sendErr?.message ?? '발송 실패',
-        })
-        failed++
-      } else {
-        await supabase.from('newsletter_recipients').insert({
-          issue_id: issue.id,
-          user_id: sub.user_id,
-          email: sub.newsletter_email!,
-          resend_message_id: sendData.id,
-          status: 'sent',
-        })
-        sent++
-      }
+      sent++
     } catch (err) {
       await supabase.from('newsletter_recipients').insert({
         issue_id: issue.id,
         user_id: sub.user_id,
         email: sub.newsletter_email!,
         status: 'failed',
-        error: err instanceof Error ? err.message : '알 수 없는 오류',
+        error: err instanceof Error ? err.message : '발송 실패',
       })
       failed++
     }
