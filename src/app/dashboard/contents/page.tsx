@@ -392,7 +392,9 @@ function ContentsContent() {
       key: `svc-${id}`,
       label: `사업: ${svcName}`,
       onRemove: () => {
-        const next = svcIds.filter((x) => x !== id)
+        const cur = new URLSearchParams(window.location.search).get('svc') ?? ''
+        const curIds = cur ? cur.split(',').filter(Boolean) : []
+        const next = curIds.filter((x) => x !== id)
         updateParam('svc', next.join(','))
       },
     })
@@ -497,9 +499,11 @@ function ContentsContent() {
                     key={s.id}
                     type="button"
                     onClick={() => {
-                      const next = svcIds.includes(s.id)
-                        ? svcIds.filter((x) => x !== s.id)
-                        : [...svcIds, s.id]
+                      const cur = new URLSearchParams(window.location.search).get('svc') ?? ''
+                      const curIds = cur ? cur.split(',').filter(Boolean) : []
+                      const next = curIds.includes(s.id)
+                        ? curIds.filter((x) => x !== s.id)
+                        : [...curIds, s.id]
                       updateParam('svc', next.join(','))
                     }}
                     className={cn(
