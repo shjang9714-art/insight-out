@@ -5,9 +5,10 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { ExternalLink, FileText, X, Loader2, LayoutGrid, List, ChevronDown, Globe } from 'lucide-react'
+import { ExternalLink, FileText, X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
+import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ interface ContentItem {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   category: ContentCategory
   published_at: string | null
   file_path: string | null
@@ -23,6 +25,7 @@ interface ContentItem {
   author: string | null
   sources: { name: string } | null
   content_keywords: { keywords: { name: string } | null }[]
+  content_services: { services: { name: string } | null }[]
 }
 
 interface ServiceOption {
@@ -91,91 +94,13 @@ function getKeywords(item: ContentItem): string[] {
     .filter((n): n is string => Boolean(n))
 }
 
-// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
-
-// ─── 출처 드롭다운 ────────────────────────────────────────────────────────────
-
-function SourceDropdown({
-  sources,
-  value,
-  onChange,
-}: {
-  sources: SourceOption[]
-  value: string
-  onChange: (v: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const selected = sources.find((s) => s.id === value)
-
-  // 바깥 클릭 닫기
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      const el = document.getElementById('source-dropdown-panel')
-      const btn = document.getElementById('source-dropdown-btn')
-      if (el && !el.contains(e.target as Node) && btn && !btn.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  if (sources.length === 0) return null
-
-  return (
-    <div className="relative ml-auto">
-      <button
-        id="source-dropdown-btn"
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-          value
-            ? 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
-            : 'border-border bg-card text-muted-foreground hover:border-brand-200 hover:text-foreground'
-        )}
-      >
-        <Globe className="h-3.5 w-3.5 shrink-0" />
-        <span className="max-w-[120px] truncate">{selected?.name ?? '출처 전체'}</span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div
-          id="source-dropdown-panel"
-          className="absolute right-0 top-full z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
-        >
-          <div className="max-h-64 overflow-y-auto p-1.5">
-            <button
-              type="button"
-              onClick={() => { onChange(''); setOpen(false) }}
-              className={cn(
-                'flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
-                !value ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-400' : 'text-foreground hover:bg-accent'
-              )}
-            >
-              전체 출처
-            </button>
-            {sources.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => { onChange(s.id); setOpen(false) }}
-                className={cn(
-                  'flex w-full items-center rounded-lg px-3 py-2 text-left text-xs transition-colors',
-                  value === s.id ? 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400' : 'text-foreground hover:bg-accent'
-                )}
-              >
-                {s.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
+function getServices(item: ContentItem): string[] {
+  return item.content_services
+    .map((cs) => cs.services?.name)
+    .filter((n): n is string => Boolean(n))
 }
+
+// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
@@ -227,13 +152,14 @@ function SkeletonRow() {
 function ContentCard({ item }: { item: ContentItem }) {
   const dateStr   = formatDate(item.published_at)
   const isYoutube = item.category === '유튜브'
-  const keywords  = getKeywords(item).slice(0, 4)
+  const tags      = tagsOf(getKeywords(item), item.category, getServices(item))
+  const excerpt   = toExcerpt(item.summary_ko, item.body_original)
 
   const inner = (
     <div className="flex h-full flex-col p-5">
       {/* 상단: 해시태그 + 에디터픽 */}
       <div className="mb-3 flex flex-wrap items-center gap-1">
-        {keywords.map((kw) => (
+        {tags.map((kw) => (
           <span
             key={kw}
             className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
@@ -246,7 +172,7 @@ function ContentCard({ item }: { item: ContentItem }) {
             ⭐ 에디터 픽
           </span>
         )}
-        {keywords.length === 0 && !item.is_editor_pick && (
+        {tags.length === 0 && !item.is_editor_pick && (
           <span className="invisible text-[11px]">placeholder</span>
         )}
       </div>
@@ -258,7 +184,7 @@ function ContentCard({ item }: { item: ContentItem }) {
 
       {/* 요약 발췌 */}
       <p className="mb-4 line-clamp-3 flex-1 text-[13px] leading-relaxed text-foreground/70 dark:text-foreground/60">
-        {item.summary_ko ?? '요약 정보가 없습니다.'}
+        {excerpt ?? '요약 정보가 없습니다.'}
       </p>
 
       {/* 풋터: 메타 + 액션 */}
@@ -316,7 +242,8 @@ function ContentsContent() {
   const date     = (searchParams.get('date') ?? 'all') as DateFilter
   const svcParam = searchParams.get('svc') ?? ''
   const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
-  const src      = searchParams.get('src') ?? ''
+  const srcParam = searchParams.get('src') ?? ''
+  const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
@@ -392,15 +319,15 @@ function ContentsContent() {
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name))',
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))',
           { count: 'exact' }
         )
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-      if (category) q = q.eq('category', category)
-      if (src)      q = q.eq('source_id', src)
+      if (category)        q = q.eq('category', category)
+      if (srcIds.length > 0) q = q.in('source_id', srcIds)
 
       const dateStart = getDateStart(date)
       if (dateStart)      q = q.gte('published_at', dateStart)
@@ -422,7 +349,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, src, page])
+  }, [category, date, svcIds, srcIds, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -449,12 +376,15 @@ function ContentsContent() {
     })
   }
 
-  if (src) {
-    const srcName = sources.find((s) => s.id === src)?.name ?? '출처'
+  for (const id of srcIds) {
+    const srcName = sources.find((s) => s.id === id)?.name ?? '출처'
     activeFilters.push({
-      key: 'src',
+      key: `src-${id}`,
       label: `출처: ${srcName}`,
-      onRemove: () => updateParam('src', ''),
+      onRemove: () => {
+        const next = srcIds.filter((x) => x !== id)
+        updateParam('src', next.join(','))
+      },
     })
   }
 
@@ -532,13 +462,6 @@ function ContentsContent() {
             </div>
           </div>
 
-          {/* 출처 드롭다운 — 우측 끝 */}
-          <SourceDropdown
-            sources={sources}
-            value={src}
-            onChange={(v) => updateParam('src', v)}
-          />
-
         </div>
 
         {/* 사업키워드(서비스) 멀티셀렉트 pill 행 */}
@@ -577,6 +500,49 @@ function ContentsContent() {
                     )}
                   >
                     {s.icon ? `${s.icon} ${s.name}` : s.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 출처 멀티셀렉트 pill 행 */}
+        {sources.length > 0 && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>
+              <button
+                onClick={() => updateParam('src', '')}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  srcIds.length === 0
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-muted text-muted-foreground hover:bg-accent'
+                )}
+              >
+                전체
+              </button>
+              {sources.map((s) => {
+                const isActive = srcIds.includes(s.id)
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      const next = srcIds.includes(s.id)
+                        ? srcIds.filter((x) => x !== s.id)
+                        : [...srcIds, s.id]
+                      updateParam('src', next.join(','))
+                    }}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      isActive
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    {s.name}
                   </button>
                 )
               })}
@@ -634,6 +600,7 @@ function ContentsContent() {
                   id={item.id}
                   title={item.title}
                   summaryKo={item.summary_ko}
+                  bodyOriginal={item.body_original}
                   category={item.category}
                   publishedAt={item.published_at}
                   originalUrl={item.original_url}
@@ -641,7 +608,7 @@ function ContentsContent() {
                   isEditorPick={item.is_editor_pick}
                   author={item.author}
                   sourceName={item.sources?.name ?? null}
-                  keywords={getKeywords(item)}
+                  keywords={tagsOf(getKeywords(item), item.category, getServices(item))}
                 />
               ))}
             </div>

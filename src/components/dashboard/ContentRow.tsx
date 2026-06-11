@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ExternalLink, FileText } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { toExcerpt } from '@/lib/contents/excerpt'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
@@ -26,6 +27,7 @@ interface Props {
   id: string
   title: string
   summaryKo: string | null
+  bodyOriginal?: string | null
   category: ContentCategory
   publishedAt: string | null
   originalUrl: string | null
@@ -40,6 +42,7 @@ export default function ContentRow({
   id,
   title,
   summaryKo,
+  bodyOriginal,
   category,
   publishedAt,
   originalUrl,
@@ -53,6 +56,7 @@ export default function ContentRow({
   const dateStr   = formatDate(publishedAt)
   const isYoutube = category === '유튜브'
   const tags      = keywords.slice(0, 5)
+  const excerpt   = toExcerpt(summaryKo, bodyOriginal ?? null)
 
   const body = (
     <div className="min-w-0 flex-1 space-y-1.5">
@@ -79,9 +83,9 @@ export default function ContentRow({
       </p>
 
       {/* 요약 */}
-      {summaryKo && (
+      {excerpt && (
         <p className="line-clamp-1 text-xs leading-relaxed text-muted-foreground">
-          {summaryKo}
+          {excerpt}
         </p>
       )}
 

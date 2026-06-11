@@ -54,6 +54,7 @@ interface ContentCardProps {
   publishedAt: string | null
   thumbnailUrl: string | null
   href?: string | null
+  keywords?: string[]
 }
 
 // ─── 썸네일 영역 ─────────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ export default function ContentCard({
   publishedAt,
   thumbnailUrl,
   href,
+  keywords,
 }: ContentCardProps) {
   const catColor = CATEGORY_COLOR[category] ?? 'bg-muted text-muted-foreground'
   const resolvedHref = href ?? (category !== '유튜브' ? `/dashboard/contents/${id}` : null)
@@ -125,6 +127,17 @@ export default function ContentCard({
             </span>
           )}
         </div>
+
+        {/* 해시태그 */}
+        {keywords && keywords.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap gap-1">
+            {keywords.map((kw) => (
+              <span key={kw} className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300">
+                #{kw}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* 제목 */}
         <p className="mb-1.5 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
