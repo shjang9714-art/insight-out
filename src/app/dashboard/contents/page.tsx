@@ -286,15 +286,16 @@ function ContentsContent() {
   }
 
   // ── URL 업데이트 헬퍼 ────────────────────────────────────────────────────────
+  // window.location.search 를 사용해 Link 이동 직후 stale 클로저 방지
   const updateParam = useCallback(
     (key: string, value: string) => {
-      const p = new URLSearchParams(searchParams.toString())
+      const p = new URLSearchParams(window.location.search)
       if (value) p.set(key, value)
       else p.delete(key)
       if (key !== 'page') p.delete('page')
       router.push(`${pathname}?${p.toString()}`)
     },
-    [router, pathname, searchParams]
+    [router, pathname]
   )
 
   // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
