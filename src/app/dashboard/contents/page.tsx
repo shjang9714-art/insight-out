@@ -8,6 +8,7 @@ import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
+import SourcePopover from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -371,6 +372,15 @@ function ContentsContent() {
             </div>
           </div>
 
+          {/* 출처 팝오버 — 우측 끝 */}
+          <div className="ml-auto">
+            <SourcePopover
+              sources={sources}
+              value={srcIds}
+              onChange={(ids) => updateParam('src', ids.join(','))}
+            />
+          </div>
+
         </div>
 
         {/* 사업키워드(서비스) 멀티셀렉트 pill 행 */}
@@ -409,49 +419,6 @@ function ContentsContent() {
                     )}
                   >
                     {s.icon ? `${s.icon} ${s.name}` : s.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 출처 멀티셀렉트 pill 행 */}
-        {sources.length > 0 && (
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>
-              <button
-                onClick={() => updateParam('src', '')}
-                className={cn(
-                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                  srcIds.length === 0
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-muted text-muted-foreground hover:bg-accent'
-                )}
-              >
-                전체
-              </button>
-              {sources.map((s) => {
-                const isActive = srcIds.includes(s.id)
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      const next = srcIds.includes(s.id)
-                        ? srcIds.filter((x) => x !== s.id)
-                        : [...srcIds, s.id]
-                      updateParam('src', next.join(','))
-                    }}
-                    className={cn(
-                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      isActive
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-muted text-muted-foreground hover:bg-accent'
-                    )}
-                  >
-                    {s.name}
                   </button>
                 )
               })}

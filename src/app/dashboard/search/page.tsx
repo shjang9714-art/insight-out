@@ -9,7 +9,9 @@ import { Search, X, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
+import SourcePopover from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
+import { CATEGORY_DEFS } from '@/lib/categories'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -41,10 +43,6 @@ const DATE_OPTIONS = [
   { value: 'month', label: '이번 달' },
 ] as const
 type DateFilter = (typeof DATE_OPTIONS)[number]['value']
-
-const ALL_CATEGORIES: ContentCategory[] = [
-  '뉴스', '가트너', 'KRG', '웹인사이트', '오피니언', '뉴스레터', 'AI보고서', '유튜브',
-]
 
 type ContentView = 'card' | 'list'
 const VIEW_KEY = 'io:search-view'
@@ -344,24 +342,34 @@ function SearchContent() {
       {q && (
         <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
 
-          {/* 날짜 */}
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">날짜</span>
-            <div className="flex gap-1">
-              {DATE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => updateParam('date', opt.value === 'all' ? '' : opt.value)}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
+          {/* 날짜 + 출처 팝오버 한 줄 */}
+          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">날짜</span>
+              <div className="flex gap-1">
+                {DATE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateParam('date', opt.value === 'all' ? '' : opt.value)}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-accent'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* 출처 팝오버 — 우측 끝 */}
+            <div className="ml-auto">
+              <SourcePopover
+                sources={sources}
+                value={srcIds}
+                onChange={(ids) => updateParam('src', ids.join(','))}
+              />
             </div>
           </div>
 
@@ -378,17 +386,17 @@ function SearchContent() {
               >
                 전체
               </button>
-              {ALL_CATEGORIES.map((cat) => (
+              {CATEGORY_DEFS.map((def) => (
                 <button
-                  key={cat}
+                  key={def.id}
                   type="button"
-                  onClick={() => updateParam('category', category === cat ? '' : cat)}
+                  onClick={() => updateParam('category', category === def.category ? '' : def.category)}
                   className={cn(
                     'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    category === cat ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                    category === def.category ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
                   )}
                 >
-                  {CONTENT_CATEGORY_LABEL[cat]}
+                  {def.label}
                 </button>
               ))}
             </div>
@@ -422,40 +430,6 @@ function SearchContent() {
                     )}
                   >
                     {s.icon ? `${s.icon} ${s.name}` : s.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 출처 */}
-          {sources.length > 0 && (
-            <div className="mt-3 border-t border-border pt-3">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">출처</span>
-                <button
-                  onClick={() => updateParam('src', '')}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    srcIds.length === 0 ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  전체
-                </button>
-                {sources.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      const next = srcIds.includes(s.id) ? srcIds.filter((x) => x !== s.id) : [...srcIds, s.id]
-                      updateParam('src', next.join(','))
-                    }}
-                    className={cn(
-                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      srcIds.includes(s.id) ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
-                    )}
-                  >
-                    {s.name}
                   </button>
                 ))}
               </div>
