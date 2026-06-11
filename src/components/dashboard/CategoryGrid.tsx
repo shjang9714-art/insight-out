@@ -66,7 +66,7 @@ export default function CategoryGrid() {
             className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
               isActive
                 ? 'border-brand-600 text-brand-600'
-                : 'border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'
+                : 'border-border text-foreground/70 hover:border-brand-200 hover:text-foreground dark:text-foreground/80'
             }`}
           >
             {/* 오늘 건수 — 좌측 상단 뱃지 */}

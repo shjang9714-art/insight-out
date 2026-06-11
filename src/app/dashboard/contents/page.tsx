@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { ExternalLink, FileText, X, Loader2, LayoutGrid, List } from 'lucide-react'
+import { ExternalLink, FileText, X, Loader2, LayoutGrid, List, ChevronDown, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 
@@ -29,6 +29,11 @@ interface ServiceOption {
   id: string
   name: string
   icon?: string | null
+}
+
+interface SourceOption {
+  id: string
+  name: string
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -88,6 +93,90 @@ function getKeywords(item: ContentItem): string[] {
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
+// ─── 출처 드롭다운 ────────────────────────────────────────────────────────────
+
+function SourceDropdown({
+  sources,
+  value,
+  onChange,
+}: {
+  sources: SourceOption[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = sources.find((s) => s.id === value)
+
+  // 바깥 클릭 닫기
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      const el = document.getElementById('source-dropdown-panel')
+      const btn = document.getElementById('source-dropdown-btn')
+      if (el && !el.contains(e.target as Node) && btn && !btn.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  if (sources.length === 0) return null
+
+  return (
+    <div className="relative ml-auto">
+      <button
+        id="source-dropdown-btn"
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+          value
+            ? 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
+            : 'border-border bg-card text-muted-foreground hover:border-brand-200 hover:text-foreground'
+        )}
+      >
+        <Globe className="h-3.5 w-3.5 shrink-0" />
+        <span className="max-w-[120px] truncate">{selected?.name ?? '출처 전체'}</span>
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          id="source-dropdown-panel"
+          className="absolute right-0 top-full z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+        >
+          <div className="max-h-64 overflow-y-auto p-1.5">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false) }}
+              className={cn(
+                'flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
+                !value ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-400' : 'text-foreground hover:bg-accent'
+              )}
+            >
+              전체 출처
+            </button>
+            {sources.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => { onChange(s.id); setOpen(false) }}
+                className={cn(
+                  'flex w-full items-center rounded-lg px-3 py-2 text-left text-xs transition-colors',
+                  value === s.id ? 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400' : 'text-foreground hover:bg-accent'
+                )}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
     <span className="flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700">
@@ -142,40 +231,35 @@ function ContentCard({ item }: { item: ContentItem }) {
 
   const inner = (
     <div className="flex h-full flex-col p-5">
-      {/* 상단: 해시태그 라벨 */}
-      {keywords.length > 0 && (
-        <div className="mb-2.5 flex flex-wrap gap-1">
-          {keywords.map((kw) => (
-            <span
-              key={kw}
-              className="rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400"
-            >
-              #{kw}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 중간: 에디터픽 배지 + 제목 */}
-      <div className="mb-3">
+      {/* 상단: 해시태그 + 에디터픽 */}
+      <div className="mb-3 flex flex-wrap items-center gap-1">
+        {keywords.map((kw) => (
+          <span
+            key={kw}
+            className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+          >
+            #{kw}
+          </span>
+        ))}
         {item.is_editor_pick && (
-          <div className="mb-1.5">
-            <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-              ⭐ 에디터 픽
-            </span>
-          </div>
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+            ⭐ 에디터 픽
+          </span>
         )}
-        <h2 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-          {item.title}
-        </h2>
+        {keywords.length === 0 && !item.is_editor_pick && (
+          <span className="invisible text-[11px]">placeholder</span>
+        )}
       </div>
 
-      {/* 하단: 요약 발췌 */}
-      {item.summary_ko && (
-        <p className="mb-4 line-clamp-3 flex-1 text-xs leading-relaxed text-muted-foreground">
-          {item.summary_ko}
-        </p>
-      )}
+      {/* 중간: 제목 */}
+      <h2 className="mb-2.5 line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
+        {item.title}
+      </h2>
+
+      {/* 요약 발췌 */}
+      <p className="mb-4 line-clamp-3 flex-1 text-[13px] leading-relaxed text-foreground/70 dark:text-foreground/60">
+        {item.summary_ko ?? '요약 정보가 없습니다.'}
+      </p>
 
       {/* 풋터: 메타 + 액션 */}
       <div className="mt-auto flex items-center justify-between gap-2 pt-3 border-t border-border/60">
@@ -232,6 +316,7 @@ function ContentsContent() {
   const date     = (searchParams.get('date') ?? 'all') as DateFilter
   const svcParam = searchParams.get('svc') ?? ''
   const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
+  const src      = searchParams.get('src') ?? ''
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
@@ -239,6 +324,7 @@ function ContentsContent() {
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
   const [services, setServices]   = useState<ServiceOption[]>([])
+  const [sources, setSources]     = useState<SourceOption[]>([])
   const [contentView, setContentView] = useState<ContentView>('card')
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
@@ -263,11 +349,15 @@ function ContentsContent() {
     [router, pathname, searchParams]
   )
 
-  // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
+  // ── 서비스·소스 목록 로드 (1회) ────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('services').select('id, name, icon').order('order').then(({ data }) => {
-      if (data) setServices(data as ServiceOption[])
+    Promise.all([
+      supabase.from('services').select('id, name, icon').order('order'),
+      supabase.from('sources').select('id, name').order('name'),
+    ]).then(([{ data: svcs }, { data: srcs }]) => {
+      if (svcs) setServices(svcs as ServiceOption[])
+      if (srcs) setSources(srcs as SourceOption[])
     })
   }, [])
 
@@ -310,6 +400,7 @@ function ContentsContent() {
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
       if (category) q = q.eq('category', category)
+      if (src)      q = q.eq('source_id', src)
 
       const dateStart = getDateStart(date)
       if (dateStart)      q = q.gte('published_at', dateStart)
@@ -331,7 +422,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, page])
+  }, [category, date, svcIds, src, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -355,6 +446,15 @@ function ContentsContent() {
         const next = svcIds.filter((x) => x !== id)
         updateParam('svc', next.join(','))
       },
+    })
+  }
+
+  if (src) {
+    const srcName = sources.find((s) => s.id === src)?.name ?? '출처'
+    activeFilters.push({
+      key: 'src',
+      label: `출처: ${srcName}`,
+      onRemove: () => updateParam('src', ''),
     })
   }
 
@@ -409,7 +509,7 @@ function ContentsContent() {
 
       {/* ─── 필터 바 ─────────────────────────────────────────────────────────── */}
       <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
-        <div className="flex flex-wrap items-start gap-x-5 gap-y-3">
+        <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
 
           {/* 날짜 */}
           <div className="flex items-center gap-2">
@@ -431,6 +531,13 @@ function ContentsContent() {
               ))}
             </div>
           </div>
+
+          {/* 출처 드롭다운 — 우측 끝 */}
+          <SourceDropdown
+            sources={sources}
+            value={src}
+            onChange={(v) => updateParam('src', v)}
+          />
 
         </div>
 
@@ -497,8 +604,8 @@ function ContentsContent() {
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
       {isLoading && page === 1 ? (
         contentView === 'card' ? (
-          <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
-            {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : (
           <div className="space-y-2">
@@ -514,7 +621,7 @@ function ContentsContent() {
       ) : (
         <>
           {contentView === 'card' ? (
-            <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
+            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
               {items.map((item) => (
                 <ContentCard key={item.id} item={item} />
               ))}
