@@ -144,7 +144,7 @@ export async function runNewsletterDispatch({
         issue_id: issue.id,
         user_id: sub.user_id,
         email: sub.newsletter_email!,
-        resend_message_id: messageId,
+        message_id: messageId,
         status: 'sent',
       })
       sent++

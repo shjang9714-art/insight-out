@@ -33,19 +33,19 @@ export async function POST(request: NextRequest) {
       await db
         .from('newsletter_recipients')
         .update({ status: 'delivered', delivered_at: new Date().toISOString() })
-        .eq('resend_message_id', messageId)
+        .eq('message_id', messageId)
         .eq('status', 'sent')
     } else if (type === 'opened' || type === 'unique_opened') {
       await db
         .from('newsletter_recipients')
         .update({ status: 'opened', opened_at: new Date().toISOString() })
-        .eq('resend_message_id', messageId)
+        .eq('message_id', messageId)
         .in('status', ['sent', 'delivered'])
     } else if (type === 'hard_bounce' || type === 'soft_bounce' || type === 'blocked' || type === 'invalid_email') {
       await db
         .from('newsletter_recipients')
         .update({ status: 'bounced', error: '이메일 반송' })
-        .eq('resend_message_id', messageId)
+        .eq('message_id', messageId)
     } else if (type === 'spam') {
       console.warn('[brevo-webhook] 수신 거부(spam complaint) | messageId=%s', messageId)
     } else {
