@@ -203,7 +203,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
 
         {/* 중앙: 검색 (md+) */}
         <div className="mx-4 hidden flex-1 md:block">
-          <div className="mx-auto max-w-md">
+          <div className="mx-auto max-w-2xl">
             <SearchBar />
           </div>
         </div>
