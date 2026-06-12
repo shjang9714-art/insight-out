@@ -9,7 +9,7 @@ import { Search, X, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
-import SourcePopover from '@/components/dashboard/SourcePopover'
+import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 import { CATEGORY_DEFS } from '@/lib/categories'
 
@@ -32,7 +32,7 @@ interface SearchResult {
 }
 
 interface ServiceOption { id: string; name: string; icon?: string | null }
-interface SourceOption  { id: string; name: string }
+interface SourceOption  { id: string; name: string; group_name: string | null }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ function SearchContent() {
     const supabase = createClient()
     Promise.all([
       supabase.from('services').select('id, name, icon').order('order'),
-      supabase.from('sources').select('id, name').order('name'),
+      supabase.from('sources').select('id, name, group_name').order('name'),
     ]).then(([{ data: svcs }, { data: srcs }]) => {
       if (svcs) setServices(svcs as ServiceOption[])
       if (srcs) setSources(srcs as SourceOption[])
@@ -291,13 +291,13 @@ function SearchContent() {
     })
   }
 
-  for (const id of srcIds) {
-    const srcName = sources.find((s) => s.id === id)?.name ?? '출처'
+  const visibleSources = scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources
+  for (const grp of selectedGroups(srcIds, visibleSources)) {
     activeFilters.push({
-      key: `src-${id}`,
-      label: `출처: ${srcName}`,
+      key: `src-grp-${grp.label}`,
+      label: `출처: ${grp.label}`,
       onRemove: () => {
-        const next = srcIds.filter((x) => x !== id)
+        const next = srcIds.filter((x) => !grp.ids.includes(x))
         updateParam('src', next.join(','))
       },
     })

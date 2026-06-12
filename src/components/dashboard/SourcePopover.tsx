@@ -4,8 +4,38 @@ import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, Search, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// ─── 공용 헬퍼 (contents·search 페이지에서도 import) ──────────────────────────
+
+export interface SourceItem {
+  id: string
+  name: string
+  group_name?: string | null
+}
+
+export interface SourceGroup {
+  label: string
+  ids: string[]
+}
+
+export function groupSources(sources: SourceItem[]): SourceGroup[] {
+  const map = new Map<string, SourceGroup>()
+  for (const s of sources) {
+    const label = s.group_name ?? s.name
+    if (!map.has(label)) map.set(label, { label, ids: [] })
+    map.get(label)!.ids.push(s.id)
+  }
+  return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'ko'))
+}
+
+/** value 에 멤버가 모두 포함된 그룹만 반환 (활성칩 도출용) */
+export function selectedGroups(value: string[], sources: SourceItem[]): SourceGroup[] {
+  return groupSources(sources).filter((g) => g.ids.every((id) => value.includes(id)))
+}
+
+// ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
+
 interface SourcePopoverProps {
-  sources: { id: string; name: string }[]
+  sources: SourceItem[]
   value: string[]
   onChange: (ids: string[]) => void
 }
@@ -16,9 +46,11 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
   const panelRef = useRef<HTMLDivElement>(null)
   const btnRef   = useRef<HTMLButtonElement>(null)
 
-  const filtered = sources.filter((s) =>
-    s.name.toLowerCase().includes(query.toLowerCase())
+  const groups   = groupSources(sources)
+  const filtered = groups.filter((g) =>
+    g.label.toLowerCase().includes(query.toLowerCase())
   )
+  const selectedGroupCount = groups.filter((g) => g.ids.every((id) => value.includes(id))).length
 
   const close = () => { setOpen(false); setQuery('') }
 
@@ -43,8 +75,13 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
     return () => document.removeEventListener('keydown', handler)
   }, [open])
 
-  const toggle = (id: string) => {
-    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  const toggleGroup = (grp: SourceGroup) => {
+    const allSelected = grp.ids.every((id) => value.includes(id))
+    if (allSelected) {
+      onChange(value.filter((id) => !grp.ids.includes(id)))
+    } else {
+      onChange([...new Set([...value, ...grp.ids])])
+    }
   }
 
   const hasSelection = value.length > 0
@@ -65,9 +102,9 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
         )}
       >
         출처
-        {hasSelection && (
+        {selectedGroupCount > 0 && (
           <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">
-            {value.length}
+            {selectedGroupCount}
           </span>
         )}
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
@@ -106,18 +143,18 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
             </button>
           </div>
 
-          {/* 출처 목록 */}
+          {/* 그룹 목록 */}
           <div className="max-h-56 overflow-y-auto py-1">
             {filtered.length === 0 ? (
               <p className="px-3 py-4 text-center text-xs text-muted-foreground">검색 결과 없음</p>
             ) : (
-              filtered.map((s) => {
-                const selected = value.includes(s.id)
+              filtered.map((grp) => {
+                const selected = grp.ids.every((id) => value.includes(id))
                 return (
                   <button
-                    key={s.id}
+                    key={grp.label}
                     type="button"
-                    onClick={() => toggle(s.id)}
+                    onClick={() => toggleGroup(grp)}
                     className={cn(
                       'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent',
                       selected && 'bg-brand-50/50 dark:bg-brand-950/20'
@@ -135,8 +172,13 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
                       'flex-1 truncate',
                       selected && 'font-medium text-brand-700 dark:text-brand-400'
                     )}>
-                      {s.name}
+                      {grp.label}
                     </span>
+                    {grp.ids.length > 1 && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        ({grp.ids.length})
+                      </span>
+                    )}
                   </button>
                 )
               })
