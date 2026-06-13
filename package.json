@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@extractus/article-extractor": "^8.1.0",
+    "@google-cloud/text-to-speech": "^6.4.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
     "class-variance-authority": "^0.7.1",

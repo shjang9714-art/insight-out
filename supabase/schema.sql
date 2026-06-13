@@ -427,6 +427,83 @@ revoke all on function public.increment_translation_usage(text, text, bigint)
 grant execute on function public.increment_translation_usage(text, text, bigint)
   to service_role;
 
+-- TTS 월간 글자 사용량 (service_role 전용, Google Cloud TTS 무료 한도 가드)
+create table if not exists public.tts_usage (
+  provider   text not null default 'google',
+  period     text not null,                 -- 'YYYY-MM' (KST)
+  chars      bigint not null default 0 check (chars >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (provider, period)
+);
+
+alter table public.tts_usage enable row level security;
+
+revoke all on table public.tts_usage from anon, authenticated;
+grant select, insert, update on table public.tts_usage to service_role;
+
+create or replace function public.increment_tts_usage(
+  p_provider text,
+  p_period   text,
+  p_chars    bigint
+)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.tts_usage (provider, period, chars, updated_at)
+  values (p_provider, p_period, greatest(p_chars, 0), now())
+  on conflict (provider, period) do update
+  set chars = public.tts_usage.chars + excluded.chars,
+      updated_at = now();
+$$;
+
+revoke all on function public.increment_tts_usage(text, text, bigint)
+  from public, anon, authenticated;
+grant execute on function public.increment_tts_usage(text, text, bigint)
+  to service_role;
+
+-- 모닝브리핑 (Phase 3-B)
+do $$ begin
+  create type briefing_status as enum ('draft', 'published', 'archived', 'failed');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.briefings (
+  id                     uuid primary key default gen_random_uuid(),
+  briefing_date          date not null,
+  title                  text,
+  script                 text,
+  source_content_ids     uuid[] not null default '{}',
+  audio_url              text,
+  audio_duration_seconds integer,
+  voice                  text default 'ko-KR-Wavenet-C',
+  status                 briefing_status not null default 'draft',
+  generated_at           timestamptz,
+  published_at           timestamptz,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+
+create unique index if not exists briefings_date_key   on public.briefings (briefing_date);
+create index        if not exists briefings_status_idx on public.briefings (status, briefing_date desc);
+
+drop trigger if exists set_briefings_updated_at on public.briefings;
+create trigger set_briefings_updated_at
+  before update on public.briefings
+  for each row execute function public.set_updated_at();
+
+alter table public.briefings enable row level security;
+
+drop policy if exists "briefings: 인증 사용자 공개분 조회" on public.briefings;
+create policy "briefings: 인증 사용자 공개분 조회"
+  on public.briefings for select
+  using (auth.role() = 'authenticated' and status in ('published', 'archived'));
+
+drop policy if exists "briefings: admin 관리" on public.briefings;
+create policy "briefings: admin 관리"
+  on public.briefings for all
+  using (public.is_admin()) with check (public.is_admin());
+
 -- 유튜브 영상 (결정 A: 별도 테이블 — 영상 메타 구조 상이)
 create table public.youtube_videos (
   id               uuid primary key default gen_random_uuid(),
