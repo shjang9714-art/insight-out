@@ -145,6 +145,22 @@ export default function Sidebar({ onClose }: Props) {
 
         <div className="border-t border-border" />
 
+        {/* 지난 브리핑 */}
+        <section>
+          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            모닝브리핑
+          </h3>
+          <Link
+            href="/dashboard/briefings"
+            onClick={() => onClose?.()}
+            className="block w-full rounded-lg px-2 py-2 text-xs text-foreground/90 transition-colors hover:bg-brand-50"
+          >
+            지난 브리핑
+          </Link>
+        </section>
+
+        <div className="border-t border-border" />
+
         {/* 최근 본 항목 */}
         <section>
           <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

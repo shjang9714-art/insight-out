@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import CompetitorTrends from './CompetitorTrends'
 import MorningBriefingPlayer from './MorningBriefingPlayer'
 import { SAVED_KEYWORDS } from './mock-data/taxonomy'
@@ -26,7 +27,17 @@ function TrendingKeywords() {
 export default function RightRail() {
   return (
     <div className="flex flex-col gap-4 p-4">
-      <MorningBriefingPlayer />
+      <div>
+        <MorningBriefingPlayer />
+        <div className="mt-2 text-right">
+          <Link
+            href="/dashboard/briefings"
+            className="text-xs text-brand-600 hover:underline"
+          >
+            지난 브리핑 보기 →
+          </Link>
+        </div>
+      </div>
       <CompetitorTrends />
       <TrendingKeywords />
     </div>
