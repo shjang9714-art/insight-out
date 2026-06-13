@@ -167,7 +167,12 @@ function getDaysAgoStartKst(days: number): string {
 }
 
 function categoryForSourceType(type: SourceType): ContentCategory {
-  return type === 'opinion_channel' ? '오피니언' : '뉴스'
+  switch (type) {
+    case 'web_insight':      return '웹인사이트'
+    case 'report_publisher': return '리포트'
+    case 'youtube_channel':  return '유튜브'
+    default:                 return '뉴스' // news_site, (legacy)newsletter
+  }
 }
 
 function sinceForSource(
@@ -175,7 +180,7 @@ function sinceForSource(
   defaultSince: string,
   backfillDays: number
 ): string {
-  if (backfillDays === 0 && source.type === 'opinion_channel') {
+  if (backfillDays === 0 && source.type === 'web_insight') {
     return getDaysAgoStartKst(OPINION_LOOKBACK_DAYS)
   }
   return defaultSince

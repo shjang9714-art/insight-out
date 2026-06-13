@@ -5,13 +5,15 @@ import { toExcerpt } from '@/lib/contents/excerpt'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  '가트너':    'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
-  'KRG':      'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  '리포트':    'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
   '웹인사이트': 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300',
-  '오피니언':  'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300',
-  '뉴스레터':  'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
   'AI보고서':  'bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
   '유튜브':    'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+  // deprecated
+  '가트너':    'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  'KRG':      'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  '오피니언':  'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  '뉴스레터':  'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
 }
 
 function formatDate(d: string | null) {

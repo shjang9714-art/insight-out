@@ -24,7 +24,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import type { SourceType } from '@/lib/types'
+import type { SourceType, CollectionMethod } from '@/lib/types'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 import type {
   CrawlJob,
@@ -35,15 +35,32 @@ import type {
 
 const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   news_site:        '뉴스',
-  report_publisher: '리포트 발행처',
-  opinion_channel:  '오피니언',
-  newsletter:       '뉴스레터',
+  report_publisher: '리포트',
+  web_insight:      '웹인사이트',
+  newsletter:       '뉴스레터(미사용)',
   youtube_channel:  '유튜브',
 }
 
+// newsletter 제외 — 신규 선택 차단 (기존 row 표시는 SOURCE_TYPE_LABELS로 유지)
 const SOURCE_TYPES: SourceType[] = [
-  'news_site', 'report_publisher', 'opinion_channel', 'newsletter', 'youtube_channel',
+  'news_site', 'report_publisher', 'web_insight', 'youtube_channel',
 ]
+
+const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
+  rss:     'RSS',
+  api:     'API',
+  html:    'HTML',
+  manual:  '수동',
+  youtube: 'YouTube',
+}
+
+const COLLECTION_METHODS: CollectionMethod[] = ['rss', 'api', 'html', 'manual', 'youtube']
+
+function defaultCollectionMethod(type: SourceType): CollectionMethod {
+  if (type === 'youtube_channel') return 'youtube'
+  if (type === 'report_publisher') return 'manual'
+  return 'rss'
+}
 const CRAWL_JOB_STORAGE_KEY = 'insight-out:admin-crawl-job'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -56,6 +73,7 @@ interface SourceRow {
   rss_url: string | null
   is_active: boolean
   crawl_interval_minutes: number | null
+  collection_method: CollectionMethod
   last_crawled_at: string | null
   order: number
 }
@@ -66,6 +84,7 @@ interface SourceForm {
   url: string
   rss_url: string
   crawl_interval_minutes: string
+  collection_method: CollectionMethod
   is_active: boolean
 }
 
@@ -75,6 +94,7 @@ const FORM_INIT: SourceForm = {
   url:                    '',
   rss_url:                '',
   crawl_interval_minutes: '720',
+  collection_method:      'rss',
   is_active:              true,
 }
 
@@ -122,7 +142,7 @@ export default function SourceManager() {
     setIsLoading(true)
     const { data, error: err } = await supabase
       .from('sources')
-      .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, last_crawled_at, order')
+      .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, collection_method, last_crawled_at, order')
       .order('order', { ascending: true })
       .order('name',  { ascending: true })
     if (err) {
@@ -137,7 +157,7 @@ export default function SourceManager() {
     const init = async () => {
       const { data, error: err } = await supabase
         .from('sources')
-        .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, last_crawled_at, order')
+        .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, collection_method, last_crawled_at, order')
         .order('order', { ascending: true })
         .order('name',  { ascending: true })
       if (err) {
@@ -166,6 +186,7 @@ export default function SourceManager() {
       url:                    src.url  ?? '',
       rss_url:                src.rss_url ?? '',
       crawl_interval_minutes: String(src.crawl_interval_minutes ?? 720),
+      collection_method:      src.collection_method,
       is_active:              src.is_active,
     })
     setEditingId(src.id)
@@ -200,6 +221,7 @@ export default function SourceManager() {
         crawl_interval_minutes: form.crawl_interval_minutes
           ? parseInt(form.crawl_interval_minutes, 10)
           : null,
+        collection_method: form.collection_method,
         is_active: form.is_active,
       }
 
@@ -469,7 +491,14 @@ export default function SourceManager() {
                   </Label>
                   <Select
                     value={form.type}
-                    onValueChange={(v) => setForm(p => ({ ...p, type: v as SourceType }))}
+                    onValueChange={(v) => {
+                      const t = v as SourceType
+                      setForm(p => ({
+                        ...p,
+                        type: t,
+                        collection_method: defaultCollectionMethod(t),
+                      }))
+                    }}
                   >
                     <SelectTrigger id="src-type">
                       <SelectValue />
@@ -488,6 +517,26 @@ export default function SourceManager() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* 수집 방법 */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="src-method">수집 방법</Label>
+                <Select
+                  value={form.collection_method}
+                  onValueChange={(v) => setForm(p => ({ ...p, collection_method: v as CollectionMethod }))}
+                >
+                  <SelectTrigger id="src-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COLLECTION_METHODS.map(m => (
+                      <SelectItem key={m} value={m}>
+                        {COLLECTION_METHOD_LABELS[m]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* 사이트 URL·RSS URL */}
@@ -681,6 +730,7 @@ export default function SourceManager() {
               <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">유형</th>
+                <th className="px-4 py-3">수집방법</th>
                 <th className="px-4 py-3 max-w-[200px]">RSS URL</th>
                 <th className="px-4 py-3">활성</th>
                 <th className="px-4 py-3">주기(분)</th>
@@ -695,6 +745,11 @@ export default function SourceManager() {
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                       {SOURCE_TYPE_LABELS[src.type]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+                      {COLLECTION_METHOD_LABELS[src.collection_method]}
                     </span>
                   </td>
                   <td className="px-4 py-3 max-w-[200px]">

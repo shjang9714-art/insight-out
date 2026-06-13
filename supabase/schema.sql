@@ -221,14 +221,16 @@ insert into public.services (name, description, icon, "order") values
 
 -- ---------- TYPES ----------
 
--- 콘텐츠 8개 카테고리 (고정값 → enum)
+-- 콘텐츠 카테고리 (수집 4분류 + 생성 카테고리)
+-- deprecated: '가트너'|'KRG'|'오피니언'|'뉴스레터' — DB enum 유지, 수집 미사용(지시서 50 마이그레이션)
 create type content_category as enum (
   '뉴스',
-  '가트너',
-  'KRG',
-  '웹인사이트',
-  '오피니언',
-  '뉴스레터',
+  '리포트',      -- 가트너·KRG 통합 (지시서 50)
+  '웹인사이트',  -- 오피니언 통합 (지시서 50)
+  '가트너',      -- deprecated: '리포트'로 마이그레이션됨
+  'KRG',        -- deprecated: '리포트'로 마이그레이션됨
+  '오피니언',   -- deprecated: '웹인사이트'로 마이그레이션됨
+  '뉴스레터',   -- deprecated: 수집 미사용 (발송 기능은 별개)
   'AI보고서',
   '유튜브'
 );
@@ -236,10 +238,19 @@ create type content_category as enum (
 -- 수집 출처 유형
 create type source_type as enum (
   'news_site',         -- 뉴스 사이트 (RSS/크롤링)
-  'report_publisher',  -- 리서치 발행처 (가트너 / KRG / 웹인사이트)
-  'opinion_channel',   -- 오피니언 채널 (Substack / Medium / 벤더 블로그)
-  'newsletter',        -- 외부 뉴스레터 (뉴닉 / 어피티 등)
+  'report_publisher',  -- 리포트 발행처 (가트너 / KRG 등)
+  'web_insight',       -- 웹인사이트 채널 (Substack / Medium / 벤더 블로그) — 구 opinion_channel
+  'newsletter',        -- 외부 뉴스레터 (deprecated: 신규 선택 차단)
   'youtube_channel'    -- 유튜브 채널
+);
+
+-- 수집 방법 (source_type과 독립: 같은 방법, 다른 타입 가능)
+create type collection_method as enum (
+  'rss',     -- RSS 피드
+  'api',     -- API 직접 연동
+  'html',    -- HTML 크롤링
+  'manual',  -- 수동 업로드
+  'youtube'  -- YouTube Data API
 );
 
 -- AI 보고서 유형
@@ -281,6 +292,7 @@ create table public.sources (
   rss_url                text,
   is_active              boolean not null default true,
   crawl_interval_minutes integer,                -- null = 수동 업로드 / 비주기
+  collection_method      collection_method not null default 'rss',
   last_crawled_at        timestamptz,
   "order"                integer not null default 0,
   created_at             timestamptz not null default now(),

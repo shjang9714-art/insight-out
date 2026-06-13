@@ -9,7 +9,7 @@ import newsSiteAdapter from './news-site'
 export function getAdapter(type: SourceType): SourceAdapter | null {
   switch (type) {
     case 'news_site':
-    case 'opinion_channel':
+    case 'web_insight':
       return newsSiteAdapter
     // report_publisher · newsletter · youtube_channel → 별도 경로 또는 미구현
     default:

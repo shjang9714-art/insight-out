@@ -72,13 +72,15 @@ function createSupabaseClient(cookieStore: Awaited<ReturnType<typeof cookies>>) 
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 border-blue-100',
-  '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
-  'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
+  '리포트':    'bg-purple-50 text-purple-700 border-purple-100',
   '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
-  '오피니언':  'bg-green-50 text-green-700 border-green-100',
-  '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
   'AI보고서':  'bg-pink-50 text-pink-700 border-pink-100',
   '유튜브':    'bg-red-50 text-red-700 border-red-100',
+  // deprecated
+  '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
+  'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
+  '오피니언':  'bg-green-50 text-green-700 border-green-100',
+  '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
 }
 
 // ─── 본문 로딩 fallback: 스니펫을 즉시 표시 ─────────────────────────────────

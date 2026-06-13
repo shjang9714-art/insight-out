@@ -20,12 +20,7 @@ import type { Service } from '@/lib/types'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
-const REPORT_CATEGORIES = [
-  { value: '가트너',    label: '가트너 (Gartner)' },
-  { value: 'KRG',      label: 'KRG' },
-  { value: '웹인사이트', label: '웹인사이트' },
-] as const
-type ReportCategory = (typeof REPORT_CATEGORIES)[number]['value']
+type ReportCategory = '리포트'
 
 const ACCEPTED_EXTS = ['pdf', 'pptx', 'docx', 'xlsx']
 const ACCEPT_ATTR   = '.pdf,.pptx,.docx,.xlsx'
@@ -68,7 +63,7 @@ interface FormState {
 
 const FORM_INIT: FormState = {
   title:        '',
-  category:     '',
+  category:     '리포트',
   author:       '',
   publishedAt:  '',
   sourceId:     '',
@@ -395,22 +390,13 @@ export default function ReportUploadForm() {
           {/* 카테고리 + 발행일 */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="category">
-                카테고리 <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={form.category}
-                onValueChange={(v) => setForm(p => ({ ...p, category: v as ReportCategory }))}
+              <Label htmlFor="category">카테고리</Label>
+              <div
+                id="category"
+                className="flex h-9 items-center rounded-lg border border-input bg-muted px-3 text-sm text-muted-foreground"
               >
-                <SelectTrigger id="category">
-                  <SelectValue placeholder="선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REPORT_CATEGORIES.map(c => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                리포트
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
