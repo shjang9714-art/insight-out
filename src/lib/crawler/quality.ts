@@ -39,6 +39,33 @@ export function isAdLike(text: string): boolean {
 }
 
 /**
+ * 도메인 무관(B2B 텔레콤/엔터프라이즈와 무관) 기사 제외 패턴.
+ * - 제목에만 적용한다(본문 적용 금지 — 오탐 원인).
+ * - 게이트(RELATEDNESS_GATING_ENABLED)와 무관한 하드 reject.
+ * - 보수적으로 시작: 명백한 연예·스포츠·부동산·운세·복권 류만.
+ *   애매하면 추가하지 말 것(양질 기사 손실 방지).
+ * - 추후 어드민에서 편집 가능하도록 filter_patterns 테이블로 이전 예정(묶음 A 후속).
+ */
+const EXCLUDE_TITLE_PATTERNS: RegExp[] = [
+  // 연예·가십
+  /(연예|아이돌|걸그룹|보이그룹|데뷔무대|열애설|결별설|이혼설|컴백 무대)/,
+  // 스포츠 — "프로축구단 후원" 같은 B2B 맥락 오탐 방지: 프로축구(?!단)
+  /(프로야구|KBO|프로축구(?!단)|K리그|국가대표.*(축구|야구)|골프 대회|승부조작|MVP 수상)/i,
+  // 부동산
+  /(아파트 분양|청약 경쟁률|전세사기|매매가|집값 (상승|하락))/,
+  // 운세·복권·날씨
+  /(오늘의 운세|로또 \d+회|복권 당첨|주간 날씨|미세먼지 농도)/,
+]
+
+/**
+ * 도메인 무관 제목 여부. EXCLUDE_TITLE_PATTERNS 중 하나라도 매칭되면 true.
+ * @param title 기사 제목(본문 넣지 말 것).
+ */
+export function isExcludedTitle(title: string): boolean {
+  return EXCLUDE_TITLE_PATTERNS.some(p => p.test(title))
+}
+
+/**
  * 유효 글자수: 제목 + 본문 공백 정규화 후 합산 길이.
  */
 export function effectiveLength(title: string, body: string | null): number {

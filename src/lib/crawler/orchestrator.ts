@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED } from './quality'
+import { isAdLike, isExcludedTitle, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED } from './quality'
 import type { CrawlCounts } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
@@ -285,10 +285,14 @@ async function crawlOne(
           continue
         }
 
-        // 품질 필터 단계 1: 광고성·짧은 글 제외 (#13)
+        // 품질 필터 단계 1: 광고성·짧은 글·도메인무관 제외 (#13, 지시서 49)
         // 완전중복이 아닌 것 중 품질 기준 미달은 미적재(rejected).
         const qText = `${item.title} ${item.body ?? ''}`
-        if (isAdLike(qText) || effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH) {
+        if (
+          isAdLike(qText) ||
+          isExcludedTitle(item.title) ||   // 제목 기준 도메인 무관 제외
+          effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH
+        ) {
           counts.rejected++
           continue
         }
