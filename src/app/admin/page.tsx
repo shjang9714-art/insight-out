@@ -23,7 +23,7 @@ const MENU_ITEMS = [
   {
     href: '/admin/contents',
     label: '콘텐츠 관리',
-    description: '수집 콘텐츠 승인·반려·삭제',
+    description: '수집 콘텐츠 노출·숨김·삭제',
     icon: Newspaper,
   },
   {

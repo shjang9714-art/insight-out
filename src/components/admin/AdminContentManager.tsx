@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Loader2, Search, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Loader2, Search, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -31,13 +31,12 @@ interface AdminContentRow {
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
 const STATUS_STYLE: Record<ContentStatus, { label: string; className: string }> = {
-  published: { label: '게시',  className: 'border-green-100 bg-green-50 text-green-700' },
-  pending:   { label: '보류',  className: 'border-yellow-100 bg-yellow-50 text-yellow-700' },
-  rejected:  { label: '반려',  className: 'border-red-100 bg-red-50 text-red-600' },
+  published: { label: '노출',      className: 'border-green-100 bg-green-50 text-green-700' },
+  pending:   { label: '검토 대기', className: 'border-yellow-100 bg-yellow-50 text-yellow-700' },
+  rejected:  { label: '숨김',      className: 'border-red-100 bg-red-50 text-red-600' },
 }
 
-// pending → published → rejected 순서, 그 안에서 collected_at desc
-const STATUS_ORDER: Record<ContentStatus, number> = { pending: 0, published: 1, rejected: 2 }
+const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
 function formatKst(iso: string): string {
   return new Date(iso).toLocaleString('ko-KR', {
@@ -50,22 +49,35 @@ function formatKst(iso: string): string {
 export default function AdminContentManager() {
   const supabase = createClient()
 
-  const [contents,        setContents]        = useState<AdminContentRow[]>([])
-  const [isLoading,       setIsLoading]       = useState(true)
-  const [error,           setError]           = useState<string | null>(null)
-  const [pendingCount,    setPendingCount]     = useState<number | null>(null)
+  const [contents,       setContents]       = useState<AdminContentRow[]>([])
+  const [isLoading,      setIsLoading]      = useState(true)
+  const [error,          setError]          = useState<string | null>(null)
+  const [pendingCount,   setPendingCount]   = useState<number | null>(null)
+  const [totalCount,     setTotalCount]     = useState(0)
 
-  // 필터 — category/search 는 클라이언트, status 는 서버쿼리
-  const [category,    setCategory]    = useState('all')
-  const [status,      setStatus]      = useState('all')
-  const [searchTerm,  setSearchTerm]  = useState('')
+  // 필터
+  const [category,     setCategory]     = useState('all')
+  const [status,       setStatus]       = useState('all')
+  const [searchTerm,   setSearchTerm]   = useState('')
+  const [debouncedTerm, setDebouncedTerm] = useState('')
+
+  // 페이지네이션
+  const [page,     setPage]     = useState(1)
+  const [pageSize, setPageSize] = useState(50)
 
   // per-row 작업
-  const [workingId, setWorkingId] = useState<string | null>(null)
+  const [workingId,     setWorkingId]     = useState<string | null>(null)
+  const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
+  const [isBulkWorking, setIsBulkWorking] = useState(false)
 
-  // 일괄 선택
-  const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
-  const [isBulkWorking,  setIsBulkWorking]  = useState(false)
+  // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebouncedTerm(searchTerm)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(id)
+  }, [searchTerm])
 
   // ── 검토 대기 카운트 (마운트 1회) ────────────────────────────────────────
   useEffect(() => {
@@ -76,49 +88,35 @@ export default function AdminContentManager() {
       .then(({ count }) => setPendingCount(count ?? 0))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 콘텐츠 로드 (status 변경 시 재조회 — 서버필터) ────────────────────────
+  // ── 콘텐츠 로드 (서버 페이지네이션) ─────────────────────────────────────
   useEffect(() => {
     const run = async () => {
       setIsLoading(true)
       setSelectedIds(new Set())
       setError(null)
 
-      let query = supabase
+      let q = supabase
         .from('contents')
-        .select('id, title, category, status, collected_at, sources(name)')
+        .select('id, title, category, status, collected_at, sources(name)', { count: 'exact' })
         .order('collected_at', { ascending: false })
-        .limit(100)
 
-      if (status !== 'all') {
-        query = query.eq('status', status as ContentStatus)
-      }
+      if (status !== 'all')          q = q.eq('status', status as ContentStatus)
+      if (category !== 'all')        q = q.eq('category', category as ContentCategory)
+      if (debouncedTerm.trim())      q = q.ilike('title', `%${debouncedTerm.trim()}%`)
 
-      const { data, error: loadError } = await query
+      q = q.range((page - 1) * pageSize, page * pageSize - 1)
+
+      const { data, count, error: loadError } = await q
       if (loadError) {
         setError(`콘텐츠 목록을 불러오지 못했습니다: ${loadError.message}`)
       } else {
         setContents((data ?? []) as unknown as AdminContentRow[])
+        setTotalCount(count ?? 0)
       }
       setIsLoading(false)
     }
     void run()
-  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── 클라이언트 필터 + 정렬 ────────────────────────────────────────────────
-  const filteredContents = contents
-    .filter((c) => {
-      const matchesCategory = category === 'all' || c.category === category
-      const matchesSearch   = c.title
-        .toLocaleLowerCase('ko-KR')
-        .includes(searchTerm.trim().toLocaleLowerCase('ko-KR'))
-      return matchesCategory && matchesSearch
-    })
-    .sort((a, b) => {
-      // status='all' 일 때 pending 상단. 이미 서버에서 collected_at desc 됐으므로 status 우선 정렬만.
-      const diff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
-      if (diff !== 0) return diff
-      return new Date(b.collected_at).getTime() - new Date(a.collected_at).getTime()
-    })
+  }, [status, category, debouncedTerm, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -153,6 +151,7 @@ export default function AdminContentManager() {
       setError(`콘텐츠 삭제에 실패했습니다: ${deleteError.message}`)
     } else {
       setContents((prev) => prev.filter((item) => item.id !== content.id))
+      setTotalCount((c) => Math.max(0, c - 1))
       if (content.status === 'pending') {
         setPendingCount((c) => (c !== null ? c - 1 : c))
       }
@@ -160,16 +159,16 @@ export default function AdminContentManager() {
     setWorkingId(null)
   }
 
-  // ── 일괄 선택 ─────────────────────────────────────────────────────────────
-  const allFilteredIds = filteredContents.map((c) => c.id)
-  const allSelected    = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id))
-  const someSelected   = allFilteredIds.some((id) => selectedIds.has(id)) && !allSelected
+  // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
+  const allPageIds  = contents.map((c) => c.id)
+  const allSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id))
+  const someSelected = allPageIds.some((id) => selectedIds.has(id)) && !allSelected
 
   const toggleAll = () => {
     if (allSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(allFilteredIds))
+      setSelectedIds(new Set(allPageIds))
     }
   }
 
@@ -181,7 +180,7 @@ export default function AdminContentManager() {
     })
   }
 
-  // ── 일괄 승인/반려 ────────────────────────────────────────────────────────
+  // ── 일괄 처리 ─────────────────────────────────────────────────────────────
   const handleBulkStatus = async (nextStatus: ContentStatus) => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
@@ -200,14 +199,16 @@ export default function AdminContentManager() {
         selectedIds.has(item.id) ? { ...item, status: nextStatus } : item
       ))
       setSelectedIds(new Set())
-      // 일괄 처리 후 pending 카운트 서버 재조회 (로컬 추정보다 정확)
-      const { count } = await supabase.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+      const { count } = await supabase
+        .from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending')
       setPendingCount(count ?? 0)
     }
     setIsBulkWorking(false)
   }
 
-  if (isLoading) {
+  const totalPages = Math.ceil(totalCount / pageSize) || 1
+
+  if (isLoading && contents.length === 0) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -227,11 +228,11 @@ export default function AdminContentManager() {
         </div>
       )}
 
-      {/* ── 검토 대기 칩 + 필터 ── */}
+      {/* ── 검토 대기 칩 ── */}
       <div className="flex flex-wrap items-center gap-3">
         {pendingCount !== null && pendingCount > 0 && (
           <button
-            onClick={() => setStatus('pending')}
+            onClick={() => { setStatus('pending'); setPage(1) }}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
               status === 'pending'
@@ -249,8 +250,8 @@ export default function AdminContentManager() {
         )}
       </div>
 
-      {/* ── 검색·카테고리·상태 필터 ── */}
-      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_180px_180px]">
+      {/* ── 검색·카테고리·상태·페이지 크기 필터 ── */}
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_180px_180px_100px]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -260,7 +261,7 @@ export default function AdminContentManager() {
             className="pl-9"
           />
         </div>
-        <Select value={category} onValueChange={setCategory}>
+        <Select value={category} onValueChange={(v) => { setCategory(v); setPage(1) }}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="카테고리" />
           </SelectTrigger>
@@ -271,7 +272,7 @@ export default function AdminContentManager() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="상태" />
           </SelectTrigger>
@@ -279,6 +280,16 @@ export default function AdminContentManager() {
             <SelectItem value="all">전체 상태</SelectItem>
             {CONTENT_STATUSES.map((value) => (
               <SelectItem key={value} value={value}>{STATUS_STYLE[value].label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1) }}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <SelectItem key={n} value={String(n)}>{n}건</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -297,7 +308,7 @@ export default function AdminContentManager() {
               className="text-green-700"
             >
               {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              일괄 승인
+              일괄 보이기
             </Button>
             <Button
               size="sm"
@@ -307,7 +318,7 @@ export default function AdminContentManager() {
               className="text-red-600"
             >
               {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              일괄 반려
+              일괄 숨기기
             </Button>
             <Button
               size="sm"
@@ -322,10 +333,10 @@ export default function AdminContentManager() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        {filteredContents.length}건 표시 (최근 100건 기준{status !== 'all' ? ` · ${STATUS_STYLE[status as ContentStatus]?.label} 필터` : ''})
+        {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
       </p>
 
-      {filteredContents.length === 0 ? (
+      {!isLoading && contents.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
           조건에 맞는 콘텐츠가 없습니다.
         </div>
@@ -353,10 +364,10 @@ export default function AdminContentManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredContents.map((content) => {
-                const isWorking    = workingId === content.id
-                const isSelected   = selectedIds.has(content.id)
-                const statusStyle  = STATUS_STYLE[content.status]
+              {contents.map((content) => {
+                const isWorking   = workingId === content.id
+                const isSelected  = selectedIds.has(content.id)
+                const statusStyle = STATUS_STYLE[content.status]
                 return (
                   <tr
                     key={content.id}
@@ -404,10 +415,10 @@ export default function AdminContentManager() {
                             className="text-green-700"
                           >
                             <Check className="h-3.5 w-3.5" />
-                            승인
+                            보이기
                           </Button>
                         )}
-                        {content.status !== 'rejected' && (
+                        {content.status === 'published' && (
                           <Button
                             type="button" size="sm" variant="outline"
                             disabled={isWorking || isBulkWorking}
@@ -415,7 +426,7 @@ export default function AdminContentManager() {
                             className="text-red-600"
                           >
                             <X className="h-3.5 w-3.5" />
-                            반려
+                            숨기기
                           </Button>
                         )}
                         <Button
@@ -437,6 +448,36 @@ export default function AdminContentManager() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── 페이지네이션 ── */}
+      {totalCount > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs text-muted-foreground">총 {totalCount}건</p>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page <= 1 || isLoading}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              이전
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {page} / {totalPages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page >= totalPages || isLoading}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              다음
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
     </div>

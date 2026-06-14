@@ -137,7 +137,9 @@ export interface CrawlSummary {
   details: CrawlSourceDetail[]
 }
 
-export type RunCrawlOptions = CrawlScheduleOptions
+export interface RunCrawlOptions extends CrawlScheduleOptions {
+  sourceIds?: string[]
+}
 
 /**
  * KST 오늘 00:00 을 UTC ISO 문자열로 변환.
@@ -553,8 +555,12 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
 
+  const scoped = options.sourceIds?.length
+    ? rawSources.filter(s => options.sourceIds!.includes(s.id))
+    : rawSources
+
   const dueSources = selectCrawlSources(
-    rawSources,
+    scoped,
     { backfillDays, force: options.force }
   )
 

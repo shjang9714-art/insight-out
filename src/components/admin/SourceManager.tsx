@@ -20,6 +20,7 @@ import {
   Loader2,
   Plus,
   Pencil,
+  RefreshCw,
   Trash2,
   X,
   XCircle,
@@ -443,6 +444,29 @@ export default function SourceManager() {
     }
   }
 
+  const handleCrawlSource = async (sourceId: string) => {
+    setIsStartingCrawl(true)
+    setCrawlProgress(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/crawl-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
+
+      const job = data as CrawlJob
+      window.localStorage.setItem(CRAWL_JOB_STORAGE_KEY, JSON.stringify(job))
+      setCrawlJob(job)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '수집 중 오류가 발생했습니다.')
+    } finally {
+      setIsStartingCrawl(false)
+    }
+  }
+
   const closeCrawlProgress = () => {
     if (crawlProgress?.status === 'running') return
     setCrawlProgress(null)
@@ -830,6 +854,14 @@ export default function SourceManager() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-0.5">
+                      <button
+                        onClick={() => handleCrawlSource(src.id)}
+                        disabled={isStartingCrawl || crawlProgress?.status === 'running'}
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                        title="이 소스만 수집"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => openEdit(src)}
                         className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

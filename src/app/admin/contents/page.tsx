@@ -12,7 +12,7 @@ export default function AdminContentsPage() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground">콘텐츠 관리</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          수집된 콘텐츠를 검토하고 승인·반려하거나 삭제합니다.
+          수집된 콘텐츠를 검토하고 노출하거나 숨기거나 삭제합니다.
         </p>
       </div>
       <AdminContentManager />
