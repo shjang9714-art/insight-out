@@ -68,12 +68,32 @@ export interface OnboardingStep3 {
 // ============================================================
 
 export type ContentCategory =
-  | '뉴스' | '가트너' | 'KRG' | '웹인사이트'
-  | '오피니언' | '뉴스레터' | 'AI보고서' | '유튜브'
+  | '뉴스' | '리포트' | '웹인사이트' | '유튜브' | 'AI보고서'
+  // deprecated: DB enum 유지, 수집 미사용 (지시서 50 마이그레이션)
+  | '가트너' | 'KRG' | '오피니언' | '뉴스레터'
 
 export type SourceType =
-  | 'news_site' | 'report_publisher' | 'opinion_channel'
+  | 'news_site' | 'report_publisher' | 'web_insight'
   | 'newsletter' | 'youtube_channel'
+
+export type CollectionMethod = 'rss' | 'api' | 'html' | 'manual' | 'youtube'
+
+export type TagType = 'industry' | 'company' | 'tech' | 'market' | 'policy' | 'content_type'
+
+export interface KeywordGroup {
+  id: string
+  name: string
+  kind: string
+  tag_type: TagType
+  description?: string | null
+  include_patterns: string[]
+  exclude_patterns: string[]
+  weight: number
+  signal_hint?: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
 
 export type AiReportType =
   | '시장동향' | '경쟁사분석' | '키워드분석' | '서비스리포트' | '자유주제'
@@ -94,6 +114,8 @@ export interface Source {
   rss_url?: string
   is_active: boolean
   crawl_interval_minutes?: number | null
+  collection_method: CollectionMethod
+  trust_tier: number
   last_crawled_at?: string | null
   order: number
   created_at: string
@@ -129,6 +151,7 @@ export interface Content {
   bookmark_count: number
   is_editor_pick: boolean
   cluster_id?: string | null
+  importance_score: number
   status: ContentStatus
   published_at?: string | null
   collected_at: string
@@ -236,11 +259,13 @@ export interface ArchiveItem {
 
 export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
   '뉴스': '뉴스 & 미디어',
+  '리포트': '리포트',
+  '웹인사이트': '웹 인사이트',
+  '유튜브': '유튜브 영상',
+  'AI보고서': 'AI 보고서',
+  // deprecated (지시서 50 마이그레이션, DB enum 유지)
   '가트너': '가트너 리포트',
   'KRG': 'KRG 리포트',
-  '웹인사이트': '웹 인사이트',
   '오피니언': '오피니언 채널',
   '뉴스레터': '뉴스레터',
-  'AI보고서': 'AI 보고서',
-  '유튜브': '유튜브 영상',
 }

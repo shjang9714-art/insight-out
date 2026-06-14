@@ -5,17 +5,20 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
 import ContentCard from './ContentCard'
+import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 
 
 interface FeedItem {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   category: ContentCategory
   published_at: string | null
   thumbnail_url: string | null
   sources: { name: string } | null
-  content_services: { service_id: string }[]
+  content_keywords: { keywords: { name: string } | null }[]
+  content_services: { services: { name: string } | null }[]
 }
 
 // ─── 카드 스켈레톤 ────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ export default function RecentFeed() {
       // 태그 있는 콘텐츠 우선 노출을 위해 20건 조회 후 client-side 정렬
       const { data } = await supabase
         .from('contents')
-        .select('id, title, summary_ko, category, published_at, thumbnail_url, sources(name), content_services(service_id)')
+        .select('id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), content_keywords(keywords(name)), content_services(services(name))')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(20)
@@ -93,19 +96,24 @@ export default function RecentFeed() {
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <ContentCard
-              key={item.id}
-              id={item.id}
-              title={item.title}
-              summaryKo={item.summary_ko}
-              category={item.category}
-              sourceName={item.sources?.name ?? null}
-              publishedAt={item.published_at}
-              thumbnailUrl={item.thumbnail_url}
-              href={item.category === '유튜브' ? null : undefined}
-            />
-          ))}
+          {items.map((item) => {
+            const keywords = item.content_keywords.map((ck) => ck.keywords?.name).filter((n): n is string => Boolean(n))
+            const services = item.content_services.map((cs) => cs.services?.name).filter((n): n is string => Boolean(n))
+            return (
+              <ContentCard
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+                category={item.category}
+                sourceName={item.sources?.name ?? null}
+                publishedAt={item.published_at}
+                thumbnailUrl={item.thumbnail_url}
+                href={item.category === '유튜브' ? null : undefined}
+                keywords={tagsOf(keywords, item.category, services)}
+              />
+            )
+          })}
         </div>
       )}
     </div>

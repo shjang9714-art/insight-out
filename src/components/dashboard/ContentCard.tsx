@@ -5,25 +5,29 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
 const CATEGORY_COLOR: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-brand-50 text-brand-600',
-  '가트너':    'bg-purple-50 text-purple-700',
-  'KRG':      'bg-orange-50 text-orange-700',
+  '리포트':    'bg-purple-50 text-purple-700',
   '웹인사이트': 'bg-teal-50 text-teal-700',
-  '오피니언':  'bg-green-50 text-green-700',
-  '뉴스레터':  'bg-indigo-50 text-indigo-700',
   'AI보고서':  'bg-pink-50 text-pink-700',
   '유튜브':    'bg-red-50 text-red-700',
+  // deprecated
+  '가트너':    'bg-purple-50 text-purple-700',
+  'KRG':      'bg-orange-50 text-orange-700',
+  '오피니언':  'bg-green-50 text-green-700',
+  '뉴스레터':  'bg-indigo-50 text-indigo-700',
 }
 
 // 썸네일 없을 때 카테고리별 그라데이션 폴백 배경
 const CATEGORY_FALLBACK_BG: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'from-brand-50 to-pink-50 dark:from-rose-950/40 dark:to-pink-950/30',
-  '가트너':    'from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/30',
-  'KRG':      'from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/30',
+  '리포트':    'from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/30',
   '웹인사이트': 'from-teal-50 to-cyan-50 dark:from-teal-950/40 dark:to-cyan-950/30',
-  '오피니언':  'from-green-50 to-emerald-50 dark:from-green-950/40 dark:to-emerald-950/30',
-  '뉴스레터':  'from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/30',
   'AI보고서':  'from-pink-50 to-rose-50 dark:from-pink-950/40 dark:to-rose-950/30',
   '유튜브':    'from-red-50 to-orange-50 dark:from-red-950/40 dark:to-orange-950/30',
+  // deprecated
+  '가트너':    'from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/30',
+  'KRG':      'from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/30',
+  '오피니언':  'from-green-50 to-emerald-50 dark:from-green-950/40 dark:to-emerald-950/30',
+  '뉴스레터':  'from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/30',
 }
 
 // ─── timeAgo ────────────────────────────────────────────────────────────────
@@ -54,6 +58,7 @@ interface ContentCardProps {
   publishedAt: string | null
   thumbnailUrl: string | null
   href?: string | null
+  keywords?: string[]
 }
 
 // ─── 썸네일 영역 ─────────────────────────────────────────────────────────────
@@ -101,6 +106,7 @@ export default function ContentCard({
   publishedAt,
   thumbnailUrl,
   href,
+  keywords,
 }: ContentCardProps) {
   const catColor = CATEGORY_COLOR[category] ?? 'bg-muted text-muted-foreground'
   const resolvedHref = href ?? (category !== '유튜브' ? `/dashboard/contents/${id}` : null)
@@ -161,6 +167,18 @@ export default function ContentCard({
           )}
         </div>
 
+        {/* 해시태그 */}
+        {keywords && keywords.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap gap-1">
+            {keywords.map((kw) => (
+              <span key={kw} className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300">
+                #{kw}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* 제목 */}
         <p className="mb-1.5 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
           {title}
         </p>

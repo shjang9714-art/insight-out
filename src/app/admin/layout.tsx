@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/admin/sources',    label: '소스 관리' },
   { href: '/admin/keywords',   label: '키워드 관리' },
   { href: '/admin/crawl-logs', label: '크롤링 현황' },
+  { href: '/admin/briefings',  label: '모닝브리핑' },
 
   { href: '/admin/translation', label: '번역 상태' },
   { href: '/admin/users',      label: '사용자 관리' },

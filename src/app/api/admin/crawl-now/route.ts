@@ -56,27 +56,36 @@ async function verifyAdmin() {
 /**
  * POST /api/admin/crawl-now
  * 어드민 전용 — 활성 소스 당일분 수집 작업을 백그라운드에서 시작.
+ * body { sourceId?: string } — 지정 시 해당 소스만 즉시 수집.
  * CRON_SECRET 불필요 (관리자 인증으로 대체).
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const authError = await verifyAdmin()
     if (authError) return authError
 
-    const admin = createAdminClient()
-    const { count, error: countError } = await admin
-      .from('sources')
-      .select('id', { count: 'exact', head: true })
-      .eq('is_active', true)
+    let sourceId: string | undefined
+    try { sourceId = (await request.json())?.sourceId } catch { /* 전체 수집 */ }
 
-    if (countError) throw countError
+    const admin = createAdminClient()
+    let sourcesTotal: number
+
+    if (sourceId) {
+      sourcesTotal = 1
+    } else {
+      const { count, error: countError } = await admin
+        .from('sources')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true)
+      if (countError) throw countError
+      sourcesTotal = count ?? 0
+    }
 
     const startedAt = new Date().toISOString()
-    const sourcesTotal = count ?? 0
 
     after(async () => {
       try {
-        await runCrawl({ force: true })
+        await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined })
       } catch (error) {
         console.error('[/api/admin/crawl-now] 백그라운드 수집 오류:', error)
       }

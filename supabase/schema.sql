@@ -221,14 +221,16 @@ insert into public.services (name, description, icon, "order") values
 
 -- ---------- TYPES ----------
 
--- 콘텐츠 8개 카테고리 (고정값 → enum)
+-- 콘텐츠 카테고리 (수집 4분류 + 생성 카테고리)
+-- deprecated: '가트너'|'KRG'|'오피니언'|'뉴스레터' — DB enum 유지, 수집 미사용(지시서 50 마이그레이션)
 create type content_category as enum (
   '뉴스',
-  '가트너',
-  'KRG',
-  '웹인사이트',
-  '오피니언',
-  '뉴스레터',
+  '리포트',      -- 가트너·KRG 통합 (지시서 50)
+  '웹인사이트',  -- 오피니언 통합 (지시서 50)
+  '가트너',      -- deprecated: '리포트'로 마이그레이션됨
+  'KRG',        -- deprecated: '리포트'로 마이그레이션됨
+  '오피니언',   -- deprecated: '웹인사이트'로 마이그레이션됨
+  '뉴스레터',   -- deprecated: 수집 미사용 (발송 기능은 별개)
   'AI보고서',
   '유튜브'
 );
@@ -236,10 +238,19 @@ create type content_category as enum (
 -- 수집 출처 유형
 create type source_type as enum (
   'news_site',         -- 뉴스 사이트 (RSS/크롤링)
-  'report_publisher',  -- 리서치 발행처 (가트너 / KRG / 웹인사이트)
-  'opinion_channel',   -- 오피니언 채널 (Substack / Medium / 벤더 블로그)
-  'newsletter',        -- 외부 뉴스레터 (뉴닉 / 어피티 등)
+  'report_publisher',  -- 리포트 발행처 (가트너 / KRG 등)
+  'web_insight',       -- 웹인사이트 채널 (Substack / Medium / 벤더 블로그) — 구 opinion_channel
+  'newsletter',        -- 외부 뉴스레터 (deprecated: 신규 선택 차단)
   'youtube_channel'    -- 유튜브 채널
+);
+
+-- 수집 방법 (source_type과 독립: 같은 방법, 다른 타입 가능)
+create type collection_method as enum (
+  'rss',     -- RSS 피드
+  'api',     -- API 직접 연동
+  'html',    -- HTML 크롤링
+  'manual',  -- 수동 업로드
+  'youtube'  -- YouTube Data API
 );
 
 -- AI 보고서 유형
@@ -269,6 +280,9 @@ create type content_status as enum (
 -- 크롤링 실행 결과 상태
 create type crawl_status as enum ('success', 'partial', 'failed');
 
+-- 키워드 그룹 태그 타입 (B1. B3에서 keywords에도 사용)
+create type tag_type as enum ('industry', 'company', 'tech', 'market', 'policy', 'content_type');
+
 
 -- ---------- TABLES ----------
 
@@ -281,6 +295,8 @@ create table public.sources (
   rss_url                text,
   is_active              boolean not null default true,
   crawl_interval_minutes integer,                -- null = 수동 업로드 / 비주기
+  collection_method      collection_method not null default 'rss',
+  trust_tier             smallint not null default 1,  -- 0=광역/엄격, 1=기본, 2=신뢰/게이트면제
   last_crawled_at        timestamptz,
   "order"                integer not null default 0,
   created_at             timestamptz not null default now(),
@@ -299,6 +315,25 @@ create table public.keywords (
 );
 -- 트렌드 집계 시 동일 키워드 중복 방지 (대소문자 무시)
 create unique index keywords_name_key on public.keywords (lower(name));
+
+-- 키워드 그룹 — 관련도·EXCLUDE·태그의 공통 토대 (B1)
+create table public.keyword_groups (
+  id               uuid primary key default gen_random_uuid(),
+  name             text not null,
+  kind             text not null,                 -- slug (예: competitor)
+  tag_type         tag_type not null default 'industry',
+  description      text,
+  include_patterns text[] not null default '{}',  -- 매칭 시 점수↑·태그
+  exclude_patterns text[] not null default '{}',  -- 매칭 시 도메인무관 하드 reject
+  weight           numeric not null default 1.0,
+  signal_hint      text,                          -- (B4 연계용, nullable)
+  is_active        boolean not null default true,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create trigger set_keyword_groups_updated_at
+  before update on public.keyword_groups
+  for each row execute function public.set_updated_at();
 
 -- 메인 콘텐츠 (뉴스 / 리포트 / 오피니언 / 뉴스레터) — 결정 A: 단일 테이블
 create table public.contents (
@@ -325,6 +360,8 @@ create table public.contents (
   is_editor_pick     boolean not null default false,
   -- 유사중복 그룹 (BL-3 · PRD 4.4 "관련 기사 N건") — null=단독, 값=대표 content.id
   cluster_id         uuid references public.contents (id) on delete set null,
+  -- 관련도 점수 (B1. 결정적 keyword_groups 매칭 결과)
+  importance_score   numeric not null default 0,
   -- 상태·시각
   status             content_status not null default 'published',  -- 보류/게시/반려 (BL-4)
   published_at       timestamptz,                       -- 원문 발행일
@@ -426,6 +463,149 @@ revoke all on function public.increment_translation_usage(text, text, bigint)
   from public, anon, authenticated;
 grant execute on function public.increment_translation_usage(text, text, bigint)
   to service_role;
+
+-- TTS 월간 글자 사용량 (service_role 전용, Google Cloud TTS 무료 한도 가드)
+create table if not exists public.tts_usage (
+  provider   text not null default 'google',
+  period     text not null,                 -- 'YYYY-MM' (KST)
+  chars      bigint not null default 0 check (chars >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (provider, period)
+);
+
+alter table public.tts_usage enable row level security;
+
+revoke all on table public.tts_usage from anon, authenticated;
+grant select, insert, update on table public.tts_usage to service_role;
+
+create or replace function public.increment_tts_usage(
+  p_provider text,
+  p_period   text,
+  p_chars    bigint
+)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.tts_usage (provider, period, chars, updated_at)
+  values (p_provider, p_period, greatest(p_chars, 0), now())
+  on conflict (provider, period) do update
+  set chars = public.tts_usage.chars + excluded.chars,
+      updated_at = now();
+$$;
+
+revoke all on function public.increment_tts_usage(text, text, bigint)
+  from public, anon, authenticated;
+grant execute on function public.increment_tts_usage(text, text, bigint)
+  to service_role;
+
+-- LLM 게이트웨이 — provider 별 월간 토큰·호출 사용량 (B2)
+create table public.llm_usage (
+  provider   text not null,
+  period     text not null,            -- 'YYYY-MM' (KST)
+  tokens     bigint not null default 0,
+  calls      integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (provider, period)
+);
+
+-- LLM provider 설정 — on/off + 월 토큰 한도 (키 자체는 env 전용)
+create table public.llm_settings (
+  provider             text primary key,
+  enabled              boolean not null default true,
+  monthly_token_limit  bigint not null default 1000000
+);
+
+insert into public.llm_settings (provider, enabled, monthly_token_limit) values
+  ('gemini',     true, 1000000),
+  ('groq',       true, 1000000),
+  ('cerebras',   true, 1000000),
+  ('openrouter', true, 1000000)
+on conflict (provider) do nothing;
+
+create or replace function public.increment_llm_usage(
+  p_provider text,
+  p_period   text,
+  p_tokens   bigint,
+  p_calls    integer
+)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.llm_usage (provider, period, tokens, calls, updated_at)
+  values (p_provider, p_period, greatest(p_tokens, 0), greatest(p_calls, 0), now())
+  on conflict (provider, period) do update
+  set tokens     = public.llm_usage.tokens + excluded.tokens,
+      calls      = public.llm_usage.calls  + excluded.calls,
+      updated_at = now();
+$$;
+
+revoke all on function public.increment_llm_usage(text, text, bigint, integer)
+  from public, anon, authenticated;
+grant execute on function public.increment_llm_usage(text, text, bigint, integer)
+  to service_role;
+
+alter table public.llm_usage    enable row level security;
+alter table public.llm_settings enable row level security;
+
+create policy "llm_usage admin"
+  on public.llm_usage for select
+  using (public.is_admin());
+
+create policy "llm_settings admin"
+  on public.llm_settings for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+revoke all on table public.llm_usage    from anon, authenticated;
+grant select, insert, update on table public.llm_usage    to service_role;
+
+revoke all on table public.llm_settings from anon, authenticated;
+grant select, insert, update on table public.llm_settings to service_role;
+
+-- 모닝브리핑 (Phase 3-B)
+do $$ begin
+  create type briefing_status as enum ('draft', 'published', 'archived', 'failed');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.briefings (
+  id                     uuid primary key default gen_random_uuid(),
+  briefing_date          date not null,
+  title                  text,
+  script                 text,
+  source_content_ids     uuid[] not null default '{}',
+  audio_url              text,
+  audio_duration_seconds integer,
+  voice                  text default 'ko-KR-Wavenet-C',
+  status                 briefing_status not null default 'draft',
+  generated_at           timestamptz,
+  published_at           timestamptz,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+
+create unique index if not exists briefings_date_key   on public.briefings (briefing_date);
+create index        if not exists briefings_status_idx on public.briefings (status, briefing_date desc);
+
+drop trigger if exists set_briefings_updated_at on public.briefings;
+create trigger set_briefings_updated_at
+  before update on public.briefings
+  for each row execute function public.set_updated_at();
+
+alter table public.briefings enable row level security;
+
+drop policy if exists "briefings: 인증 사용자 공개분 조회" on public.briefings;
+create policy "briefings: 인증 사용자 공개분 조회"
+  on public.briefings for select
+  using (auth.role() = 'authenticated' and status in ('published', 'archived'));
+
+drop policy if exists "briefings: admin 관리" on public.briefings;
+create policy "briefings: admin 관리"
+  on public.briefings for all
+  using (public.is_admin()) with check (public.is_admin());
 
 -- 유튜브 영상 (결정 A: 별도 테이블 — 영상 메타 구조 상이)
 create table public.youtube_videos (
@@ -616,6 +796,7 @@ create trigger sync_bookmark_count_del
 
 alter table public.sources           enable row level security;
 alter table public.keywords          enable row level security;
+alter table public.keyword_groups    enable row level security;
 alter table public.contents          enable row level security;
 alter table public.crawl_logs        enable row level security;
 alter table public.translation_usage enable row level security;
@@ -641,6 +822,11 @@ create policy "keywords: 인증 사용자 조회"
   on public.keywords for select using (auth.role() = 'authenticated');
 create policy "keywords: admin 관리"
   on public.keywords for all using (public.is_admin()) with check (public.is_admin());
+
+create policy "keyword_groups: 인증 조회"
+  on public.keyword_groups for select using (auth.uid() is not null);
+create policy "keyword_groups: admin 전체"
+  on public.keyword_groups for all using (public.is_admin()) with check (public.is_admin());
 
 create policy "contents: 인증 사용자 조회"
   on public.contents for select using (auth.role() = 'authenticated' and status = 'published');

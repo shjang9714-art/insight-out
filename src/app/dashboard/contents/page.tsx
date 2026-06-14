@@ -2,15 +2,17 @@
 
 import { Suspense, useState, useEffect, useCallback, useMemo, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { ExternalLink, FileText, X, Loader2, LayoutGrid, List } from 'lucide-react'
+import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
 import ContentRow from '@/components/dashboard/ContentRow'
+import ContentListCard from '@/components/dashboard/ContentListCard'
+import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
+import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +28,8 @@ interface ContentItem {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
-  content_services: { services: { name: string } | null }[]
   content_keywords: { keywords: { name: string } | null }[]
+  content_services: { services: { name: string } | null }[]
 }
 
 interface ServiceOption {
@@ -36,6 +38,11 @@ interface ServiceOption {
   icon?: string | null
 }
 
+interface SourceOption {
+  id: string
+  name: string
+  group_name: string | null
+}
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -54,16 +61,6 @@ const VIEW_KEY = 'io:content-view'
 const PAGE_SIZE = 20
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-function formatDate(d: string | null) {
-  if (!d) return null
-  return new Date(d).toLocaleDateString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-}
 
 function getDateStart(filter: string): string | null {
   if (filter === 'today') {
@@ -92,8 +89,13 @@ function getKeywords(item: ContentItem): string[] {
     .filter((n): n is string => Boolean(n))
 }
 
-// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
+function getServices(item: ContentItem): string[] {
+  return item.content_services
+    .map((cs) => cs.services?.name)
+    .filter((n): n is string => Boolean(n))
+}
 
+// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
@@ -142,117 +144,6 @@ function SkeletonRow() {
   )
 }
 
-function ContentCard({ item }: { item: ContentItem }) {
-  const dateStr   = formatDate(item.published_at)
-  const isYoutube = item.category === '유튜브'
-  const keywords  = getKeywords(item).slice(0, 4)
-
-  // 요약: summary_ko 없으면 body_original 정제 후 150자
-  const summaryText =
-    item.summary_ko ||
-    (item.body_original ? cleanBodyText(htmlToPlainText(item.body_original)).slice(0, 150) : null)
-
-  // 서비스 태그 (최대 2개)
-  const serviceNames = item.content_services
-    .map((cs) => cs.services?.name)
-    .filter(Boolean) as string[]
-  const visibleServices = serviceNames.slice(0, 2)
-
-  const inner = (
-    <div className="flex h-full flex-col p-5">
-      {/* 상단: 해시태그 + 에디터픽 */}
-      <div className="mb-3 flex flex-wrap items-center gap-1">
-        {keywords.map((kw) => (
-          <span
-            key={kw}
-            className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-          >
-            #{kw}
-          </span>
-        ))}
-        {item.is_editor_pick && (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-            ⭐ 에디터 픽
-          </span>
-        )}
-        {keywords.length === 0 && !item.is_editor_pick && (
-          <span className="invisible text-[11px]">placeholder</span>
-        )}
-      </div>
-
-      {/* 중간: 제목 */}
-      <h2 className="mb-2.5 line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-        {item.title}
-      </h2>
-
-      {/* 요약 */}
-      <p className="mb-4 line-clamp-3 flex-1 text-[13px] leading-relaxed text-foreground/70 dark:text-foreground/60">
-        {summaryText ?? '요약 정보가 없습니다.'}
-      </p>
-
-      {/* 풋터: 서비스 태그 + 메타 + 액션 */}
-      <div className="mt-auto space-y-2 border-t border-border/60 pt-3">
-        {visibleServices.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {visibleServices.map((name) => (
-              <span
-                key={name}
-                className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-[11px] text-muted-foreground">
-            {[item.sources?.name ?? item.author, dateStr ? `발행 ${dateStr}` : '발행일 미상']
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-          <div className="flex shrink-0 items-center gap-1">
-            {!isYoutube && (
-              <>
-                <BookmarkButton contentId={item.id} />
-                <ArchiveButton contentId={item.id} />
-              </>
-            )}
-            {item.original_url && (
-              <a
-                href={item.original_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-              >
-                <ExternalLink className="h-3 w-3" />원문
-              </a>
-            )}
-            {!item.original_url && item.file_path && (
-              <span className="flex items-center gap-1 rounded-lg border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                <FileText className="h-3 w-3" />리포트
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  const cardClass =
-    'group flex flex-col rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
-
-  if (isYoutube) {
-    return <article className={cardClass}>{inner}</article>
-  }
-
-  return (
-    <Link href={`/dashboard/contents/${item.id}`} className={cardClass}>
-      <article className="h-full">{inner}</article>
-    </Link>
-  )
-}
-
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 
 function ContentsContent() {
@@ -266,6 +157,8 @@ function ContentsContent() {
   const svcParam = searchParams.get('svc') ?? ''
   const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
   const relevant = searchParams.get('relevant') ?? '1'
+  const srcParam = searchParams.get('src') ?? ''
+  const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
@@ -273,7 +166,10 @@ function ContentsContent() {
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
   const [services, setServices]   = useState<ServiceOption[]>([])
+  const [sources, setSources]     = useState<SourceOption[]>([])
   const [contentView, setContentView] = useState<ContentView>('card')
+  // null = 카테고리 미선택(전체 출처 노출)
+  const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
   useEffect(() => {
@@ -301,11 +197,39 @@ function ContentsContent() {
   // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('services').select('id, name, icon').order('order')
-      .then(({ data: svcs }) => {
-        if (svcs) setServices(svcs as ServiceOption[])
-      })
+    Promise.all([
+      supabase.from('services').select('id, name, icon').order('order'),
+      supabase.from('sources').select('id, name, group_name').order('name'),
+    ]).then(([{ data: svcs }, { data: srcs }]) => {
+      if (svcs) setServices(svcs as ServiceOption[])
+      if (srcs) setSources(srcs as SourceOption[])
+    })
   }, [])
+
+  // ── 카테고리별 출처 스코프 조회 ────────────────────────────────────────────
+  useEffect(() => {
+    if (!category) { startTransition(() => setScopedSourceIds(null)); return }
+    let cancelled = false
+    createClient()
+      .from('contents')
+      .select('source_id')
+      .eq('status', 'published')
+      .eq('category', category)
+      .not('source_id', 'is', null)
+      .then(({ data }) => {
+        if (cancelled) return
+        setScopedSourceIds(new Set((data ?? []).map((r) => r.source_id as string)))
+      })
+    return () => { cancelled = true }
+  }, [category])
+
+  // 카테고리 전환 시 범위 밖 출처 선택 정리 (무한루프 가드: 값이 실제로 줄 때만)
+  useEffect(() => {
+    if (!scopedSourceIds || srcIds.length === 0) return
+    const kept = srcIds.filter((id) => scopedSourceIds.has(id))
+    if (kept.length < srcIds.length) updateParam('src', kept.join(','))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedSourceIds])
 
   // ── 콘텐츠 쿼리 ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -349,7 +273,8 @@ function ContentsContent() {
         .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-      if (category) q = q.eq('category', category)
+      if (category)        q = q.eq('category', category)
+      if (srcIds.length > 0) q = q.in('source_id', srcIds)
 
       const dateStart = getDateStart(date)
       if (dateStart)      q = q.gte('published_at', dateStart)
@@ -371,7 +296,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, relevant, page])
+  }, [category, date, svcIds, srcIds, relevant, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -399,6 +324,19 @@ function ContentsContent() {
       },
     })
   }
+
+  const visibleSources = scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources
+  for (const grp of selectedGroups(srcIds, visibleSources)) {
+    activeFilters.push({
+      key: `src-grp-${grp.label}`,
+      label: `출처: ${grp.label}`,
+      onRemove: () => {
+        const next = srcIds.filter((x) => !grp.ids.includes(x))
+        updateParam('src', next.join(','))
+      },
+    })
+  }
+
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
   const pageTitle = category
@@ -473,6 +411,16 @@ function ContentsContent() {
               ))}
             </div>
           </div>
+
+          {/* 출처 팝오버 — 우측 끝 (카테고리 있으면 해당 카테고리 출처만) */}
+          <div className="ml-auto">
+            <SourcePopover
+              sources={scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources}
+              value={srcIds}
+              onChange={(ids) => updateParam('src', ids.join(','))}
+            />
+          </div>
+
 
         </div>
 
@@ -579,7 +527,20 @@ function ContentsContent() {
           {contentView === 'card' ? (
             <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
               {items.map((item) => (
-                <ContentCard key={item.id} item={item} />
+                <ContentListCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  excerpt={toExcerpt(item.summary_ko, item.body_original)}
+                  category={item.category}
+                  publishedAt={item.published_at}
+                  originalUrl={item.original_url}
+                  filePath={item.file_path}
+                  isEditorPick={item.is_editor_pick}
+                  author={item.author}
+                  sourceName={item.sources?.name ?? null}
+                  tags={tagsOf(getKeywords(item), item.category, getServices(item))}
+                />
               ))}
             </div>
           ) : (
@@ -590,6 +551,7 @@ function ContentsContent() {
                   id={item.id}
                   title={item.title}
                   summaryKo={item.summary_ko}
+                  bodyOriginal={item.body_original}
                   category={item.category}
                   publishedAt={item.published_at}
                   originalUrl={item.original_url}
@@ -597,7 +559,7 @@ function ContentsContent() {
                   isEditorPick={item.is_editor_pick}
                   author={item.author}
                   sourceName={item.sources?.name ?? null}
-                  keywords={getKeywords(item)}
+                  keywords={tagsOf(getKeywords(item), item.category, getServices(item))}
                 />
               ))}
             </div>

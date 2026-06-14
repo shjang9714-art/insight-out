@@ -20,7 +20,8 @@ function getPageLabel(pathname: string, category: string): string | null {
   }
   if (pathname.startsWith('/dashboard/youtube')) return '유튜브 영상'
   if (pathname.startsWith('/dashboard/search'))  return '검색'
-  if (pathname.startsWith('/dashboard/mypage'))  return '마이페이지'
+  if (pathname.startsWith('/dashboard/mypage'))      return '마이페이지'
+  if (pathname.startsWith('/dashboard/briefings'))  return '지난 브리핑'
   return null
 }
 
@@ -206,7 +207,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
 
         {/* 중앙: 검색 (md+) */}
         <div className="mx-4 hidden flex-1 md:block">
-          <div className="mx-auto max-w-md">
+          <div className="mx-auto max-w-2xl">
             <SearchBar />
           </div>
         </div>

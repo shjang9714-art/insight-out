@@ -20,30 +20,49 @@ import {
   Loader2,
   Plus,
   Pencil,
+  RefreshCw,
   Trash2,
   X,
   XCircle,
 } from 'lucide-react'
-import type { SourceType } from '@/lib/types'
+import type { SourceType, CollectionMethod } from '@/lib/types'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 import type {
   CrawlJob,
   CrawlProgress,
 } from '@/lib/crawler/progress'
+import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
 const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   news_site:        '뉴스',
-  report_publisher: '리포트 발행처',
-  opinion_channel:  '오피니언',
-  newsletter:       '뉴스레터',
+  report_publisher: '리포트',
+  web_insight:      '웹인사이트',
+  newsletter:       '뉴스레터(미사용)',
   youtube_channel:  '유튜브',
 }
 
+// newsletter 제외 — 신규 선택 차단 (기존 row 표시는 SOURCE_TYPE_LABELS로 유지)
 const SOURCE_TYPES: SourceType[] = [
-  'news_site', 'report_publisher', 'opinion_channel', 'newsletter', 'youtube_channel',
+  'news_site', 'report_publisher', 'web_insight', 'youtube_channel',
 ]
+
+const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
+  rss:     'RSS',
+  api:     'API',
+  html:    'HTML',
+  manual:  '수동',
+  youtube: 'YouTube',
+}
+
+const COLLECTION_METHODS: CollectionMethod[] = ['rss', 'api', 'html', 'manual', 'youtube']
+
+function defaultCollectionMethod(type: SourceType): CollectionMethod {
+  if (type === 'youtube_channel') return 'youtube'
+  if (type === 'report_publisher') return 'manual'
+  return 'rss'
+}
 const CRAWL_JOB_STORAGE_KEY = 'insight-out:admin-crawl-job'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -56,6 +75,7 @@ interface SourceRow {
   rss_url: string | null
   is_active: boolean
   crawl_interval_minutes: number | null
+  collection_method: CollectionMethod
   last_crawled_at: string | null
   order: number
 }
@@ -66,6 +86,7 @@ interface SourceForm {
   url: string
   rss_url: string
   crawl_interval_minutes: string
+  collection_method: CollectionMethod
   is_active: boolean
 }
 
@@ -75,6 +96,7 @@ const FORM_INIT: SourceForm = {
   url:                    '',
   rss_url:                '',
   crawl_interval_minutes: '720',
+  collection_method:      'rss',
   is_active:              true,
 }
 
@@ -116,13 +138,29 @@ export default function SourceManager() {
   // 유형 필터 상태 (§A)
   const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set())
 
+  // 소스별 수집 상태 (crawl_logs 7일 집계)
+  const [sourceStatusMap, setSourceStatusMap] = useState<Map<string, SourceStatusInfo>>(new Map())
+
+  // ── 수집 상태 로드 ────────────────────────────────────────────────────────
+
+  async function loadSourceStatus() {
+    try {
+      const res = await fetch('/api/admin/source-status')
+      if (!res.ok) return
+      const data = await res.json() as Record<string, SourceStatusInfo>
+      setSourceStatusMap(new Map(Object.entries(data)))
+    } catch {
+      // 비차단 — 상태 열만 '—' 표시
+    }
+  }
+
   // ── 목록 로드 ─────────────────────────────────────────────────────────────
 
   async function loadSources() {
     setIsLoading(true)
     const { data, error: err } = await supabase
       .from('sources')
-      .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, last_crawled_at, order')
+      .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, collection_method, last_crawled_at, order')
       .order('order', { ascending: true })
       .order('name',  { ascending: true })
     if (err) {
@@ -137,7 +175,7 @@ export default function SourceManager() {
     const init = async () => {
       const { data, error: err } = await supabase
         .from('sources')
-        .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, last_crawled_at, order')
+        .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, collection_method, last_crawled_at, order')
         .order('order', { ascending: true })
         .order('name',  { ascending: true })
       if (err) {
@@ -146,8 +184,10 @@ export default function SourceManager() {
         setSources((data ?? []) as SourceRow[])
       }
       setIsLoading(false)
+      // 수집 상태 병렬 로드 (비차단 — init 내부에서 호출해 lint 규칙 준수)
+      await loadSourceStatus()
     }
-    init()
+    void init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 폼 열기/닫기 ──────────────────────────────────────────────────────────
@@ -166,6 +206,7 @@ export default function SourceManager() {
       url:                    src.url  ?? '',
       rss_url:                src.rss_url ?? '',
       crawl_interval_minutes: String(src.crawl_interval_minutes ?? 720),
+      collection_method:      src.collection_method,
       is_active:              src.is_active,
     })
     setEditingId(src.id)
@@ -200,6 +241,7 @@ export default function SourceManager() {
         crawl_interval_minutes: form.crawl_interval_minutes
           ? parseInt(form.crawl_interval_minutes, 10)
           : null,
+        collection_method: form.collection_method,
         is_active: form.is_active,
       }
 
@@ -402,6 +444,29 @@ export default function SourceManager() {
     }
   }
 
+  const handleCrawlSource = async (sourceId: string) => {
+    setIsStartingCrawl(true)
+    setCrawlProgress(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/crawl-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
+
+      const job = data as CrawlJob
+      window.localStorage.setItem(CRAWL_JOB_STORAGE_KEY, JSON.stringify(job))
+      setCrawlJob(job)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '수집 중 오류가 발생했습니다.')
+    } finally {
+      setIsStartingCrawl(false)
+    }
+  }
+
   const closeCrawlProgress = () => {
     if (crawlProgress?.status === 'running') return
     setCrawlProgress(null)
@@ -469,7 +534,14 @@ export default function SourceManager() {
                   </Label>
                   <Select
                     value={form.type}
-                    onValueChange={(v) => setForm(p => ({ ...p, type: v as SourceType }))}
+                    onValueChange={(v) => {
+                      const t = v as SourceType
+                      setForm(p => ({
+                        ...p,
+                        type: t,
+                        collection_method: defaultCollectionMethod(t),
+                      }))
+                    }}
                   >
                     <SelectTrigger id="src-type">
                       <SelectValue />
@@ -488,6 +560,26 @@ export default function SourceManager() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* 수집 방법 */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="src-method">수집 방법</Label>
+                <Select
+                  value={form.collection_method}
+                  onValueChange={(v) => setForm(p => ({ ...p, collection_method: v as CollectionMethod }))}
+                >
+                  <SelectTrigger id="src-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COLLECTION_METHODS.map(m => (
+                      <SelectItem key={m} value={m}>
+                        {COLLECTION_METHOD_LABELS[m]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* 사이트 URL·RSS URL */}
@@ -681,9 +773,11 @@ export default function SourceManager() {
               <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">유형</th>
+                <th className="px-4 py-3">수집방법</th>
                 <th className="px-4 py-3 max-w-[200px]">RSS URL</th>
                 <th className="px-4 py-3">활성</th>
                 <th className="px-4 py-3">주기(분)</th>
+                <th className="px-4 py-3 whitespace-nowrap">수집 상태</th>
                 <th className="px-4 py-3 whitespace-nowrap">마지막 수집 (KST)</th>
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
@@ -695,6 +789,11 @@ export default function SourceManager() {
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                       {SOURCE_TYPE_LABELS[src.type]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+                      {COLLECTION_METHOD_LABELS[src.collection_method]}
                     </span>
                   </td>
                   <td className="px-4 py-3 max-w-[200px]">
@@ -725,11 +824,44 @@ export default function SourceManager() {
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {src.crawl_interval_minutes ?? '—'}
                   </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-xs">
+                    {(() => {
+                      const s = sourceStatusMap.get(src.id)
+                      if (!s) return <span className="text-muted-foreground">—</span>
+                      if (s.consecutiveFailures >= 2) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+                            🔴 연속실패 {s.consecutiveFailures}
+                          </span>
+                        )
+                      }
+                      if (src.is_active && s.inserted7d === 0) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            ⚠️ 점검 필요
+                          </span>
+                        )
+                      }
+                      return (
+                        <span className="text-muted-foreground">
+                          ✅ {s.inserted7d}건/7일
+                        </span>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
                     {formatKst(src.last_crawled_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-0.5">
+                      <button
+                        onClick={() => handleCrawlSource(src.id)}
+                        disabled={isStartingCrawl || crawlProgress?.status === 'running'}
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                        title="이 소스만 수집"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => openEdit(src)}
                         className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

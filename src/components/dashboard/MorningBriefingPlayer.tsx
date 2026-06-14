@@ -1,60 +1,100 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, startTransition } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 
-interface MorningBriefingPlayerProps {
-  audioUrl?: string
+// ─── 타입 ─────────────────────────────────────────────────────────────────────
+
+interface Briefing {
+  id: string
+  briefing_date: string
+  title: string | null
+  script: string | null
+  audio_url: string | null
+  audio_duration_seconds: number | null
 }
 
-export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlayerProps) {
-  const [open, setOpen] = useState(false)
-  const [playing, setPlaying] = useState(false)
-  const [btnVisible, setBtnVisible] = useState(true)
-  const audioRef     = useRef<HTMLAudioElement | null>(null)
-  const lastScrollY  = useRef(0)
-  const showTimeout  = useRef<ReturnType<typeof setTimeout> | null>(null)
+interface MorningBriefingPlayerProps {
+  /** 아카이브 등 외부에서 briefing 주입 가능. 미전달 시 최신 공개분 자체 조회. */
+  briefing?: Briefing | null
+}
 
-  const isAvailable = !!audioUrl
-  const today = new Date().toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  })
+// ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
+function formatTime(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+const WHEEL_R  = 36
+const WHEEL_CIRC = 2 * Math.PI * WHEEL_R  // ≈ 226.2
+
+// ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
+
+export default function MorningBriefingPlayer({ briefing: briefingProp }: MorningBriefingPlayerProps) {
+  const [briefing, setBriefing]     = useState<Briefing | null>(briefingProp ?? null)
+  const [loading, setLoading]       = useState(briefingProp === undefined)
+  const [playing, setPlaying]       = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration]     = useState(0)
+  const [scriptOpen, setScriptOpen] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // briefingProp 주입 또는 DB 최신 공개분 조회
   useEffect(() => {
-    if (!audioUrl) return
-    audioRef.current = new Audio(audioUrl)
-    audioRef.current.onended = () => setPlaying(false)
+    if (briefingProp !== undefined) {
+      startTransition(() => {
+        setBriefing(briefingProp ?? null)
+        setLoading(false)
+      })
+      return
+    }
+    startTransition(() => setLoading(true))
+    createClient()
+      .from('briefings')
+      .select('id, briefing_date, title, script, audio_url, audio_duration_seconds')
+      .in('status', ['published', 'archived'])
+      .order('briefing_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setBriefing(data as Briefing | null)
+        setLoading(false)
+      })
+  }, [briefingProp])
+
+  // 오디오 인스턴스 관리
+  useEffect(() => {
+    if (!briefing?.audio_url) {
+      startTransition(() => {
+        setCurrentTime(0)
+        setDuration(briefing?.audio_duration_seconds ?? 0)
+      })
+      return
+    }
+    const audio = new Audio(briefing.audio_url)
+    audioRef.current = audio
+
+    if (briefing.audio_duration_seconds) startTransition(() => setDuration(briefing.audio_duration_seconds!))
+
+    audio.addEventListener('loadedmetadata', () => {
+      setDuration(audio.duration || briefing.audio_duration_seconds || 0)
+    })
+    audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime))
+    audio.addEventListener('ended', () => {
+      setPlaying(false)
+      setCurrentTime(0)
+    })
+
     return () => {
-      audioRef.current?.pause()
+      audio.pause()
       audioRef.current = null
+      setPlaying(false)
+      setCurrentTime(0)
     }
-  }, [audioUrl])
-
-  // 아래 스크롤 시 버튼 숨김, 위 스크롤·정지 시 표시
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentY = window.scrollY
-      const delta = currentY - lastScrollY.current
-
-      if (delta > 5) {
-        setBtnVisible(false)
-      } else if (delta < -5) {
-        setBtnVisible(true)
-      }
-      lastScrollY.current = currentY
-
-      if (showTimeout.current) clearTimeout(showTimeout.current)
-      showTimeout.current = setTimeout(() => setBtnVisible(true), 1500)
-    }
-
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', handleScroll)
-      if (showTimeout.current) clearTimeout(showTimeout.current)
-    }
-  }, [])
+  }, [briefing?.audio_url, briefing?.audio_duration_seconds])
 
   function togglePlay() {
     if (!audioRef.current) return
@@ -67,109 +107,194 @@ export default function MorningBriefingPlayer({ audioUrl }: MorningBriefingPlaye
     }
   }
 
-  function handleClose() {
-    audioRef.current?.pause()
-    setPlaying(false)
-    setOpen(false)
+  function seek(delta: number) {
+    if (!audioRef.current) return
+    audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + delta))
   }
 
+  const progress   = duration > 0 ? currentTime / duration : 0
+  const dashOffset = WHEEL_CIRC * (1 - progress)
+  const hasAudio   = !!briefing?.audio_url
+
+  const dateLabel = briefing
+    ? new Date(briefing.briefing_date + 'T00:00:00').toLocaleDateString('ko-KR', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
+      })
+    : ''
+
+  // ─── 실버 바디 래퍼 공통 클래스 ──────────────────────────────────────────
+  const silverCard = 'rounded-2xl border border-gray-300 bg-gradient-to-b from-gray-100 to-gray-200 p-4 shadow-md dark:border-gray-600 dark:from-gray-700 dark:to-gray-800'
+
+  // ─── 로딩 ─────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className={silverCard}>
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-base">🎙</span>
+          <h3 className="text-sm font-semibold text-foreground">오늘의 브리핑</h3>
+        </div>
+        <div className="flex animate-pulse flex-col items-center gap-3 py-4">
+          <div className="h-20 w-20 rounded-full bg-gray-300 dark:bg-gray-600" />
+          <div className="h-3 w-2/3 rounded bg-gray-300 dark:bg-gray-600" />
+        </div>
+      </div>
+    )
+  }
+
+  // ─── 빈 상태 ──────────────────────────────────────────────────────────────
+  if (!briefing) {
+    return (
+      <div className={silverCard}>
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-base">🎙</span>
+          <h3 className="text-sm font-semibold text-foreground">오늘의 브리핑</h3>
+        </div>
+        <p className="py-6 text-center text-xs text-muted-foreground">오늘 브리핑이 아직 없습니다</p>
+      </div>
+    )
+  }
+
+  // ─── 플레이어 ─────────────────────────────────────────────────────────────
   return (
-    <>
-      {/* Floating trigger button — 아래 스크롤 시 숨김 */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label="모닝 브리핑 열기"
-        className={`fixed bottom-6 right-6 z-50 flex flex-col items-center justify-center gap-1 rounded-2xl px-4 py-3 shadow-xl transition-all duration-300 hover:scale-105 hover:shadow-2xl active:scale-95 ${
-          btnVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-20 opacity-0'
-        }`}
-        style={{
-          background: '#1A1A4E',
-          minWidth: '72px',
-        }}
-      >
-        {/* Microphone SVG icon */}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="9" y="2" width="6" height="11" rx="3" />
-          <path d="M5 10a7 7 0 0 0 14 0" />
-          <line x1="12" y1="19" x2="12" y2="22" />
-          <line x1="9" y1="22" x2="15" y2="22" />
-        </svg>
-        <span className="text-white font-semibold leading-none" style={{ fontSize: '9px', letterSpacing: '0.05em' }}>
-          모닝브리핑
-        </span>
-      </button>
+    <div className={silverCard}>
+      {/* 헤더 */}
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-base">🎙</span>
+        <h3 className="text-sm font-semibold text-foreground">오늘의 브리핑</h3>
+      </div>
 
-      {/* Mini player popup */}
-      {open && (
-        <div
-          className={`fixed bottom-24 right-6 z-50 w-72 overflow-hidden rounded-2xl shadow-2xl transition-all duration-300 ${
-            btnVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
-          }`}
-          style={{ backgroundColor: '#2D2D6E' }}
-        >
-          {/* Header stripe */}
-          <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: '#1A1A4E' }}>
-            <span className="text-sm font-semibold text-white">오늘의 모닝 브리핑</span>
-            <button
-              onClick={handleClose}
-              aria-label="닫기"
-              className="text-white/60 hover:text-white text-lg leading-none"
-            >
-              ✕
-            </button>
-          </div>
+      {/* 디스플레이 영역 */}
+      <div className="mb-4 rounded-xl bg-gray-900/90 px-3 py-3 dark:bg-gray-950/90">
+        <p className="text-[10px] text-gray-400">{dateLabel}</p>
+        <p className="mt-0.5 truncate text-xs font-semibold leading-snug text-white">
+          {briefing.title ?? '모닝브리핑'}
+        </p>
+        <p className="mt-1 text-[10px] tabular-nums text-gray-400">
+          {hasAudio
+            ? duration > 0 ? `${formatTime(currentTime)} / ${formatTime(duration)}` : '로딩 중...'
+            : '오디오 없음'}
+        </p>
+      </div>
 
-          {/* Body */}
-          <div className="flex flex-col items-center gap-4 px-5 py-5">
-            {/* Date */}
-            <p className="text-xs text-white/60">{today}</p>
+      {/* 클릭휠 */}
+      <div className="flex justify-center">
+        <div className="relative" style={{ width: 120, height: 120 }}>
+          {/* 휠 바디 (실버 원) */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 shadow-inner dark:from-gray-600 dark:to-gray-700" />
 
-            {/* Play / Coming soon */}
-            {isAvailable ? (
+          {/* 원형 진행 링 */}
+          <svg
+            width="120"
+            height="120"
+            viewBox="0 0 100 100"
+            className="absolute inset-0 -rotate-90"
+            aria-hidden="true"
+          >
+            {/* 배경 링 */}
+            <circle
+              cx="50" cy="50" r={WHEEL_R}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="5"
+              className="text-gray-300 dark:text-gray-500"
+            />
+            {/* 진행 링 */}
+            <circle
+              cx="50" cy="50" r={WHEEL_R}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeDasharray={WHEEL_CIRC}
+              strokeDashoffset={dashOffset}
+              className="text-brand-600 dark:text-brand-400"
+              style={{ transition: 'stroke-dashoffset 0.2s ease' }}
+            />
+          </svg>
+
+          {/* seek 투명 버튼 (좌 -10s / 우 +10s) */}
+          {hasAudio && (
+            <>
               <button
-                onClick={togglePlay}
-                aria-label={playing ? '일시정지' : '재생'}
-                className="flex h-14 w-14 items-center justify-center rounded-full text-white shadow-md transition-transform hover:scale-110 active:scale-95"
-                style={{ backgroundColor: '#E6007E' }}
-              >
-                {playing ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="5" y="4" width="4" height="16" rx="1" />
-                    <rect x="15" y="4" width="4" height="16" rx="1" />
-                  </svg>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-              </button>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-full opacity-40"
-                  style={{ backgroundColor: '#E6007E' }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-                <span
-                  className="rounded-full px-3 py-0.5 text-xs font-semibold text-white"
-                  style={{ backgroundColor: '#E6007E' }}
-                >
-                  Coming Soon
-                </span>
-              </div>
-            )}
+                type="button"
+                onClick={() => seek(-10)}
+                aria-label="-10초"
+                className="absolute inset-y-0 left-0 w-1/2 rounded-l-full"
+              />
+              <button
+                type="button"
+                onClick={() => seek(10)}
+                aria-label="+10초"
+                className="absolute inset-y-0 right-0 w-1/2 rounded-r-full"
+              />
+            </>
+          )}
 
-            <p className="text-center text-xs text-white/60">
-              {isAvailable
-                ? '재생 버튼을 눌러 오늘의 브리핑을 들어보세요.'
-                : '곧 모닝 브리핑 서비스가 시작됩니다.'}
-            </p>
-          </div>
+          {/* 중앙 재생/일시정지 버튼 */}
+          <button
+            type="button"
+            onClick={hasAudio ? togglePlay : undefined}
+            aria-label={playing ? '일시정지' : '재생'}
+            disabled={!hasAudio}
+            className={cn(
+              'absolute left-1/2 top-1/2 z-10 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-transform',
+              hasAudio
+                ? 'bg-brand-600 text-white shadow-lg hover:bg-brand-700 active:scale-95'
+                : 'cursor-not-allowed bg-gray-300 text-gray-400 dark:bg-gray-600 dark:text-gray-500'
+            )}
+          >
+            {playing ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="5" y="4" width="4" height="16" rx="1" />
+                <rect x="15" y="4" width="4" height="16" rx="1" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
+
+          {/* seek 힌트 레이블 */}
+          {hasAudio && (
+            <>
+              <span className="pointer-events-none absolute left-0.5 top-1/2 -translate-y-1/2 text-[9px] font-medium text-gray-400 dark:text-gray-500">
+                ◂10
+              </span>
+              <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-[9px] font-medium text-gray-400 dark:text-gray-500">
+                10▸
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 오디오 없음 안내 */}
+      {!hasAudio && (
+        <p className="mt-3 text-center text-[11px] text-muted-foreground">
+          오디오 생성 전 · 스크립트만 제공
+        </p>
+      )}
+
+      {/* 스크립트 접힘/펼침 */}
+      {briefing.script && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setScriptOpen((v) => !v)}
+            className="w-full text-center text-[11px] font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+          >
+            {scriptOpen ? '스크립트 접기 ▲' : '스크립트 보기 ▼'}
+          </button>
+          {scriptOpen && (
+            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-gray-900/80 px-3 py-2.5 dark:bg-gray-950/80">
+              <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-gray-200">
+                {briefing.script}
+              </p>
+            </div>
+          )}
         </div>
       )}
-    </>
+    </div>
   )
 }

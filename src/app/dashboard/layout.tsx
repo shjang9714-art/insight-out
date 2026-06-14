@@ -13,6 +13,7 @@ import SearchBar from '@/components/dashboard/SearchBar'
 // 카테고리 타일을 숨길 페이지 (상세·마이페이지)
 function shouldHideCategoryTiles(pathname: string): boolean {
   if (pathname.startsWith('/dashboard/mypage')) return true
+  if (pathname.startsWith('/dashboard/briefings')) return true
   if (/^\/dashboard\/contents\/.+/.test(pathname)) return true
   return false
 }

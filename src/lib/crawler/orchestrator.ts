@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED } from './quality'
+import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup } from './quality'
 import type { CrawlCounts } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
@@ -137,7 +137,9 @@ export interface CrawlSummary {
   details: CrawlSourceDetail[]
 }
 
-export type RunCrawlOptions = CrawlScheduleOptions
+export interface RunCrawlOptions extends CrawlScheduleOptions {
+  sourceIds?: string[]
+}
 
 /**
  * KST 오늘 00:00 을 UTC ISO 문자열로 변환.
@@ -167,7 +169,12 @@ function getDaysAgoStartKst(days: number): string {
 }
 
 function categoryForSourceType(type: SourceType): ContentCategory {
-  return type === 'opinion_channel' ? '오피니언' : '뉴스'
+  switch (type) {
+    case 'web_insight':      return '웹인사이트'
+    case 'report_publisher': return '리포트'
+    case 'youtube_channel':  return '유튜브'
+    default:                 return '뉴스' // news_site, (legacy)newsletter
+  }
 }
 
 function sinceForSource(
@@ -175,7 +182,7 @@ function sinceForSource(
   defaultSince: string,
   backfillDays: number
 ): string {
-  if (backfillDays === 0 && source.type === 'opinion_channel') {
+  if (backfillDays === 0 && source.type === 'web_insight') {
     return getDaysAgoStartKst(OPINION_LOOKBACK_DAYS)
   }
   return defaultSince
@@ -238,6 +245,7 @@ async function crawlOne(
   source: Source,
   since: string,
   keywords: CrawlKeyword[],
+  groups: ScoringGroup[],
   translationBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
@@ -285,10 +293,14 @@ async function crawlOne(
           continue
         }
 
-        // 품질 필터 단계 1: 광고성·짧은 글 제외 (#13)
+        // 품질 필터 단계 1: 광고성·짧은 글·도메인무관 제외 (#13, B1)
         // 완전중복이 아닌 것 중 품질 기준 미달은 미적재(rejected).
         const qText = `${item.title} ${item.body ?? ''}`
-        if (isAdLike(qText) || effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH) {
+        if (
+          isAdLike(qText) ||
+          isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
+          effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH
+        ) {
           counts.rejected++
           continue
         }
@@ -321,12 +333,14 @@ async function crawlOne(
           console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
         }
 
-        // 품질 필터 단계 2: 키워드 관련도 보류 판정 (#13)
-        // RELATEDNESS_GATING_ENABLED = false 이면 전부 published(게이트 OFF).
-        // 키워드 커버리지 충분 + 어드민 승인 큐 구축 후 true 로 전환.
-        const score = relatednessScore(qText, keywords.map(k => k.name))
+        // 품질 필터 단계 2: 가중 관련도 게이트 (B1)
+        // groups 가 비어 있으면 0점 → 신뢰 소스(trust_tier >= 2)로 전부 면제.
+        // RELATEDNESS_GATING_ENABLED = true 이므로 실제 보류 발생.
+        const score = relatednessScore(item.title, item.body ?? '', groups)
+        const importance = score
+        const exempt = source.trust_tier >= 2 || groups.length === 0
         const contentStatus: 'pending' | 'published' =
-          (RELATEDNESS_GATING_ENABLED && score !== null && score < RELATEDNESS_THRESHOLD)
+          (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
             ? 'pending' : 'published'
 
         const translatedContent =
@@ -359,6 +373,7 @@ async function crawlOne(
           published_at: publishedAt,
           collected_at: new Date().toISOString(),
           cluster_id: clusterId,
+          importance_score: importance,
           status: contentStatus,
         }
 
@@ -512,19 +527,25 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   let admin: SupabaseClient
   let rawSources: Source[]
   let keywords: CrawlKeyword[]
+  let groups: ScoringGroup[]
 
   try {
     admin = createAdminClient()
-    const [sourcesResult, keywordsResult] = await Promise.all([
+    const [sourcesResult, keywordsResult, groupsResult] = await Promise.all([
       admin.from('sources').select('*').eq('is_active', true),
       admin.from('keywords').select('id, name, service_id'),
+      admin.from('keyword_groups')
+        .select('include_patterns, exclude_patterns, weight')
+        .eq('is_active', true),
     ])
 
     if (sourcesResult.error) throw sourcesResult.error
     if (keywordsResult.error) throw keywordsResult.error
+    if (groupsResult.error) throw groupsResult.error
 
     rawSources = (sourcesResult.data ?? []) as Source[]
     keywords = (keywordsResult.data ?? []) as CrawlKeyword[]
+    groups = (groupsResult.data ?? []) as ScoringGroup[]
   } catch (error) {
     console.error('[크롤러] 수집 준비 단계 오류:', error)
     throw new Error('수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.')
@@ -534,8 +555,12 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
 
+  const scoped = options.sourceIds?.length
+    ? rawSources.filter(s => options.sourceIds!.includes(s.id))
+    : rawSources
+
   const dueSources = selectCrawlSources(
-    rawSources,
+    scoped,
     { backfillDays, force: options.force }
   )
 
@@ -550,6 +575,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             s,
             sinceForSource(s, since, backfillDays),
             keywords,
+            groups,
             translationBudget
           )
     )

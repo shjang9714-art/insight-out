@@ -10,6 +10,7 @@ import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
@@ -71,15 +72,62 @@ function createSupabaseClient(cookieStore: Awaited<ReturnType<typeof cookies>>) 
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 border-blue-100',
-  '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
-  'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
+  '리포트':    'bg-purple-50 text-purple-700 border-purple-100',
   '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
-  '오피니언':  'bg-green-50 text-green-700 border-green-100',
-  '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
   'AI보고서':  'bg-pink-50 text-pink-700 border-pink-100',
   '유튜브':    'bg-red-50 text-red-700 border-red-100',
+  // deprecated
+  '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
+  'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
+  '오피니언':  'bg-green-50 text-green-700 border-green-100',
+  '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
 }
 
+// ─── 본문 로딩 fallback: 스니펫을 즉시 표시 ─────────────────────────────────
+
+function ArticleBodyFallback({ snippet }: { snippet: string }) {
+  if (!snippet) {
+    return <p className="text-sm text-muted-foreground">본문을 불러오는 중입니다…</p>
+  }
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+        {snippet}
+      </p>
+      <p className="mt-3 text-xs text-muted-foreground">본문 불러오는 중…</p>
+    </div>
+  )
+}
+
+// ─── 풀본문 async 서버 컴포넌트 (Suspense 스트리밍) ──────────────────────────
+
+async function ArticleBody({ content }: { content: ContentDetail }) {
+  const body = await ensureFullBody({
+    ...content,
+    original_language: content.original_language ?? 'ko',
+    source_id: null,
+    thumbnail_url: null,
+    title_hash: null,
+    body_hash: null,
+    view_count: 0,
+    bookmark_count: 0,
+    is_editor_pick: false,
+    cluster_id: null,
+    importance_score: 0,
+    status: 'published',
+    collected_at: '',
+    created_at: '',
+    updated_at: '',
+  })
+
+  return body ? (
+    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+      {body}
+    </p>
+  ) : (
+    <p className="text-sm text-muted-foreground">본문 내용을 불러올 수 없습니다.</p>
+  )
+}
 
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
 

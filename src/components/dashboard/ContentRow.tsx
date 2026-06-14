@@ -1,16 +1,19 @@
 import Link from 'next/link'
 import { ExternalLink, FileText } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { toExcerpt } from '@/lib/contents/excerpt'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  '가트너':    'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
-  'KRG':      'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  '리포트':    'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
   '웹인사이트': 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300',
-  '오피니언':  'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300',
-  '뉴스레터':  'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
   'AI보고서':  'bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
   '유튜브':    'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+  // deprecated
+  '가트너':    'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  'KRG':      'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  '오피니언':  'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  '뉴스레터':  'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
 }
 
 function formatDate(d: string | null) {
@@ -26,6 +29,7 @@ interface Props {
   id: string
   title: string
   summaryKo: string | null
+  bodyOriginal?: string | null
   category: ContentCategory
   publishedAt: string | null
   originalUrl: string | null
@@ -40,6 +44,7 @@ export default function ContentRow({
   id,
   title,
   summaryKo,
+  bodyOriginal,
   category,
   publishedAt,
   originalUrl,
@@ -53,6 +58,7 @@ export default function ContentRow({
   const dateStr   = formatDate(publishedAt)
   const isYoutube = category === '유튜브'
   const tags      = keywords.slice(0, 5)
+  const excerpt   = toExcerpt(summaryKo, bodyOriginal ?? null)
 
   const body = (
     <div className="min-w-0 flex-1 space-y-1.5">
@@ -79,9 +85,9 @@ export default function ContentRow({
       </p>
 
       {/* 요약 */}
-      {summaryKo && (
+      {excerpt && (
         <p className="line-clamp-1 text-xs leading-relaxed text-muted-foreground">
-          {summaryKo}
+          {excerpt}
         </p>
       )}
 
