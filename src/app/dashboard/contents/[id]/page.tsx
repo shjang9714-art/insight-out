@@ -113,6 +113,7 @@ async function ArticleBody({ content }: { content: ContentDetail }) {
     bookmark_count: 0,
     is_editor_pick: false,
     cluster_id: null,
+    importance_score: 0,
     status: 'published',
     collected_at: '',
     created_at: '',

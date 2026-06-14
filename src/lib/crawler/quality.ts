@@ -1,28 +1,25 @@
 /**
- * 품질 필터 (#13)
- * 설계 근거: docs/phase2a-자동크롤링-상세설계.md §4 (PRD 4.5)
+ * 품질 필터 (B1 — keyword_groups 가중 관련도)
+ * 설계 근거: docs/묶음B-LLM양질엔진-설계.md §1·§2·§7
  */
 
 /**
  * 제목+본문 합산 최소 글자수.
- * RSS 스니펫 현실(100~250자) 반영 — PRD "300자 풀본문 필터"는
- * 풀본문 enrichment 도입 후 적용 예정(백로그).
  */
 export const MIN_EFFECTIVE_LENGTH = 30
 
-/** 관련도 임계값: 이 값 미만이면 보류(pending, 어드민 승인 큐) */
+/** 관련도 임계값: 이 값 미만이면 보류(pending) */
 export const RELATEDNESS_THRESHOLD = 0.3
 
 /**
  * 관련도 게이팅 활성화 여부.
- * false(현재): 게이트 OFF — 모든 기사를 published 로 적재, 태깅만 수행.
- * 키워드 커버리지 충분 + 어드민 승인 큐 구축 후 true 로 전환.
+ * true(B1~): 게이트 ON — threshold 미만은 pending(어드민 승인 큐).
+ * trust_tier >= 2 소스는 면제.
  */
-export const RELATEDNESS_GATING_ENABLED = false
+export const RELATEDNESS_GATING_ENABLED = true
 
 /**
- * 광고성 패턴 (초기 상수).
- * admin 관리화(패턴 목록 DB화)는 #23 어드민 페이지 이후.
+ * 광고성 패턴.
  */
 const AD_PATTERNS: RegExp[] = [
   /\[?(광고|AD|sponsored|협찬|프로모션)\]?/i,
@@ -30,39 +27,8 @@ const AD_PATTERNS: RegExp[] = [
   /바로가기.*클릭/,
 ]
 
-/**
- * 광고성 텍스트 여부.
- * AD_PATTERNS 중 하나라도 매칭되면 true.
- */
 export function isAdLike(text: string): boolean {
   return AD_PATTERNS.some(p => p.test(text))
-}
-
-/**
- * 도메인 무관(B2B 텔레콤/엔터프라이즈와 무관) 기사 제외 패턴.
- * - 제목에만 적용한다(본문 적용 금지 — 오탐 원인).
- * - 게이트(RELATEDNESS_GATING_ENABLED)와 무관한 하드 reject.
- * - 보수적으로 시작: 명백한 연예·스포츠·부동산·운세·복권 류만.
- *   애매하면 추가하지 말 것(양질 기사 손실 방지).
- * - 추후 어드민에서 편집 가능하도록 filter_patterns 테이블로 이전 예정(묶음 A 후속).
- */
-const EXCLUDE_TITLE_PATTERNS: RegExp[] = [
-  // 연예·가십
-  /(연예|아이돌|걸그룹|보이그룹|데뷔무대|열애설|결별설|이혼설|컴백 무대)/,
-  // 스포츠 — "프로축구단 후원" 같은 B2B 맥락 오탐 방지: 프로축구(?!단)
-  /(프로야구|KBO|프로축구(?!단)|K리그|국가대표.*(축구|야구)|골프 대회|승부조작|MVP 수상)/i,
-  // 부동산
-  /(아파트 분양|청약 경쟁률|전세사기|매매가|집값 (상승|하락))/,
-  // 운세·복권·날씨
-  /(오늘의 운세|로또 \d+회|복권 당첨|주간 날씨|미세먼지 농도)/,
-]
-
-/**
- * 도메인 무관 제목 여부. EXCLUDE_TITLE_PATTERNS 중 하나라도 매칭되면 true.
- * @param title 기사 제목(본문 넣지 말 것).
- */
-export function isExcludedTitle(title: string): boolean {
-  return EXCLUDE_TITLE_PATTERNS.some(p => p.test(title))
 }
 
 /**
@@ -74,15 +40,48 @@ export function effectiveLength(title: string, body: string | null): number {
 }
 
 /**
- * 키워드 관련도 점수 (0~1, 또는 null).
- * - keywords 가 비어 있으면 null 반환 → 게이팅 OFF(전부 published).
- *   (시드 키워드가 없으면 자동으로 OFF되어 아무것도 보류되지 않음)
- * - v1 이진 판정: 등록 키워드 중 하나라도 text 에 포함 → 1.0, 하나도 없으면 0.0.
- *   (빈도·위치 가중 정교화는 후속 작업)
+ * keyword_groups 의 경량 표현 (DB 로드 후 crawlOne 에 전달).
  */
-export function relatednessScore(text: string, keywords: string[]): number | null {
-  if (keywords.length === 0) return null
-  const lowerText = text.toLowerCase()
-  const hit = keywords.some(kw => lowerText.includes(kw.toLowerCase()))
-  return hit ? 1.0 : 0.0
+export interface ScoringGroup {
+  include_patterns: string[]
+  exclude_patterns: string[]
+  weight: number
+}
+
+/**
+ * 도메인 무관 제목 여부 (keyword_groups.exclude_patterns 기반, 부분일치, 제목만 적용).
+ * 어느 그룹의 exclude_patterns 중 하나라도 제목에 포함되면 true.
+ * @param title 기사 제목(본문 전달 금지 — 오탐 원인).
+ */
+export function isExcludedByGroups(title: string, groups: ScoringGroup[]): boolean {
+  const lower = title.toLowerCase()
+  return groups.some(g =>
+    g.exclude_patterns.some(p => lower.includes(p.toLowerCase()))
+  )
+}
+
+/**
+ * 가중 관련도 점수 (0~1 연속값).
+ * - groups 가 비어 있으면 0 반환 → 게이트 ON 시 전부 pending 방지를 위해
+ *   호출부에서 groups.length === 0 이면 면제 처리 권장.
+ * - 제목 매칭 ×2, 본문 매칭 ×1, 그룹 weight 곱. 합산 후 RELATEDNESS_CAP 로 정규화.
+ */
+const RELATEDNESS_CAP = 3
+
+export function relatednessScore(
+  title: string,
+  body: string,
+  groups: ScoringGroup[]
+): number {
+  if (groups.length === 0) return 0
+  const titleLower = title.toLowerCase()
+  const bodyLower = body.toLowerCase()
+  let total = 0
+  for (const g of groups) {
+    if (g.weight <= 0) continue  // 노이즈 그룹(weight 0) 점수 제외
+    const t = g.include_patterns.filter(p => titleLower.includes(p.toLowerCase())).length
+    const b = g.include_patterns.filter(p => bodyLower.includes(p.toLowerCase())).length
+    if (t + b > 0) total += g.weight * (t * 2 + b)
+  }
+  return Math.min(total / RELATEDNESS_CAP, 1)
 }

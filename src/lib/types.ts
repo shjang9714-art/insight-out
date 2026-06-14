@@ -78,6 +78,23 @@ export type SourceType =
 
 export type CollectionMethod = 'rss' | 'api' | 'html' | 'manual' | 'youtube'
 
+export type TagType = 'industry' | 'company' | 'tech' | 'market' | 'policy' | 'content_type'
+
+export interface KeywordGroup {
+  id: string
+  name: string
+  kind: string
+  tag_type: TagType
+  description?: string | null
+  include_patterns: string[]
+  exclude_patterns: string[]
+  weight: number
+  signal_hint?: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export type AiReportType =
   | '시장동향' | '경쟁사분석' | '키워드분석' | '서비스리포트' | '자유주제'
 
@@ -98,6 +115,7 @@ export interface Source {
   is_active: boolean
   crawl_interval_minutes?: number | null
   collection_method: CollectionMethod
+  trust_tier: number
   last_crawled_at?: string | null
   order: number
   created_at: string
@@ -133,6 +151,7 @@ export interface Content {
   bookmark_count: number
   is_editor_pick: boolean
   cluster_id?: string | null
+  importance_score: number
   status: ContentStatus
   published_at?: string | null
   collected_at: string

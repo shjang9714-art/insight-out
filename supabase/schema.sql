@@ -280,6 +280,9 @@ create type content_status as enum (
 -- 크롤링 실행 결과 상태
 create type crawl_status as enum ('success', 'partial', 'failed');
 
+-- 키워드 그룹 태그 타입 (B1. B3에서 keywords에도 사용)
+create type tag_type as enum ('industry', 'company', 'tech', 'market', 'policy', 'content_type');
+
 
 -- ---------- TABLES ----------
 
@@ -293,6 +296,7 @@ create table public.sources (
   is_active              boolean not null default true,
   crawl_interval_minutes integer,                -- null = 수동 업로드 / 비주기
   collection_method      collection_method not null default 'rss',
+  trust_tier             smallint not null default 1,  -- 0=광역/엄격, 1=기본, 2=신뢰/게이트면제
   last_crawled_at        timestamptz,
   "order"                integer not null default 0,
   created_at             timestamptz not null default now(),
@@ -311,6 +315,25 @@ create table public.keywords (
 );
 -- 트렌드 집계 시 동일 키워드 중복 방지 (대소문자 무시)
 create unique index keywords_name_key on public.keywords (lower(name));
+
+-- 키워드 그룹 — 관련도·EXCLUDE·태그의 공통 토대 (B1)
+create table public.keyword_groups (
+  id               uuid primary key default gen_random_uuid(),
+  name             text not null,
+  kind             text not null,                 -- slug (예: competitor)
+  tag_type         tag_type not null default 'industry',
+  description      text,
+  include_patterns text[] not null default '{}',  -- 매칭 시 점수↑·태그
+  exclude_patterns text[] not null default '{}',  -- 매칭 시 도메인무관 하드 reject
+  weight           numeric not null default 1.0,
+  signal_hint      text,                          -- (B4 연계용, nullable)
+  is_active        boolean not null default true,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create trigger set_keyword_groups_updated_at
+  before update on public.keyword_groups
+  for each row execute function public.set_updated_at();
 
 -- 메인 콘텐츠 (뉴스 / 리포트 / 오피니언 / 뉴스레터) — 결정 A: 단일 테이블
 create table public.contents (
@@ -337,6 +360,8 @@ create table public.contents (
   is_editor_pick     boolean not null default false,
   -- 유사중복 그룹 (BL-3 · PRD 4.4 "관련 기사 N건") — null=단독, 값=대표 content.id
   cluster_id         uuid references public.contents (id) on delete set null,
+  -- 관련도 점수 (B1. 결정적 keyword_groups 매칭 결과)
+  importance_score   numeric not null default 0,
   -- 상태·시각
   status             content_status not null default 'published',  -- 보류/게시/반려 (BL-4)
   published_at       timestamptz,                       -- 원문 발행일
@@ -705,6 +730,7 @@ create trigger sync_bookmark_count_del
 
 alter table public.sources           enable row level security;
 alter table public.keywords          enable row level security;
+alter table public.keyword_groups    enable row level security;
 alter table public.contents          enable row level security;
 alter table public.crawl_logs        enable row level security;
 alter table public.translation_usage enable row level security;
@@ -730,6 +756,11 @@ create policy "keywords: 인증 사용자 조회"
   on public.keywords for select using (auth.role() = 'authenticated');
 create policy "keywords: admin 관리"
   on public.keywords for all using (public.is_admin()) with check (public.is_admin());
+
+create policy "keyword_groups: 인증 조회"
+  on public.keyword_groups for select using (auth.uid() is not null);
+create policy "keyword_groups: admin 전체"
+  on public.keyword_groups for all using (public.is_admin()) with check (public.is_admin());
 
 create policy "contents: 인증 사용자 조회"
   on public.contents for select using (auth.role() = 'authenticated' and status = 'published');
