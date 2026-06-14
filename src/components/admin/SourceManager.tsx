@@ -30,6 +30,7 @@ import type {
   CrawlJob,
   CrawlProgress,
 } from '@/lib/crawler/progress'
+import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,22 @@ export default function SourceManager() {
   // 유형 필터 상태 (§A)
   const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set())
 
+  // 소스별 수집 상태 (crawl_logs 7일 집계)
+  const [sourceStatusMap, setSourceStatusMap] = useState<Map<string, SourceStatusInfo>>(new Map())
+
+  // ── 수집 상태 로드 ────────────────────────────────────────────────────────
+
+  async function loadSourceStatus() {
+    try {
+      const res = await fetch('/api/admin/source-status')
+      if (!res.ok) return
+      const data = await res.json() as Record<string, SourceStatusInfo>
+      setSourceStatusMap(new Map(Object.entries(data)))
+    } catch {
+      // 비차단 — 상태 열만 '—' 표시
+    }
+  }
+
   // ── 목록 로드 ─────────────────────────────────────────────────────────────
 
   async function loadSources() {
@@ -166,8 +183,10 @@ export default function SourceManager() {
         setSources((data ?? []) as SourceRow[])
       }
       setIsLoading(false)
+      // 수집 상태 병렬 로드 (비차단 — init 내부에서 호출해 lint 규칙 준수)
+      await loadSourceStatus()
     }
-    init()
+    void init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 폼 열기/닫기 ──────────────────────────────────────────────────────────
@@ -734,6 +753,7 @@ export default function SourceManager() {
                 <th className="px-4 py-3 max-w-[200px]">RSS URL</th>
                 <th className="px-4 py-3">활성</th>
                 <th className="px-4 py-3">주기(분)</th>
+                <th className="px-4 py-3 whitespace-nowrap">수집 상태</th>
                 <th className="px-4 py-3 whitespace-nowrap">마지막 수집 (KST)</th>
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
@@ -779,6 +799,31 @@ export default function SourceManager() {
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {src.crawl_interval_minutes ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-xs">
+                    {(() => {
+                      const s = sourceStatusMap.get(src.id)
+                      if (!s) return <span className="text-muted-foreground">—</span>
+                      if (s.consecutiveFailures >= 2) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+                            🔴 연속실패 {s.consecutiveFailures}
+                          </span>
+                        )
+                      }
+                      if (src.is_active && s.inserted7d === 0) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            ⚠️ 점검 필요
+                          </span>
+                        )
+                      }
+                      return (
+                        <span className="text-muted-foreground">
+                          ✅ {s.inserted7d}건/7일
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
                     {formatKst(src.last_crawled_at)}
