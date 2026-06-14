@@ -500,6 +500,72 @@ revoke all on function public.increment_tts_usage(text, text, bigint)
 grant execute on function public.increment_tts_usage(text, text, bigint)
   to service_role;
 
+-- LLM 게이트웨이 — provider 별 월간 토큰·호출 사용량 (B2)
+create table public.llm_usage (
+  provider   text not null,
+  period     text not null,            -- 'YYYY-MM' (KST)
+  tokens     bigint not null default 0,
+  calls      integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (provider, period)
+);
+
+-- LLM provider 설정 — on/off + 월 토큰 한도 (키 자체는 env 전용)
+create table public.llm_settings (
+  provider             text primary key,
+  enabled              boolean not null default true,
+  monthly_token_limit  bigint not null default 1000000
+);
+
+insert into public.llm_settings (provider, enabled, monthly_token_limit) values
+  ('gemini',     true, 1000000),
+  ('groq',       true, 1000000),
+  ('cerebras',   true, 1000000),
+  ('openrouter', true, 1000000)
+on conflict (provider) do nothing;
+
+create or replace function public.increment_llm_usage(
+  p_provider text,
+  p_period   text,
+  p_tokens   bigint,
+  p_calls    integer
+)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.llm_usage (provider, period, tokens, calls, updated_at)
+  values (p_provider, p_period, greatest(p_tokens, 0), greatest(p_calls, 0), now())
+  on conflict (provider, period) do update
+  set tokens     = public.llm_usage.tokens + excluded.tokens,
+      calls      = public.llm_usage.calls  + excluded.calls,
+      updated_at = now();
+$$;
+
+revoke all on function public.increment_llm_usage(text, text, bigint, integer)
+  from public, anon, authenticated;
+grant execute on function public.increment_llm_usage(text, text, bigint, integer)
+  to service_role;
+
+alter table public.llm_usage    enable row level security;
+alter table public.llm_settings enable row level security;
+
+create policy "llm_usage admin"
+  on public.llm_usage for select
+  using (public.is_admin());
+
+create policy "llm_settings admin"
+  on public.llm_settings for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+revoke all on table public.llm_usage    from anon, authenticated;
+grant select, insert, update on table public.llm_usage    to service_role;
+
+revoke all on table public.llm_settings from anon, authenticated;
+grant select, insert, update on table public.llm_settings to service_role;
+
 -- 모닝브리핑 (Phase 3-B)
 do $$ begin
   create type briefing_status as enum ('draft', 'published', 'archived', 'failed');
