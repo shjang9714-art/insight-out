@@ -566,6 +566,46 @@ grant select, insert, update on table public.llm_usage    to service_role;
 revoke all on table public.llm_settings from anon, authenticated;
 grant select, insert, update on table public.llm_settings to service_role;
 
+-- LLM 모델 카탈로그 + 용도별 라우팅 (B2.5)
+create table public.llm_models (
+  id             uuid primary key default gen_random_uuid(),
+  provider       text not null,
+  model_id       text not null,
+  label          text,
+  strengths      text[] not null default '{}',
+  context_tokens integer,
+  is_active      boolean not null default true,
+  created_at     timestamptz not null default now(),
+  unique (provider, model_id)
+);
+
+create table public.llm_task_routing (
+  id         uuid primary key default gen_random_uuid(),
+  task_type  text not null,
+  priority   integer not null,
+  provider   text not null,
+  model_id   text not null,
+  is_active  boolean not null default true,
+  unique (task_type, priority)
+);
+
+alter table public.llm_models       enable row level security;
+alter table public.llm_task_routing enable row level security;
+
+create policy "llm_models admin"
+  on public.llm_models for all
+  using (public.is_admin()) with check (public.is_admin());
+
+create policy "llm_routing admin"
+  on public.llm_task_routing for all
+  using (public.is_admin()) with check (public.is_admin());
+
+revoke all on table public.llm_models       from anon, authenticated;
+grant select, insert, update, delete on table public.llm_models       to service_role;
+
+revoke all on table public.llm_task_routing from anon, authenticated;
+grant select, insert, update, delete on table public.llm_task_routing to service_role;
+
 -- 모닝브리핑 (Phase 3-B)
 do $$ begin
   create type briefing_status as enum ('draft', 'published', 'archived', 'failed');
