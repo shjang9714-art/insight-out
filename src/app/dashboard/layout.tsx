@@ -3,11 +3,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { Suspense } from 'react'
-import { Radio } from 'lucide-react'
-import Link from 'next/link'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
 import CategoryGrid from '@/components/dashboard/CategoryGrid'
+import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
 
 // 카테고리 타일을 숨길 페이지 (상세·마이페이지)
 function shouldHideCategoryTiles(pathname: string): boolean {
@@ -99,15 +98,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </>
       )}
 
-      {/* 플로팅 모닝브리핑 버튼 */}
-      <Link
-        href="/dashboard/briefings"
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
-        aria-label="오늘의 브리핑 열기"
-      >
-        <Radio className="h-4 w-4" />
-        <span>오늘의 브리핑</span>
-      </Link>
+      {/* 플로팅 모닝브리핑 미니 플레이어 */}
+      <FloatingBriefingMini />
     </div>
   )
 }

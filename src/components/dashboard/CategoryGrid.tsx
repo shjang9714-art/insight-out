@@ -6,6 +6,7 @@ import { useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getKstTodayStartIso } from '@/lib/date'
 import { CATEGORY_DEFS } from '@/lib/categories'
+import { Home } from 'lucide-react'
 
 export default function CategoryGrid() {
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({})
@@ -46,8 +47,23 @@ export default function CategoryGrid() {
     })
   }, [])
 
+  const isHome = pathname === '/dashboard'
+
   return (
     <div className="flex items-stretch gap-1.5 overflow-x-auto scrollbar-hide">
+      {/* 홈 버튼 — 카테고리 줄 맨 앞 */}
+      <Link
+        href="/dashboard"
+        className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-3 py-3 transition-colors ${
+          isHome
+            ? 'border-brand-600 text-brand-600'
+            : 'border-border text-muted-foreground hover:border-brand-200 hover:text-brand-600'
+        }`}
+      >
+        <Home className="h-5 w-5" />
+        <span className="text-center text-xs font-medium leading-tight">홈</span>
+      </Link>
+
       {CATEGORY_DEFS.map((cat) => {
         const href = cat.href ?? `/dashboard/contents?category=${encodeURIComponent(cat.category)}`
 
@@ -65,23 +81,19 @@ export default function CategoryGrid() {
             href={href}
             className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
               isEmpty
-                ? 'border-border text-muted-foreground/40 hover:border-border'
+                ? 'border-border text-muted-foreground/40'
                 : isActive
-                  ? 'border-brand-600 text-brand-600'
-                  : 'border-border text-foreground/70 hover:border-brand-200 hover:text-foreground dark:text-foreground/80'
+                  ? cat.activeClass
+                  : `border-border text-muted-foreground ${cat.hoverClass}`
             }`}
           >
             {/* 오늘 건수 — 좌측 상단 뱃지 */}
             {!isEmpty && count > 0 && (
-              <span
-                className={`absolute left-1 top-1 flex min-w-[16px] items-center justify-center rounded-full px-1 py-0.5 text-[9px] font-bold leading-none ${
-                  isActive ? 'bg-brand-600 text-white' : 'bg-brand-500 text-white'
-                }`}
-              >
+              <span className="absolute left-1 top-1 flex min-w-[16px] items-center justify-center rounded-full bg-brand-600 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
                 {count}
               </span>
             )}
-            <cat.Icon className="h-5 w-5" />
+            <cat.Icon className={`h-5 w-5 ${isEmpty ? '' : cat.iconClass}`} />
             <span className="text-center text-xs font-medium leading-tight">{cat.label}</span>
           </Link>
         )

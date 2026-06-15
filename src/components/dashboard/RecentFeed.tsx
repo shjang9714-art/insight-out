@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
 import ContentCard from './ContentCard'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
+import { isB2BRelevant } from '@/lib/feed-blocklist'
 
 
 interface FeedItem {
@@ -38,8 +39,9 @@ function CardSkeleton() {
 }
 
 export default function RecentFeed() {
-  const [items, setItems]       = useState<FeedItem[]>([])
-  const [isLoading, setLoading] = useState(true)
+  const [items, setItems]         = useState<FeedItem[]>([])
+  const [filteredOut, setFilteredOut] = useState(0)
+  const [isLoading, setLoading]   = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -48,23 +50,31 @@ export default function RecentFeed() {
       setLoading(true)
       const supabase = createClient()
 
-      // 태그 있는 콘텐츠 우선 노출을 위해 20건 조회 후 client-side 정렬
+      // 태그 있는 콘텐츠 우선 노출을 위해 40건 조회 후 client-side 필터·정렬
       const { data } = await supabase
         .from('contents')
         .select('id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(20)
+        .limit(40)
 
       if (!cancelled) {
         const raw = (data ?? []) as unknown as FeedItem[]
-        // 서비스 태그 있는 콘텐츠를 앞으로 정렬, 동순위 내에서는 published_at 순 유지
-        const sorted = [...raw].sort((a, b) => {
+
+        // ① B2B 무관 기사 필터 (블록리스트 키워드 포함 제외)
+        const beforeFilter = raw.length
+        const filtered = raw.filter((item) => isB2BRelevant(item.title, item.summary_ko))
+        const removedCount = beforeFilter - filtered.length
+
+        // ② 서비스 태그 있는 콘텐츠 우선 정렬 (동순위 내 published_at 순 유지)
+        const sorted = [...filtered].sort((a, b) => {
           const aHasTag = (a.matched_groups?.length ?? 0) > 0 ? 0 : 1
           const bHasTag = (b.matched_groups?.length ?? 0) > 0 ? 0 : 1
           return aHasTag - bHasTag
         })
+
         setItems(sorted.slice(0, 6))
+        setFilteredOut(removedCount)
         setLoading(false)
       }
     }
@@ -79,7 +89,14 @@ export default function RecentFeed() {
     <div className="rounded-2xl border border-border bg-card p-5">
       {/* 헤더 */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">최근 피드</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-foreground">최근 피드</h2>
+          {!isLoading && filteredOut > 0 && (
+            <span className="text-[10px] text-muted-foreground" title={`B2B 무관 기사 ${filteredOut}건 필터됨`}>
+              ({filteredOut}건 필터)
+            </span>
+          )}
+        </div>
         <Link href={contentsHref} className="text-xs text-brand-600 hover:underline">
           전체 보기
         </Link>

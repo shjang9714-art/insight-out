@@ -12,6 +12,12 @@ export interface CategoryDef {
   dbCategories: ContentCategory[]
   /** 유튜브처럼 별도 경로를 쓸 경우 지정 */
   href?: string
+  /** 아이콘 컬러 클래스 (비활성) */
+  iconClass: string
+  /** 활성 상태 border + text 컬러 클래스 */
+  activeClass: string
+  /** hover 상태 border 컬러 클래스 */
+  hoverClass: string
 }
 
 export const CATEGORY_DEFS: CategoryDef[] = [
@@ -21,6 +27,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '뉴스',
     category: '뉴스',
     dbCategories: ['뉴스'],
+    iconClass: 'text-blue-600 dark:text-blue-400',
+    activeClass: 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400',
+    hoverClass: 'hover:border-blue-200 hover:text-blue-700 dark:hover:border-blue-800 dark:hover:text-blue-300',
   },
   {
     id: 'research',
@@ -28,6 +37,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '리서치',
     category: '리서치',
     dbCategories: ['리포트', '가트너', 'KRG'],
+    iconClass: 'text-indigo-600 dark:text-indigo-400',
+    activeClass: 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400',
+    hoverClass: 'hover:border-indigo-200 hover:text-indigo-700 dark:hover:border-indigo-800 dark:hover:text-indigo-300',
   },
   {
     id: 'web-insight',
@@ -35,6 +47,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '웹인사이트',
     category: '웹인사이트',
     dbCategories: ['웹인사이트', '오피니언'],
+    iconClass: 'text-emerald-600 dark:text-emerald-400',
+    activeClass: 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400',
+    hoverClass: 'hover:border-emerald-200 hover:text-emerald-700 dark:hover:border-emerald-800 dark:hover:text-emerald-300',
   },
   {
     id: 'youtube',
@@ -43,6 +58,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     category: '유튜브',
     dbCategories: ['유튜브'],
     href: '/dashboard/youtube',
+    iconClass: 'text-red-600 dark:text-red-400',
+    activeClass: 'border-red-600 text-red-600 dark:border-red-400 dark:text-red-400',
+    hoverClass: 'hover:border-red-200 hover:text-red-700 dark:hover:border-red-800 dark:hover:text-red-300',
   },
   {
     id: 'ai-analysis',
@@ -50,6 +68,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: 'AI분석',
     category: 'AI분석',
     dbCategories: ['AI보고서', 'AI분석'],
+    iconClass: 'text-violet-600 dark:text-violet-400',
+    activeClass: 'border-violet-600 text-violet-600 dark:border-violet-400 dark:text-violet-400',
+    hoverClass: 'hover:border-violet-200 hover:text-violet-700 dark:hover:border-violet-800 dark:hover:text-violet-300',
   },
   {
     id: 'strategy',
@@ -57,6 +78,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '전략보고서',
     category: '전략보고서',
     dbCategories: ['전략보고서'],
+    iconClass: 'text-amber-600 dark:text-amber-400',
+    activeClass: 'border-amber-600 text-amber-600 dark:border-amber-400 dark:text-amber-400',
+    hoverClass: 'hover:border-amber-200 hover:text-amber-700 dark:hover:border-amber-800 dark:hover:text-amber-300',
   },
 ]
 
