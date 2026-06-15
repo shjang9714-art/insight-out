@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, Loader2, Search, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -11,11 +12,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
+import { CATEGORY_DEFS } from '@/lib/categories'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
   type ContentStatus,
+  type SourceType,
 } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +38,22 @@ interface AdminContentRow {
   sources: { name: string } | null
 }
 
+interface SourceOption {
+  id: string
+  name: string
+  type: SourceType
+}
+
+interface EditState {
+  id: string
+  title: string
+  summary: string
+  category: ContentCategory
+  sourceId: string // '' = 없음
+  author: string
+  publishedAt: string // 'YYYY-MM-DD' 또는 ''
+}
+
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
 const STATUS_STYLE: Record<ContentStatus, { label: string; className: string }> = {
@@ -38,12 +64,32 @@ const STATUS_STYLE: Record<ContentStatus, { label: string; className: string }> 
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
+// 소스 필터 특수값
+const SOURCE_ALL = 'all'
+const SOURCE_NULL = 'null' // Google News 키워드 검색 수집물 (source_id is null)
+// 편집 폼에서 "없음" 출처
+const EMPTY_SOURCE_VALUE = 'none'
+
+// 카테고리 → 매칭되는 소스 타입 (필터 드롭다운을 해당 타입으로 좁힘)
+const CATEGORY_SOURCE_TYPE: Partial<Record<ContentCategory, SourceType>> = {
+  '뉴스':      'news_site',
+  '리포트':    'report_publisher',
+  '웹인사이트': 'web_insight',
+  '유튜브':    'youtube_channel',
+}
+
 function formatKst(iso: string): string {
   return new Date(iso).toLocaleString('ko-KR', {
     timeZone: 'Asia/Seoul',
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+/** timestamptz / date 문자열 → date input 용 YYYY-MM-DD */
+function toDateInput(value: string | null | undefined): string {
+  if (!value) return ''
+  return value.slice(0, 10)
 }
 
 export default function AdminContentManager() {
@@ -57,9 +103,13 @@ export default function AdminContentManager() {
 
   // 필터
   const [category,     setCategory]     = useState('all')
+  const [sourceId,     setSourceId]     = useState(SOURCE_ALL)
   const [status,       setStatus]       = useState('all')
   const [searchTerm,   setSearchTerm]   = useState('')
   const [debouncedTerm, setDebouncedTerm] = useState('')
+
+  // 소스 목록 (필터·편집 공용)
+  const [sources, setSources] = useState<SourceOption[]>([])
 
   // 페이지네이션
   const [page,     setPage]     = useState(1)
@@ -70,9 +120,18 @@ export default function AdminContentManager() {
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
   const [isBulkWorking, setIsBulkWorking] = useState(false)
 
+  // 편집 모달
+  const [edit,        setEdit]        = useState<EditState | null>(null)
+  const [isSaving,    setIsSaving]    = useState(false)
+  const [editError,   setEditError]   = useState<string | null>(null)
+
   // 수집 기사 비우기
   const [isPurging,   setIsPurging]   = useState(false)
   const [purgeResult, setPurgeResult] = useState<string | null>(null)
+
+  // 유튜브 비우기
+  const [isYtPurging,   setIsYtPurging]   = useState(false)
+  const [ytPurgeResult, setYtPurgeResult] = useState<string | null>(null)
 
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
@@ -92,6 +151,15 @@ export default function AdminContentManager() {
       .then(({ count }) => setPendingCount(count ?? 0))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── 소스 목록 (마운트 1회) ──────────────────────────────────────────────
+  useEffect(() => {
+    supabase
+      .from('sources')
+      .select('id, name, type')
+      .order('name')
+      .then(({ data }) => setSources((data ?? []) as SourceOption[]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── 콘텐츠 로드 (서버 페이지네이션) ─────────────────────────────────────
   useEffect(() => {
     const run = async () => {
@@ -106,6 +174,8 @@ export default function AdminContentManager() {
 
       if (status !== 'all')          q = q.eq('status', status as ContentStatus)
       if (category !== 'all')        q = q.eq('category', category as ContentCategory)
+      if (sourceId === SOURCE_NULL)  q = q.is('source_id', null)
+      else if (sourceId !== SOURCE_ALL) q = q.eq('source_id', sourceId)
       if (debouncedTerm.trim())      q = q.ilike('title', `%${debouncedTerm.trim()}%`)
 
       q = q.range((page - 1) * pageSize, page * pageSize - 1)
@@ -120,7 +190,7 @@ export default function AdminContentManager() {
       setIsLoading(false)
     }
     void run()
-  }, [status, category, debouncedTerm, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, category, sourceId, debouncedTerm, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -161,6 +231,72 @@ export default function AdminContentManager() {
       }
     }
     setWorkingId(null)
+  }
+
+  // ── 편집 모달 열기 (행 전체 메타 로드) ──────────────────────────────────
+  const openEdit = async (content: AdminContentRow) => {
+    setEditError(null)
+    setWorkingId(content.id)
+    const { data, error: loadError } = await supabase
+      .from('contents')
+      .select('id, title, summary_ko, category, source_id, author, published_at')
+      .eq('id', content.id)
+      .single()
+    setWorkingId(null)
+
+    if (loadError || !data) {
+      setError(`편집할 콘텐츠를 불러오지 못했습니다: ${loadError?.message ?? '알 수 없는 오류'}`)
+      return
+    }
+    setEdit({
+      id:          data.id,
+      title:       data.title ?? '',
+      summary:     data.summary_ko ?? '',
+      category:    data.category as ContentCategory,
+      sourceId:    data.source_id ?? '',
+      author:      data.author ?? '',
+      publishedAt: toDateInput(data.published_at),
+    })
+  }
+
+  // ── 편집 저장 ────────────────────────────────────────────────────────────
+  const handleEditSave = async () => {
+    if (!edit) return
+    const title = edit.title.trim()
+    if (!title) { setEditError('제목을 입력해주세요.'); return }
+
+    setIsSaving(true)
+    setEditError(null)
+
+    const { error: updateError } = await supabase
+      .from('contents')
+      .update({
+        title,
+        summary_ko:   edit.summary.trim() || null,
+        category:     edit.category,
+        source_id:    edit.sourceId || null,
+        author:       edit.author.trim() || null,
+        published_at: edit.publishedAt || null,
+      })
+      .eq('id', edit.id)
+
+    if (updateError) {
+      setEditError(`저장에 실패했습니다: ${updateError.message}`)
+      setIsSaving(false)
+      return
+    }
+
+    // 목록에 반영 (제목·카테고리·소스명)
+    const nextSourceName = edit.sourceId
+      ? (sources.find((s) => s.id === edit.sourceId)?.name ?? null)
+      : null
+    setContents((prev) => prev.map((item) =>
+      item.id === edit.id
+        ? { ...item, title, category: edit.category, sources: nextSourceName ? { name: nextSourceName } : null }
+        : item
+    ))
+    setIsSaving(false)
+    setEdit(null)
   }
 
   // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
@@ -246,7 +382,50 @@ export default function AdminContentManager() {
     }
   }
 
+  const handleYoutubePurge = async () => {
+    setIsYtPurging(true)
+    setYtPurgeResult(null)
+    setError(null)
+    try {
+      const countRes = await fetch('/api/admin/youtube/purge')
+      if (!countRes.ok) throw new Error((await countRes.json()).error ?? '건수 조회 실패')
+      const { count } = await countRes.json() as { count: number }
+
+      const confirmed = window.confirm(
+        `유튜브 영상 ${count.toLocaleString()}건을 삭제합니다.\n\n되돌릴 수 없습니다. 계속하시겠습니까?`
+      )
+      if (!confirmed) { setIsYtPurging(false); return }
+
+      const delRes = await fetch('/api/admin/youtube/purge', { method: 'POST' })
+      if (!delRes.ok) throw new Error((await delRes.json()).error ?? '삭제 실패')
+      const { deleted } = await delRes.json() as { deleted: number }
+
+      setYtPurgeResult(`유튜브 ${deleted.toLocaleString()}건 삭제 완료`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '유튜브 비우기 중 오류가 발생했습니다.')
+    } finally {
+      setIsYtPurging(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
+
+  // 카테고리 탭 (전체 + CATEGORY_DEFS)
+  const categoryTabs: { value: string; label: string }[] = [
+    { value: 'all', label: '전체' },
+    ...CATEGORY_DEFS.map((d) => ({ value: d.category, label: `${d.icon} ${d.label}` })),
+  ]
+
+  // 선택된 카테고리에 맞는 소스만 (없으면 전체)
+  const mappedType = category !== 'all'
+    ? CATEGORY_SOURCE_TYPE[category as ContentCategory]
+    : undefined
+  const sourceOptions = mappedType ? sources.filter((s) => s.type === mappedType) : sources
+
+  // 편집 폼 카테고리 옵션 (현재 값이 deprecated 면 옵션에 추가해 표시 유지)
+  const editCategoryValues = CATEGORY_DEFS.map((d) => d.category)
+  const editCategoryExtra =
+    edit && !editCategoryValues.includes(edit.category) ? [edit.category] : []
 
   if (isLoading && contents.length === 0) {
     return (
@@ -294,24 +473,63 @@ export default function AdminContentManager() {
               ✅ {purgeResult}
             </span>
           )}
+          {ytPurgeResult && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+              ✅ {ytPurgeResult}
+            </span>
+          )}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={isPurging}
-          onClick={handlePurge}
-          className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
-        >
-          {isPurging
-            ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
-            : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />수집 기사 비우기</>
-          }
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isPurging}
+            onClick={handlePurge}
+            className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+          >
+            {isPurging
+              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
+              : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />수집 기사 비우기</>
+            }
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isYtPurging}
+            onClick={handleYoutubePurge}
+            className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+          >
+            {isYtPurging
+              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
+              : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />유튜브 비우기</>
+            }
+          </Button>
+        </div>
       </div>
 
-      {/* ── 검색·카테고리·상태·페이지 크기 필터 ── */}
-      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_180px_180px_100px]">
+      {/* ── 카테고리 탭 ── */}
+      <div className="flex flex-wrap gap-1.5">
+        {categoryTabs.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => { setCategory(tab.value); setSourceId(SOURCE_ALL); setPage(1) }}
+            className={cn(
+              'rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
+              category === tab.value
+                ? 'border-brand-600 bg-brand-600 text-white'
+                : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 검색·소스·상태·페이지 크기 필터 ── */}
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_200px_180px_100px]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -321,14 +539,15 @@ export default function AdminContentManager() {
             className="pl-9"
           />
         </div>
-        <Select value={category} onValueChange={(v) => { setCategory(v); setPage(1) }}>
+        <Select value={sourceId} onValueChange={(v) => { setSourceId(v); setPage(1) }}>
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="카테고리" />
+            <SelectValue placeholder="소스" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">전체 카테고리</SelectItem>
-            {Object.entries(CONTENT_CATEGORY_LABEL).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
+            <SelectItem value={SOURCE_ALL}>전체 소스</SelectItem>
+            <SelectItem value={SOURCE_NULL}>Google News 검색</SelectItem>
+            {sourceOptions.map((s) => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -469,6 +688,14 @@ export default function AdminContentManager() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
+                        <Button
+                          type="button" size="sm" variant="outline"
+                          disabled={isWorking || isBulkWorking}
+                          onClick={() => openEdit(content)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          수정
+                        </Button>
                         {content.status !== 'published' && (
                           <Button
                             type="button" size="sm" variant="outline"
@@ -542,6 +769,151 @@ export default function AdminContentManager() {
           </div>
         </div>
       )}
+
+      {/* ── 편집 모달 ── */}
+      <Dialog open={edit !== null} onOpenChange={(open) => { if (!open) { setEdit(null); setEditError(null) } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>콘텐츠 수정</DialogTitle>
+          </DialogHeader>
+
+          {edit && (
+            <div className="space-y-4">
+              {editError && (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {editError}
+                </div>
+              )}
+
+              {/* 제목 */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-title">
+                  제목 <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="edit-title"
+                  value={edit.title}
+                  onChange={(e) => setEdit((p) => p && { ...p, title: e.target.value })}
+                  placeholder="제목을 입력해주세요"
+                />
+              </div>
+
+              {/* 카테고리 + 발행일 */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-category">카테고리</Label>
+                  <Select
+                    value={edit.category}
+                    onValueChange={(v) => setEdit((p) => p && { ...p, category: v as ContentCategory })}
+                  >
+                    <SelectTrigger id="edit-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_DEFS.map((d) => (
+                        <SelectItem key={d.category} value={d.category}>
+                          {d.icon} {d.label}
+                        </SelectItem>
+                      ))}
+                      {editCategoryExtra.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {CONTENT_CATEGORY_LABEL[c]} (구)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-published">
+                    발행일{' '}
+                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                  </Label>
+                  <Input
+                    id="edit-published"
+                    type="date"
+                    value={edit.publishedAt}
+                    onChange={(e) => setEdit((p) => p && { ...p, publishedAt: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* 저자 + 발행처 */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-author">
+                    저자/기관{' '}
+                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                  </Label>
+                  <Input
+                    id="edit-author"
+                    value={edit.author}
+                    onChange={(e) => setEdit((p) => p && { ...p, author: e.target.value })}
+                    placeholder="예: Gartner Research"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-source">
+                    발행처{' '}
+                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                  </Label>
+                  <Select
+                    value={edit.sourceId || EMPTY_SOURCE_VALUE}
+                    onValueChange={(v) => setEdit((p) => p && {
+                      ...p,
+                      sourceId: v === EMPTY_SOURCE_VALUE ? '' : v,
+                    })}
+                  >
+                    <SelectTrigger id="edit-source">
+                      <SelectValue placeholder="선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={EMPTY_SOURCE_VALUE}>없음</SelectItem>
+                      {sources.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* 요약 */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-summary">
+                  요약{' '}
+                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                </Label>
+                <textarea
+                  id="edit-summary"
+                  value={edit.summary}
+                  onChange={(e) => setEdit((p) => p && { ...p, summary: e.target.value })}
+                  placeholder="핵심 내용을 입력해주세요"
+                  rows={4}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isSaving}
+              onClick={() => { setEdit(null); setEditError(null) }}
+            >
+              취소
+            </Button>
+            <Button type="button" disabled={isSaving} onClick={handleEditSave}>
+              {isSaving
+                ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />저장 중…</>
+                : '저장'
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
