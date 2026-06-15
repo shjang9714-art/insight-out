@@ -31,6 +31,8 @@ const TAG_TYPE_LABELS: Record<TagType, string> = {
 }
 
 // signal_type enum 값 (SQL 65와 반드시 일치)
+const NO_SIGNAL = 'none'
+
 const SIGNAL_TYPES = [
   '경쟁사동향',
   '규제',
@@ -475,14 +477,14 @@ export default function KeywordGroupManager() {
                   <span className="text-xs font-normal text-muted-foreground">(선택 — 이 그룹 매칭 시 content_signals 에 적재)</span>
                 </Label>
                 <Select
-                  value={form.signalHint}
-                  onValueChange={(v) => setForm(p => ({ ...p, signalHint: v as SignalType | '' }))}
+                  value={form.signalHint || NO_SIGNAL}
+                  onValueChange={(v) => setForm(p => ({ ...p, signalHint: v === NO_SIGNAL ? '' : (v as SignalType) }))}
                 >
                   <SelectTrigger id="kg-signal">
                     <SelectValue placeholder="없음 (시그널 미적재)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">없음</SelectItem>
+                    <SelectItem value={NO_SIGNAL}>없음</SelectItem>
                     {SIGNAL_TYPES.map(t => (
                       <SelectItem key={t} value={t}>{t}</SelectItem>
                     ))}
