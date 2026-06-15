@@ -363,6 +363,9 @@ create table public.contents (
   cluster_id         uuid references public.contents (id) on delete set null,
   -- 관련도 점수 (B1. 결정적 keyword_groups 매칭 결과)
   importance_score   numeric not null default 0,
+  -- keyword_groups 매칭 해시태그 (B3a. 그룹명 + 히트 키워드)
+  matched_groups     text[] not null default '{}',
+  matched_keywords   text[] not null default '{}',
   -- 상태·시각
   status             content_status not null default 'published',  -- 보류/게시/반려 (BL-4)
   published_at       timestamptz,                       -- 원문 발행일
@@ -386,6 +389,8 @@ create index contents_cluster_idx         on public.contents (cluster_id) where 
 create index contents_search_vector_idx   on public.contents using gin(search_vector);
 create index contents_status_idx          on public.contents (status);
 create index contents_cluster_idx         on public.contents (cluster_id) where cluster_id is not null;
+create index contents_matched_groups_idx  on public.contents using gin(matched_groups);
+create index contents_matched_keywords_idx on public.contents using gin(matched_keywords);
 
 -- 콘텐츠 ↔ 서비스 (N:M) — 결정 C: content_services
 create table public.content_services (
