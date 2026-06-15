@@ -31,6 +31,19 @@ interface ContentItem {
   sources: { name: string } | null
   matched_groups: string[]
   matched_keywords: string[]
+  cluster_id: string | null
+  importance_score: number
+}
+
+interface ClusterMember {
+  name: string
+  url: string | null
+  title: string
+}
+
+interface ClusteredItem {
+  item: ContentItem
+  members: ClusterMember[]
 }
 
 interface ServiceOption {
@@ -257,7 +270,7 @@ function ContentsContent() {
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords',
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score',
           { count: 'exact' }
         )
         .eq('status', 'published')
@@ -295,6 +308,42 @@ function ContentsContent() {
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
   const hasMore = total !== null && items.length < total
+
+  // ── cluster 그룹핑 (표시 전용 — total·더보기는 원시 items 기준 유지) ──────────
+  const clusteredItems = useMemo<ClusteredItem[]>(() => {
+    const groups = new Map<string, ContentItem[]>()
+    for (const item of items) {
+      const key = item.cluster_id ?? item.id
+      const grp = groups.get(key)
+      if (grp) grp.push(item)
+      else groups.set(key, [item])
+    }
+    const result: ClusteredItem[] = []
+    for (const group of groups.values()) {
+      const sorted = [...group].sort((a, b) => {
+        const sd = (b.importance_score ?? 0) - (a.importance_score ?? 0)
+        if (sd !== 0) return sd
+        const at = a.published_at ? new Date(a.published_at).getTime() : 0
+        const bt = b.published_at ? new Date(b.published_at).getTime() : 0
+        return bt - at
+      })
+      const [rep, ...rest] = sorted
+      result.push({
+        item: rep,
+        members: rest.map((m) => ({
+          name: m.sources?.name ?? m.author ?? '알 수 없음',
+          url: m.original_url,
+          title: m.title,
+        })),
+      })
+    }
+    result.sort((a, b) => {
+      const at = a.item.published_at ? new Date(a.item.published_at).getTime() : 0
+      const bt = b.item.published_at ? new Date(b.item.published_at).getTime() : 0
+      return bt - at
+    })
+    return result
+  }, [items])
 
   // ── 활성 필터 chip 목록 (카테고리 칩 제거, 서비스는 선택된 것만) ──────────────
   const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
@@ -524,7 +573,7 @@ function ContentsContent() {
         <>
           {contentView === 'card' ? (
             <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-              {items.map((item) => (
+              {clusteredItems.map(({ item, members }) => (
                 <ContentListCard
                   key={item.id}
                   id={item.id}
@@ -538,12 +587,13 @@ function ContentsContent() {
                   author={item.author}
                   sourceName={item.sources?.name ?? null}
                   tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                  clusterMembers={members.length > 0 ? members : undefined}
                 />
               ))}
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((item) => (
+              {clusteredItems.map(({ item, members }) => (
                 <ContentRow
                   key={item.id}
                   id={item.id}
@@ -558,6 +608,7 @@ function ContentsContent() {
                   author={item.author}
                   sourceName={item.sources?.name ?? null}
                   keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                  clusterMembers={members.length > 0 ? members : undefined}
                 />
               ))}
             </div>

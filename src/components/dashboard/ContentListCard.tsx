@@ -1,5 +1,8 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
-import { ExternalLink, FileText } from 'lucide-react'
+import { ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
 function formatDate(d: string | null) {
@@ -10,6 +13,12 @@ function formatDate(d: string | null) {
     month: 'long',
     day: 'numeric',
   })
+}
+
+interface ClusterMember {
+  name: string
+  url: string | null
+  title: string
 }
 
 interface ContentListCardProps {
@@ -24,6 +33,7 @@ interface ContentListCardProps {
   author: string | null
   sourceName: string | null
   tags: string[]
+  clusterMembers?: ClusterMember[]
 }
 
 export default function ContentListCard({
@@ -38,9 +48,12 @@ export default function ContentListCard({
   author,
   sourceName,
   tags,
+  clusterMembers,
 }: ContentListCardProps) {
-  const dateStr   = formatDate(publishedAt)
-  const isYoutube = category === '유튜브'
+  const [expanded, setExpanded] = useState(false)
+  const dateStr     = formatDate(publishedAt)
+  const isYoutube   = category === '유튜브'
+  const memberCount = clusterMembers?.length ?? 0
 
   const inner = (
     <div className="flex h-full flex-col p-5">
@@ -100,6 +113,47 @@ export default function ContentListCard({
           </span>
         )}
       </div>
+
+      {/* 클러스터 접힘 — 같은 사건 다매체 */}
+      {memberCount > 0 && (
+        <div className="mt-2 border-t border-border/60 pt-2">
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded((v) => !v) }}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            <span className="rounded-full bg-secondary px-2 py-0.5 font-medium">
+              +{memberCount}개 매체
+            </span>
+            {expanded
+              ? <ChevronUp className="h-3 w-3" />
+              : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {expanded && (
+            <ul className="mt-1.5 space-y-1 pl-1">
+              {clusterMembers!.map((m, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="shrink-0 font-medium">{m.name}</span>
+                  {m.url && (
+                    <>
+                      <span className="text-muted-foreground/40">—</span>
+                      <a
+                        href={m.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-brand-600 underline-offset-2 hover:underline"
+                      >
+                        원문 보기
+                      </a>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 
