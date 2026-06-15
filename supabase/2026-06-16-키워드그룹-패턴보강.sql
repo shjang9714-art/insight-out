@@ -1,127 +1,135 @@
 -- ============================================================
 -- keyword_groups include_patterns 보강 (2026-06-16)
--- 목적: pending에 묶인 KT·AI 등 B2B 관련 기사를 published로 올리기 위해
---       관련도 점수(relatednessScore)에 쓰이는 keyword_groups 패턴 추가.
+-- 목적: pending에 묶인 B2B 관련 기사 발행률 향상
 -- 실행: 수희 (Supabase SQL Editor)
--- 순서:
---   Step 1 — 현재 그룹 조회 (어느 그룹에 패턴 추가할지 확인용)
---   Step 2 — 패턴 추가 (Step 1 결과 보고 그룹명 확인 후 실행)
--- ⚠️ Step 1만 먼저 실행해서 그룹 목록 확인 후 Step 2 실행할 것.
+-- 분석 결과:
+--   - 경쟁사(competitor): 이미 "KT","SKT" 포함 → 패턴 문제 없음
+--     → KT pending 기사는 KT야구단/KTX 등 비B2B일 가능성 높음
+--   - AI 기술(ai_tech): "생성형 AI","LLM" 등 있으나 단독 "AI","인공지능" 없음
+--     → "AI" 단독 언급 기사가 score 0 → pending 원인
+--   - IT 동향(it_trend): "클라우드","DX" 등 있으나 "AI" 없음
+--   - telecom_b2b: 5G/전용회선 중심, 기업통신 관련어 보강 여지
 -- ============================================================
 
 -- ┌─────────────────────────────────────────────────────────┐
--- │ STEP 1. 현재 keyword_groups 전체 조회                  │
+-- │ STEP 1. pending 기사 목록 조회 (내용 확인용)            │
 -- └─────────────────────────────────────────────────────────┘
 select
   id,
-  name,
-  kind,
-  tag_type,
-  weight,
-  is_active,
-  array_length(include_patterns, 1) as pattern_count,
-  include_patterns
-from public.keyword_groups
-order by kind, name;
+  title,
+  category,
+  left(coalesce(summary_ko, body_original, ''), 120) as preview,
+  collected_at
+from public.contents
+where status = 'pending'
+order by collected_at desc;
 
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 2. 패턴 추가                                       │
--- │  Step 1 결과를 확인한 뒤 아래를 실행.                  │
--- │  각 UPDATE는 해당 그룹이 없으면 0 rows affected.       │
 -- └─────────────────────────────────────────────────────────┘
 
 begin;
 
--- ── 경쟁사 그룹: KT·SKT 계열 패턴 추가 ──────────────────────────────────
--- 그룹명이 다를 경우 name = '...' 부분을 Step 1 결과에 맞게 수정.
+-- ── AI 기술(ai_tech): 단독 "AI"·"인공지능" 추가 ─────────────────────────
+-- 현재: ["생성형 AI","AI Agent","Enterprise AI","Copilot","LLM","RAG","sovereign AI","AI 인프라"]
+-- 추가: "AI","인공지능","초거대AI","거대언어모델","AI 도입","AI 활용","챗GPT"
 update public.keyword_groups
-set include_patterns = (
-  select array(
-    select distinct unnest(include_patterns || array[
-      'kt', 'kt그룹', 'kt닷컴', 'kt클라우드', 'ktf', 'kt엠모바일',
-      'sk텔레콤', 'skt', 'sk브로드밴드', 'skb',
-      'lg유플러스', 'lgu+', 'u+',
-      '통신3사', '이통사', '이동통신', '통신사'
-    ])
-  )
+set include_patterns = array(
+  select distinct unnest(include_patterns || array[
+    'AI', '인공지능', '초거대AI', '초거대 AI', '거대언어모델',
+    'AI 도입', 'AI 활용', 'AI 전환', 'AI 혁신', '챗GPT', 'ChatGPT',
+    'AI 서비스', 'AI 솔루션', 'AI 플랫폼', 'AI 기반', 'sLLM', 'SLM'
+  ])
 )
-where kind = 'competitor'
-  and is_active = true;
+where kind = 'ai_tech';
 
--- ── 기술/AI 그룹: AI·LLM 관련 패턴 추가 ────────────────────────────────
+-- ── IT 동향(it_trend): AI·인공지능 추가 ──────────────────────────────────
+-- 현재: ["클라우드","SaaS","사이버보안","DX","플랫폼"]
+-- 추가: "AI","인공지능","디지털전환","클라우드 전환"
 update public.keyword_groups
-set include_patterns = (
-  select array(
-    select distinct unnest(include_patterns || array[
-      'ai', '인공지능', '생성형 ai', '생성형ai', 'llm', 'gpt', 'chatgpt',
-      '클로드', 'claude', '제미나이', 'gemini',
-      '대형언어모델', 'sllm', 'slm', 'ai에이전트', 'agentic',
-      '멀티모달', 'rag', '파인튜닝'
-    ])
-  )
+set include_patterns = array(
+  select distinct unnest(include_patterns || array[
+    'AI', '인공지능', '디지털전환', 'DT', '클라우드 전환', '클라우드 도입',
+    'AI 도입', '디지털화', '스마트화'
+  ])
 )
-where (kind ilike '%tech%' or kind ilike '%ai%' or kind ilike '%기술%'
-    or name ilike '%AI%' or name ilike '%인공지능%' or name ilike '%기술%')
-  and is_active = true;
+where kind = 'it_trend';
 
--- ── 클라우드 그룹: 클라우드·보안 패턴 보강 ──────────────────────────────
+-- ── 경쟁사(competitor): KT·SKT B2B 맥락 패턴 보강 ────────────────────────
+-- 현재: ["SKT","KT","SK브로드밴드","세종텔레콤","네이버클라우드","카카오엔터프라이즈","NHN Cloud"]
+-- 추가: KT 기업/클라우드 관련 + LG유플러스
 update public.keyword_groups
-set include_patterns = (
-  select array(
-    select distinct unnest(include_patterns || array[
-      '클라우드', 'aws', 'azure', 'gcp', 'ncp', '네이버클라우드',
-      'saas', 'iaas', 'paas', 'msp', '멀티클라우드', '하이브리드클라우드',
-      '제로트러스트', 'sase', 'cspm'
-    ])
-  )
+set include_patterns = array(
+  select distinct unnest(include_patterns || array[
+    'KT클라우드', 'KT 클라우드', 'KT AI', 'KT 기업', 'KT enterprise',
+    'LG유플러스', 'LGU+', 'U+', 'LG U+',
+    'SK텔레콤', 'SK C&C', '드림어스'
+  ])
 )
-where (kind ilike '%cloud%' or kind ilike '%클라우드%' or kind ilike '%보안%'
-    or name ilike '%클라우드%' or name ilike '%보안%' or name ilike '%cloud%')
-  and is_active = true;
+where kind = 'competitor';
 
--- ── 전 그룹 공통: weight 0 그룹은 제외되므로 확인용 ────────────────────
--- (수정 없음, 참고용)
--- select name, weight from keyword_groups where weight = 0;
+-- ── 통신 B2B(telecom_b2b): 기업통신 관련어 보강 ──────────────────────────
+-- 현재: ["5G 특화망","Private 5G","네트워크 슬라이싱","MEC","전용회선","M2M"]
+-- 추가: 엔터프라이즈 통신, B2B, 기업망
+update public.keyword_groups
+set include_patterns = array(
+  select distinct unnest(include_patterns || array[
+    'B2B', '기업 통신', '기업통신', '엔터프라이즈', '기업망', '전용망',
+    '기업 네트워크', 'SD-WAN', 'MPLS', '기업 5G', 'IoT 통신'
+  ])
+)
+where kind = 'telecom_b2b';
+
+-- ── 빅테크(bigtech): 한국어 표기 추가 ───────────────────────────────────
+-- 현재: ["AWS","Microsoft","Azure","Google Cloud","Oracle","NVIDIA","OpenAI","Salesforce","ServiceNow"]
+-- 추가: 한글 표기
+update public.keyword_groups
+set include_patterns = array(
+  select distinct unnest(include_patterns || array[
+    '아마존 웹서비스', '마이크로소프트', '구글 클라우드', '오라클', '엔비디아',
+    'Meta', '메타', 'Anthropic', '앤트로픽', 'Mistral', '어도비'
+  ])
+)
+where kind = 'bigtech';
 
 commit;
 
+
 -- ┌─────────────────────────────────────────────────────────┐
--- │ STEP 3. 검증 — 패턴 추가 후 확인                       │
+-- │ STEP 3. 검증 — 패턴 수 변경 확인                       │
 -- └─────────────────────────────────────────────────────────┘
-select
-  name,
-  kind,
-  array_length(include_patterns, 1) as pattern_count,
-  include_patterns
+select name, kind, array_length(include_patterns, 1) as pattern_count
 from public.keyword_groups
 where is_active = true
 order by kind, name;
 
+
 -- ┌─────────────────────────────────────────────────────────┐
--- │ STEP 4 (선택). pending → published 백필                 │
--- │  Step 2 패턴 추가 후, 기존 pending 기사 중              │
--- │  새 패턴에 매칭되는 것을 published로 올리는 경우.       │
--- │  주의: 크롤러가 다음 실행 시 자동 적용되므로 백필은     │
--- │  선택 사항. 지금 당장 노출하려면 아래 실행.             │
+-- │ STEP 4. pending 기사 중 지금 바로 published 전환        │
+-- │  (Step 1에서 제목 확인 후 B2B 관련 있으면 실행)         │
+-- │  ⚠️ 주석 해제 후 실행. 비B2B(야구/KTX 등)는 제외.      │
 -- └─────────────────────────────────────────────────────────┘
 
--- 예: KT 포함 pending 기사 → published
+-- pending 전체 건수 확인
+-- select count(*) from public.contents where status = 'pending';
+
+-- AI·클라우드·데이터센터 관련 pending → published
 -- update public.contents
--- set status = 'published', collected_at = coalesce(collected_at, now())
+-- set status = 'published'
 -- where status = 'pending'
 --   and (
---     title ilike '%kt%' or title ilike '%KT%'
---     or summary_ko ilike '%kt%'
---     or body_original ilike '%kt%'
+--     title ilike '%AI%' or title ilike '%인공지능%'
+--     or title ilike '%클라우드%' or title ilike '%데이터센터%'
+--     or title ilike '%LLM%' or title ilike '%GPT%'
+--     or summary_ko ilike '%AI%' or summary_ko ilike '%클라우드%'
 --   );
 
--- 예: AI 포함 pending 기사 → published
+-- KT 기업/통신 관련 pending → published (KT야구/KTX 제외)
 -- update public.contents
--- set status = 'published', collected_at = coalesce(collected_at, now())
+-- set status = 'published'
 -- where status = 'pending'
 --   and (
---     title ilike '%ai%' or title ilike '% AI %'
---     or title ilike '%인공지능%'
---     or summary_ko ilike '%인공지능%' or summary_ko ilike '%ai%'
+--     title ilike '%KT 클라우드%' or title ilike '%KT AI%'
+--     or title ilike '%KT 기업%' or title ilike '%KT enterprise%'
 --   );
