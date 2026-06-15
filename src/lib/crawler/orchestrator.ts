@@ -17,11 +17,22 @@ import {
   translateToKorean,
 } from '@/lib/translate'
 import { summarizeKo } from './summarize'
+import { classifyRelevance } from './classify'
+import { extract } from '@extractus/article-extractor'
+import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { resolveArticleUrl } from './resolve-url'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_SUMMARIES_PER_CRAWL = 60
 const SUMMARY_MIN_BODY_LEN = 200
+const MAX_LLM_CLASSIFY_PER_CRAWL = 40
+const RELATEDNESS_MARGIN = 0.15
+const MAX_MERGED_TAGS = 8
 const OPINION_LOOKBACK_DAYS = 7
+
+// enrichment(풀본문 보강) 상수
+const MAX_ENRICH_PER_CRAWL = 15
+const ENRICH_MIN_BODY_LEN = 400
 
 // ── 키워드 검색 수집 상수 ────────────────────────────────────────────────
 const KEYWORD_LOOKBACK_DAYS = 2
@@ -274,6 +285,7 @@ async function processCrawlItem(
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
   summarizeBudget: TranslationBudget,
+  classifyBudget: TranslationBudget,
   counts: CrawlCounts
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
@@ -337,15 +349,36 @@ async function processCrawlItem(
       console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
     }
 
-    // 품질 필터 단계 2: 가중 관련도 게이트 (B1)
-    // groups 가 비어 있으면 0점 → 신뢰 소스(trust_tier >= 2)로 전부 면제.
-    // RELATEDNESS_GATING_ENABLED = true 이므로 실제 보류 발생.
+    // 품질 필터 단계 2: 가중 관련도 게이트 (B1 + B3-2 LLM 재판정)
     const score = relatednessScore(item.title, item.body ?? '', groups)
     const importance = score
     const exempt = src.trust_tier >= 2 || groups.length === 0
-    const contentStatus: 'pending' | 'published' =
+    let contentStatus: 'pending' | 'published' =
       (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
         ? 'pending' : 'published'
+
+    // LLM 재판정: 애매 밴드(THRESHOLD ± MARGIN)의 기사만, 면제 소스 제외
+    let llmTags: string[] = []
+    const inAmbiguousBand =
+      RELATEDNESS_GATING_ENABLED &&
+      !exempt &&
+      classifyBudget.remaining > 0 &&
+      score >= (RELATEDNESS_THRESHOLD - RELATEDNESS_MARGIN) &&
+      score < (RELATEDNESS_THRESHOLD + RELATEDNESS_MARGIN)
+
+    if (inAmbiguousBand) {
+      classifyBudget.remaining--
+      const activeGroupNames = groups.map(g => g.name)
+      const verdict = await classifyRelevance(
+        item.title,
+        item.body ?? '',
+        activeGroupNames
+      )
+      if (verdict !== null) {
+        contentStatus = verdict.relevant ? 'published' : 'pending'
+        llmTags = verdict.tags
+      }
+    }
 
     const translatedContent =
       item.language === 'en' && item.body
@@ -408,13 +441,44 @@ async function processCrawlItem(
         // post-insert update — 컬럼 없어도 insert 안 깨지게 try/catch로 격리
         const matchedTags = matchKeywordGroups(item.title, item.body ?? '', groups)
         try {
+          // matched_keywords: 결정적 키워드 + LLM 보조 태그 병합(중복제거·상한)
+          const mergedKeywords = [
+            ...matchedTags.keywords,
+            ...llmTags.filter(t => !matchedTags.keywords.includes(t)),
+          ].slice(0, MAX_MERGED_TAGS)
           const { error: tagErr } = await admin
             .from('contents')
-            .update({ matched_groups: matchedTags.groups, matched_keywords: matchedTags.keywords })
+            .update({ matched_groups: matchedTags.groups, matched_keywords: mergedKeywords })
             .eq('id', newId)
           if (tagErr) console.error('[크롤러] 매칭 태그 적재 실패(컬럼 미적용 가능):', tagErr.message)
         } catch (e) {
           console.error('[크롤러] 매칭 태그 적재 실패(컬럼 미적용 가능):', e)
+        }
+
+        // post-insert: rule 기반 content_signals 적재 (B4)
+        // SQL 65 미적용 시 insert 실패 → try/catch 격리로 크롤 무중단
+        try {
+          const signalTypes = [
+            ...new Set(
+              groups
+                .filter(g => matchedTags.groups.includes(g.name) && g.signal_hint)
+                .map(g => g.signal_hint as string)
+            ),
+          ]
+          if (signalTypes.length > 0) {
+            const signalRows = signalTypes.map(signal_type => ({
+              content_id: newId,
+              signal_type,
+              score: 1.0,
+              source: 'rule',
+            }))
+            const { error: sigErr } = await admin
+              .from('content_signals')
+              .upsert(signalRows, { onConflict: 'content_id,signal_type', ignoreDuplicates: true })
+            if (sigErr) console.error('[크롤러] content_signals 적재 실패(SQL 65 미적용 가능):', sigErr.message)
+          }
+        } catch (e) {
+          console.error('[크롤러] content_signals 적재 실패(SQL 65 미적용 가능):', e)
         }
 
         // post-insert: 한국어 요약 (B3-1) — published·본문충분·예산 조건
@@ -458,7 +522,8 @@ async function crawlOne(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
-  summarizeBudget: TranslationBudget
+  summarizeBudget: TranslationBudget,
+  classifyBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -491,7 +556,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, counts
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -618,7 +683,8 @@ async function crawlKeywordSearch(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
-  summarizeBudget: TranslationBudget
+  summarizeBudget: TranslationBudget,
+  classifyBudget: TranslationBudget
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -643,7 +709,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, counts
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts
         )
         if (result.partial) hadError = true
       }
@@ -659,12 +725,116 @@ async function crawlKeywordSearch(
   return { counts, hadError }
 }
 
-/** keyword_groups DB 행 — 게이트·태깅용 */
+/** keyword_groups DB 행 — 게이트·태깅·시그널용 */
 interface KeywordGroupRow {
   name: string
   include_patterns: string[]
   exclude_patterns: string[]
   weight: number
+  signal_hint: string | null
+}
+
+/** enrichment 대상 행 타입 */
+interface EnrichRow {
+  id: string
+  original_url: string
+  body_original: string | null
+  title: string
+  status: string
+  original_language: string
+  body_translated_ko: string | null
+}
+
+/**
+ * 이번 수집 런에서 신규 적재된 콘텐츠의 풀본문을 best-effort 로 추출한다.
+ * - body_fetched_at IS NULL + original_url 있음 + 이번 런 이후 수집분만 대상.
+ * - 추출 성공 시 body_original 갱신 + published 이면 요약 재생성.
+ * - 실패·타임아웃이어도 body_fetched_at = now 마킹(재시도 방지) + 크롤 결과 보존.
+ */
+async function enrichRecentContents(
+  admin: SupabaseClient,
+  runStartedAt: string,
+  summarizeBudget: TranslationBudget
+): Promise<void> {
+  try {
+    const { data: rows, error } = await admin
+      .from('contents')
+      .select('id, original_url, body_original, title, status, original_language, body_translated_ko')
+      .is('body_fetched_at', null)
+      .not('original_url', 'is', null)
+      .gte('collected_at', runStartedAt)
+      .order('collected_at', { ascending: false })
+      .limit(MAX_ENRICH_PER_CRAWL)
+
+    if (error) {
+      console.error('[보강] 대상 조회 실패:', error.message)
+      return
+    }
+    if (!rows?.length) return
+
+    console.log(`[보강] 풀본문 추출 대상: ${rows.length}건`)
+
+    for (const row of rows as EnrichRow[]) {
+      try {
+        const resolved = await resolveArticleUrl(row.original_url)
+
+        let extracted: string | null = null
+        try {
+          const result = await extract(resolved, {}, { signal: AbortSignal.timeout(6000) })
+          if (result?.content) {
+            extracted = cleanBodyText(htmlToPlainText(result.content))
+          }
+        } catch {
+          // 추출 실패·타임아웃 — body_fetched_at 마킹만
+        }
+
+        const existingBody = cleanBodyText(htmlToPlainText(row.body_original ?? ''))
+        const improved =
+          extracted &&
+          extracted.length > existingBody.length &&
+          extracted.length >= ENRICH_MIN_BODY_LEN
+
+        if (improved && extracted) {
+          await admin
+            .from('contents')
+            .update({ body_original: extracted, body_fetched_at: new Date().toISOString() })
+            .eq('id', row.id)
+
+          // 요약 재생성: published + 예산 있음 + 한국어 본문 확보
+          if (row.status === 'published' && summarizeBudget.remaining > 0) {
+            const bodyKo =
+              row.original_language === 'ko'
+                ? extracted
+                : (row.body_translated_ko ?? null)
+            if (bodyKo && bodyKo.length >= SUMMARY_MIN_BODY_LEN) {
+              summarizeBudget.remaining--
+              try {
+                const summary = await summarizeKo(row.title, bodyKo)
+                if (summary) {
+                  await admin
+                    .from('contents')
+                    .update({ summary_ko: summary })
+                    .eq('id', row.id)
+                }
+              } catch (e) {
+                console.error('[보강] 요약 재생성 실패 (id:', row.id, '):', e)
+              }
+            }
+          }
+        } else {
+          // 추출 실패 또는 스니펫이 더 길면 재시도 방지용 마킹
+          await admin
+            .from('contents')
+            .update({ body_fetched_at: new Date().toISOString() })
+            .eq('id', row.id)
+        }
+      } catch (e) {
+        console.error('[보강] 아이템 enrichment 오류 (id:', row.id, '):', e)
+      }
+    }
+  } catch (e) {
+    console.error('[보강] enrichRecentContents 오류:', e)
+  }
 }
 
 /** 전체 크롤 실행 — Orchestrator 진입점
@@ -672,6 +842,7 @@ interface KeywordGroupRow {
  *  @param options.force true 이면 주기와 관계없이 활성 소스를 모두 실행.
  *  @param options.sourceIds 지정 시 해당 소스만 수집, 키워드 검색 skip. */
 export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSummary> {
+  const runStartedAt = new Date().toISOString()
   const backfillDays =
     options.backfillDays && options.backfillDays > 0
       ? Math.min(Math.floor(options.backfillDays), 30)
@@ -690,7 +861,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       admin.from('sources').select('*').eq('is_active', true),
       admin.from('keywords').select('id, name, service_id'),
       admin.from('keyword_groups')
-        .select('name, include_patterns, exclude_patterns, weight')
+        .select('name, include_patterns, exclude_patterns, weight, signal_hint')
         .eq('is_active', true),
     ])
 
@@ -707,6 +878,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       include_patterns: r.include_patterns,
       exclude_patterns: r.exclude_patterns,
       weight: r.weight,
+      signal_hint: r.signal_hint ?? null,
     }))
 
     // search_seeds 별도 쿼리 — SQL 56 적용 전엔 컬럼이 없어 에러 날 수 있으므로 throw 금지
@@ -735,6 +907,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const summarizeBudget: TranslationBudget = {
     remaining: MAX_SUMMARIES_PER_CRAWL,
   }
+  const classifyBudget: TranslationBudget = {
+    remaining: MAX_LLM_CLASSIFY_PER_CRAWL,
+  }
 
   const scoped = options.sourceIds?.length
     ? rawSources.filter(s => options.sourceIds!.includes(s.id))
@@ -758,7 +933,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             keywords,
             groups,
             translationBudget,
-            summarizeBudget
+            summarizeBudget,
+            classifyBudget
           )
     )
   )
@@ -814,7 +990,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted
@@ -831,6 +1007,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     })
     if (!kwResult.hadError) successCount++
   }
+
+  // enrichment tail — 신규 적재분 풀본문 추출·요약 재생성 (실패해도 크롤 결과 보존)
+  await enrichRecentContents(admin, runStartedAt, summarizeBudget)
 
   return {
     ok: failedCount === 0,

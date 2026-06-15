@@ -2,6 +2,7 @@ import Parser from 'rss-parser'
 import type { SourceAdapter, RawItem } from '../types'
 import type { Source } from '@/lib/types'
 import { getPublishedAtSince } from '@/lib/crawler/publication-date'
+import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 
 // rss-parser 커스텀 필드 포함 아이템 타입
 type RssItem = Parser.Item & {
@@ -61,9 +62,10 @@ const newsSiteAdapter: SourceAdapter = {
       if (!originalUrl) continue
 
       // 본문은 RSS 제공분(content > snippet)만 사용.
-      // 풀페이지 본문 추출은 기사마다 외부 fetch 가 필요해 서버리스 타임아웃을 유발 →
-      // 수집 핫패스에서 제외. 풀본문은 후속 enrichment 단계로 분리(별도 작업).
-      const body = item.content ?? item.contentSnippet ?? ''
+      // 풀페이지 본문 추출은 수집 후 enrichment 단계(orchestrator.enrichRecentContents)에서 진행.
+      const rawBody = item.content ?? item.contentSnippet ?? ''
+      // 저장 전 HTML 정리: &nbsp; 등 엔티티·태그 제거 → 카드/피드/요약 입력 모두 깨끗하게
+      const cleanBody = rawBody ? cleanBodyText(htmlToPlainText(rawBody)) : ''
 
       const title = item.title ?? ''
       const author = item.creator ?? item['dc:creator'] ?? item.author ?? undefined
@@ -71,11 +73,11 @@ const newsSiteAdapter: SourceAdapter = {
       items.push({
         original_url: originalUrl,
         title,
-        body: body || undefined,
+        body: cleanBody || undefined,
         author: typeof author === 'string' ? author : undefined,
         published_at: publishedAt,
         thumbnail_url: extractThumbnail(item),
-        language: detectLanguage(title + ' ' + body),
+        language: detectLanguage(title + ' ' + cleanBody),
       })
     }
 
