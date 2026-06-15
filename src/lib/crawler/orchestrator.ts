@@ -16,8 +16,11 @@ import {
   TRANSLATION_SEPARATOR,
   translateToKorean,
 } from '@/lib/translate'
+import { summarizeKo } from './summarize'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
+const MAX_SUMMARIES_PER_CRAWL = 60
+const SUMMARY_MIN_BODY_LEN = 200
 const OPINION_LOOKBACK_DAYS = 7
 
 // ── 키워드 검색 수집 상수 ────────────────────────────────────────────────
@@ -270,6 +273,7 @@ async function processCrawlItem(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
+  summarizeBudget: TranslationBudget,
   counts: CrawlCounts
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
@@ -412,6 +416,26 @@ async function processCrawlItem(
         } catch (e) {
           console.error('[크롤러] 매칭 태그 적재 실패(컬럼 미적용 가능):', e)
         }
+
+        // post-insert: 한국어 요약 (B3-1) — published·본문충분·예산 조건
+        if (contentStatus === 'published' && summarizeBudget.remaining > 0) {
+          const bodyKo = translatedContent?.body ?? item.body ?? ''
+          if (bodyKo.length >= SUMMARY_MIN_BODY_LEN) {
+            summarizeBudget.remaining--
+            try {
+              const summary = await summarizeKo(row.title, bodyKo)
+              if (summary) {
+                const { error: sumErr } = await admin
+                  .from('contents')
+                  .update({ summary_ko: summary })
+                  .eq('id', newId)
+                if (sumErr) console.error('[크롤러] 요약 적재 실패:', sumErr.message)
+              }
+            } catch (e) {
+              console.error('[크롤러] 요약 생성 실패:', e)
+            }
+          }
+        }
       }
     }
 
@@ -433,7 +457,8 @@ async function crawlOne(
   since: string,
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
-  translationBudget: TranslationBudget
+  translationBudget: TranslationBudget,
+  summarizeBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -466,7 +491,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, counts
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, counts
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -592,7 +617,8 @@ async function crawlKeywordSearch(
   seeds: string[],
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
-  translationBudget: TranslationBudget
+  translationBudget: TranslationBudget,
+  summarizeBudget: TranslationBudget
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -617,7 +643,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, counts
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, counts
         )
         if (result.partial) hadError = true
       }
@@ -706,6 +732,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
+  const summarizeBudget: TranslationBudget = {
+    remaining: MAX_SUMMARIES_PER_CRAWL,
+  }
 
   const scoped = options.sourceIds?.length
     ? rawSources.filter(s => options.sourceIds!.includes(s.id))
@@ -728,7 +757,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             sinceForSource(s, since, backfillDays),
             keywords,
             groups,
-            translationBudget
+            translationBudget,
+            summarizeBudget
           )
     )
   )
@@ -784,7 +814,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted
