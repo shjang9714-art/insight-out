@@ -69,23 +69,23 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
       return getKeys(keysEnv).length > 0
     },
 
-    async complete(system, user) {
+    async complete(system, user, model?: string) {
       const keys = getKeys(keysEnv)
       if (!keys.length) return null
 
-      const model = (process.env[modelEnv] ?? '').trim() || defaultModel
+      const resolvedModel = model || (process.env[modelEnv] ?? '').trim() || defaultModel
 
       // 랜덤 키 1개 선택, 실패(401/429) 시 나머지 중 1개 재시도
       const idx = Math.floor(Math.random() * keys.length)
       const firstKey = keys[idx]
 
-      const first = await tryComplete(baseURL, firstKey, model, system, user)
+      const first = await tryComplete(baseURL, firstKey, resolvedModel, system, user)
       if (first.result) return first.result
 
       if (first.retryable && keys.length > 1) {
         const remaining = keys.filter((_, i) => i !== idx)
         const secondKey = remaining[Math.floor(Math.random() * remaining.length)]
-        const second = await tryComplete(baseURL, secondKey, model, system, user)
+        const second = await tryComplete(baseURL, secondKey, resolvedModel, system, user)
         if (second.result) return second.result
       }
 

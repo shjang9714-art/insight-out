@@ -41,8 +41,7 @@ async function verifyAdmin() {
 
 /**
  * GET /api/admin/llm-test
- * 어드민 전용 — 4개 provider isConfigured 현황 + llmComplete 1회 호출 결과 반환.
- * David 가 .env.local/Vercel 에 키 입력 후 이 라우트로 동작 확인.
+ * 어드민 전용 — provider 현황 + 용도별 라우팅 + llmComplete('classify') 1회 호출 결과.
  */
 export async function GET() {
   const authError = await verifyAdmin()
@@ -52,9 +51,14 @@ export async function GET() {
     const admin = createAdminClient()
     const period = getKstPeriod()
 
-    const [usageResult, settingsResult] = await Promise.all([
+    const [usageResult, settingsResult, routingResult] = await Promise.all([
       admin.from('llm_usage').select('provider, tokens, calls').eq('period', period),
       admin.from('llm_settings').select('provider, enabled, monthly_token_limit'),
+      admin
+        .from('llm_task_routing')
+        .select('task_type, priority, provider, model_id, is_active')
+        .order('task_type')
+        .order('priority'),
     ])
 
     const usage = new Map(
@@ -77,12 +81,12 @@ export async function GET() {
       }
     })
 
-    // llmComplete 1회 호출 (어느 provider가 응답하는지 서버 로그로 확인)
+    // llmComplete('classify') 1회 호출
     const SYSTEM = 'You are a JSON API. Reply with valid JSON only, no markdown.'
     const USER = 'Return {"ok":true} as JSON.'
-    const text = await llmComplete(SYSTEM, USER)
+    const text = await llmComplete('classify', SYSTEM, USER)
 
-    // 호출 후 사용량 재조회 — 응답한 provider 파악
+    // 호출 후 사용량 재조회 → 응답한 provider 판별
     const { data: usageAfter } = await admin
       .from('llm_usage').select('provider, tokens, calls').eq('period', period)
 
@@ -91,16 +95,24 @@ export async function GET() {
     )
 
     const respondedProvider = LLM_PROVIDERS.find(p => {
-      const before = usage.get(p.name)?.calls ?? 0
-      const after = usageAfterMap.get(p.name)?.calls ?? 0
+      const before = (usage.get(p.name)?.calls as number | undefined) ?? 0
+      const after  = (usageAfterMap.get(p.name)?.calls as number | undefined) ?? 0
       return after > before
     })?.name ?? (text ? 'unknown' : null)
+
+    // 응답한 provider의 라우팅에서 사용된 model_id 추론
+    const usedRoute = (routingResult.data ?? []).find(
+      r => r.task_type === 'classify' && r.provider === respondedProvider && r.is_active
+    )
 
     return NextResponse.json({
       period,
       providers: providerStatus,
+      routing: routingResult.data ?? [],
       test: {
+        task: 'classify',
         responded_provider: respondedProvider,
+        responded_model: usedRoute?.model_id ?? null,
         text: text ? text.slice(0, 200) : null,
         ok: text !== null,
       },

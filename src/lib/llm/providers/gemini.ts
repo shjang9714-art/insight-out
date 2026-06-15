@@ -18,11 +18,11 @@ const geminiProvider: LlmProvider = {
     return getKeys().length > 0
   },
 
-  async complete(system, user) {
+  async complete(system, user, model?: string) {
     const keys = getKeys()
     if (!keys.length) return null
 
-    const model = (process.env.GEMINI_MODEL ?? '').trim() || 'gemini-2.0-flash'
+    const resolvedModel = model || (process.env.GEMINI_MODEL ?? '').trim() || 'gemini-2.5-flash'
 
     // 랜덤 키 1개 선택, 실패(401/429) 시 나머지 중 1개 재시도
     const idx = Math.floor(Math.random() * keys.length)
@@ -30,7 +30,7 @@ const geminiProvider: LlmProvider = {
 
     for (const key of orderedKeys) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${key}`
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
