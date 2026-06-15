@@ -77,10 +77,10 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   const pageLabel    = getPageLabel(pathname, category)
 
   const [showNotifications, setShowNotifications] = useState(false)
-  const [userName, setUserName]   = useState('—')
-  const [userTeam, setUserTeam]   = useState('')
+  const [userName, setUserName]     = useState<string | null>(null)
+  const [userTeam, setUserTeam]     = useState('')
   const [notifications, setNotifications] = useState<NotifItem[]>([])
-  const [readIds, setReadIds]     = useState<Set<string>>(new Set())
+  const [readIds, setReadIds]       = useState<Set<string>>(new Set())
   const [todayCount, setTodayCount] = useState(0)
   const notifRef = useRef<HTMLDivElement>(null)
 
@@ -91,14 +91,17 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
+      if (!user) {
+        setUserName('')
+        return
+      }
       supabase
         .from('users')
         .select('name, team')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
-          if (data?.name) setUserName(data.name)
+          setUserName(data?.name ?? '')
           if (data?.team) setUserTeam(data.team)
         })
     })
@@ -294,13 +297,25 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-accent"
             title="마이페이지"
           >
-            <div className="hidden flex-col items-end sm:flex">
-              <span className="text-xs font-semibold text-foreground">{userName}</span>
-              {userTeam && <span className="text-[11px] text-muted-foreground">{userTeam}</span>}
-            </div>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
-              {userName !== '—' ? userName[0] : '?'}
-            </div>
+            {userName === null ? (
+              /* 로딩 중: 스켈레톤 */
+              <div className="hidden flex-col items-end gap-1 sm:flex">
+                <div className="h-3 w-16 animate-pulse rounded bg-muted" />
+                <div className="h-2.5 w-10 animate-pulse rounded bg-muted" />
+              </div>
+            ) : (
+              <div className="hidden flex-col items-end sm:flex">
+                {userName && <span className="text-xs font-semibold text-foreground">{userName}</span>}
+                {userTeam && <span className="text-[11px] text-muted-foreground">{userTeam}</span>}
+              </div>
+            )}
+            {userName === null ? (
+              <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+                {userName ? userName[0] : '?'}
+              </div>
+            )}
           </Link>
         </div>
       </div>

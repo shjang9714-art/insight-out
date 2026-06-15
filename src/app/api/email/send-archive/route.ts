@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Resend } from 'resend'
+import { sendBrevoEmail, normalizeBrevoError } from '@/lib/email/brevo'
 import { buildArchiveEmailHtml, type ArchiveEmailItem } from '@/lib/email/archive-template'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 
@@ -14,7 +14,7 @@ function categorizeSendError(err: { name?: string; message?: string }): string {
     return '발신 도메인이 검증되지 않았습니다. 관리자에게 문의하세요.'
   }
   if (msg.includes('not allowed') || msg.includes('unauthorized') || msg.includes('forbidden')) {
-    return '발신 권한이 없습니다. Resend 도메인 검증 후 이용 가능합니다.'
+    return '발신 권한이 없습니다. 발신 도메인 검증(Brevo) 후 이용 가능합니다.'
   }
   if (msg.includes('invalid') && msg.includes('email')) {
     return '수신 이메일 주소가 올바르지 않습니다.'
@@ -31,9 +31,8 @@ function categorizeSendError(err: { name?: string; message?: string }): string {
 export async function POST(req: NextRequest) {
   try {
     // ── 0. 발신자 환경변수 가드 ────────────────────────────────────────────
-    const fromEmail = process.env.RESEND_FROM_EMAIL
-    if (!fromEmail) {
-      console.warn('[send-archive] RESEND_FROM_EMAIL 미설정 — Resend 샌드박스 발신자 사용 시 본인 이메일 외 수신 불가')
+    if (!process.env.BREVO_FROM_EMAIL) {
+      console.warn('[send-archive] BREVO_FROM_EMAIL 미설정 — Brevo 발신 도메인 인증 후 설정 필요')
     }
 
     // ── 1. 인증 ──────────────────────────────────────────────────────────
@@ -135,30 +134,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '발송할 콘텐츠가 없습니다.' }, { status: 400 })
     }
 
-    // ── 6. Resend 발송 ─────────────────────────────────────────────────────
-    const resend = new Resend(process.env.RESEND_API_KEY)
-
+    // ── 6. Brevo 발송 ──────────────────────────────────────────────────────
     const html = buildArchiveEmailHtml({
       archiveName: archive.name,
       recipientName: userProfile?.name ?? '사용자',
       items,
     })
 
-    const { error: sendError } = await resend.emails.send({
-      from: fromEmail ?? 'onboarding@resend.dev',
-      to: toEmail,
-      subject: `[Insight Out] ${archive.name} — ${items.length}건의 인사이트`,
-      html,
-    })
-
-    if (sendError) {
+    try {
+      await sendBrevoEmail({ to: toEmail, subject: `[Insight Out] ${archive.name} — ${items.length}건의 인사이트`, html })
+    } catch (err) {
+      const norm = normalizeBrevoError(err)
       // 수신자는 서버 로그에만 기록 (응답 본문 노출 금지)
-      console.error('[send-archive] Resend 발송 실패 | to=<hidden> | name=%s | message=%s',
-        sendError.name, sendError.message)
+      console.error('[send-archive] Brevo 발송 실패 | to=<hidden> | name=%s | message=%s', norm.name, norm.message)
       console.error('[send-archive] 수신자 도메인: %s', toEmail.split('@')[1] ?? 'unknown')
-
-      const userMessage = categorizeSendError(sendError)
-      return NextResponse.json({ error: userMessage }, { status: 500 })
+      return NextResponse.json({ error: categorizeSendError(norm) }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, to: toEmail, count: items.length })

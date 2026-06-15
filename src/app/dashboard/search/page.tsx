@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
-import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
+import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 import { CATEGORY_DEFS } from '@/lib/categories'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -27,8 +27,9 @@ interface SearchResult {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
-  matched_groups: string[]
-  matched_keywords: string[]
+  content_keywords: { keywords: { name: string } | null }[]
+  content_services: { services: { name: string } | null }[]
+  matchedBy?: 'title' | 'summary' | 'body' | 'keyword'
 }
 
 interface ServiceOption { id: string; name: string; icon?: string | null }
@@ -71,6 +72,15 @@ function getSavedView(): ContentView {
   }
 }
 
+// ─── 스켈레톤 ─────────────────────────────────────────────────────────────────
+
+function getKeywords(item: SearchResult): string[] {
+  return item.content_keywords.map((ck) => ck.keywords?.name).filter((n): n is string => Boolean(n))
+}
+
+function getServices(item: SearchResult): string[] {
+  return item.content_services.map((cs) => cs.services?.name).filter((n): n is string => Boolean(n))
+}
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
@@ -226,7 +236,7 @@ function SearchContent() {
       let query = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords'
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
         )
         .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
         .eq('status', 'published')
@@ -537,7 +547,7 @@ function SearchContent() {
                 isEditorPick={item.is_editor_pick}
                 author={item.author}
                 sourceName={item.sources?.name ?? null}
-                tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                tags={tagsOf(getKeywords(item), item.category, getServices(item))}
               />
             ))}
           </div>
@@ -557,7 +567,7 @@ function SearchContent() {
                 isEditorPick={item.is_editor_pick}
                 author={item.author}
                 sourceName={item.sources?.name ?? null}
-                keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                keywords={tagsOf(getKeywords(item), item.category, getServices(item))}
               />
             ))}
           </div>

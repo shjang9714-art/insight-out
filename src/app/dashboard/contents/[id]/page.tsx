@@ -1,4 +1,3 @@
-import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -9,8 +8,9 @@ import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
-import { ensureFullBody } from '@/lib/contents/full-body'
+import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
@@ -37,8 +37,8 @@ interface ContentDetail {
   author: string | null
   published_at: string | null
   sources: { name: string } | null
-  matched_groups: string[]
-  matched_keywords: string[]
+  content_services: { services: { name: string } | null }[]
+  content_keywords: { keywords: { name: string } | null }[]
 }
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -163,7 +163,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
       summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
       file_path, original_url, author, published_at,
       sources(name),
-      matched_groups, matched_keywords
+      content_services(services(name)),
+      content_keywords(keywords(name))
     `)
     .eq('id', id)
     .eq('status', 'published')
@@ -194,9 +195,13 @@ export default async function ContentDetailPage({ params }: PageProps) {
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
 
-  const matchedGroups   = content.matched_groups   ?? []
-  const matchedKeywords = content.matched_keywords ?? []
-  const allTags = [...new Set([...matchedGroups, ...matchedKeywords])]
+  const serviceNames = content.content_services
+    .map((cs) => cs.services?.name)
+    .filter(Boolean) as string[]
+
+  const keywordNames = content.content_keywords
+    .map((ck) => ck.keywords?.name)
+    .filter(Boolean) as string[]
 
   const dateStr = formatDate(content.published_at)
 
@@ -240,22 +245,48 @@ export default async function ContentDetailPage({ params }: PageProps) {
               htmlToPlainText(content.body_original ?? '')
             )}
           >
-            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {content.sources?.name && (
-                <span className="font-medium text-foreground">{content.sources.name}</span>
-              )}
-              {content.author && <span>{content.author}</span>}
-              <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+            {/* 메타 + 상단 액션 */}
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {content.sources?.name && (
+                  <span className="font-medium text-foreground">{content.sources.name}</span>
+                )}
+                {content.author && <span>{content.author}</span>}
+                <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <BookmarkButton contentId={content.id} />
+                <ArchiveButton contentId={content.id} />
+                {content.original_url && (
+                  <a
+                    href={content.original_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    원문 보기
+                  </a>
+                )}
+              </div>
             </div>
 
-            {allTags.length > 0 && (
-              <div className="mb-6 flex flex-wrap gap-1.5">
-                {allTags.map((tag) => (
+            {(serviceNames.length > 0 || keywordNames.length > 0) && (
+              <div className="mb-5 flex flex-wrap gap-1.5">
+                {serviceNames.map((name) => (
                   <span
-                    key={tag}
+                    key={name}
+                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+                  >
+                    {name}
+                  </span>
+                ))}
+                {keywordNames.map((name) => (
+                  <span
+                    key={name}
                     className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
                   >
-                    #{tag}
+                    #{name}
                   </span>
                 ))}
               </div>
@@ -265,26 +296,52 @@ export default async function ContentDetailPage({ params }: PageProps) {
           </TranslatedArticle>
         ) : (
           <>
-            <h1 className="mb-4 text-xl font-bold leading-snug text-foreground">
+            <h1 className="mb-3 text-xl font-bold leading-snug text-foreground">
               {content.title}
             </h1>
 
-            <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {content.sources?.name && (
-                <span className="font-medium text-foreground">{content.sources.name}</span>
-              )}
-              {content.author && <span>{content.author}</span>}
-              <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+            {/* 메타 + 상단 액션 */}
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {content.sources?.name && (
+                  <span className="font-medium text-foreground">{content.sources.name}</span>
+                )}
+                {content.author && <span>{content.author}</span>}
+                <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <BookmarkButton contentId={content.id} />
+                <ArchiveButton contentId={content.id} />
+                {!isReport && content.original_url && (
+                  <a
+                    href={content.original_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    원문 보기
+                  </a>
+                )}
+              </div>
             </div>
 
-            {allTags.length > 0 && (
-              <div className="mb-6 flex flex-wrap gap-1.5">
-                {allTags.map((tag) => (
+            {(serviceNames.length > 0 || keywordNames.length > 0) && (
+              <div className="mb-5 flex flex-wrap gap-1.5">
+                {serviceNames.map((name) => (
                   <span
-                    key={tag}
+                    key={name}
+                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+                  >
+                    {name}
+                  </span>
+                ))}
+                {keywordNames.map((name) => (
+                  <span
+                    key={name}
                     className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
                   >
-                    #{tag}
+                    #{name}
                   </span>
                 ))}
               </div>
@@ -343,15 +400,11 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 )}
               </>
             ) : (
-              <Suspense
-                fallback={
-                  <ArticleBodyFallback
-                    snippet={content.summary_ko ?? content.body_original ?? ''}
-                  />
-                }
-              >
-                <ArticleBody content={content} />
-              </Suspense>
+              <ArticleBodyLoader
+                contentId={content.id}
+                snippet={cleanBodyText(htmlToPlainText(content.summary_ko ?? content.body_original ?? ''))}
+                originalUrl={content.original_url}
+              />
             )}
           </>
         )}

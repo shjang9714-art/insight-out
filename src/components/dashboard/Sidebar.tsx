@@ -2,11 +2,14 @@
 
 import { useState, useEffect, startTransition } from 'react'
 import Link from 'next/link'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getRecentViews, type RecentView } from '@/lib/recent-views'
 
 interface Props {
   onClose?: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 interface ArchivedItem {
@@ -32,7 +35,7 @@ function timeAgo(ts: number): string {
   return new Date(ts).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
 
-export default function Sidebar({ onClose }: Props) {
+export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Props) {
   const [archived, setArchived]       = useState<ArchivedItem[]>([])
   const [loading, setLoading]         = useState(true)
   const [recentViews, setRecentViews] = useState<RecentView[]>([])
@@ -95,9 +98,38 @@ export default function Sidebar({ onClose }: Props) {
     }
   }, [])
 
+  if (collapsed) {
+    return (
+      <aside className="w-14 shrink-0 border-r border-border bg-card">
+        <div className="sticky top-14 flex h-[calc(100vh-56px)] flex-col items-center py-4">
+          <button
+            onClick={onToggleCollapse}
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="사이드바 펼치기"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </aside>
+    )
+  }
+
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-card">
       <div className="sticky top-14 h-[calc(100vh-56px)] space-y-5 overflow-y-auto px-3 py-4">
+
+        {/* 접기 버튼 */}
+        {onToggleCollapse && (
+          <div className="flex justify-end">
+            <button
+              onClick={onToggleCollapse}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="사이드바 접기"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* 아카이빙 콘텐츠 */}
         <section>

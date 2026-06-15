@@ -7,7 +7,11 @@ import { cn } from '@/lib/utils'
 import { CATEGORY_DEFS } from '@/lib/categories'
 import type { ContentCategory } from '@/lib/types'
 
-export default function SearchBar() {
+interface Props {
+  onClose?: () => void
+}
+
+export default function SearchBar({ onClose }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const currentCategory = (searchParams.get('category') ?? '') as ContentCategory | ''
@@ -61,6 +65,7 @@ export default function SearchBar() {
     p.set('q', q)
     if (scopeSelection) p.set('category', scopeSelection)
     router.push(`/dashboard/search?${p.toString()}`)
+    onClose?.()
   }
 
   const scopeLabel = scopeSelection

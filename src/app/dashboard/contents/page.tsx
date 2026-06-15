@@ -4,8 +4,12 @@ import { Suspense, useState, useEffect, useCallback, useMemo, startTransition } 
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { getCategoryDbValues } from '@/lib/categories'
 import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import BookmarkButton from '@/components/bookmark/BookmarkButton'
+import ArchiveButton from '@/components/archive/ArchiveButton'
+import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
@@ -142,6 +146,7 @@ function ContentsContent() {
   const date     = (searchParams.get('date') ?? 'all') as DateFilter
   const svcParam = searchParams.get('svc') ?? ''
   const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
+  const relevant = searchParams.get('relevant') ?? '1'
   const srcParam = searchParams.get('src') ?? ''
   const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
@@ -167,18 +172,19 @@ function ContentsContent() {
   }
 
   // ── URL 업데이트 헬퍼 ────────────────────────────────────────────────────────
+  // window.location.search 를 사용해 Link 이동 직후 stale 클로저 방지
   const updateParam = useCallback(
     (key: string, value: string) => {
-      const p = new URLSearchParams(searchParams.toString())
+      const p = new URLSearchParams(window.location.search)
       if (value) p.set(key, value)
       else p.delete(key)
       if (key !== 'page') p.delete('page')
       router.push(`${pathname}?${p.toString()}`)
     },
-    [router, pathname, searchParams]
+    [router, pathname]
   )
 
-  // ── 서비스·소스 목록 로드 (1회) ────────────────────────────────────────────
+  // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient()
     Promise.all([
@@ -194,11 +200,12 @@ function ContentsContent() {
   useEffect(() => {
     if (!category) { startTransition(() => setScopedSourceIds(null)); return }
     let cancelled = false
+    const dbCats = getCategoryDbValues(category as ContentCategory)
     createClient()
       .from('contents')
       .select('source_id')
       .eq('status', 'published')
-      .eq('category', category)
+      .in('category', dbCats)
       .not('source_id', 'is', null)
       .then(({ data }) => {
         if (cancelled) return
@@ -242,7 +249,11 @@ function ContentsContent() {
         return
       }
 
-      // ③ 메인 쿼리 (keywords 조인 추가)
+      // ③ 메인 쿼리 — relevant='1'이면 서비스 태그 있는 콘텐츠만 노출 (inner join)
+      const serviceJoin = relevant === '1'
+        ? 'content_services!inner(services(name))'
+        : 'content_services(services(name))'
+
       let q = supabase
         .from('contents')
         .select(
@@ -253,7 +264,10 @@ function ContentsContent() {
         .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-      if (category)        q = q.eq('category', category)
+      if (category) {
+        const dbCats = getCategoryDbValues(category as ContentCategory)
+        q = q.in('category', dbCats)
+      }
       if (srcIds.length > 0) q = q.in('source_id', srcIds)
 
       const dateStart = getDateStart(date)
@@ -276,7 +290,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, srcIds, page])
+  }, [category, date, svcIds, srcIds, relevant, page])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -297,7 +311,9 @@ function ContentsContent() {
       key: `svc-${id}`,
       label: `사업: ${svcName}`,
       onRemove: () => {
-        const next = svcIds.filter((x) => x !== id)
+        const cur = new URLSearchParams(window.location.search).get('svc') ?? ''
+        const curIds = cur ? cur.split(',').filter(Boolean) : []
+        const next = curIds.filter((x) => x !== id)
         updateParam('svc', next.join(','))
       },
     })
@@ -314,6 +330,7 @@ function ContentsContent() {
       },
     })
   }
+
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
   const pageTitle = category
@@ -398,6 +415,7 @@ function ContentsContent() {
             />
           </div>
 
+
         </div>
 
         {/* 사업키워드(서비스) 멀티셀렉트 pill 행 */}
@@ -423,9 +441,11 @@ function ContentsContent() {
                     key={s.id}
                     type="button"
                     onClick={() => {
-                      const next = svcIds.includes(s.id)
-                        ? svcIds.filter((x) => x !== s.id)
-                        : [...svcIds, s.id]
+                      const cur = new URLSearchParams(window.location.search).get('svc') ?? ''
+                      const curIds = cur ? cur.split(',').filter(Boolean) : []
+                      const next = curIds.includes(s.id)
+                        ? curIds.filter((x) => x !== s.id)
+                        : [...curIds, s.id]
                       updateParam('svc', next.join(','))
                     }}
                     className={cn(
@@ -442,6 +462,25 @@ function ContentsContent() {
             </div>
           </div>
         )}
+
+        {/* 관련 콘텐츠 토글 */}
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">관련성</span>
+            <button
+              onClick={() => updateParam('relevant', relevant === '1' ? '0' : '1')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                relevant === '1'
+                  ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300 dark:hover:bg-brand-950/50'
+                  : 'border-border bg-muted text-muted-foreground hover:bg-accent'
+              )}
+              title={relevant === '1' ? '전체 콘텐츠 보기' : '관련 콘텐츠만 보기'}
+            >
+              {relevant === '1' ? '관련 콘텐츠만' : '전체 콘텐츠'}
+            </button>
+          </div>
+        </div>
 
         {/* 활성 필터 chips */}
         {activeFilters.length > 0 && (

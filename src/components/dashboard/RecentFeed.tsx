@@ -48,15 +48,23 @@ export default function RecentFeed() {
       setLoading(true)
       const supabase = createClient()
 
+      // 태그 있는 콘텐츠 우선 노출을 위해 20건 조회 후 client-side 정렬
       const { data } = await supabase
         .from('contents')
         .select('id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(6)
+        .limit(20)
 
       if (!cancelled) {
-        setItems((data ?? []) as unknown as FeedItem[])
+        const raw = (data ?? []) as unknown as FeedItem[]
+        // 서비스 태그 있는 콘텐츠를 앞으로 정렬, 동순위 내에서는 published_at 순 유지
+        const sorted = [...raw].sort((a, b) => {
+          const aHasTag = (a.matched_groups?.length ?? 0) > 0 ? 0 : 1
+          const bHasTag = (b.matched_groups?.length ?? 0) > 0 ? 0 : 1
+          return aHasTag - bHasTag
+        })
+        setItems(sorted.slice(0, 6))
         setLoading(false)
       }
     }

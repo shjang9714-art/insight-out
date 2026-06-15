@@ -111,16 +111,51 @@ export default function ContentCard({
   const catColor = CATEGORY_COLOR[category] ?? 'bg-muted text-muted-foreground'
   const resolvedHref = href ?? (category !== '유튜브' ? `/dashboard/contents/${id}` : null)
 
+  // 썸네일 없는 경우 — 컴팩트 가로형 레이아웃
+  if (!thumbnailUrl) {
+    const compactInner = (
+      <div className="flex flex-col gap-1.5 p-4">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}>
+            {CONTENT_CATEGORY_LABEL[category] ?? category}
+          </span>
+          {sourceName && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              {sourceName}
+            </span>
+          )}
+        </div>
+        <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
+          {title}
+        </p>
+        {summaryKo && (
+          <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            {summaryKo}
+          </p>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          {publishedAt ? timeAgo(publishedAt) : '발행일 미상'}
+        </p>
+      </div>
+    )
+
+    const compactClass =
+      'group rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
+
+    if (resolvedHref) {
+      return <Link href={resolvedHref} className={compactClass}>{compactInner}</Link>
+    }
+    return <div className={compactClass}>{compactInner}</div>
+  }
+
+  // 썸네일 있는 경우 — 기존 카드 레이아웃 유지
   const inner = (
     <>
-      {/* 썸네일 */}
       <div className="aspect-[16/9] overflow-hidden rounded-t-2xl bg-muted">
         <Thumbnail url={thumbnailUrl} category={category} title={title} />
       </div>
 
-      {/* 본문 */}
       <div className="flex flex-1 flex-col p-4">
-        {/* 배지 */}
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}>
             {CONTENT_CATEGORY_LABEL[category] ?? category}
@@ -148,14 +183,12 @@ export default function ContentCard({
           {title}
         </p>
 
-        {/* 요약 */}
         {summaryKo && (
           <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
             {summaryKo}
           </p>
         )}
 
-        {/* 메타 */}
         <p className="mt-auto text-[11px] text-muted-foreground">
           {publishedAt ? `발행 ${timeAgo(publishedAt)}` : '발행일 미상'}
         </p>
@@ -167,11 +200,7 @@ export default function ContentCard({
     'group flex flex-col rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
 
   if (resolvedHref) {
-    return (
-      <Link href={resolvedHref} className={cardClass}>
-        {inner}
-      </Link>
-    )
+    return <Link href={resolvedHref} className={cardClass}>{inner}</Link>
   }
 
   return <div className={cardClass}>{inner}</div>
