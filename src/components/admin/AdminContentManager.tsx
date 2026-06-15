@@ -70,6 +70,10 @@ export default function AdminContentManager() {
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
   const [isBulkWorking, setIsBulkWorking] = useState(false)
 
+  // 수집 기사 비우기
+  const [isPurging,   setIsPurging]   = useState(false)
+  const [purgeResult, setPurgeResult] = useState<string | null>(null)
+
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
     const id = setTimeout(() => {
@@ -206,6 +210,42 @@ export default function AdminContentManager() {
     setIsBulkWorking(false)
   }
 
+  const handlePurge = async () => {
+    setIsPurging(true)
+    setError(null)
+    setPurgeResult(null)
+    try {
+      // 1단계: 건수 조회
+      const countRes = await fetch('/api/admin/contents/purge')
+      if (!countRes.ok) throw new Error((await countRes.json()).error ?? '건수 조회 실패')
+      const { count } = await countRes.json() as { count: number }
+
+      // 2단계: 확인 다이얼로그
+      const confirmed = window.confirm(
+        `크롤링 기사 ${count.toLocaleString()}건을 삭제합니다.\n업로드한 리포트·AI보고서·유튜브는 보존됩니다.\n\n되돌릴 수 없습니다. 계속하시겠습니까?`
+      )
+      if (!confirmed) { setIsPurging(false); return }
+
+      // 실행
+      const delRes = await fetch('/api/admin/contents/purge', { method: 'POST' })
+      if (!delRes.ok) throw new Error((await delRes.json()).error ?? '삭제 실패')
+      const { deleted } = await delRes.json() as { deleted: number }
+
+      setPurgeResult(`${deleted.toLocaleString()}건 삭제 완료`)
+      setPage(1)
+      // pending 카운트 및 목록 새로고침
+      supabase
+        .from('contents')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending')
+        .then(({ count: c }) => setPendingCount(c ?? 0))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '비우기 중 오류가 발생했습니다.')
+    } finally {
+      setIsPurging(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
   if (isLoading && contents.length === 0) {
@@ -228,26 +268,46 @@ export default function AdminContentManager() {
         </div>
       )}
 
-      {/* ── 검토 대기 칩 ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        {pendingCount !== null && pendingCount > 0 && (
-          <button
-            onClick={() => { setStatus('pending'); setPage(1) }}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
-              status === 'pending'
-                ? 'border-yellow-400 bg-yellow-400 text-white'
-                : 'border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
-            )}
-          >
-            ⏳ 검토 대기 {pendingCount}건
-          </button>
-        )}
-        {pendingCount === 0 && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-            ✅ 검토 대기 없음
-          </span>
-        )}
+      {/* ── 검토 대기 칩 + 수집 기사 비우기 ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {pendingCount !== null && pendingCount > 0 && (
+            <button
+              onClick={() => { setStatus('pending'); setPage(1) }}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
+                status === 'pending'
+                  ? 'border-yellow-400 bg-yellow-400 text-white'
+                  : 'border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+              )}
+            >
+              ⏳ 검토 대기 {pendingCount}건
+            </button>
+          )}
+          {pendingCount === 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+              ✅ 검토 대기 없음
+            </span>
+          )}
+          {purgeResult && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+              ✅ {purgeResult}
+            </span>
+          )}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isPurging}
+          onClick={handlePurge}
+          className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+        >
+          {isPurging
+            ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
+            : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />수집 기사 비우기</>
+          }
+        </Button>
       </div>
 
       {/* ── 검색·카테고리·상태·페이지 크기 필터 ── */}
@@ -392,7 +452,9 @@ export default function AdminContentManager() {
                       {CONTENT_CATEGORY_LABEL[content.category]}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      {content.sources?.name ?? '—'}
+                      {content.sources?.name ?? (
+                        <span className="text-xs text-muted-foreground/60">Google News 검색</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn(
