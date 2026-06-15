@@ -56,7 +56,8 @@ const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
   youtube: 'YouTube',
 }
 
-const COLLECTION_METHODS: CollectionMethod[] = ['rss', 'api', 'html', 'manual', 'youtube']
+// 신규 선택 가능한 수집 방법(html·api 어댑터 미구현 — 기존 행 편집 시 현행값 유지)
+const COLLECTION_METHODS: CollectionMethod[] = ['rss', 'manual', 'youtube']
 
 function defaultCollectionMethod(type: SourceType): CollectionMethod {
   if (type === 'youtube_channel') return 'youtube'
@@ -115,7 +116,7 @@ function formatKst(iso: string | null): string {
 }
 
 function needsRssUrl(type: SourceType): boolean {
-  return type === 'news_site' || type === 'youtube_channel'
+  return type === 'news_site' || type === 'youtube_channel' || type === 'web_insight'
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
@@ -135,8 +136,8 @@ export default function SourceManager() {
   const [isSaving,   setIsSaving]   = useState(false)
   const [showImport, setShowImport] = useState(false)
 
-  // 유형 필터 상태 (§A)
-  const [selectedTypes, setSelectedTypes] = useState<Set<SourceType>>(new Set())
+  // 유형 필터 상태 (§A) — 단일 탭
+  const [selectedType, setSelectedType] = useState<SourceType | 'all'>('all')
 
   // 소스별 수집 상태 (crawl_logs 7일 집계)
   const [sourceStatusMap, setSourceStatusMap] = useState<Map<string, SourceStatusInfo>>(new Map())
@@ -310,20 +311,6 @@ export default function SourceManager() {
 
   // ── 유형 필터 (§A) ────────────────────────────────────────────────────────
 
-  const toggleTypeFilter = (type: SourceType) => {
-    setSelectedTypes(prev => {
-      const next = new Set(prev)
-      if (next.has(type)) {
-        next.delete(type)
-      } else {
-        next.add(type)
-      }
-      return next
-    })
-  }
-
-  const clearTypeFilter = () => setSelectedTypes(new Set())
-
   // 유형별 개수 계산
   const typeCounts = SOURCE_TYPES.reduce((acc, type) => {
     acc[type] = sources.filter(s => s.type === type).length
@@ -331,9 +318,15 @@ export default function SourceManager() {
   }, {} as Record<SourceType, number>)
 
   // 필터링된 소스 목록
-  const filteredSources = selectedTypes.size === 0
+  const filteredSources = selectedType === 'all'
     ? sources
-    : sources.filter(s => selectedTypes.has(s.type))
+    : sources.filter(s => s.type === selectedType)
+
+  // collection_method 선택 옵션 — 기존 행에 html·api 있으면 편집 시 현행값 표시
+  const availableCollectionMethods: CollectionMethod[] =
+    form.collection_method === 'html' || form.collection_method === 'api'
+      ? [form.collection_method, ...COLLECTION_METHODS]
+      : COLLECTION_METHODS
 
   // ── 크롤링 트리거 (§B) ────────────────────────────────────────────────────
 
@@ -554,15 +547,29 @@ export default function SourceManager() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {!needsRssUrl(form.type) && (
-                    <p className="text-[11px] text-amber-600">
-                      현재 이 유형의 자동 수집 어댑터는 준비 중입니다.
-                    </p>
-                  )}
                 </div>
               </div>
 
-              {/* 수집 방법 */}
+              {/* 유형별 안내 */}
+              {(form.type === 'news_site' || form.type === 'web_insight') && (
+                <div className="rounded-lg bg-muted/60 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+                  RSS 주소를 입력하세요. 보통 <code className="font-mono">/rss</code>, <code className="font-mono">/feed</code>, <code className="font-mono">/rss.xml</code>. Substack = <code className="font-mono">/feed</code>, Medium = <code className="font-mono">https://medium.com/feed/@핸들</code>. 못 찾으면 사이트에서 &lsquo;RSS&rsquo; 링크 확인.
+                </div>
+              )}
+              {form.type === 'report_publisher' && (
+                <div className="rounded-lg bg-blue-50 px-3 py-2.5 text-xs leading-relaxed text-blue-700">
+                  자동 수집하지 않습니다 — <strong>발행처 등록 전용</strong>. 콘텐츠는 [리포트 업로드]에서 추가하세요.
+                </div>
+              )}
+              {form.type === 'youtube_channel' && (
+                <div className="rounded-lg bg-muted/60 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+                  채널 RSS: <code className="font-mono">https://www.youtube.com/feeds/videos.xml?channel_id=UC...</code><br />
+                  channel_id 는 채널 페이지 &lsquo;소스 보기&rsquo;에서 <code className="font-mono">channelId</code> 검색(또는 URL 이 <code className="font-mono">/channel/UC…</code>이면 그 값). ※ 추후 키워드 검색 수집으로 대체 예정(지시서 60).
+                </div>
+              )}
+
+              {/* 수집 방법 (report_publisher 는 manual 자동설정 — 숨김) */}
+              {form.type !== 'report_publisher' && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="src-method">수집 방법</Label>
                 <Select
@@ -573,7 +580,7 @@ export default function SourceManager() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {COLLECTION_METHODS.map(m => (
+                    {availableCollectionMethods.map(m => (
                       <SelectItem key={m} value={m}>
                         {COLLECTION_METHOD_LABELS[m]}
                       </SelectItem>
@@ -581,9 +588,13 @@ export default function SourceManager() {
                   </SelectContent>
                 </Select>
               </div>
+              )}
 
-              {/* 사이트 URL·RSS URL */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* 사이트 URL · RSS URL (report_publisher 는 RSS 불필요) */}
+              <div className={cn(
+                'grid grid-cols-1 gap-4',
+                form.type !== 'report_publisher' && 'sm:grid-cols-2'
+              )}>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-url">
                     사이트 URL{' '}
@@ -598,6 +609,7 @@ export default function SourceManager() {
                   />
                 </div>
 
+                {form.type !== 'report_publisher' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-rss">
                     RSS URL{' '}
@@ -621,10 +633,15 @@ export default function SourceManager() {
                     </p>
                   )}
                 </div>
+                )}
               </div>
 
-              {/* 수집 주기·활성 */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* 수집 주기·활성 (report_publisher 는 주기 불필요) */}
+              <div className={cn(
+                'grid grid-cols-1 gap-4',
+                form.type !== 'report_publisher' && 'sm:grid-cols-2'
+              )}>
+                {form.type !== 'report_publisher' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-interval">
                     수집 주기(분){' '}
@@ -639,6 +656,7 @@ export default function SourceManager() {
                     placeholder="720"
                   />
                 </div>
+                )}
 
                 <div className="flex items-end pb-0.5">
                   <label className="flex cursor-pointer items-center gap-2">
@@ -674,48 +692,41 @@ export default function SourceManager() {
         </Card>
       )}
 
-      {/* ── 유형 필터 칩 (§A) ── */}
+      {/* ── 유형 탭 (§A) — 단일 선택 ── */}
       {!showForm && (
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-foreground">유형:</span>
+        <div className="flex items-center gap-0 overflow-x-auto border-b border-border">
+          <button
+            onClick={() => setSelectedType('all')}
+            className={cn(
+              'whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors',
+              selectedType === 'all'
+                ? 'border-b-2 border-brand-600 text-brand-600'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            전체 <span className="ml-1 text-xs">({sources.length})</span>
+          </button>
+          {SOURCE_TYPES.map(type => (
             <button
-              onClick={clearTypeFilter}
+              key={type}
+              onClick={() => setSelectedType(type)}
               className={cn(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                selectedTypes.size === 0
-                  ? 'border-brand-600 bg-brand-600 text-white'
-                  : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
+                'whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors',
+                selectedType === type
+                  ? 'border-b-2 border-brand-600 text-brand-600'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              전체 {sources.length}
+              {SOURCE_TYPE_LABELS[type]} <span className="ml-1 text-xs">({typeCounts[type]})</span>
             </button>
-            {SOURCE_TYPES.map(type => {
-              const count = typeCounts[type]
-              const selected = selectedTypes.has(type)
-              return (
-                <button
-                  key={type}
-                  onClick={() => toggleTypeFilter(type)}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    selected
-                      ? 'border-brand-600 bg-brand-600 text-white'
-                      : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
-                  )}
-                >
-                  {SOURCE_TYPE_LABELS[type]} {count}
-                </button>
-              )
-            })}
-          </div>
+          ))}
         </div>
       )}
 
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스${selectedTypes.size > 0 ? ` (${filteredSources.length}개 표시)` : ''}`}
+          {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스${selectedType !== 'all' ? ` (${filteredSources.length}개 표시)` : ''}`}
         </p>
         <div className="flex items-center gap-2">
           {!showForm && (
@@ -824,22 +835,36 @@ export default function SourceManager() {
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {src.crawl_interval_minutes ?? '—'}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs">
+                  <td className="px-4 py-3 text-xs">
                     {(() => {
                       const s = sourceStatusMap.get(src.id)
                       if (!s) return <span className="text-muted-foreground">—</span>
                       if (s.consecutiveFailures >= 2) {
                         return (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-                            🔴 연속실패 {s.consecutiveFailures}
-                          </span>
+                          <div>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+                              🔴 연속실패 {s.consecutiveFailures}
+                            </span>
+                            {s.lastError && (
+                              <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
+                                {s.lastError}
+                              </p>
+                            )}
+                          </div>
                         )
                       }
                       if (src.is_active && s.inserted7d === 0) {
                         return (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                            ⚠️ 점검 필요
-                          </span>
+                          <div>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                              ⚠️ 점검 필요
+                            </span>
+                            {s.lastError && (
+                              <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
+                                {s.lastError}
+                              </p>
+                            )}
+                          </div>
                         )
                       }
                       return (

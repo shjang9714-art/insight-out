@@ -47,6 +47,7 @@ export interface SourceStatusInfo {
   lastStatus: string | null
   lastFinishedAt: string | null
   consecutiveFailures: number
+  lastError: string | null
 }
 
 /**
@@ -64,14 +65,14 @@ export async function GET() {
 
     const { data, error } = await admin
       .from('crawl_logs')
-      .select('source_id, status, inserted_count, finished_at')
+      .select('source_id, status, inserted_count, finished_at, error_message')
       .gte('started_at', sevenDaysAgo)
       .not('source_id', 'is', null)
       .order('finished_at', { ascending: false })  // 최신 먼저
 
     if (error) throw error
 
-    type LogRow = { source_id: string; status: string; inserted_count: number; finished_at: string | null }
+    type LogRow = { source_id: string; status: string; inserted_count: number; finished_at: string | null; error_message: string | null }
 
     const result: Record<string, SourceStatusInfo> = {}
     // 연속 실패 체인이 끊긴 소스 — 이후 failed 가 와도 consecutiveFailures 증가 안 함
@@ -88,6 +89,7 @@ export async function GET() {
           lastStatus:          row.status,
           lastFinishedAt:      row.finished_at,
           consecutiveFailures: 0,
+          lastError:           row.error_message ?? null,
         }
       }
 
