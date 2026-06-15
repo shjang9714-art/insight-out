@@ -512,9 +512,13 @@ function ContentsContent() {
         )
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
-          <span className="text-4xl">📭</span>
-          <p className="text-sm font-medium text-foreground">해당하는 콘텐츠가 없습니다</p>
-          <p className="text-xs text-muted-foreground">필터 조건을 변경해보세요</p>
+          <span className="text-4xl">🔧</span>
+          <p className="text-sm font-medium text-foreground">
+            {category ? '콘텐츠를 수집 중입니다' : '해당하는 콘텐츠가 없습니다'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {category ? '곧 업데이트됩니다. 다른 카테고리를 먼저 확인해 보세요.' : '필터 조건을 변경해보세요'}
+          </p>
         </div>
       ) : (
         <>

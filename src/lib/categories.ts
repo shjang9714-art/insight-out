@@ -1,8 +1,10 @@
 import type { ContentCategory } from '@/lib/types'
+import type { LucideIcon } from 'lucide-react'
+import { Newspaper, BarChart2, Globe, Play, BrainCircuit, FileText } from 'lucide-react'
 
 export interface CategoryDef {
   id: string
-  icon: string
+  Icon: LucideIcon
   label: string
   /** URL 라우팅 키 (= 표시 카테고리명) */
   category: ContentCategory
@@ -15,28 +17,28 @@ export interface CategoryDef {
 export const CATEGORY_DEFS: CategoryDef[] = [
   {
     id: 'news',
-    icon: '📰',
+    Icon: Newspaper,
     label: '뉴스',
     category: '뉴스',
     dbCategories: ['뉴스'],
   },
   {
     id: 'research',
-    icon: '📊',
+    Icon: BarChart2,
     label: '리서치',
     category: '리서치',
     dbCategories: ['리포트', '가트너', 'KRG'],
   },
   {
     id: 'web-insight',
-    icon: '💡',
+    Icon: Globe,
     label: '웹인사이트',
     category: '웹인사이트',
     dbCategories: ['웹인사이트', '오피니언'],
   },
   {
     id: 'youtube',
-    icon: '▶️',
+    Icon: Play,
     label: '유튜브',
     category: '유튜브',
     dbCategories: ['유튜브'],
@@ -44,14 +46,14 @@ export const CATEGORY_DEFS: CategoryDef[] = [
   },
   {
     id: 'ai-analysis',
-    icon: '🤖',
+    Icon: BrainCircuit,
     label: 'AI분석',
     category: 'AI분석',
     dbCategories: ['AI보고서', 'AI분석'],
   },
   {
     id: 'strategy',
-    icon: '📋',
+    Icon: FileText,
     label: '전략보고서',
     category: '전략보고서',
     dbCategories: ['전략보고서'],

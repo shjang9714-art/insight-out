@@ -120,7 +120,7 @@ export default function SearchBar({ onClose }: Props) {
                     scopeSelection === def.category && 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
                   )}
                 >
-                  <span>{def.icon}</span>
+                  <def.Icon className="h-3.5 w-3.5 shrink-0" />
                   <span>{def.label}</span>
                 </button>
               ))}

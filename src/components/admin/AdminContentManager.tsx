@@ -413,7 +413,7 @@ export default function AdminContentManager() {
   // 카테고리 탭 (전체 + CATEGORY_DEFS)
   const categoryTabs: { value: string; label: string }[] = [
     { value: 'all', label: '전체' },
-    ...CATEGORY_DEFS.map((d) => ({ value: d.category, label: `${d.icon} ${d.label}` })),
+    ...CATEGORY_DEFS.map((d) => ({ value: d.category, label: d.label })),
   ]
 
   // 선택된 카테고리에 맞는 소스만 (없으면 전체)
@@ -812,7 +812,7 @@ export default function AdminContentManager() {
                     <SelectContent>
                       {CATEGORY_DEFS.map((d) => (
                         <SelectItem key={d.category} value={d.category}>
-                          {d.icon} {d.label}
+                          {d.label}
                         </SelectItem>
                       ))}
                       {editCategoryExtra.map((c) => (

@@ -63,10 +63,9 @@ export default function CategoryGrid() {
           <Link
             key={cat.id}
             href={href}
-            title={isEmpty ? '콘텐츠 준비 중' : undefined}
             className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
               isEmpty
-                ? 'pointer-events-none border-border text-muted-foreground/50'
+                ? 'border-border text-muted-foreground/40 hover:border-border'
                 : isActive
                   ? 'border-brand-600 text-brand-600'
                   : 'border-border text-foreground/70 hover:border-brand-200 hover:text-foreground dark:text-foreground/80'
@@ -82,7 +81,7 @@ export default function CategoryGrid() {
                 {count}
               </span>
             )}
-            <span className="text-xl leading-none">{cat.icon}</span>
+            <cat.Icon className="h-5 w-5" />
             <span className="text-center text-xs font-medium leading-tight">{cat.label}</span>
           </Link>
         )

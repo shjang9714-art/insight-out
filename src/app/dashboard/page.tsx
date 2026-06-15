@@ -9,12 +9,8 @@ function DashboardContent() {
   return (
     <div className="px-4 py-6 sm:px-5">
       <div className="space-y-8">
-        {/* 1블록: 핵심 인사이트 */}
+        {/* 1블록: 최근 피드 (태그 매칭 우선 정렬) */}
         <section>
-          <div className="mb-4 flex items-center gap-2">
-            <span className="text-base">✨</span>
-            <h2 className="text-base font-bold text-foreground">핵심 인사이트</h2>
-          </div>
           <RecentFeed />
         </section>
 
