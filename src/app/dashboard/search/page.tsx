@@ -11,7 +11,7 @@ import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
-import { CATEGORY_DEFS } from '@/lib/categories'
+import { CATEGORY_DEFS, getCategoryDbValues } from '@/lib/categories'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ type DateFilter = (typeof DATE_OPTIONS)[number]['value']
 
 type ContentView = 'card' | 'list'
 const VIEW_KEY = 'io:search-view'
-const MAX_RESULTS = 30
+const MAX_RESULTS = 60
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -233,17 +233,32 @@ function SearchContent() {
         }
       }
 
+      // ILIKE 멀티컬럼 OR 검색 (title·summary_ko·body_original 커버)
+      // FTS(search_vector)는 body_original·matched_keywords 미포함으로 단어 누락 발생 → ILIKE 대체
+      const escapedQ = q.replace(/[%_]/g, '\\$&')
+      const ilikePat = `%${escapedQ}%`
+      const orFilter = [
+        `title.ilike.${ilikePat}`,
+        `summary_ko.ilike.${ilikePat}`,
+        `body_original.ilike.${ilikePat}`,
+      ].join(',')
+
       let query = supabase
         .from('contents')
         .select(
           'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
         )
-        .textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
+        .or(orFilter)
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(MAX_RESULTS)
 
-      if (category)          query = query.eq('category', category)
+      if (category) {
+        const dbCats = getCategoryDbValues(category)
+        query = dbCats.length === 1
+          ? query.eq('category', dbCats[0])
+          : query.in('category', dbCats)
+      }
       if (srcIds.length > 0) query = query.in('source_id', srcIds)
 
       const dateStart = getDateStart(date)
@@ -333,7 +348,7 @@ function SearchContent() {
             </h1>
             {!isLoading && results !== null && (
               <p className="text-xs text-muted-foreground">
-                총 {results.length}건{results.length === MAX_RESULTS && ' (최대 30건 표시)'}
+                총 {results.length}건{results.length === MAX_RESULTS && ' (최대 60건 표시)'}
               </p>
             )}
           </div>
