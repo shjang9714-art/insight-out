@@ -6,7 +6,7 @@ import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
 import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup } from './quality'
-import type { CrawlCounts } from './types'
+import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
   selectCrawlSources,
@@ -19,6 +19,12 @@ import {
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const OPINION_LOOKBACK_DAYS = 7
+
+// ── 키워드 검색 수집 상수 ────────────────────────────────────────────────
+const KEYWORD_LOOKBACK_DAYS = 2
+const MAX_SEARCH_SEEDS = 30
+const googleNewsRss = (q: string) =>
+  `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=ko&gl=KR&ceid=KR:ko`
 
 interface TranslationBudget {
   remaining: number
@@ -239,6 +245,174 @@ async function writeCrawlLog(
   }
 }
 
+/**
+ * 아이템 처리에 필요한 소스 컨텍스트 (소스 등록 없는 경우 id=null 허용).
+ */
+interface ItemSourceCtx {
+  id: string | null
+  type: SourceType
+  trust_tier: number
+}
+
+/**
+ * 아이템 1건 처리: dedup → 품질/EXCLUDE → near-dup cluster → 게이트/importance
+ *   → 번역 → insert → tagContent → counts 갱신.
+ *
+ * crawlOne 과 crawlKeywordSearch 가 공유하는 파이프라인 — 동작 불변.
+ * counts 는 참조(in-place)로 갱신된다.
+ *
+ * @returns partial=true 이면 호출부에서 status='partial' 처리 필요.
+ */
+async function processCrawlItem(
+  admin: SupabaseClient,
+  item: RawItem,
+  src: ItemSourceCtx,
+  keywords: CrawlKeyword[],
+  groups: ScoringGroup[],
+  translationBudget: TranslationBudget,
+  counts: CrawlCounts
+): Promise<{ partial?: true; errorMessage?: string }> {
+  try {
+    const url = normalizeUrl(item.original_url)
+    const tHash = titleHash(item.title)
+    const bHash = bodyHash(item.body)
+
+    // 1단계: 원문 URL 존재 확인 (멱등의 결정적 기준)
+    if (await findByUrl(admin, url)) {
+      counts.duplicate++
+      return {}
+    }
+    // 2단계: 본문 해시 완전일치 중복 확인
+    if (await findByBodyHash(admin, bHash)) {
+      counts.duplicate++
+      return {}
+    }
+    // 3단계: 제목 해시 완전일치 중복 확인
+    if (await findByTitleHash(admin, tHash)) {
+      counts.duplicate++
+      return {}
+    }
+
+    // 품질 필터 단계 1: 광고성·짧은 글·도메인무관 제외 (#13, B1)
+    // 완전중복이 아닌 것 중 품질 기준 미달은 미적재(rejected).
+    const qText = `${item.title} ${item.body ?? ''}`
+    if (
+      isAdLike(qText) ||
+      isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
+      effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH
+    ) {
+      counts.rejected++
+      return {}
+    }
+
+    // published_at 을 ISO 로 정규화 (RFC822 등 비ISO 문자열 → timestamptz 적재 실패 방어)
+    let publishedAt: string | null = null
+    if (item.published_at) {
+      const d = new Date(item.published_at)
+      publishedAt = isNaN(d.getTime()) ? null : d.toISOString()
+    }
+
+    // near-dup 그룹핑 (#12)
+    // 해시 완전일치는 통과했지만 제목 유사도 ≥ SIMILARITY_THRESHOLD 인 관련 기사 확인.
+    // 스킵하지 않고 cluster_id 를 부여해 "대표 1건 + 관련 N건" 구조로 적재.
+    const candidates = await findSimilarCandidates(admin, publishedAt)
+    const match = candidates.find(
+      c => titleSimilarity(c.title, item.title) >= SIMILARITY_THRESHOLD
+    )
+    let clusterId: string | null = null
+    if (match) {
+      const repId = match.cluster_id ?? match.id  // 그룹이면 그 대표, 아니면 match 자신이 대표
+      if (!match.cluster_id) {
+        // match 가 단독 기사였으면 대표로 승격 (자기참조)
+        await admin
+          .from('contents')
+          .update({ cluster_id: repId })
+          .eq('id', match.id)
+      }
+      clusterId = repId
+      console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
+    }
+
+    // 품질 필터 단계 2: 가중 관련도 게이트 (B1)
+    // groups 가 비어 있으면 0점 → 신뢰 소스(trust_tier >= 2)로 전부 면제.
+    // RELATEDNESS_GATING_ENABLED = true 이므로 실제 보류 발생.
+    const score = relatednessScore(item.title, item.body ?? '', groups)
+    const importance = score
+    const exempt = src.trust_tier >= 2 || groups.length === 0
+    const contentStatus: 'pending' | 'published' =
+      (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
+        ? 'pending' : 'published'
+
+    const translatedContent =
+      item.language === 'en' && item.body
+        ? await translateEnglishContent(
+            item.title,
+            item.body,
+            translationBudget
+          )
+        : null
+
+    // 콘텐츠 행 구성
+    // - view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
+    // - cluster_id 는 near-dup 그룹핑 결과 직접 포함 (신규 행에만 적용)
+    // - status 는 품질 필터 결과 포함 (published | pending)
+    // - is_published 컬럼 없음 (status enum 사용)
+    const row = {
+      category: categoryForSourceType(src.type),
+      source_id: src.id,
+      title: translatedContent?.title ?? item.title,
+      title_original: translatedContent ? item.title : null,
+      body_original: item.body ?? null,
+      body_translated_ko: translatedContent?.body ?? null,
+      original_url: url,
+      original_language: item.language ?? 'ko',
+      author: item.author ?? null,
+      thumbnail_url: item.thumbnail_url ?? null,
+      title_hash: tHash,
+      body_hash: bHash,
+      published_at: publishedAt,
+      collected_at: new Date().toISOString(),
+      cluster_id: clusterId,
+      importance_score: importance,
+      status: contentStatus,
+    }
+
+    // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
+    // upsert ON CONFLICT 와 호환되지 않음 → insert 사용. URL 중복(23505)은 멱등 스킵.
+    const { data: insertedRows, error: insertError } = await admin
+      .from('contents')
+      .insert(row)
+      .select('id')
+    if (insertError) {
+      if (insertError.code === '23505') {
+        counts.duplicate++   // 같은 original_url 이미 존재 → 멱등 스킵
+      } else {
+        console.error(`[크롤러] insert 오류 (${url}):`, insertError.message)
+        return {
+          partial: true,
+          errorMessage: `${insertError.code ?? ''} ${insertError.message}`.trim(),
+        }
+      }
+    } else {
+      // 보류(pending)이면 held, 게시(published)이면 inserted 로 집계
+      if (contentStatus === 'pending') counts.held++
+      else counts.inserted++
+      // 신규 적재 성공 시 서비스/키워드 태깅 (#24)
+      const newId = insertedRows?.[0]?.id as string | undefined
+      if (newId) await tagContent(admin, newId, qText, keywords)
+    }
+
+    return {}
+  } catch (itemErr) {
+    // 개별 아이템 오류는 partial 처리 후 계속
+    console.error('[크롤러] 아이템 처리 오류:', itemErr)
+    return {
+      partial: true,
+      errorMessage: itemErr instanceof Error ? itemErr.message : String(itemErr),
+    }
+  }
+}
+
 /** 소스 1개 크롤링 실행 */
 async function crawlOne(
   admin: SupabaseClient,
@@ -271,139 +445,19 @@ async function crawlOne(
     )
     counts.fetched = rawItems.length
 
+    const srcCtx: ItemSourceCtx = {
+      id: source.id,
+      type: source.type,
+      trust_tier: source.trust_tier,
+    }
+
     for (const item of rawItems) {
-      try {
-        const url = normalizeUrl(item.original_url)
-        const tHash = titleHash(item.title)
-        const bHash = bodyHash(item.body)
-
-        // 1단계: 원문 URL 존재 확인 (멱등의 결정적 기준)
-        if (await findByUrl(admin, url)) {
-          counts.duplicate++
-          continue
-        }
-        // 2단계: 본문 해시 완전일치 중복 확인
-        if (await findByBodyHash(admin, bHash)) {
-          counts.duplicate++
-          continue
-        }
-        // 3단계: 제목 해시 완전일치 중복 확인
-        if (await findByTitleHash(admin, tHash)) {
-          counts.duplicate++
-          continue
-        }
-
-        // 품질 필터 단계 1: 광고성·짧은 글·도메인무관 제외 (#13, B1)
-        // 완전중복이 아닌 것 중 품질 기준 미달은 미적재(rejected).
-        const qText = `${item.title} ${item.body ?? ''}`
-        if (
-          isAdLike(qText) ||
-          isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
-          effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH
-        ) {
-          counts.rejected++
-          continue
-        }
-
-        // published_at 을 ISO 로 정규화 (RFC822 등 비ISO 문자열 → timestamptz 적재 실패 방어)
-        let publishedAt: string | null = null
-        if (item.published_at) {
-          const d = new Date(item.published_at)
-          publishedAt = isNaN(d.getTime()) ? null : d.toISOString()
-        }
-
-        // near-dup 그룹핑 (#12)
-        // 해시 완전일치는 통과했지만 제목 유사도 ≥ SIMILARITY_THRESHOLD 인 관련 기사 확인.
-        // 스킵하지 않고 cluster_id 를 부여해 "대표 1건 + 관련 N건" 구조로 적재.
-        const candidates = await findSimilarCandidates(admin, publishedAt)
-        const match = candidates.find(
-          c => titleSimilarity(c.title, item.title) >= SIMILARITY_THRESHOLD
-        )
-        let clusterId: string | null = null
-        if (match) {
-          const repId = match.cluster_id ?? match.id  // 그룹이면 그 대표, 아니면 match 자신이 대표
-          if (!match.cluster_id) {
-            // match 가 단독 기사였으면 대표로 승격 (자기참조)
-            await admin
-              .from('contents')
-              .update({ cluster_id: repId })
-              .eq('id', match.id)
-          }
-          clusterId = repId
-          console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
-        }
-
-        // 품질 필터 단계 2: 가중 관련도 게이트 (B1)
-        // groups 가 비어 있으면 0점 → 신뢰 소스(trust_tier >= 2)로 전부 면제.
-        // RELATEDNESS_GATING_ENABLED = true 이므로 실제 보류 발생.
-        const score = relatednessScore(item.title, item.body ?? '', groups)
-        const importance = score
-        const exempt = source.trust_tier >= 2 || groups.length === 0
-        const contentStatus: 'pending' | 'published' =
-          (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
-            ? 'pending' : 'published'
-
-        const translatedContent =
-          item.language === 'en' && item.body
-            ? await translateEnglishContent(
-                item.title,
-                item.body,
-                translationBudget
-              )
-            : null
-
-        // 콘텐츠 행 구성
-        // - view_count·bookmark_count·is_editor_pick 은 payload 제외 → DB 기본값 사용
-        // - cluster_id 는 near-dup 그룹핑 결과 직접 포함 (신규 행에만 적용)
-        // - status 는 품질 필터 결과 포함 (published | pending)
-        // - is_published 컬럼 없음 (status enum 사용)
-        const row = {
-          category: categoryForSourceType(source.type),
-          source_id: source.id,
-          title: translatedContent?.title ?? item.title,
-          title_original: translatedContent ? item.title : null,
-          body_original: item.body ?? null,
-          body_translated_ko: translatedContent?.body ?? null,
-          original_url: url,
-          original_language: item.language ?? 'ko',
-          author: item.author ?? null,
-          thumbnail_url: item.thumbnail_url ?? null,
-          title_hash: tHash,
-          body_hash: bHash,
-          published_at: publishedAt,
-          collected_at: new Date().toISOString(),
-          cluster_id: clusterId,
-          importance_score: importance,
-          status: contentStatus,
-        }
-
-        // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
-        // upsert ON CONFLICT 와 호환되지 않음 → insert 사용. URL 중복(23505)은 멱등 스킵.
-        const { data: insertedRows, error: insertError } = await admin
-          .from('contents')
-          .insert(row)
-          .select('id')
-        if (insertError) {
-          if (insertError.code === '23505') {
-            counts.duplicate++   // 같은 original_url 이미 존재 → 멱등 스킵
-          } else {
-            console.error(`[크롤러] insert 오류 (${url}):`, insertError.message)
-            crawlStatus = 'partial'
-            if (!errorMessage) errorMessage = `${insertError.code ?? ''} ${insertError.message}`.trim()
-          }
-        } else {
-          // 보류(pending)이면 held, 게시(published)이면 inserted 로 집계
-          if (contentStatus === 'pending') counts.held++
-          else counts.inserted++
-          // 신규 적재 성공 시 서비스/키워드 태깅 (#24)
-          const newId = insertedRows?.[0]?.id as string | undefined
-          if (newId) await tagContent(admin, newId, qText, keywords)
-        }
-      } catch (itemErr) {
-        // 개별 아이템 오류는 partial 처리 후 계속
-        console.error('[크롤러] 아이템 처리 오류:', itemErr)
+      const result = await processCrawlItem(
+        admin, item, srcCtx, keywords, groups, translationBudget, counts
+      )
+      if (result.partial) {
         crawlStatus = 'partial'
-        if (!errorMessage) errorMessage = itemErr instanceof Error ? itemErr.message : String(itemErr)
+        if (!errorMessage) errorMessage = result.errorMessage
       }
     }
 
@@ -514,9 +568,69 @@ async function crawlYoutube(
   }
 }
 
+/**
+ * 키워드 기반 Google News RSS 수집.
+ * - seeds: keyword_groups.search_seeds 합집합(중복제거, 상한적용)
+ * - 기존 파이프라인(processCrawlItem)을 그대로 재사용 — 중복·게이트 자동 처리.
+ * - source_id=null, trust_tier=1(게이트 적용).
+ */
+async function crawlKeywordSearch(
+  admin: SupabaseClient,
+  seeds: string[],
+  keywords: CrawlKeyword[],
+  groups: ScoringGroup[],
+  translationBudget: TranslationBudget
+): Promise<{ counts: CrawlCounts; hadError: boolean }> {
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  let hadError = false
+  const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
+  const adapter = getAdapter('news_site')!
+  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1 }
+
+  for (const seed of seeds) {
+    try {
+      // news-site 어댑터 재사용: rss_url 만 실제로 사용됨
+      const syntheticSource = {
+        rss_url: googleNewsRss(seed),
+        name: `Google News: ${seed}`,
+      } as unknown as Source
+
+      const rawItems = await withRetry(
+        () => adapter.fetch(syntheticSource, since),
+        3,
+        [500, 1000, 2000]
+      )
+      counts.fetched += rawItems.length
+
+      for (const item of rawItems) {
+        const result = await processCrawlItem(
+          admin, item, srcCtx, keywords, groups, translationBudget, counts
+        )
+        if (result.partial) hadError = true
+      }
+    } catch (err) {
+      console.error(
+        `[크롤러] 키워드 검색 오류 (seed: "${seed}"):`,
+        err instanceof Error ? err.message : String(err)
+      )
+      hadError = true
+    }
+  }
+
+  return { counts, hadError }
+}
+
+/** keyword_groups DB 행 — 게이트용 필드만 */
+interface KeywordGroupRow {
+  include_patterns: string[]
+  exclude_patterns: string[]
+  weight: number
+}
+
 /** 전체 크롤 실행 — Orchestrator 진입점
  *  @param options.backfillDays 소급 수집 일수(1~30). 미지정/0 이면 당일(KST 0시 이후)만.
- *  @param options.force true 이면 주기와 관계없이 활성 소스를 모두 실행. */
+ *  @param options.force true 이면 주기와 관계없이 활성 소스를 모두 실행.
+ *  @param options.sourceIds 지정 시 해당 소스만 수집, 키워드 검색 skip. */
 export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSummary> {
   const backfillDays =
     options.backfillDays && options.backfillDays > 0
@@ -528,6 +642,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   let rawSources: Source[]
   let keywords: CrawlKeyword[]
   let groups: ScoringGroup[]
+  let searchSeeds: string[] = []
 
   try {
     admin = createAdminClient()
@@ -545,7 +660,29 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
 
     rawSources = (sourcesResult.data ?? []) as Source[]
     keywords = (keywordsResult.data ?? []) as CrawlKeyword[]
-    groups = (groupsResult.data ?? []) as ScoringGroup[]
+
+    const allGroupData = (groupsResult.data ?? []) as KeywordGroupRow[]
+    groups = allGroupData.map(r => ({
+      include_patterns: r.include_patterns,
+      exclude_patterns: r.exclude_patterns,
+      weight: r.weight,
+    }))
+
+    // search_seeds 별도 쿼리 — SQL 56 적용 전엔 컬럼이 없어 에러 날 수 있으므로 throw 금지
+    const seedsResult = await admin
+      .from('keyword_groups')
+      .select('search_seeds')
+      .eq('is_active', true)
+    if (!seedsResult.error && seedsResult.data) {
+      searchSeeds = [
+        ...new Set(
+          (seedsResult.data as { search_seeds: string[] }[])
+            .flatMap(r => r.search_seeds ?? [])
+        ),
+      ].slice(0, MAX_SEARCH_SEEDS)
+    } else if (seedsResult.error) {
+      console.warn('[크롤러] search_seeds 조회 실패 (SQL 56 미적용), 키워드 검색 skip:', seedsResult.error.message)
+    }
   } catch (error) {
     console.error('[크롤러] 수집 준비 단계 오류:', error)
     throw new Error('수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.')
@@ -626,6 +763,28 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
         error: String(result.reason),
       })
     }
+  }
+
+  // 키워드 검색 수집 — 개별 소스 수집(sourceIds 지정) 시 skip
+  if (!options.sourceIds?.length && searchSeeds.length > 0) {
+    console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
+    const kwResult = await crawlKeywordSearch(
+      admin, searchSeeds, keywords, groups, translationBudget
+    )
+    totalFetched    += kwResult.counts.fetched
+    totalInserted   += kwResult.counts.inserted
+    totalDuplicates += kwResult.counts.duplicate
+    totalRejected   += kwResult.counts.rejected
+    totalHeld       += kwResult.counts.held
+    details.push({
+      source:    'Google News 키워드',
+      status:    kwResult.hadError ? 'partial' : 'success',
+      fetched:   kwResult.counts.fetched,
+      inserted:  kwResult.counts.inserted,
+      duplicate: kwResult.counts.duplicate,
+      rejected:  kwResult.counts.rejected,
+    })
+    if (!kwResult.hadError) successCount++
   }
 
   return {
