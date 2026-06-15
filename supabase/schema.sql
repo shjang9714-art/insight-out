@@ -327,6 +327,7 @@ create table public.keyword_groups (
   exclude_patterns text[] not null default '{}',  -- 매칭 시 도메인무관 하드 reject
   weight           numeric not null default 1.0,
   signal_hint      text,                          -- (B4 연계용, nullable)
+  search_seeds     text[] not null default '{}',  -- Google News 검색 질의어 (C1)
   is_active        boolean not null default true,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
