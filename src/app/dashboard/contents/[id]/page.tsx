@@ -37,8 +37,8 @@ interface ContentDetail {
   author: string | null
   published_at: string | null
   sources: { name: string } | null
-  content_services: { services: { name: string } | null }[]
-  content_keywords: { keywords: { name: string } | null }[]
+  matched_groups: string[]
+  matched_keywords: string[]
 }
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -163,8 +163,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
       summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
       file_path, original_url, author, published_at,
       sources(name),
-      content_services(services(name)),
-      content_keywords(keywords(name))
+      matched_groups, matched_keywords
     `)
     .eq('id', id)
     .eq('status', 'published')
@@ -195,13 +194,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
 
-  const serviceNames = content.content_services
-    .map((cs) => cs.services?.name)
-    .filter(Boolean) as string[]
-
-  const keywordNames = content.content_keywords
-    .map((ck) => ck.keywords?.name)
-    .filter(Boolean) as string[]
+  const matchedGroups   = content.matched_groups   ?? []
+  const matchedKeywords = content.matched_keywords ?? []
+  const allTags = [...new Set([...matchedGroups, ...matchedKeywords])]
 
   const dateStr = formatDate(content.published_at)
 
@@ -253,22 +248,14 @@ export default async function ContentDetailPage({ params }: PageProps) {
               <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
             </div>
 
-            {(serviceNames.length > 0 || keywordNames.length > 0) && (
+            {allTags.length > 0 && (
               <div className="mb-6 flex flex-wrap gap-1.5">
-                {serviceNames.map((name) => (
+                {allTags.map((tag) => (
                   <span
-                    key={name}
-                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
-                  >
-                    {name}
-                  </span>
-                ))}
-                {keywordNames.map((name) => (
-                  <span
-                    key={name}
+                    key={tag}
                     className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
                   >
-                    #{name}
+                    #{tag}
                   </span>
                 ))}
               </div>
@@ -290,22 +277,14 @@ export default async function ContentDetailPage({ params }: PageProps) {
               <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
             </div>
 
-            {(serviceNames.length > 0 || keywordNames.length > 0) && (
+            {allTags.length > 0 && (
               <div className="mb-6 flex flex-wrap gap-1.5">
-                {serviceNames.map((name) => (
+                {allTags.map((tag) => (
                   <span
-                    key={name}
-                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700"
-                  >
-                    {name}
-                  </span>
-                ))}
-                {keywordNames.map((name) => (
-                  <span
-                    key={name}
+                    key={tag}
                     className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
                   >
-                    #{name}
+                    #{tag}
                   </span>
                 ))}
               </div>

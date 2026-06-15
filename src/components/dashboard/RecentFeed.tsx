@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
 import ContentCard from './ContentCard'
-import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
+import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 
 
 interface FeedItem {
@@ -17,8 +17,8 @@ interface FeedItem {
   published_at: string | null
   thumbnail_url: string | null
   sources: { name: string } | null
-  content_keywords: { keywords: { name: string } | null }[]
-  content_services: { services: { name: string } | null }[]
+  matched_groups: string[]
+  matched_keywords: string[]
 }
 
 // ─── 카드 스켈레톤 ────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export default function RecentFeed() {
 
       const { data } = await supabase
         .from('contents')
-        .select('id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), content_keywords(keywords(name)), content_services(services(name))')
+        .select('id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(6)
@@ -88,24 +88,20 @@ export default function RecentFeed() {
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => {
-            const keywords = item.content_keywords.map((ck) => ck.keywords?.name).filter((n): n is string => Boolean(n))
-            const services = item.content_services.map((cs) => cs.services?.name).filter((n): n is string => Boolean(n))
-            return (
-              <ContentCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                summaryKo={toExcerpt(item.summary_ko, item.body_original)}
-                category={item.category}
-                sourceName={item.sources?.name ?? null}
-                publishedAt={item.published_at}
-                thumbnailUrl={item.thumbnail_url}
-                href={item.category === '유튜브' ? null : undefined}
-                keywords={tagsOf(keywords, item.category, services)}
-              />
-            )
-          })}
+          {items.map((item) => (
+            <ContentCard
+              key={item.id}
+              id={item.id}
+              title={item.title}
+              summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+              category={item.category}
+              sourceName={item.sources?.name ?? null}
+              publishedAt={item.published_at}
+              thumbnailUrl={item.thumbnail_url}
+              href={item.category === '유튜브' ? null : undefined}
+              keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+            />
+          ))}
         </div>
       )}
     </div>

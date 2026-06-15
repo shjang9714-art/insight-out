@@ -9,3 +9,9 @@ export function tagsOf(keywords: string[], category: string, services: string[])
   const base = keywords.length ? keywords : [category, ...services]
   return [...new Set(base)].slice(0, 4)
 }
+
+/** 우선순위: 매칭 그룹 → 매칭 키워드 → (둘 다 없으면) category. 총 상한 6. */
+export function tagsOf2(matchedGroups: string[], matchedKeywords: string[], category: string): string[] {
+  const tags = [...new Set([...matchedGroups, ...matchedKeywords])]
+  return (tags.length ? tags : [category]).slice(0, 6)
+}

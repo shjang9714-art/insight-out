@@ -43,9 +43,33 @@ export function effectiveLength(title: string, body: string | null): number {
  * keyword_groups 의 경량 표현 (DB 로드 후 crawlOne 에 전달).
  */
 export interface ScoringGroup {
+  name: string
   include_patterns: string[]
   exclude_patterns: string[]
   weight: number
+}
+
+export interface KeywordMatch { groups: string[]; keywords: string[] }
+
+const MAX_TAG_KEYWORDS = 8
+
+/** keyword_groups include_patterns 매칭 → 그룹명 + 히트 키워드(중복제거·상한). 제목+본문 대상. */
+export function matchKeywordGroups(title: string, body: string, groups: ScoringGroup[]): KeywordMatch {
+  const text = `${title} ${body}`.toLowerCase()
+  const groupSet = new Set<string>()
+  const kwSet = new Set<string>()
+  for (const g of groups) {
+    if (g.weight <= 0) continue
+    let hit = false
+    for (const p of g.include_patterns) {
+      if (text.includes(p.toLowerCase())) { kwSet.add(p); hit = true }
+    }
+    if (hit) groupSet.add(g.name)
+  }
+  return {
+    groups: [...groupSet],
+    keywords: [...kwSet].slice(0, MAX_TAG_KEYWORDS),
+  }
 }
 
 /**

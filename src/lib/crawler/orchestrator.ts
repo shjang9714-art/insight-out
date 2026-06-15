@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup } from './quality'
+import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup } from './quality'
 import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
@@ -397,9 +397,22 @@ async function processCrawlItem(
       // 보류(pending)이면 held, 게시(published)이면 inserted 로 집계
       if (contentStatus === 'pending') counts.held++
       else counts.inserted++
-      // 신규 적재 성공 시 서비스/키워드 태깅 (#24)
+      // 신규 적재 성공 시 서비스/키워드 태깅 (#24) + 그룹/키워드 해시태그 적재 (B3a)
       const newId = insertedRows?.[0]?.id as string | undefined
-      if (newId) await tagContent(admin, newId, qText, keywords)
+      if (newId) {
+        await tagContent(admin, newId, qText, keywords)
+        // post-insert update — 컬럼 없어도 insert 안 깨지게 try/catch로 격리
+        const matchedTags = matchKeywordGroups(item.title, item.body ?? '', groups)
+        try {
+          const { error: tagErr } = await admin
+            .from('contents')
+            .update({ matched_groups: matchedTags.groups, matched_keywords: matchedTags.keywords })
+            .eq('id', newId)
+          if (tagErr) console.error('[크롤러] 매칭 태그 적재 실패(컬럼 미적용 가능):', tagErr.message)
+        } catch (e) {
+          console.error('[크롤러] 매칭 태그 적재 실패(컬럼 미적용 가능):', e)
+        }
+      }
     }
 
     return {}
@@ -620,8 +633,9 @@ async function crawlKeywordSearch(
   return { counts, hadError }
 }
 
-/** keyword_groups DB 행 — 게이트용 필드만 */
+/** keyword_groups DB 행 — 게이트·태깅용 */
 interface KeywordGroupRow {
+  name: string
   include_patterns: string[]
   exclude_patterns: string[]
   weight: number
@@ -650,7 +664,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       admin.from('sources').select('*').eq('is_active', true),
       admin.from('keywords').select('id, name, service_id'),
       admin.from('keyword_groups')
-        .select('include_patterns, exclude_patterns, weight')
+        .select('name, include_patterns, exclude_patterns, weight')
         .eq('is_active', true),
     ])
 
@@ -663,6 +677,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
 
     const allGroupData = (groupsResult.data ?? []) as KeywordGroupRow[]
     groups = allGroupData.map(r => ({
+      name: r.name,
       include_patterns: r.include_patterns,
       exclude_patterns: r.exclude_patterns,
       weight: r.weight,
