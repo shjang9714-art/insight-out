@@ -47,6 +47,7 @@ export interface ScoringGroup {
   include_patterns: string[]
   exclude_patterns: string[]
   weight: number
+  signal_hint: string | null
 }
 
 export interface KeywordMatch { groups: string[]; keywords: string[] }

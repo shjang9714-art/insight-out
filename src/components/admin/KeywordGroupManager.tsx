@@ -30,6 +30,20 @@ const TAG_TYPE_LABELS: Record<TagType, string> = {
   content_type: '콘텐츠 유형',
 }
 
+// signal_type enum 값 (SQL 65와 반드시 일치)
+const SIGNAL_TYPES = [
+  '경쟁사동향',
+  '규제',
+  '정부',
+  '신제품',
+  '출시',
+  '투자',
+  'M&A',
+  '기술트렌드',
+] as const
+
+type SignalType = typeof SIGNAL_TYPES[number]
+
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
 interface GroupRow {
@@ -42,6 +56,7 @@ interface GroupRow {
   exclude_patterns: string[]
   search_seeds: string[]
   weight: number
+  signal_hint: string | null
   is_active: boolean
 }
 
@@ -54,6 +69,7 @@ interface GroupForm {
   excludePatterns: string[]
   searchSeeds: string[]
   weight: string
+  signalHint: SignalType | ''
   is_active: boolean
 }
 
@@ -66,6 +82,7 @@ const FORM_INIT: GroupForm = {
   excludePatterns: [],
   searchSeeds:     [],
   weight:          '1.0',
+  signalHint:      '',
   is_active:       true,
 }
 
@@ -166,7 +183,7 @@ export default function KeywordGroupManager() {
     setIsLoading(true)
     const { data, error: err } = await supabase
       .from('keyword_groups')
-      .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, is_active')
+      .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, signal_hint, is_active')
       .order('kind')
       .order('name')
     if (err) {
@@ -182,7 +199,7 @@ export default function KeywordGroupManager() {
       setIsLoading(true)
       const { data, error: err } = await supabase
         .from('keyword_groups')
-        .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, is_active')
+        .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, signal_hint, is_active')
         .order('kind')
         .order('name')
       if (err) {
@@ -214,6 +231,7 @@ export default function KeywordGroupManager() {
       excludePatterns: group.exclude_patterns ?? [],
       searchSeeds:     group.search_seeds ?? [],
       weight:          String(group.weight),
+      signalHint:      (group.signal_hint ?? '') as SignalType | '',
       is_active:       group.is_active,
     })
     setEditingId(group.id)
@@ -250,6 +268,7 @@ export default function KeywordGroupManager() {
         exclude_patterns: form.excludePatterns,
         search_seeds:     form.searchSeeds,
         weight,
+        signal_hint:      form.signalHint || null,
         is_active:        form.is_active,
       }
 
@@ -449,6 +468,28 @@ export default function KeywordGroupManager() {
                 onChange={(chips) => setForm(p => ({ ...p, searchSeeds: chips }))}
               />
 
+              {/* signal_hint */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="kg-signal">
+                  시그널 힌트{' '}
+                  <span className="text-xs font-normal text-muted-foreground">(선택 — 이 그룹 매칭 시 content_signals 에 적재)</span>
+                </Label>
+                <Select
+                  value={form.signalHint}
+                  onValueChange={(v) => setForm(p => ({ ...p, signalHint: v as SignalType | '' }))}
+                >
+                  <SelectTrigger id="kg-signal">
+                    <SelectValue placeholder="없음 (시그널 미적재)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">없음</SelectItem>
+                    {SIGNAL_TYPES.map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* 활성화 */}
               <div>
                 <label className="flex cursor-pointer items-center gap-2">
@@ -511,6 +552,7 @@ export default function KeywordGroupManager() {
                 <th className="px-4 py-3 text-center">Include</th>
                 <th className="px-4 py-3 text-center">Exclude</th>
                 <th className="px-4 py-3 text-center">Seeds</th>
+                <th className="px-4 py-3">시그널</th>
                 <th className="px-4 py-3">활성</th>
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
@@ -559,6 +601,15 @@ export default function KeywordGroupManager() {
                     )}>
                       {group.search_seeds?.length ?? 0}개
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {group.signal_hint ? (
+                      <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                        {group.signal_hint}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <button
