@@ -49,17 +49,15 @@ export default function CategoryGrid() {
   return (
     <div className="flex items-stretch gap-1.5 overflow-x-auto scrollbar-hide">
       {CATEGORY_DEFS.map((cat) => {
-        const href =
-          cat.category === '유튜브'
-            ? '/dashboard/youtube'
-            : `/dashboard/contents?category=${encodeURIComponent(cat.category)}`
+        const href = cat.href ?? `/dashboard/contents?category=${encodeURIComponent(cat.category)}`
 
-        const count   = cat.category ? (todayCounts[cat.category] ?? 0) : 0
-        const total   = cat.category ? (totalCounts[cat.category] ?? 0) : 0
-        const isEmpty = totalLoaded && cat.category !== null && total === 0
-        const isActive = cat.category
-          ? activeCategory === cat.category
-          : pathname.startsWith('/dashboard/youtube')
+        // 오늘 건수: dbCategories 합산
+        const count = cat.dbCategories.reduce((s, c) => s + (todayCounts[c] ?? 0), 0)
+        const total = cat.dbCategories.reduce((s, c) => s + (totalCounts[c] ?? 0), 0)
+        const isEmpty = totalLoaded && total === 0
+        const isActive = cat.href
+          ? pathname.startsWith(cat.href)
+          : activeCategory === cat.category
 
         return (
           <Link

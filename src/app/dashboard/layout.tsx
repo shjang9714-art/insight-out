@@ -3,11 +3,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { Suspense } from 'react'
-import { Search } from 'lucide-react'
+import { Search, Radio } from 'lucide-react'
 import DashboardHeader from '@/components/dashboard/DashboardHeader'
 import Sidebar from '@/components/dashboard/Sidebar'
 import CategoryGrid from '@/components/dashboard/CategoryGrid'
-import RightRail from '@/components/dashboard/RightRail'
 import SearchBar from '@/components/dashboard/SearchBar'
 
 // 카테고리 타일을 숨길 페이지 (상세·마이페이지)
@@ -19,9 +18,10 @@ function shouldHideCategoryTiles(pathname: string): boolean {
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen]       = useState(false)
-  const [tilesVisible, setTilesVisible]     = useState(true)
-  const [searchExpanded, setSearchExpanded] = useState(false)
+  const [sidebarOpen, setSidebarOpen]         = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [tilesVisible, setTilesVisible]       = useState(true)
+  const [searchExpanded, setSearchExpanded]   = useState(false)
   const pathname    = usePathname()
   const lastScrollY = useRef(0)
 
@@ -57,12 +57,15 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
-      {/* ── 3단 그리드: 좌(사이드바) | 중앙(카테고리+콘텐츠) | 우(레일) ──────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[224px_minmax(0,1fr)] xl:grid-cols-[224px_minmax(0,1fr)_300px]">
+      {/* ── 2단 그리드: 좌(사이드바) | 중앙(카테고리+콘텐츠) ──────────────── */}
+      <div className={`grid grid-cols-1 ${sidebarCollapsed ? 'lg:grid-cols-[56px_minmax(0,1fr)]' : 'lg:grid-cols-[224px_minmax(0,1fr)]'} transition-[grid-template-columns] duration-200`}>
 
-        {/* 좌 패널: 데스크톱(lg+) 고정 사이드바, lg에서 2행 스팬 */}
-        <div className="hidden lg:block lg:row-span-2 xl:row-span-1">
-          <Sidebar />
+        {/* 좌 패널: 데스크톱(lg+) 고정 사이드바 */}
+        <div className="hidden lg:block">
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+          />
         </div>
 
         {/* 중앙 컬럼 */}
@@ -105,11 +108,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             {children}
           </main>
         </div>
-
-        {/* 우 패널: xl에서 3번째 열(sticky 풀하이트), lg에서 중앙 하단 스택 */}
-        <div className="xl:col-start-3 xl:row-start-1 xl:sticky xl:top-14 xl:h-[calc(100vh-56px)] xl:overflow-y-auto">
-          <RightRail />
-        </div>
       </div>
 
       {/* 모바일 드로어 */}
@@ -125,6 +123,15 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
         </>
       )}
+
+      {/* 플로팅 모닝브리핑 버튼 */}
+      <button
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+        aria-label="오늘의 브리핑 열기"
+      >
+        <Radio className="h-4 w-4" />
+        <span>오늘의 브리핑</span>
+      </button>
     </div>
   )
 }

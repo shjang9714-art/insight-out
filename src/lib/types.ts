@@ -68,8 +68,11 @@ export interface OnboardingStep3 {
 // ============================================================
 
 export type ContentCategory =
-  | '뉴스' | '리포트' | '웹인사이트' | '유튜브' | 'AI보고서'
-  // deprecated: DB enum 유지, 수집 미사용 (지시서 50 마이그레이션)
+  // 현재 UI 카테고리 (6개)
+  | '뉴스' | '리서치' | '웹인사이트' | '유튜브' | 'AI분석' | '전략보고서'
+  // DB enum 유지 (기존 데이터 — UI 카테고리로 매핑해 표시)
+  | '리포트' | 'AI보고서'
+  // deprecated: 수집 미사용
   | '가트너' | 'KRG' | '오피니언' | '뉴스레터'
 
 export type SourceType =
@@ -258,12 +261,17 @@ export interface ArchiveItem {
 // ============================================================
 
 export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
-  '뉴스': '뉴스 & 미디어',
+  // UI 카테고리 6개
+  '뉴스': '뉴스',
+  '리서치': '리서치',
+  '웹인사이트': '웹인사이트',
+  '유튜브': '유튜브',
+  'AI분석': 'AI분석',
+  '전략보고서': '전략보고서',
+  // DB enum (기존 데이터)
   '리포트': '리포트',
-  '웹인사이트': '웹 인사이트',
-  '유튜브': '유튜브 영상',
   'AI보고서': 'AI 보고서',
-  // deprecated (지시서 50 마이그레이션, DB enum 유지)
+  // deprecated
   '가트너': '가트너 리포트',
   'KRG': 'KRG 리포트',
   '오피니언': '오피니언 채널',

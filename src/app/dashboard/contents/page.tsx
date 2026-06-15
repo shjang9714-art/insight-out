@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback, useMemo, startTransition } 
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { getCategoryDbValues } from '@/lib/categories'
 import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
@@ -210,11 +211,12 @@ function ContentsContent() {
   useEffect(() => {
     if (!category) { startTransition(() => setScopedSourceIds(null)); return }
     let cancelled = false
+    const dbCats = getCategoryDbValues(category as ContentCategory)
     createClient()
       .from('contents')
       .select('source_id')
       .eq('status', 'published')
-      .eq('category', category)
+      .in('category', dbCats)
       .not('source_id', 'is', null)
       .then(({ data }) => {
         if (cancelled) return
@@ -273,7 +275,10 @@ function ContentsContent() {
         .order('published_at', { ascending: false, nullsFirst: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
-      if (category)        q = q.eq('category', category)
+      if (category) {
+        const dbCats = getCategoryDbValues(category as ContentCategory)
+        q = q.in('category', dbCats)
+      }
       if (srcIds.length > 0) q = q.in('source_id', srcIds)
 
       const dateStart = getDateStart(date)
