@@ -82,9 +82,7 @@ export default function CategoryGrid() {
             className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
               isActive
                 ? cat.activeClass
-                : isEmpty
-                  ? `border-border/50 opacity-50 ${cat.hoverClass}`
-                  : `border-border text-muted-foreground ${cat.hoverClass}`
+                : `border-border text-muted-foreground ${cat.hoverClass}`
             }`}
           >
             {/* 오늘 건수 — 좌측 상단 뱃지 */}
