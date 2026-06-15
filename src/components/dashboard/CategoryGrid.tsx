@@ -6,7 +6,6 @@ import { useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getKstTodayStartIso } from '@/lib/date'
 import { CATEGORY_DEFS } from '@/lib/categories'
-import { Home } from 'lucide-react'
 
 export default function CategoryGrid() {
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({})
@@ -47,23 +46,8 @@ export default function CategoryGrid() {
     })
   }, [])
 
-  const isHome = pathname === '/dashboard'
-
   return (
     <div className="flex items-stretch gap-1.5 overflow-x-auto scrollbar-hide">
-      {/* 홈 버튼 — 카테고리 줄 맨 앞 */}
-      <Link
-        href="/dashboard"
-        className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-3 py-3 transition-colors ${
-          isHome
-            ? 'border-brand-600 text-brand-600'
-            : 'border-border text-muted-foreground hover:border-brand-200 hover:text-brand-600'
-        }`}
-      >
-        <Home className="h-5 w-5" />
-        <span className="text-center text-xs font-medium leading-tight">홈</span>
-      </Link>
-
       {CATEGORY_DEFS.map((cat) => {
         const href = cat.href ?? `/dashboard/contents?category=${encodeURIComponent(cat.category)}`
 
