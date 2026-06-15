@@ -11,7 +11,8 @@ const NAV_ITEMS = [
   { href: '/admin/contents',   label: '콘텐츠 관리' },
   { href: '/admin/upload',     label: '리포트 업로드' },
   { href: '/admin/sources',    label: '소스 관리' },
-  { href: '/admin/keywords',   label: '키워드 관리' },
+  { href: '/admin/keywords',        label: '키워드 관리' },
+  { href: '/admin/keyword-groups', label: '키워드 그룹' },
   { href: '/admin/crawl-logs', label: '크롤링 현황' },
   { href: '/admin/briefings',  label: '모닝브리핑' },
 
