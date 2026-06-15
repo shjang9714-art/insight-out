@@ -36,6 +36,7 @@ interface ContentDetail {
   original_url: string | null
   author: string | null
   published_at: string | null
+  collected_at: string
   sources: { name: string } | null
   content_services: { services: { name: string } | null }[]
   content_keywords: { keywords: { name: string } | null }[]
@@ -161,7 +162,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
     .select(`
       id, title, title_original, category,
       summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
-      file_path, original_url, author, published_at,
+      file_path, original_url, author, published_at, collected_at,
       sources(name),
       content_services(services(name)),
       content_keywords(keywords(name))
@@ -203,7 +204,11 @@ export default async function ContentDetailPage({ params }: PageProps) {
     .map((ck) => ck.keywords?.name)
     .filter(Boolean) as string[]
 
-  const dateStr = formatDate(content.published_at)
+  const displayAt =
+    (content.category === '리포트' || content.category === 'AI보고서')
+      ? content.collected_at
+      : (content.published_at ?? content.collected_at)
+  const dateStr = formatDate(displayAt)
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">

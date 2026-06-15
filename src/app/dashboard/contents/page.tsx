@@ -33,6 +33,7 @@ interface ContentItem {
   matched_keywords: string[]
   cluster_id: string | null
   importance_score: number
+  collected_at: string
 }
 
 interface ClusterMember {
@@ -85,6 +86,13 @@ function getDateStart(filter: string): string | null {
   if (filter === 'week')  return new Date(Date.now() - 7  * 86_400_000).toISOString()
   if (filter === 'month') return new Date(Date.now() - 30 * 86_400_000).toISOString()
   return null
+}
+
+function displayDate(item: ContentItem): string | null {
+  if (item.category === '리포트' || item.category === 'AI보고서') {
+    return item.collected_at
+  }
+  return item.published_at ?? item.collected_at
 }
 
 function getSavedView(): ContentView {
@@ -267,15 +275,21 @@ function ContentsContent() {
         ? 'content_services!inner(services(name))'
         : 'content_services(services(name))'
 
+      const isReportCategory = category === '리포트' || category === 'AI보고서'
+
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score',
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at',
           { count: 'exact' }
         )
         .eq('status', 'published')
-        .order('published_at', { ascending: false, nullsFirst: false })
-        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+
+      q = isReportCategory
+        ? q.order('collected_at', { ascending: false })
+        : q.order('published_at', { ascending: false, nullsFirst: false })
+
+      q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
       if (category) {
         const dbCats = getCategoryDbValues(category as ContentCategory)
@@ -580,7 +594,7 @@ function ContentsContent() {
                   title={item.title}
                   excerpt={toExcerpt(item.summary_ko, item.body_original)}
                   category={item.category}
-                  publishedAt={item.published_at}
+                  publishedAt={displayDate(item)}
                   originalUrl={item.original_url}
                   filePath={item.file_path}
                   isEditorPick={item.is_editor_pick}
@@ -601,7 +615,7 @@ function ContentsContent() {
                   summaryKo={item.summary_ko}
                   bodyOriginal={item.body_original}
                   category={item.category}
-                  publishedAt={item.published_at}
+                  publishedAt={displayDate(item)}
                   originalUrl={item.original_url}
                   filePath={item.file_path}
                   isEditorPick={item.is_editor_pick}
