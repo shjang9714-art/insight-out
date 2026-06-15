@@ -6,6 +6,7 @@ import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
 import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup } from './quality'
+import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
@@ -333,7 +334,9 @@ async function processCrawlItem(
     // 스킵하지 않고 cluster_id 를 부여해 "대표 1건 + 관련 N건" 구조로 적재.
     const candidates = await findSimilarCandidates(admin, publishedAt)
     const match = candidates.find(
-      c => titleSimilarity(c.title, item.title) >= SIMILARITY_THRESHOLD
+      c =>
+        titleSimilarity(c.title, item.title) >= SIMILARITY_THRESHOLD ||
+        sharesCoreTokens(c.title, item.title)
     )
     let clusterId: string | null = null
     if (match) {

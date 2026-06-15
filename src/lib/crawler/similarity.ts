@@ -77,3 +77,46 @@ export function titleSimilarity(t1: string, t2: string): number {
   if (tokensA.length < 2 || tokensB.length < 2) return 0
   return jaccard(tokensA, tokensB)
 }
+
+/**
+ * Google News 등 RSS 제목 끝의 출처 접미사(` - 매체명` / ` | 매체명`)를 제거한다.
+ * 보수적 정규식: 매체명이 1~25자이고 하이픈·파이프가 없을 때만 제거.
+ * 미매칭이면 원본 유지(trim 만).
+ */
+export function stripSourceSuffix(title: string): string {
+  // " - 매체명" 또는 " | 매체명" — 끝의 25자 이하 단일 세그먼트만 제거
+  return title.replace(/\s[-|]\s[^-|–—]{1,25}\s*$/, '').trim()
+}
+
+/** 핵심 토큰 공유 판정 최소 공유 토큰 수 */
+export const CORE_MIN_SHARED = 3
+/** 핵심 토큰 공유 판정 최소 비율(공유 수 / 짧은 쪽 토큰 수) */
+export const CORE_MIN_RATIO = 0.5
+
+/**
+ * 두 제목이 핵심 토큰을 충분히 공유하는지 판정.
+ * - soft-match 교집합 ≥ CORE_MIN_SHARED
+ * - 교집합 / min(lenA, lenB) ≥ CORE_MIN_RATIO
+ * - 유효 토큰이 3개 미만인 짧은 제목은 false 반환(오탐 방지)
+ */
+export function sharesCoreTokens(t1: string, t2: string): boolean {
+  const tokensA = tokenize(t1)
+  const tokensB = tokenize(t2)
+  if (tokensA.length < 3 || tokensB.length < 3) return false
+
+  // soft 교집합 (jaccard 와 동일 로직, 개수만 반환)
+  const usedB = new Set<number>()
+  let shared = 0
+  for (const ta of tokensA) {
+    for (let i = 0; i < tokensB.length; i++) {
+      if (!usedB.has(i) && softMatch(ta, tokensB[i])) {
+        shared++
+        usedB.add(i)
+        break
+      }
+    }
+  }
+
+  const minLen = Math.min(tokensA.length, tokensB.length)
+  return shared >= CORE_MIN_SHARED && shared / minLen >= CORE_MIN_RATIO
+}

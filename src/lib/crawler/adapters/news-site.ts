@@ -3,6 +3,7 @@ import type { SourceAdapter, RawItem } from '../types'
 import type { Source } from '@/lib/types'
 import { getPublishedAtSince } from '@/lib/crawler/publication-date'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { stripSourceSuffix } from '@/lib/crawler/similarity'
 
 // rss-parser 커스텀 필드 포함 아이템 타입
 type RssItem = Parser.Item & {
@@ -67,7 +68,9 @@ const newsSiteAdapter: SourceAdapter = {
       // 저장 전 HTML 정리: &nbsp; 등 엔티티·태그 제거 → 카드/피드/요약 입력 모두 깨끗하게
       const cleanBody = rawBody ? cleanBodyText(htmlToPlainText(rawBody)) : ''
 
-      const title = item.title ?? ''
+      // 출처 접미사 제거(" - 매체명" / " | 매체명") — 보수적 정규식, 미매칭 시 원본 유지
+      const title = stripSourceSuffix(item.title ?? '')
+      if (!title) continue
       const author = item.creator ?? item['dc:creator'] ?? item.author ?? undefined
 
       items.push({
