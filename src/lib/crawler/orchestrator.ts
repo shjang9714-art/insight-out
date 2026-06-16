@@ -644,6 +644,24 @@ async function crawlYoutube(
         } else {
           counts.inserted++
         }
+        // contents 테이블에도 mirror insert (어드민 콘텐츠 관리 통합)
+        const { error: contentMirrorError } = await admin
+          .from('contents')
+          .insert({
+            category:          '유튜브',
+            source_id:         source.id,
+            title:             item.title,
+            original_url:      `https://www.youtube.com/watch?v=${item.videoId}`,
+            thumbnail_url:     `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+            author:            feedTitle,
+            published_at:      item.published_at,
+            collected_at:      new Date().toISOString(),
+            original_language: 'ko',
+            status:            'published',
+          })
+        if (contentMirrorError && contentMirrorError.code !== '23505') {
+          console.error(`[크롤러] contents mirror insert 오류 (${item.videoId}):`, contentMirrorError.message)
+        }
       } catch (itemErr) {
         console.error('[크롤러] 유튜브 아이템 처리 오류:', itemErr)
         crawlStatus = 'partial'
