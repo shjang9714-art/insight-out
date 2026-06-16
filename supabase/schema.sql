@@ -29,6 +29,7 @@ create table public.users (
   onboarding_completed boolean not null default false,
   content_filter_mode  text not null default 'all'
     check (content_filter_mode in ('my_services', 'all')),
+  feed_onboarding_skipped boolean not null default false,  -- 피드 추천 온보딩 건너뛰기 여부
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );
@@ -972,6 +973,78 @@ create policy "archive_items: 본인 삭제"
 
 
 -- ============================================================
+-- 추천 피드 — user_preferences / user_service_prefs / content_views
+-- (2026-06-16-추천피드-스키마.sql)
+-- ============================================================
+
+create table public.user_preferences (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.users (id) on delete cascade,
+  keyword_id uuid not null references public.keywords (id) on delete cascade,
+  weight     numeric(5,2) not null default 1.0,
+  source     text not null check (source in ('onboarding', 'behavioral')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, keyword_id)
+);
+
+create index user_preferences_user_idx on public.user_preferences (user_id);
+
+create trigger set_user_preferences_updated_at
+  before update on public.user_preferences
+  for each row execute function public.set_updated_at();
+
+-- user_services(마이페이지 핀 고정 서비스)와는 별개로, 추천 가중치 전용 테이블
+create table public.user_service_prefs (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.users (id) on delete cascade,
+  service_id uuid not null references public.services (id) on delete cascade,
+  weight     numeric(5,2) not null default 1.0,
+  source     text not null check (source in ('onboarding', 'behavioral')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, service_id)
+);
+
+create trigger set_user_service_prefs_updated_at
+  before update on public.user_service_prefs
+  for each row execute function public.set_updated_at();
+
+create table public.content_views (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references public.users (id) on delete cascade,
+  content_id    uuid not null references public.contents (id) on delete cascade,
+  viewed_at     timestamptz not null default now(),
+  dwell_seconds integer not null default 0
+);
+
+create index content_views_user_viewed_idx on public.content_views (user_id, viewed_at desc);
+create index content_views_content_idx on public.content_views (content_id);
+
+alter table public.user_preferences   enable row level security;
+alter table public.user_service_prefs enable row level security;
+alter table public.content_views      enable row level security;
+
+create policy "own_user_preferences"
+  on public.user_preferences for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "own_user_service_prefs"
+  on public.user_service_prefs for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "own_content_views"
+  on public.content_views for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on table public.user_preferences   to authenticated;
+grant select, insert, update, delete on table public.user_service_prefs to authenticated;
+grant select, insert, update, delete on table public.content_views      to authenticated;
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
@@ -987,3 +1060,7 @@ create policy "archive_items: 본인 삭제"
 -- newsletter_subscriptions 에 newsletter_email 추가
 -- alter table public.newsletter_subscriptions
 --   add column if not exists newsletter_email text;
+
+-- users 테이블에 feed_onboarding_skipped 추가 (2026-06-16-추천피드-스키마.sql)
+-- alter table public.users
+--   add column if not exists feed_onboarding_skipped boolean not null default false;
