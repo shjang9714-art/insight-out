@@ -85,14 +85,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       {
         href: '/admin/keywords',
-        label: '서비스 키워드',
-        description: '서비스별 자동 태깅 키워드',
+        label: '카테고리 분류기준',
+        description: '콘텐츠를 서비스·카테고리로 분류하는 기준 키워드',
         icon: Tags,
       },
       {
         href: '/admin/keyword-groups',
-        label: '토픽 규칙',
-        description: '관련 키워드 그룹·해시태그',
+        label: '수집 키워드',
+        description: '수집 관련도·검색어·시그널 기준',
         icon: Network,
       },
     ],
