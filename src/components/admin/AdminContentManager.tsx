@@ -60,9 +60,9 @@ interface EditState {
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
 const STATUS_STYLE: Record<ContentStatus, { label: string; className: string }> = {
-  published: { label: '노출',      className: 'border-green-100 bg-green-50 text-green-700' },
-  pending:   { label: '검토 대기', className: 'border-yellow-100 bg-yellow-50 text-yellow-700' },
-  rejected:  { label: '숨김',      className: 'border-red-100 bg-red-50 text-red-600' },
+  published: { label: '노출',      className: 'text-green-700' },
+  pending:   { label: '검토 대기', className: 'text-yellow-700' },
+  rejected:  { label: '숨김',      className: 'text-red-600' },
 }
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
@@ -735,11 +735,8 @@ export default function AdminContentManager() {
                         <span className="text-xs text-muted-foreground/60">Google News 검색</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-                        statusStyle.className
-                      )}>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className={cn('whitespace-nowrap text-xs font-medium', statusStyle.className)}>
                         {statusStyle.label}
                       </span>
                     </td>

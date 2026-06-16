@@ -819,14 +819,14 @@ export default function SourceManager() {
                       <span className="text-xs text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <button
                       onClick={() => handleToggle(src)}
                       className={cn(
-                        'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+                        'whitespace-nowrap text-xs font-medium transition-colors',
                         src.is_active
-                          ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                          : 'bg-muted text-muted-foreground hover:bg-accent'
+                          ? 'text-green-700 hover:text-green-800'
+                          : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
                       {src.is_active ? '활성' : '비활성'}
