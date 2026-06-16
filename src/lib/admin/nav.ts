@@ -9,6 +9,7 @@ import {
   Languages,
   Tags,
   Network,
+  Cpu,
   Mail,
   Users,
 } from 'lucide-react'
@@ -18,6 +19,8 @@ export interface AdminNavItem {
   label: string
   description: string
   icon: LucideIcon
+  disabled?: boolean
+  badge?: string
 }
 
 export interface AdminNavGroup {
@@ -27,7 +30,7 @@ export interface AdminNavGroup {
 
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
-    group: '현황',
+    group: '개요',
     items: [
       {
         href: '/admin',
@@ -75,16 +78,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '자동 수집 결과와 오류 확인',
         icon: ListChecks,
       },
-      {
-        href: '/admin/translation',
-        label: '번역 상태',
-        description: '번역 연결 상태와 월간 사용량',
-        icon: Languages,
-      },
     ],
   },
   {
-    group: '분류 규칙',
+    group: '분류 엔진',
     items: [
       {
         href: '/admin/keywords',
@@ -101,6 +98,25 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
+    group: 'AI·처리',
+    items: [
+      {
+        href: '/admin/translation',
+        label: '번역',
+        description: '번역 연결 상태와 월간 사용량',
+        icon: Languages,
+      },
+      {
+        href: '#',
+        label: 'LLM 라우팅',
+        description: 'LLM 모델·라우팅 관리',
+        icon: Cpu,
+        disabled: true,
+        badge: '예정',
+      },
+    ],
+  },
+  {
     group: '발행',
     items: [
       {
@@ -111,15 +127,16 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       },
     ],
   },
-  {
-    group: '시스템',
-    items: [
-      {
-        href: '/admin/users',
-        label: '사용자 관리',
-        description: '사용자 목록과 권한 관리',
-        icon: Users,
-      },
-    ],
-  },
 ]
+
+export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
+  group: '시스템',
+  items: [
+    {
+      href: '/admin/users',
+      label: '사용자 관리',
+      description: '사용자 목록과 권한 관리',
+      icon: Users,
+    },
+  ],
+}

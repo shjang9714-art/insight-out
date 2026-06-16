@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { getKstTodayStartIso } from '@/lib/date'
-import { ADMIN_NAV_GROUPS } from '@/lib/admin/nav'
 import { DashboardCharts, type ChartData, type DayTrend } from '@/components/admin/DashboardCharts'
 
 export const dynamic = 'force-dynamic'
@@ -15,8 +14,6 @@ export const metadata: Metadata = {
 
 const CATEGORIES = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서'] as const
 type Category = typeof CATEGORIES[number]
-
-const MENU_GROUPS = ADMIN_NAV_GROUPS.filter((g) => g.group !== '현황')
 
 // ─── KPI 카드 스타일 ──────────────────────────────────────────────────────────
 
@@ -235,43 +232,6 @@ export default async function AdminPage() {
         <DashboardCharts chartData={chartData} />
       </section>
 
-      {/* ③ 관리 메뉴 (지시서 73, 유지) */}
-      <section aria-labelledby="menu-heading">
-        <h2 id="menu-heading" className="mb-4 text-sm font-semibold text-foreground">
-          관리 메뉴
-        </h2>
-        <div className="space-y-6">
-          {MENU_GROUPS.map((g) => (
-            <div key={g.group}>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
-                {g.group}
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {g.items.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-200 hover:bg-brand-50"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="rounded-lg bg-muted p-2.5 text-muted-foreground transition-colors group-hover:bg-card group-hover:text-brand-600">
-                          <Icon className="h-5 w-5" />
-                        </span>
-                        <div>
-                          <h3 className="font-semibold text-foreground">{item.label}</h3>
-                          <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-                        </div>
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   )
 }
