@@ -1,5 +1,6 @@
 import Parser from 'rss-parser'
 import type { Source } from '@/lib/types'
+import { fetchFeedText } from '@/lib/crawler/fetch-feed'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,8 @@ export async function fetchYoutubeChannel(source: Source): Promise<YoutubeChanne
     return { feedTitle: source.name, items: [] }
   }
 
-  const feed = await parser.parseURL(source.rss_url)
+  const xml = await fetchFeedText(source.rss_url)
+  const feed = await parser.parseString(xml)
 
   const feedTitle = feed.title?.trim() || source.name
 

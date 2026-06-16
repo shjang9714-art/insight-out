@@ -4,6 +4,7 @@ import type { Source } from '@/lib/types'
 import { getPublishedAtSince } from '@/lib/crawler/publication-date'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { stripSourceSuffix } from '@/lib/crawler/similarity'
+import { fetchFeedText } from '@/lib/crawler/fetch-feed'
 
 // rss-parser 커스텀 필드 포함 아이템 타입
 type RssItem = Parser.Item & {
@@ -25,9 +26,13 @@ const parser = new Parser<Record<string, unknown>, RssItem>({
   },
 })
 
-/** 제목·본문에 한글 포함 여부로 언어 추론 */
+/** 한글 비율 기반 언어 추론 (깨짐 문자 가드 포함) */
 function detectLanguage(text: string): string {
-  return /[가-힣]/.test(text) ? 'ko' : 'en'
+  if (text.includes('�')) return 'ko' // 잔여 깨짐 → 영어 오판/오번역 방지 (보수적 ko)
+  const hangul = (text.match(/[가-힣]/g) ?? []).length
+  const latin  = (text.match(/[A-Za-z]/g) ?? []).length
+  if (hangul === 0 && latin === 0) return 'ko'
+  return hangul >= Math.max(2, latin * 0.15) ? 'ko' : 'en'
 }
 
 /** 다양한 RSS 포맷에서 썸네일 URL 추출 */
@@ -50,7 +55,8 @@ const newsSiteAdapter: SourceAdapter = {
       return []
     }
 
-    const feed = await parser.parseURL(source.rss_url)
+    const xml = await fetchFeedText(source.rss_url)
+    const feed = await parser.parseString(xml)
     const items: RawItem[] = []
 
     for (const item of feed.items) {
