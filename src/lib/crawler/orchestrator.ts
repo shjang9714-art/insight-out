@@ -355,7 +355,7 @@ async function processCrawlItem(
     // 품질 필터 단계 2: 가중 관련도 게이트 (B1 + B3-2 LLM 재판정)
     const score = relatednessScore(item.title, item.body ?? '', groups)
     const importance = score
-    const exempt = src.trust_tier >= 2 || groups.length === 0
+    const exempt = src.trust_tier >= 2 || groups.length === 0 || src.type === 'web_insight'
     let contentStatus: 'pending' | 'published' =
       (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
         ? 'pending' : 'published'
