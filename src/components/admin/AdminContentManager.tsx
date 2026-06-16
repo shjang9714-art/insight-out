@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
-import { CATEGORY_DEFS } from '@/lib/categories'
+import { CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
@@ -173,7 +173,12 @@ export default function AdminContentManager() {
         .order('collected_at', { ascending: false })
 
       if (status !== 'all')          q = q.eq('status', status as ContentStatus)
-      if (category !== 'all')        q = q.eq('category', category as ContentCategory)
+      if (category !== 'all') {
+        const dbCats = toDbCategories(category as ContentCategory)
+        if (dbCats.length === 1) q = q.eq('category', dbCats[0])
+        else if (dbCats.length > 1) q = q.in('category', dbCats)
+        else q = q.eq('category', '__none__' as ContentCategory)
+      }
       if (sourceId === SOURCE_NULL)  q = q.is('source_id', null)
       else if (sourceId !== SOURCE_ALL) q = q.eq('source_id', sourceId)
       if (debouncedTerm.trim())      q = q.ilike('title', `%${debouncedTerm.trim()}%`)
@@ -422,10 +427,10 @@ export default function AdminContentManager() {
     : undefined
   const sourceOptions = mappedType ? sources.filter((s) => s.type === mappedType) : sources
 
-  // 편집 폼 카테고리 옵션 (현재 값이 deprecated 면 옵션에 추가해 표시 유지)
-  const editCategoryValues = CATEGORY_DEFS.map((d) => d.category)
+  // 편집 폼 카테고리 옵션 (실제 DB enum 값만, deprecated는 현재 행 값이면 추가)
+  const EDIT_CATEGORY_OPTIONS: ContentCategory[] = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서']
   const editCategoryExtra =
-    edit && !editCategoryValues.includes(edit.category) ? [edit.category] : []
+    edit && !EDIT_CATEGORY_OPTIONS.includes(edit.category) ? [edit.category] : []
 
   if (isLoading && contents.length === 0) {
     return (
@@ -810,9 +815,9 @@ export default function AdminContentManager() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {CATEGORY_DEFS.map((d) => (
-                        <SelectItem key={d.category} value={d.category}>
-                          {d.label}
+                      {EDIT_CATEGORY_OPTIONS.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {CONTENT_CATEGORY_LABEL[c]}
                         </SelectItem>
                       ))}
                       {editCategoryExtra.map((c) => (

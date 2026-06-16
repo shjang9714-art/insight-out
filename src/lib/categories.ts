@@ -91,3 +91,15 @@ export function getCategoryDbValues(displayCategory: ContentCategory): ContentCa
   const def = CATEGORY_DEFS.find((d) => d.category === displayCategory)
   return def?.dbCategories ?? [displayCategory]
 }
+
+/** content_category enum 실제 유효 값 */
+export const DB_CONTENT_CATEGORIES = [
+  '뉴스', '리포트', '웹인사이트', '가트너', 'KRG', '오피니언', '뉴스레터', 'AI보고서', '유튜브',
+] as const
+
+/** 표시 카테고리명 → 실제 DB enum에 있는 값만 반환 (무효값 자동 제거) */
+export function toDbCategories(displayCategory: ContentCategory): ContentCategory[] {
+  return getCategoryDbValues(displayCategory).filter(
+    (c) => (DB_CONTENT_CATEGORIES as readonly string[]).includes(c)
+  )
+}

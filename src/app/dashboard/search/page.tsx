@@ -11,7 +11,7 @@ import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
-import { CATEGORY_DEFS, getCategoryDbValues } from '@/lib/categories'
+import { CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -175,13 +175,12 @@ function SearchContent() {
   useEffect(() => {
     if (!category) { startTransition(() => setScopedSourceIds(null)); return }
     let cancelled = false
-    createClient()
-      .from('contents')
-      .select('source_id')
-      .eq('status', 'published')
-      .eq('category', category)
-      .not('source_id', 'is', null)
-      .then(({ data }) => {
+    const dbCats = toDbCategories(category)
+    let q = createClient().from('contents').select('source_id').eq('status', 'published').not('source_id', 'is', null)
+    q = dbCats.length === 1
+      ? q.eq('category', dbCats[0])
+      : q.in('category', dbCats.length ? dbCats : ['__none__'])
+    q.then(({ data }) => {
         if (cancelled) return
         setScopedSourceIds(new Set((data ?? []).map((r) => r.source_id as string)))
       })
@@ -254,10 +253,10 @@ function SearchContent() {
         .limit(MAX_RESULTS)
 
       if (category) {
-        const dbCats = getCategoryDbValues(category)
+        const dbCats = toDbCategories(category)
         query = dbCats.length === 1
           ? query.eq('category', dbCats[0])
-          : query.in('category', dbCats)
+          : query.in('category', dbCats.length ? dbCats : ['__none__'])
       }
       if (srcIds.length > 0) query = query.in('source_id', srcIds)
 
