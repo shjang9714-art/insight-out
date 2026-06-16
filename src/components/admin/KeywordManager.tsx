@@ -101,22 +101,31 @@ export default function KeywordManager() {
     setIsLoading(false)
   }
 
-  // ── 서비스별 키워드 수 계산 ───────────────────────────────────────────────
+  // ── 서비스별 그룹핑 ───────────────────────────────────────────────────────
 
-  const serviceCounts = (() => {
-    const counts: Record<string, number> = { '': 0 }
-    services.forEach(s => { counts[s.id] = 0 })
+  const keywordsByService = (() => {
+    const map = new Map<string, KeywordRow[]>()
+    services.forEach(s => map.set(s.id, []))
+    map.set('', [])
     keywords.forEach(k => {
       const key = k.service_id ?? ''
-      counts[key] = (counts[key] ?? 0) + 1
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(k)
     })
+    map.forEach(list => list.sort((a, b) => a.name.localeCompare(b.name, 'ko')))
+    return map
+  })()
+
+  const serviceCounts = (() => {
+    const counts: Record<string, number> = {}
+    keywordsByService.forEach((list, key) => { counts[key] = list.length })
     return counts
   })()
 
   // ── 폼 열기/닫기 ──────────────────────────────────────────────────────────
 
-  function openAdd() {
-    setForm(FORM_INIT)
+  function openAdd(defaultServiceId = '') {
+    setForm({ ...FORM_INIT, service_id: defaultServiceId })
     setEditingId(null)
     setFormError(null)
     setShowForm(true)
@@ -344,78 +353,143 @@ export default function KeywordManager() {
           {isLoading ? '불러오는 중…' : `총 ${keywords.length}개 키워드`}
         </p>
         {!showForm && (
-          <Button size="sm" onClick={openAdd}>
+          <Button size="sm" onClick={() => openAdd()}>
             <Plus className="mr-1.5 h-4 w-4" />
             키워드 추가
           </Button>
         )}
       </div>
 
-      {/* ── 목록 테이블 ── */}
+      {/* ── 서비스 대분류별 그룹 섹션 ── */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           키워드 목록 로드 중...
         </div>
-      ) : keywords.length === 0 ? (
+      ) : keywords.length === 0 && services.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           등록된 키워드가 없습니다. 키워드 추가 버튼으로 첫 번째 키워드를 등록해보세요.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[600px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">키워드</th>
-                <th className="px-4 py-3">서비스</th>
-                <th className="px-4 py-3">경쟁사</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {keywords.map(kw => (
-                <tr key={kw.id} className="transition-colors hover:bg-accent/50">
-                  <td className="px-4 py-3 font-medium text-foreground">{kw.name}</td>
-                  <td className="px-4 py-3">
-                    {kw.services?.[0]?.name ? (
-                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                        {kw.services?.[0]?.name}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {kw.is_competitor ? (
-                      <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                        경쟁사
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => openEdit(kw)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        title="수정"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(kw)}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-6">
+          {/* 서비스 대분류 섹션 */}
+          {services.map(s => {
+            const svcKeywords = keywordsByService.get(s.id) ?? []
+            return (
+              <div key={s.id} className="space-y-2">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-foreground">{s.name}</h3>
+                    <span
+                      className={
+                        svcKeywords.length === 0
+                          ? 'rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-600'
+                          : 'rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
+                      }
+                    >
+                      {svcKeywords.length === 0 ? '키워드 없음 — 추가 필요' : `${svcKeywords.length}개`}
+                    </span>
+                  </div>
+                  {!showForm && (
+                    <button
+                      onClick={() => openAdd(s.id)}
+                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <Plus className="h-3 w-3" />
+                      추가
+                    </button>
+                  )}
+                </div>
+
+                {svcKeywords.length > 0 && (
+                  <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                    <table className="w-full min-w-[400px] text-sm">
+                      <tbody className="divide-y divide-border">
+                        {svcKeywords.map(kw => (
+                          <tr key={kw.id} className="transition-colors hover:bg-accent/50">
+                            <td className="px-4 py-2.5 font-medium text-foreground">{kw.name}</td>
+                            <td className="px-4 py-2.5">
+                              {kw.is_competitor && (
+                                <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                                  경쟁사
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <button
+                                  onClick={() => openEdit(kw)}
+                                  className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                  title="수정"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(kw)}
+                                  className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                                  title="삭제"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* 미지정 그룹 (맨 아래) */}
+          {(keywordsByService.get('') ?? []).length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 border-b border-border pb-2">
+                <h3 className="text-sm font-semibold text-muted-foreground">미지정</h3>
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {(keywordsByService.get('') ?? []).length}개
+                </span>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                <table className="w-full min-w-[400px] text-sm">
+                  <tbody className="divide-y divide-border">
+                    {(keywordsByService.get('') ?? []).map(kw => (
+                      <tr key={kw.id} className="transition-colors hover:bg-accent/50">
+                        <td className="px-4 py-2.5 font-medium text-foreground">{kw.name}</td>
+                        <td className="px-4 py-2.5">
+                          {kw.is_competitor && (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                              경쟁사
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button
+                              onClick={() => openEdit(kw)}
+                              className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                              title="수정"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(kw)}
+                              className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                              title="삭제"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
