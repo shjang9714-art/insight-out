@@ -3,14 +3,8 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { getKstTodayStartIso } from '@/lib/date'
-import {
-  FileText,
-  Languages,
-  ListChecks,
-  Newspaper,
-  Rss,
-  Tags,
-} from 'lucide-react'
+import { ADMIN_NAV_GROUPS } from '@/lib/admin/nav'
+import { DashboardCharts, type ChartData, type DayTrend } from '@/components/admin/DashboardCharts'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,44 +13,15 @@ export const metadata: Metadata = {
   description: 'Insight Out 운영 현황과 관리자 기능을 확인합니다.',
 }
 
-const MENU_ITEMS = [
-  {
-    href: '/admin/contents',
-    label: '콘텐츠 관리',
-    description: '수집 콘텐츠 노출·숨김·삭제',
-    icon: Newspaper,
-  },
-  {
-    href: '/admin/sources',
-    label: '소스 관리',
-    description: 'RSS와 수집 소스 설정',
-    icon: Rss,
-  },
-  {
-    href: '/admin/keywords',
-    label: '키워드 관리',
-    description: '서비스별 자동 태깅 키워드',
-    icon: Tags,
-  },
-  {
-    href: '/admin/crawl-logs',
-    label: '크롤링 현황',
-    description: '자동 수집 결과와 오류 확인',
-    icon: ListChecks,
-  },
-  {
-    href: '/admin/upload',
-    label: '리포트 업로드',
-    description: '리서치 문서 직접 등록',
-    icon: FileText,
-  },
-  {
-    href: '/admin/translation',
-    label: '번역 상태',
-    description: '번역 연결 상태와 월간 사용량',
-    icon: Languages,
-  },
-]
+const CATEGORIES = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서'] as const
+type Category = typeof CATEGORIES[number]
+
+const MENU_GROUPS = ADMIN_NAV_GROUPS.filter((g) => g.group !== '현황')
+
+// ─── KPI 카드 스타일 ──────────────────────────────────────────────────────────
+
+const KPI_CARD =
+  'group flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-200 hover:bg-brand-50'
 
 export default async function AdminPage() {
   const cookieStore = await cookies()
@@ -65,45 +30,126 @@ export default async function AdminPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
+        getAll() { return cookieStore.getAll() },
+        setAll(cs) { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
       },
     }
   )
 
   const todayStart = getKstTodayStartIso()
-  const [totalResult, todayResult, activeSourcesResult, pendingResult] =
-    await Promise.all([
-      supabase.from('contents').select('*', { count: 'exact', head: true }),
-      supabase
-        .from('contents')
-        .select('*', { count: 'exact', head: true })
-        .gte('collected_at', todayStart),
-      supabase
-        .from('sources')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true),
-      supabase
-        .from('contents')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending'),
-    ])
+  const todayStartMs = new Date(todayStart).getTime()
+  const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
+  const thirtyDaysStart  = new Date(todayStartMs - 29 * 24 * 60 * 60 * 1000).toISOString()
 
-  const metrics = [
-    { label: '총 콘텐츠', value: totalResult.count ?? 0 },
-    { label: '오늘 수집', value: todayResult.count ?? 0 },
-    { label: '활성 소스', value: activeSourcesResult.count ?? 0 },
-    { label: '검토 대기', value: pendingResult.count ?? 0 },
-  ]
+  const [
+    totalRes, todayRes, pendingRes, publishedRes, rejectedRes,
+    activeSourcesRes, totalSourcesRes, bookmarkedRes, researchRes,
+    newsRes, reportRes, webRes, ytRes, aiRes,
+    newsTodayRes, reportTodayRes, webTodayRes, ytTodayRes, aiTodayRes,
+    trendRes, sourceRes,
+  ] = await Promise.all([
+    // KPI head counts
+    supabase.from('contents').select('*', { count: 'exact', head: true }),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).gte('collected_at', todayStart),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
+    supabase.from('sources').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    supabase.from('sources').select('*', { count: 'exact', head: true }),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).gt('bookmark_count', 0),
+    supabase.from('ai_report_sources').select('*', { count: 'exact', head: true }).not('content_id', 'is', null),
+    // 카테고리 전체 분포
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '뉴스'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '리포트'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '웹인사이트'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '유튜브'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', 'AI보고서'),
+    // 카테고리 오늘 분포
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '뉴스').gte('collected_at', todayStart),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '리포트').gte('collected_at', todayStart),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '웹인사이트').gte('collected_at', todayStart),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '유튜브').gte('collected_at', todayStart),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', 'AI보고서').gte('collected_at', todayStart),
+    // 14일 추이 (바운디드)
+    supabase.from('contents').select('category, collected_at').gte('collected_at', fourteenDaysStart),
+    // 소스 Top 10 (바운디드 30일)
+    supabase.from('contents').select('source_id, sources(name)').gte('collected_at', thirtyDaysStart).not('source_id', 'is', null),
+  ])
+
+  // ── 카테고리 집계 ──────────────────────────────────────────────────────────
+
+  const catTotals: Record<Category, number> = {
+    뉴스:     newsRes.count   ?? 0,
+    리포트:   reportRes.count ?? 0,
+    웹인사이트: webRes.count  ?? 0,
+    유튜브:   ytRes.count     ?? 0,
+    'AI보고서': aiRes.count   ?? 0,
+  }
+  const catToday: Record<Category, number> = {
+    뉴스:     newsTodayRes.count   ?? 0,
+    리포트:   reportTodayRes.count ?? 0,
+    웹인사이트: webTodayRes.count  ?? 0,
+    유튜브:   ytTodayRes.count     ?? 0,
+    'AI보고서': aiTodayRes.count   ?? 0,
+  }
+
+  // ── 14일 추이 집계 ─────────────────────────────────────────────────────────
+
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const kst = new Date(todayStartMs - (13 - i) * 24 * 60 * 60 * 1000 + 9 * 60 * 60 * 1000)
+    return `${String(kst.getUTCMonth() + 1).padStart(2, '0')}/${String(kst.getUTCDate()).padStart(2, '0')}`
+  })
+
+  type TrendBucket = Omit<DayTrend, 'date'>
+  const trendMap: Record<string, TrendBucket> = {}
+  days.forEach(d => { trendMap[d] = { 뉴스: 0, 리포트: 0, 웹인사이트: 0, 유튜브: 0, 'AI보고서': 0 } })
+
+  type TrendRow = { category: string; collected_at: string }
+  for (const row of (trendRes.data ?? []) as TrendRow[]) {
+    const kst = new Date(new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000)
+    const label = `${String(kst.getUTCMonth() + 1).padStart(2, '0')}/${String(kst.getUTCDate()).padStart(2, '0')}`
+    if (trendMap[label] && (CATEGORIES as readonly string[]).includes(row.category)) {
+      ;(trendMap[label] as Record<string, number>)[row.category]++
+    }
+  }
+  const dayTrend: DayTrend[] = days.map(d => ({ date: d, ...trendMap[d] }))
+
+  // ── 소스 Top 10 집계 ───────────────────────────────────────────────────────
+
+  type SourceRow = { source_id: string | null; sources: { name: string } | { name: string }[] | null }
+  const sourceMap: Record<string, { name: string; count: number }> = {}
+  for (const row of (sourceRes.data ?? []) as SourceRow[]) {
+    const sid = row.source_id
+    const src = row.sources
+    const name = Array.isArray(src) ? src[0]?.name : (src as { name: string } | null)?.name
+    if (sid && name) {
+      if (!sourceMap[sid]) sourceMap[sid] = { name, count: 0 }
+      sourceMap[sid].count++
+    }
+  }
+  const sourceTop = Object.entries(sourceMap)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 10)
+    .map(([sourceId, { name, count }]) => ({ sourceId, name, count }))
+
+  // ── ChartData 직렬화 ───────────────────────────────────────────────────────
+
+  const chartData: ChartData = {
+    categoryDist:      CATEGORIES.map(c => ({ name: c, value: catTotals[c] })),
+    todayCategoryDist: CATEGORIES.map(c => ({ name: c, value: catToday[c] })),
+    statusDist: [
+      { name: '게시됨',    value: publishedRes.count ?? 0 },
+      { name: '검토 대기', value: pendingRes.count   ?? 0 },
+      { name: '반려됨',    value: rejectedRes.count  ?? 0 },
+    ],
+    dayTrend,
+    sourceTop,
+  }
+
+  // ─── JSX ─────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div>
         <h1 className="text-2xl font-bold text-foreground">어드민 홈</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -111,50 +157,119 @@ export default async function AdminPage() {
         </p>
       </div>
 
-      <section aria-labelledby="metrics-heading">
-        <h2 id="metrics-heading" className="mb-3 text-sm font-semibold text-foreground">
+      {/* ① KPI 카드 */}
+      <section aria-labelledby="kpi-heading">
+        <h2 id="kpi-heading" className="mb-3 text-sm font-semibold text-foreground">
           운영 현황
         </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {metrics.map((metric) => (
-            <div
-              key={metric.label}
-              className="rounded-xl border border-border bg-card p-5"
-            >
-              <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
-              <p className="mt-2 text-2xl font-bold text-foreground">
-                {metric.value.toLocaleString()}
-              </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {/* 총 콘텐츠 */}
+          <Link href="/admin/raw" className={KPI_CARD}>
+            <p className="text-xs font-medium text-muted-foreground">총 콘텐츠</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">
+              {(totalRes.count ?? 0).toLocaleString()}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+              {CATEGORIES.map(c => (
+                <span key={c}>{c} {catTotals[c].toLocaleString()}</span>
+              ))}
             </div>
-          ))}
+          </Link>
+
+          {/* 오늘 수집 */}
+          <Link href="/admin/raw?from=today" className={KPI_CARD}>
+            <p className="text-xs font-medium text-muted-foreground">오늘 수집</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">
+              {(todayRes.count ?? 0).toLocaleString()}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+              {CATEGORIES.map(c => (
+                <span key={c}>{c} {catToday[c].toLocaleString()}</span>
+              ))}
+            </div>
+          </Link>
+
+          {/* 검토 대기 */}
+          <Link href="/admin/raw?status=pending" className={KPI_CARD}>
+            <p className="text-xs font-medium text-muted-foreground">검토 대기</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">
+              {(pendingRes.count ?? 0).toLocaleString()}
+            </p>
+          </Link>
+
+          {/* 북마크된 콘텐츠 */}
+          <Link href="/admin/raw?bookmarked=1" className={KPI_CARD}>
+            <p className="text-xs font-medium text-muted-foreground">북마크된 콘텐츠</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">
+              {(bookmarkedRes.count ?? 0).toLocaleString()}
+            </p>
+          </Link>
+
+          {/* 활성 소스 */}
+          <Link href="/admin/sources" className={KPI_CARD}>
+            <p className="text-xs font-medium text-muted-foreground">활성 소스</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">
+              {(activeSourcesRes.count ?? 0).toLocaleString()}
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              전체 {(totalSourcesRes.count ?? 0).toLocaleString()}개
+            </p>
+          </Link>
+
+          {/* 리서치 반영 */}
+          <Link href="/admin/raw?research=1" className={KPI_CARD}>
+            <p className="text-xs font-medium text-muted-foreground">리서치 반영</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">
+              {researchRes.count ?? 0}
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">AI 보고서 인용 콘텐츠</p>
+          </Link>
         </div>
       </section>
 
+      {/* ② 차트 */}
+      <section aria-labelledby="charts-heading">
+        <h2 id="charts-heading" className="mb-3 text-sm font-semibold text-foreground">
+          수집 분석
+        </h2>
+        <DashboardCharts chartData={chartData} />
+      </section>
+
+      {/* ③ 관리 메뉴 (지시서 73, 유지) */}
       <section aria-labelledby="menu-heading">
-        <h2 id="menu-heading" className="mb-3 text-sm font-semibold text-foreground">
+        <h2 id="menu-heading" className="mb-4 text-sm font-semibold text-foreground">
           관리 메뉴
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {MENU_ITEMS.map((item) => {
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-200 hover:bg-brand-50"
-              >
-                <div className="flex items-start gap-4">
-                  <span className="rounded-lg bg-muted p-2.5 text-muted-foreground transition-colors group-hover:bg-card group-hover:text-brand-600">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{item.label}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
+        <div className="space-y-6">
+          {MENU_GROUPS.map((g) => (
+            <div key={g.group}>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
+                {g.group}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {g.items.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-200 hover:bg-brand-50"
+                    >
+                      <div className="flex items-start gap-4">
+                        <span className="rounded-lg bg-muted p-2.5 text-muted-foreground transition-colors group-hover:bg-card group-hover:text-brand-600">
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <h3 className="font-semibold text-foreground">{item.label}</h3>
+                          <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

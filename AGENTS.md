@@ -417,7 +417,7 @@ import { cn } from '@/lib/utils'
 
 추후 `docs/ADR/` 폴더에 Architecture Decision Records 형식으로:
 - 폼 라이브러리 도입 결정
-- 차트 라이브러리 선택 (Recharts vs ECharts vs Visx)
+- 차트 라이브러리 = **Recharts** (결정 2026-06, 지시서 74)
 - LLM 게이트웨이 (LiteLLM 도입 여부)
 - 크롤링 워커 호스팅 (Vercel Cron vs 별도)
 
