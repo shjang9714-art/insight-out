@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
-import { CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
+import { COLLECTED_CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
@@ -415,10 +415,10 @@ export default function AdminContentManager() {
 
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
-  // 카테고리 탭 (전체 + CATEGORY_DEFS)
+  // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
   const categoryTabs: { value: string; label: string }[] = [
     { value: 'all', label: '전체' },
-    ...CATEGORY_DEFS.map((d) => ({ value: d.category, label: d.label })),
+    ...COLLECTED_CATEGORY_DEFS.map((d) => ({ value: d.category, label: d.label })),
   ]
 
   // 선택된 카테고리에 맞는 소스만 (없으면 전체)

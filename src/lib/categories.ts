@@ -18,6 +18,8 @@ export interface CategoryDef {
   activeClass: string
   /** hover 상태 border 컬러 클래스 */
   hoverClass: string
+  /** AI분석·전략보고서 등 contents 테이블에 없는 생성물 카테고리 */
+  generated?: boolean
 }
 
 export const CATEGORY_DEFS: CategoryDef[] = [
@@ -68,6 +70,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: 'AI분석',
     category: 'AI분석',
     dbCategories: ['AI보고서', 'AI분석'],
+    generated: true,
     iconClass: 'text-violet-600 dark:text-violet-400',
     activeClass: 'border-violet-600 text-violet-600 dark:border-violet-400 dark:text-violet-400',
     hoverClass: 'hover:border-violet-200 hover:text-violet-700 dark:hover:border-violet-800 dark:hover:text-violet-300',
@@ -78,6 +81,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '전략보고서',
     category: '전략보고서',
     dbCategories: ['전략보고서'],
+    generated: true,
     iconClass: 'text-amber-600 dark:text-amber-400',
     activeClass: 'border-amber-600 text-amber-600 dark:border-amber-400 dark:text-amber-400',
     hoverClass: 'hover:border-amber-200 hover:text-amber-700 dark:hover:border-amber-800 dark:hover:text-amber-300',
@@ -85,6 +89,9 @@ export const CATEGORY_DEFS: CategoryDef[] = [
 ]
 
 export const ALL_CATEGORIES: ContentCategory[] = CATEGORY_DEFS.map((d) => d.category)
+
+/** contents 테이블에 실제 존재하는 수집 카테고리만 (생성물 제외) */
+export const COLLECTED_CATEGORY_DEFS = CATEGORY_DEFS.filter((d) => !d.generated)
 
 /** 표시 카테고리명 → DB 조회 category 배열 */
 export function getCategoryDbValues(displayCategory: ContentCategory): ContentCategory[] {
