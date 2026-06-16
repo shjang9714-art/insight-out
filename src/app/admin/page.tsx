@@ -161,7 +161,7 @@ export default async function AdminPage() {
         </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {/* 총 콘텐츠 */}
-          <Link href="/admin/raw" className={KPI_CARD}>
+          <Link href="/admin/contents" className={KPI_CARD}>
             <p className="text-xs font-medium text-muted-foreground">총 콘텐츠</p>
             <p className="mt-2 text-2xl font-bold text-foreground">
               {(totalRes.count ?? 0).toLocaleString()}
@@ -174,7 +174,7 @@ export default async function AdminPage() {
           </Link>
 
           {/* 오늘 수집 */}
-          <Link href="/admin/raw?from=today" className={KPI_CARD}>
+          <Link href="/admin/contents?from=today" className={KPI_CARD}>
             <p className="text-xs font-medium text-muted-foreground">오늘 수집</p>
             <p className="mt-2 text-2xl font-bold text-foreground">
               {(todayRes.count ?? 0).toLocaleString()}
@@ -187,7 +187,7 @@ export default async function AdminPage() {
           </Link>
 
           {/* 검토 대기 */}
-          <Link href="/admin/raw?status=pending" className={KPI_CARD}>
+          <Link href="/admin/contents?status=pending" className={KPI_CARD}>
             <p className="text-xs font-medium text-muted-foreground">검토 대기</p>
             <p className="mt-2 text-2xl font-bold text-foreground">
               {(pendingRes.count ?? 0).toLocaleString()}
@@ -195,7 +195,7 @@ export default async function AdminPage() {
           </Link>
 
           {/* 북마크된 콘텐츠 */}
-          <Link href="/admin/raw?bookmarked=1" className={KPI_CARD}>
+          <Link href="/admin/contents?bookmarked=1" className={KPI_CARD}>
             <p className="text-xs font-medium text-muted-foreground">북마크된 콘텐츠</p>
             <p className="mt-2 text-2xl font-bold text-foreground">
               {(bookmarkedRes.count ?? 0).toLocaleString()}
@@ -213,14 +213,14 @@ export default async function AdminPage() {
             </p>
           </Link>
 
-          {/* 리서치 반영 */}
-          <Link href="/admin/raw?research=1" className={KPI_CARD}>
+          {/* 리서치 반영 (AI 보고서 뷰 미구현 — 준비중) */}
+          <div className={KPI_CARD + ' cursor-default opacity-60'}>
             <p className="text-xs font-medium text-muted-foreground">리서치 반영</p>
             <p className="mt-2 text-2xl font-bold text-foreground">
               {researchRes.count ?? 0}
             </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">AI 보고서 인용 콘텐츠</p>
-          </Link>
+            <p className="mt-1 text-[11px] text-muted-foreground">AI 보고서 인용 콘텐츠 · 준비중</p>
+          </div>
         </div>
       </section>
 

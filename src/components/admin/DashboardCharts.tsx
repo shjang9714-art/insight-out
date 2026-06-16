@@ -79,7 +79,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                 nameKey="name"
                 cursor="pointer"
                 onClick={(entry: { name?: string }) => {
-                  if (entry.name) router.push(`/admin/raw?category=${encodeURIComponent(entry.name)}`)
+                  if (entry.name) router.push(`/admin/contents?category=${encodeURIComponent(entry.name)}`)
                 }}
               >
                 {categoryDist.map((entry) => (
@@ -117,7 +117,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                     반려됨: 'rejected',
                   }
                   const s = entry.name ? statusMap[entry.name] : undefined
-                  if (s) router.push(`/admin/raw?status=${s}`)
+                  if (s) router.push(`/admin/contents?status=${s}`)
                 }}
               >
                 {statusDist.map((entry) => (
@@ -152,7 +152,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                   fill={CAT_COLORS[cat]}
                   cursor="pointer"
                   onClick={() =>
-                    router.push(`/admin/raw?category=${encodeURIComponent(cat)}`)
+                    router.push(`/admin/contents?category=${encodeURIComponent(cat)}`)
                   }
                 />
               ))}
@@ -192,7 +192,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                   cursor="pointer"
                   onClick={(d: unknown) => {
                     const entry = d as { sourceId?: string }
-                    if (entry.sourceId) router.push(`/admin/raw?source=${encodeURIComponent(entry.sourceId)}`)
+                    if (entry.sourceId) router.push(`/admin/contents?source=${encodeURIComponent(entry.sourceId)}`)
                   }}
                 />
               </BarChart>
