@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
+import { Loader2 } from 'lucide-react'
 import AdminContentManager from '@/components/admin/AdminContentManager'
 
 export const metadata: Metadata = {
@@ -15,7 +17,14 @@ export default function AdminContentsPage() {
           수집된 콘텐츠를 검토하고 노출하거나 숨기거나 삭제합니다.
         </p>
       </div>
-      <AdminContentManager />
+      <Suspense fallback={
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          콘텐츠를 불러오는 중입니다.
+        </div>
+      }>
+        <AdminContentManager />
+      </Suspense>
     </>
   )
 }

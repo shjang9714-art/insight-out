@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,13 +21,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
-import { COLLECTED_CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
+import { COLLECTED_CATEGORY_DEFS, toDbCategories, tabCategoryFor } from '@/lib/categories'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
   type ContentStatus,
   type SourceType,
 } from '@/lib/types'
+import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 
 interface AdminContentRow {
@@ -35,6 +37,7 @@ interface AdminContentRow {
   category: ContentCategory
   status: ContentStatus
   collected_at: string
+  bookmark_count: number | null
   sources: { name: string } | null
 }
 
@@ -94,6 +97,7 @@ function toDateInput(value: string | null | undefined): string {
 
 export default function AdminContentManager() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
 
   const [contents,       setContents]       = useState<AdminContentRow[]>([])
   const [isLoading,      setIsLoading]      = useState(true)
@@ -101,11 +105,19 @@ export default function AdminContentManager() {
   const [pendingCount,   setPendingCount]   = useState<number | null>(null)
   const [totalCount,     setTotalCount]     = useState(0)
 
-  // 필터
-  const [category,     setCategory]     = useState('all')
-  const [sourceId,     setSourceId]     = useState(SOURCE_ALL)
-  const [status,       setStatus]       = useState('all')
-  const [searchTerm,   setSearchTerm]   = useState('')
+  // 필터 (URL 파라미터로 초기값 설정)
+  const [category,      setCategory]      = useState(() => {
+    const c = searchParams.get('category')
+    return c ? tabCategoryFor(c) : 'all'
+  })
+  const [sourceId,      setSourceId]      = useState(() => {
+    const s = searchParams.get('source')
+    return s === 'null' ? SOURCE_NULL : (s ?? SOURCE_ALL)
+  })
+  const [status,        setStatus]        = useState(() => searchParams.get('status') ?? 'all')
+  const [todayOnly,     setTodayOnly]     = useState(() => searchParams.get('from') === 'today')
+  const [bookmarkedOnly, setBookmarkedOnly] = useState(() => searchParams.get('bookmarked') === '1')
+  const [searchTerm,    setSearchTerm]    = useState('')
   const [debouncedTerm, setDebouncedTerm] = useState('')
 
   // 소스 목록 (필터·편집 공용)
@@ -169,7 +181,7 @@ export default function AdminContentManager() {
 
       let q = supabase
         .from('contents')
-        .select('id, title, category, status, collected_at, sources(name)', { count: 'exact' })
+        .select('id, title, category, status, collected_at, bookmark_count, sources(name)', { count: 'exact' })
         .order('collected_at', { ascending: false })
 
       if (status !== 'all')          q = q.eq('status', status as ContentStatus)
@@ -182,6 +194,8 @@ export default function AdminContentManager() {
       if (sourceId === SOURCE_NULL)  q = q.is('source_id', null)
       else if (sourceId !== SOURCE_ALL) q = q.eq('source_id', sourceId)
       if (debouncedTerm.trim())      q = q.ilike('title', `%${debouncedTerm.trim()}%`)
+      if (todayOnly)                 q = q.gte('collected_at', getKstTodayStartIso())
+      if (bookmarkedOnly)            q = q.gt('bookmark_count', 0)
 
       q = q.range((page - 1) * pageSize, page * pageSize - 1)
 
@@ -195,7 +209,7 @@ export default function AdminContentManager() {
       setIsLoading(false)
     }
     void run()
-  }, [status, category, sourceId, debouncedTerm, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -578,6 +592,47 @@ export default function AdminContentManager() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* ── 활성 필터 칩 ── */}
+      {(todayOnly || bookmarkedOnly || sourceId !== SOURCE_ALL || (category !== 'all' && !categoryTabs.some((t) => t.value === category))) && (
+        <div className="flex flex-wrap gap-2">
+          {todayOnly && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              오늘 수집
+              <button type="button" onClick={() => { setTodayOnly(false); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="오늘 수집 필터 제거">×</button>
+            </span>
+          )}
+          {bookmarkedOnly && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              북마크됨
+              <button type="button" onClick={() => { setBookmarkedOnly(false); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="북마크 필터 제거">×</button>
+            </span>
+          )}
+          {sourceId === SOURCE_NULL && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              소스: Google News 검색
+              <button type="button" onClick={() => { setSourceId(SOURCE_ALL); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="소스 필터 제거">×</button>
+            </span>
+          )}
+          {sourceId !== SOURCE_ALL && sourceId !== SOURCE_NULL && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              소스: {sources.find((s) => s.id === sourceId)?.name ?? sourceId.slice(0, 8)}
+              <button type="button" onClick={() => { setSourceId(SOURCE_ALL); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="소스 필터 제거">×</button>
+            </span>
+          )}
+          {category !== 'all' && !categoryTabs.some((t) => t.value === category) && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              카테고리: {CONTENT_CATEGORY_LABEL[category as ContentCategory] ?? category}
+              <button type="button" onClick={() => { setCategory('all'); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="카테고리 필터 제거">×</button>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── 일괄 작업 바 ── */}
       {selectedIds.size > 0 && (

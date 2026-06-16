@@ -93,6 +93,17 @@ export const ALL_CATEGORIES: ContentCategory[] = CATEGORY_DEFS.map((d) => d.cate
 /** contents 테이블에 실제 존재하는 수집 카테고리만 (생성물 제외) */
 export const COLLECTED_CATEGORY_DEFS = CATEGORY_DEFS.filter((d) => !d.generated)
 
+/**
+ * DB 값(리포트·AI보고서 등) 또는 표시값을 받아 탭에 쓰는 표시 카테고리로 정규화.
+ * 예: '리포트' → '리서치', '뉴스' → '뉴스', 'AI보고서' → 'AI보고서'(탭 없음·칩 표시용)
+ */
+export function tabCategoryFor(value: string): string {
+  const def = COLLECTED_CATEGORY_DEFS.find(
+    (d) => d.category === value || (d.dbCategories as readonly string[]).includes(value)
+  )
+  return def ? def.category : value
+}
+
 /** 표시 카테고리명 → DB 조회 category 배열 */
 export function getCategoryDbValues(displayCategory: ContentCategory): ContentCategory[] {
   const def = CATEGORY_DEFS.find((d) => d.category === displayCategory)
