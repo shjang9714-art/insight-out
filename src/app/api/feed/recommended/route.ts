@@ -27,6 +27,43 @@ interface ContentRow {
   matched_keywords: string[]
 }
 
+function tokenizeTitle(title: string): string[] {
+  return title
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .split(/\s+/)
+    .filter((t) => t.length >= 2)
+    .map((t) => t.toLowerCase())
+}
+
+function jaccardSimilarity(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0
+  const setA = new Set(a)
+  const setB = new Set(b)
+  let intersection = 0
+  for (const token of setA) {
+    if (setB.has(token)) intersection++
+  }
+  const union = new Set([...setA, ...setB]).size
+  return union === 0 ? 0 : intersection / union
+}
+
+function dedupSimilarItems<T extends { title: string }>(
+  items: T[],
+  threshold = 0.4,
+): T[] {
+  const keep: (T & { _tokens: string[] })[] = []
+  for (const item of items) {
+    const tokens = tokenizeTitle(item.title)
+    const isDuplicate = keep.some(
+      (kept) => jaccardSimilarity(tokens, kept._tokens) >= threshold,
+    )
+    if (!isDuplicate) {
+      keep.push({ ...item, _tokens: tokens })
+    }
+  }
+  return keep.map(({ _tokens: _, ...rest }) => rest as unknown as T)
+}
+
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -43,7 +80,7 @@ export async function GET(req: NextRequest) {
   }
 
   // B2B 무관 기사가 섞여 있을 수 있으므로 여유 있게 가져온 뒤 필터+slice
-  const fetchLimit = limit * 3
+  const fetchLimit = limit * 5
 
   const { data: ranked, error: rpcError } = await supabase.rpc('get_recommended_feed', {
     p_user_id: user.id,
@@ -71,10 +108,12 @@ export async function GET(req: NextRequest) {
   const scoreMap = new Map(rows.map((row) => [row.content_id, row.score]))
 
   // RPC가 이미 점수순으로 정렬해 반환하므로 그 순서를 유지한 채 컨텐츠를 붙인다.
-  const items = rows
+  const filtered = rows
     .map((row) => contentMap.get(row.content_id))
     .filter((c): c is ContentRow => c !== undefined)
     .filter((c) => isB2BRelevant(c.title, c.summary_ko))
+  const deduped = dedupSimilarItems(filtered)
+  const items = deduped
     .slice(0, limit)
     .map((c) => ({
       ...c,
