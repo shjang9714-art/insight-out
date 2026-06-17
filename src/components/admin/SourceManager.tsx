@@ -26,6 +26,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import type { SourceType, CollectionMethod } from '@/lib/types'
+import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 import type {
   CrawlJob,
@@ -34,14 +35,6 @@ import type {
 import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
-
-const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-  news_site:        '뉴스',
-  report_publisher: '리포트',
-  web_insight:      '웹인사이트',
-  newsletter:       '뉴스레터(미사용)',
-  youtube_channel:  '유튜브',
-}
 
 // newsletter 제외 — 신규 선택 차단 (기존 row 표시는 SOURCE_TYPE_LABELS로 유지)
 const SOURCE_TYPES: SourceType[] = [
