@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { isB2BRelevant } from '@/lib/feed-blocklist'
+import { dedupSimilarItems } from '@/lib/feed-dedup'
 
 const CONTENT_SELECT =
   'id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords'
@@ -25,43 +26,6 @@ interface ContentRow {
   sources: { name: string } | null
   matched_groups: string[]
   matched_keywords: string[]
-}
-
-function tokenizeTitle(title: string): string[] {
-  return title
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
-    .split(/\s+/)
-    .filter((t) => t.length >= 2)
-    .map((t) => t.toLowerCase())
-}
-
-function jaccardSimilarity(a: string[], b: string[]): number {
-  if (a.length === 0 || b.length === 0) return 0
-  const setA = new Set(a)
-  const setB = new Set(b)
-  let intersection = 0
-  for (const token of setA) {
-    if (setB.has(token)) intersection++
-  }
-  const union = new Set([...setA, ...setB]).size
-  return union === 0 ? 0 : intersection / union
-}
-
-function dedupSimilarItems<T extends { title: string }>(
-  items: T[],
-  threshold = 0.4,
-): T[] {
-  const keep: (T & { _tokens: string[] })[] = []
-  for (const item of items) {
-    const tokens = tokenizeTitle(item.title)
-    const isDuplicate = keep.some(
-      (kept) => jaccardSimilarity(tokens, kept._tokens) >= threshold,
-    )
-    if (!isDuplicate) {
-      keep.push({ ...item, _tokens: tokens })
-    }
-  }
-  return keep.map(({ _tokens: _, ...rest }) => rest as unknown as T)
 }
 
 export async function GET(req: NextRequest) {

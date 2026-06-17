@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import ContentCard from '@/components/dashboard/ContentCard'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { type ContentCategory } from '@/lib/types'
+import { dedupSimilarItems } from '@/lib/feed-dedup'
 import EditPreferencesButton from './EditPreferencesButton'
 import OnboardingKeywordPicker from './OnboardingKeywordPicker'
 
@@ -118,6 +119,14 @@ export default function RecommendedFeed({
         const existingIds = new Set(built[0].items.map((item) => item.id))
         const extra = ((res.items ?? []) as FeedItem[]).filter((item) => !existingIds.has(item.id)).slice(0, shortfall)
         built[0] = { ...built[0], items: [...built[0].items, ...extra] }
+      }
+
+      // 슬롯간 글로벌 dedup: 우선순위 순으로 합쳐 dedup 후 각 슬롯에서 제거된 항목 필터
+      const allItems = built.flatMap((s) => s.items)
+      const kept = dedupSimilarItems(allItems)
+      const keptIds = new Set(kept.map((item) => item.id))
+      for (const section of built) {
+        section.items = section.items.filter((item) => keptIds.has(item.id))
       }
 
       if (!cancelled) {
