@@ -88,11 +88,41 @@ function getDateStart(filter: string): string | null {
   return null
 }
 
-function displayDate(item: ContentItem): string | null {
-  if (item.category === '리포트' || item.category === 'AI보고서') {
+function displayDate(item: ContentItem, sortByCollected: boolean): string | null {
+  if (sortByCollected || item.category === '리포트' || item.category === 'AI보고서') {
     return item.collected_at
   }
   return item.published_at ?? item.collected_at
+}
+
+function basisTime(item: ContentItem, sortByCollected: boolean): number {
+  const d = sortByCollected ? item.collected_at : (item.published_at ?? item.collected_at)
+  return d ? new Date(d).getTime() : 0
+}
+
+function groupByKstDay(
+  clustered: ClusteredItem[],
+  sortByCollected: boolean
+): { key: string; label: string; items: ClusteredItem[] }[] {
+  const nowKst = Date.now() + 9 * 3_600_000
+  const todayKey = new Date(nowKst).toISOString().slice(0, 10)
+  const yKey     = new Date(nowKst - 86_400_000).toISOString().slice(0, 10)
+  const result: { key: string; label: string; items: ClusteredItem[] }[] = []
+  for (const ci of clustered) {
+    const raw = sortByCollected ? ci.item.collected_at : (ci.item.published_at ?? ci.item.collected_at)
+    const key = new Date(new Date(raw).getTime() + 9 * 3_600_000).toISOString().slice(0, 10)
+    const last = result.at(-1)
+    if (last?.key === key) {
+      last.items.push(ci)
+    } else {
+      const label =
+        key === todayKey ? '오늘' :
+        key === yKey     ? '어제' :
+        `${parseInt(key.slice(5, 7))}월 ${parseInt(key.slice(8))}일`
+      result.push({ key, label, items: [ci] })
+    }
+  }
+  return result
 }
 
 function getSavedView(): ContentView {
@@ -171,6 +201,10 @@ function ContentsContent() {
   const srcParam = searchParams.get('src') ?? ''
   const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+  const sort     = (searchParams.get('sort') ?? 'published') as 'published' | 'collected'
+
+  const isReportCategory = category === '리포트' || category === 'AI보고서'
+  const sortByCollected  = sort === 'collected' || isReportCategory
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
   const [items, setItems]         = useState<ContentItem[]>([])
@@ -179,6 +213,7 @@ function ContentsContent() {
   const [services, setServices]   = useState<ServiceOption[]>([])
   const [sources, setSources]     = useState<SourceOption[]>([])
   const [contentView, setContentView] = useState<ContentView>('card')
+  const [groupByDay, setGroupByDay]   = useState(false)
   // null = 카테고리 미선택(전체 출처 노출)
   const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
 
@@ -275,8 +310,6 @@ function ContentsContent() {
         ? 'content_services!inner(services(name))'
         : 'content_services(services(name))'
 
-      const isReportCategory = category === '리포트' || category === 'AI보고서'
-
       let q = supabase
         .from('contents')
         .select(
@@ -285,7 +318,7 @@ function ContentsContent() {
         )
         .eq('status', 'published')
 
-      q = isReportCategory
+      q = sortByCollected
         ? q.order('collected_at', { ascending: false })
         : q.order('published_at', { ascending: false, nullsFirst: false })
 
@@ -298,7 +331,7 @@ function ContentsContent() {
       if (srcIds.length > 0) q = q.in('source_id', srcIds)
 
       const dateStart = getDateStart(date)
-      if (dateStart)      q = q.gte('published_at', dateStart)
+      if (dateStart)      q = q.gte(sortByCollected ? 'collected_at' : 'published_at', dateStart)
       if (svcContentIds)  q = q.in('id', svcContentIds)
 
       const { data, count, error } = await q
@@ -317,7 +350,7 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, srcIds, relevant, page])
+  }, [category, date, svcIds, srcIds, relevant, page, sort, sortByCollected])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => updateParam('page', String(page + 1))
@@ -337,9 +370,7 @@ function ContentsContent() {
       const sorted = [...group].sort((a, b) => {
         const sd = (b.importance_score ?? 0) - (a.importance_score ?? 0)
         if (sd !== 0) return sd
-        const at = a.published_at ? new Date(a.published_at).getTime() : 0
-        const bt = b.published_at ? new Date(b.published_at).getTime() : 0
-        return bt - at
+        return basisTime(b, sortByCollected) - basisTime(a, sortByCollected)
       })
       const [rep, ...rest] = sorted
       result.push({
@@ -351,13 +382,9 @@ function ContentsContent() {
         })),
       })
     }
-    result.sort((a, b) => {
-      const at = a.item.published_at ? new Date(a.item.published_at).getTime() : 0
-      const bt = b.item.published_at ? new Date(b.item.published_at).getTime() : 0
-      return bt - at
-    })
+    result.sort((a, b) => basisTime(b.item, sortByCollected) - basisTime(a.item, sortByCollected))
     return result
-  }, [items])
+  }, [items, sortByCollected])
 
   // ── 활성 필터 chip 목록 (카테고리 칩 제거, 서비스는 선택된 것만) ──────────────
   const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
@@ -413,34 +440,78 @@ function ContentsContent() {
           )}
         </div>
 
-        {/* 카드/목록 토글 */}
-        <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+        {/* 정렬·뷰 토글 그룹 */}
+        <div className="flex items-center gap-2">
+          {/* 발행순/수집순 토글 (리포트는 항상 수집순이라 숨김) */}
+          {!isReportCategory && (
+            <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+              <button
+                onClick={() => updateParam('sort', '')}
+                className={cn(
+                  'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  sort === 'published' || !searchParams.get('sort')
+                    ? 'bg-brand-600 text-white'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                발행순
+              </button>
+              <button
+                onClick={() => updateParam('sort', 'collected')}
+                className={cn(
+                  'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  sort === 'collected'
+                    ? 'bg-brand-600 text-white'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                수집순
+              </button>
+            </div>
+          )}
+
+          {/* 일별 묶음 토글 */}
           <button
-            onClick={() => handleViewChange('card')}
+            onClick={() => setGroupByDay((v) => !v)}
             className={cn(
-              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-              contentView === 'card'
-                ? 'bg-brand-600 text-white'
-                : 'text-muted-foreground hover:text-foreground'
+              'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+              groupByDay
+                ? 'border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300'
+                : 'border-border bg-card text-muted-foreground hover:text-foreground'
             )}
-            aria-label="카드 뷰"
           >
-            <LayoutGrid className="h-3.5 w-3.5" />
-            카드
+            일별 보기
           </button>
-          <button
-            onClick={() => handleViewChange('list')}
-            className={cn(
-              'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-              contentView === 'list'
-                ? 'bg-brand-600 text-white'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            aria-label="목록 뷰"
-          >
-            <List className="h-3.5 w-3.5" />
-            목록
-          </button>
+
+          {/* 카드/목록 토글 */}
+          <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+            <button
+              onClick={() => handleViewChange('card')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                contentView === 'card'
+                  ? 'bg-brand-600 text-white'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              aria-label="카드 뷰"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              카드
+            </button>
+            <button
+              onClick={() => handleViewChange('list')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                contentView === 'list'
+                  ? 'bg-brand-600 text-white'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              aria-label="목록 뷰"
+            >
+              <List className="h-3.5 w-3.5" />
+              목록
+            </button>
+          </div>
         </div>
       </div>
 
@@ -585,7 +656,60 @@ function ContentsContent() {
         </div>
       ) : (
         <>
-          {contentView === 'card' ? (
+          {groupByDay ? (
+            /* ── 일별 묶음 보기 ── */
+            <div className="space-y-6">
+              {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
+                <div key={seg.key}>
+                  <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+                    {seg.label}
+                  </p>
+                  {contentView === 'card' ? (
+                    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+                      {seg.items.map(({ item, members }) => (
+                        <ContentListCard
+                          key={item.id}
+                          id={item.id}
+                          title={item.title}
+                          excerpt={toExcerpt(item.summary_ko, item.body_original)}
+                          category={item.category}
+                          publishedAt={displayDate(item, sortByCollected)}
+                          originalUrl={item.original_url}
+                          filePath={item.file_path}
+                          isEditorPick={item.is_editor_pick}
+                          author={item.author}
+                          sourceName={item.sources?.name ?? null}
+                          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                          clusterMembers={members.length > 0 ? members : undefined}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {seg.items.map(({ item, members }) => (
+                        <ContentRow
+                          key={item.id}
+                          id={item.id}
+                          title={item.title}
+                          summaryKo={item.summary_ko}
+                          bodyOriginal={item.body_original}
+                          category={item.category}
+                          publishedAt={displayDate(item, sortByCollected)}
+                          originalUrl={item.original_url}
+                          filePath={item.file_path}
+                          isEditorPick={item.is_editor_pick}
+                          author={item.author}
+                          sourceName={item.sources?.name ?? null}
+                          keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                          clusterMembers={members.length > 0 ? members : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : contentView === 'card' ? (
             <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
               {clusteredItems.map(({ item, members }) => (
                 <ContentListCard
@@ -594,7 +718,7 @@ function ContentsContent() {
                   title={item.title}
                   excerpt={toExcerpt(item.summary_ko, item.body_original)}
                   category={item.category}
-                  publishedAt={displayDate(item)}
+                  publishedAt={displayDate(item, sortByCollected)}
                   originalUrl={item.original_url}
                   filePath={item.file_path}
                   isEditorPick={item.is_editor_pick}
@@ -615,7 +739,7 @@ function ContentsContent() {
                   summaryKo={item.summary_ko}
                   bodyOriginal={item.body_original}
                   category={item.category}
-                  publishedAt={displayDate(item)}
+                  publishedAt={displayDate(item, sortByCollected)}
                   originalUrl={item.original_url}
                   filePath={item.file_path}
                   isEditorPick={item.is_editor_pick}
