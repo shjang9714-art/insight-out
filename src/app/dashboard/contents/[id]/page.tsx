@@ -211,12 +211,12 @@ export default async function ContentDetailPage({ params }: PageProps) {
     getRelatedYoutube(supabase, currentMeta),
     supabase
       .from('content_entities')
-      .select('entities(canonical_name, entity_type, is_competitor)')
+      .select('entities(id, canonical_name, entity_type, is_competitor)')
       .eq('content_id', id)
       .limit(20),
   ])
 
-  type EntityRow = { canonical_name: string; entity_type: EntityType; is_competitor: boolean }
+  type EntityRow = { id: string; canonical_name: string; entity_type: EntityType; is_competitor: boolean }
   const relatedEntities: EntityRow[] = (entityRes.data ?? [])
     .map((r: unknown) => {
       const row = r as { entities: EntityRow | null }
@@ -485,8 +485,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
           <div className="flex flex-wrap gap-1.5">
             {relatedEntities.map((e) => (
               <Link
-                key={e.canonical_name}
-                href={`/dashboard/topics/${encodeURIComponent(e.canonical_name)}`}
+                key={e.id}
+                href={`/dashboard/entities/${e.id}`}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-75',
                   e.entity_type === 'tech'     && 'border-blue-200 bg-blue-50 text-blue-700',
