@@ -14,7 +14,8 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
-import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -205,10 +206,23 @@ export default async function ContentDetailPage({ params }: PageProps) {
     matched_groups: content.matched_groups,
     cluster_id: content.cluster_id,
   }
-  const [grouped, youtubeRelated] = await Promise.all([
+  const [grouped, youtubeRelated, entityRes] = await Promise.all([
     getRelatedGrouped(supabase, currentMeta),
     getRelatedYoutube(supabase, currentMeta),
+    supabase
+      .from('content_entities')
+      .select('entities(canonical_name, entity_type, is_competitor)')
+      .eq('content_id', id)
+      .limit(20),
   ])
+
+  type EntityRow = { canonical_name: string; entity_type: EntityType; is_competitor: boolean }
+  const relatedEntities: EntityRow[] = (entityRes.data ?? [])
+    .map((r: unknown) => {
+      const row = r as { entities: EntityRow | null }
+      return row.entities
+    })
+    .filter((e): e is EntityRow => e !== null)
 
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
@@ -463,6 +477,37 @@ export default async function ContentDetailPage({ params }: PageProps) {
           </div>
         </div>
       </article>
+
+      {/* 관련 엔티티 칩 */}
+      {relatedEntities.length > 0 && (
+        <section className="mt-6 border-t border-border pt-5">
+          <p className="mb-2.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wide">관련 엔티티</p>
+          <div className="flex flex-wrap gap-1.5">
+            {relatedEntities.map((e) => (
+              <Link
+                key={e.canonical_name}
+                href={`/dashboard/topics/${encodeURIComponent(e.canonical_name)}`}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-75',
+                  e.entity_type === 'tech'     && 'border-blue-200 bg-blue-50 text-blue-700',
+                  e.entity_type === 'policy'   && 'border-amber-200 bg-amber-50 text-amber-700',
+                  e.entity_type === 'product'  && 'border-violet-200 bg-violet-50 text-violet-700',
+                  e.entity_type === 'person'   && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                  e.entity_type === 'industry' && 'border-border bg-muted text-muted-foreground',
+                  e.entity_type === 'company'  && (
+                    e.is_competitor
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-brand-200 bg-brand-50 text-brand-700'
+                  ),
+                )}
+              >
+                <span className="opacity-60">{ENTITY_TYPE_LABEL[e.entity_type]}</span>
+                {e.canonical_name}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 관련 기사 — 유형별 가로 캐러셀 */}
       {(Object.keys(grouped).length > 0 || youtubeRelated.length > 0) && (

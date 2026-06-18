@@ -287,7 +287,8 @@ async function processCrawlItem(
   translationBudget: TranslationBudget,
   summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
-  counts: CrawlCounts
+  counts: CrawlCounts,
+  aliasMap: Map<string, string> = new Map()
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
     const url = normalizeUrl(item.original_url)
@@ -484,6 +485,36 @@ async function processCrawlItem(
           console.error('[크롤러] content_signals 적재 실패(SQL 65 미적용 가능):', e)
         }
 
+        // post-insert: 엔티티 링킹 (99) — matched_keywords ↔ alias 맵 → content_entities
+        // SQL 99 미적용 시 upsert 실패 → try/catch 격리로 크롤 무중단
+        try {
+          if (aliasMap.size > 0) {
+            const mergedKws: string[] = [
+              ...matchedTags.keywords,
+              ...llmTags.filter(t => !matchedTags.keywords.includes(t)),
+            ].slice(0, MAX_MERGED_TAGS)
+            const entityIds = [...new Set(
+              mergedKws
+                .map(kw => aliasMap.get(kw.toLowerCase()))
+                .filter((id): id is string => id !== undefined)
+            )]
+            if (entityIds.length > 0) {
+              const entityRows = entityIds.map(entity_id => ({
+                content_id: newId,
+                entity_id,
+                source: 'rule',
+                score: 1.0,
+              }))
+              const { error: entErr } = await admin
+                .from('content_entities')
+                .upsert(entityRows, { onConflict: 'content_id,entity_id', ignoreDuplicates: true })
+              if (entErr) console.error('[크롤러] content_entities 적재 실패(SQL 99 미적용 가능):', entErr.message)
+            }
+          }
+        } catch (e) {
+          console.error('[크롤러] content_entities 적재 실패(SQL 99 미적용 가능):', e)
+        }
+
         // post-insert: 한국어 요약 (B3-1) — published·본문충분·예산 조건
         if (contentStatus === 'published' && summarizeBudget.remaining > 0) {
           const bodyKo = translatedContent?.body ?? item.body ?? ''
@@ -526,7 +557,8 @@ async function crawlOne(
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
   summarizeBudget: TranslationBudget,
-  classifyBudget: TranslationBudget
+  classifyBudget: TranslationBudget,
+  aliasMap: Map<string, string> = new Map()
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -559,7 +591,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -705,7 +737,8 @@ async function crawlKeywordSearch(
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
   summarizeBudget: TranslationBudget,
-  classifyBudget: TranslationBudget
+  classifyBudget: TranslationBudget,
+  aliasMap: Map<string, string> = new Map()
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -730,7 +763,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap
         )
         if (result.partial) hadError = true
       }
@@ -922,6 +955,24 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     throw new Error('수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.')
   }
 
+  // 엔티티 alias 맵 로드 — SQL 99 미적용 시 빈 맵으로 격리(크롤 무중단)
+  const aliasMap = new Map<string, string>() // lower(alias) → entity_id
+  try {
+    const aliasResult = await admin
+      .from('entity_aliases')
+      .select('alias, entity_id')
+      .limit(5000)
+    if (aliasResult.error) {
+      console.warn('[크롤러] entity_aliases 조회 실패 (SQL 99 미적용 가능), 링킹 skip:', aliasResult.error.message)
+    } else {
+      for (const row of (aliasResult.data ?? []) as { alias: string; entity_id: string }[]) {
+        aliasMap.set(row.alias.toLowerCase(), row.entity_id)
+      }
+    }
+  } catch (e) {
+    console.warn('[크롤러] entity_aliases 로드 실패, 링킹 skip:', e)
+  }
+
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
@@ -955,7 +1006,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             groups,
             translationBudget,
             summarizeBudget,
-            classifyBudget
+            classifyBudget,
+            aliasMap
           )
     )
   )
@@ -1011,7 +1063,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted

@@ -316,3 +316,39 @@ export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
   '오피니언': '오피니언 채널',
   '뉴스레터': '뉴스레터',
 }
+
+// ============================================================
+// 엔티티 지식계층 (99-entities)
+// ============================================================
+
+export type EntityType = 'company' | 'tech' | 'product' | 'person' | 'policy' | 'industry'
+
+export interface Entity {
+  id: string
+  canonical_name: string
+  entity_type: EntityType
+  description: string | null
+  is_competitor: boolean
+  service_id: string | null
+  mention_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ContentEntity {
+  id: string
+  content_id: string
+  entity_id: string
+  source: string
+  score: number
+  created_at: string
+}
+
+export const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
+  company:  '기업',
+  tech:     '기술',
+  product:  '제품',
+  person:   '인물',
+  policy:   '정책',
+  industry: '산업',
+}
