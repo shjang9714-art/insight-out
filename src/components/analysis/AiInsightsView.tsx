@@ -318,49 +318,255 @@ export default async function AiInsightsView() {
   }
 
   return (
-    <div>
-      {/* 뜨는 토픽 위젯 */}
-      {trendingTopics.length > 0 && (
+    <div className="space-y-6">
+
+      {/* A. 핵심 인사이트 히어로 */}
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-foreground">AI 인사이트</h2>
+
+        {cards.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-12 text-center">
+            <p className="text-sm font-medium text-muted-foreground">AI 인사이트 생성 대기 중</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              어드민에서 인사이트 카드를 생성하면 이곳에 표시됩니다.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {[...groups.entries()].map(([key, groupCards], idx) => {
+              const [start, end] = key.split('|')
+              const isLatest = idx === 0
+              return (
+                <section key={key} className={cn(!isLatest && 'opacity-70')}>
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className={cn(
+                      'text-sm font-medium',
+                      isLatest ? 'text-foreground' : 'text-muted-foreground'
+                    )}>
+                      {formatPeriod(start, end)}
+                    </span>
+                    {isLatest && (
+                      <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
+                        최신
+                      </span>
+                    )}
+                    {!isLatest && (
+                      <span className="text-[11px] text-muted-foreground/60">이전 인사이트</span>
+                    )}
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {groupCards.map((card) => {
+                      const citations = card.citations as InsightCardCitation[]
+                      return (
+                        <article
+                          key={card.id}
+                          className="rounded-xl border border-border bg-card p-5 space-y-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
+                              {card.topic}
+                            </span>
+                          </div>
+
+                          <p className="text-base font-semibold text-foreground leading-snug">
+                            {card.headline}
+                          </p>
+
+                          {card.implication && (
+                            <div className="space-y-0.5">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                                시사점
+                              </span>
+                              <p className="text-sm text-muted-foreground leading-relaxed">
+                                {card.implication}
+                              </p>
+                            </div>
+                          )}
+
+                          {citations.length > 0 ? (
+                            <div className="space-y-2 pt-1 border-t border-border">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                                인용 출처
+                              </span>
+                              <ul className="space-y-2">
+                                {citations.map((c, i) => {
+                                  const meta = contentMap.get(c.content_id)
+                                  return (
+                                    <li key={i} className="flex gap-2">
+                                      <Quote className="h-3 w-3 mt-0.5 shrink-0 text-brand-600/40" />
+                                      <div className="min-w-0">
+                                        <p className="text-xs text-muted-foreground italic leading-snug">
+                                          &ldquo;{c.quote}&rdquo;
+                                        </p>
+                                        {meta ? (
+                                          <Link
+                                            href={`/dashboard/contents/${c.content_id}`}
+                                            className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
+                                          >
+                                            {meta.title}
+                                          </Link>
+                                        ) : (
+                                          <span className="mt-0.5 block text-[11px] text-muted-foreground/60 truncate">
+                                            출처 비공개
+                                          </span>
+                                        )}
+                                      </div>
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            </div>
+                          ) : card.source_content_ids.length > 0 ? (
+                            <div className="space-y-1.5 pt-1 border-t border-border">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                                관련 기사
+                              </span>
+                              <ul className="space-y-1">
+                                {card.source_content_ids.slice(0, 5).map((id) => {
+                                  const meta = contentMap.get(id)
+                                  return meta ? (
+                                    <li key={id}>
+                                      <Link
+                                        href={`/dashboard/contents/${id}`}
+                                        className="block text-xs text-brand-600 hover:underline truncate"
+                                      >
+                                        {meta.title}
+                                      </Link>
+                                    </li>
+                                  ) : null
+                                })}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* B. 신호 2열 — 뜨는 토픽 + 경쟁사 동향 */}
+      <div className="grid gap-4 sm:grid-cols-2">
+
+        {/* 뜨는 토픽 */}
         <section className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="h-4 w-4 text-brand-600" />
             <h2 className="text-sm font-semibold text-foreground">이번 주 뜨는 토픽</h2>
             <span className="text-xs text-muted-foreground">직전 주 대비</span>
           </div>
-          <ul className="space-y-2">
-            {trendingTopics.map((t) => (
-              <li key={t.group} className="flex items-center justify-between gap-3">
-                <Link
-                  href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
-                  className="text-sm text-foreground truncate hover:text-brand-600 transition-colors"
-                >
-                  {t.group}
-                </Link>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-muted-foreground">{t.cur}건</span>
-                  {t.changePct === null ? (
-                    <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
-                      NEW
-                    </span>
-                  ) : t.changePct > 0 ? (
-                    <span className="text-[11px] font-semibold text-emerald-600">
-                      ▲{t.changePct}%
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground/60">
-                      ▼{Math.abs(t.changePct)}%
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          {trendingTopics.length === 0 ? (
+            <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
+          ) : (
+            <ul className="space-y-2">
+              {trendingTopics.map((t) => (
+                <li key={t.group} className="flex items-center justify-between gap-3">
+                  <Link
+                    href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
+                    className="text-sm text-foreground truncate hover:text-brand-600 transition-colors"
+                  >
+                    {t.group}
+                  </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">{t.cur}건</span>
+                    {t.changePct === null ? (
+                      <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
+                        NEW
+                      </span>
+                    ) : t.changePct > 0 ? (
+                      <span className="text-[11px] font-semibold text-emerald-600">
+                        ▲{t.changePct}%
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground/60">
+                        ▼{Math.abs(t.changePct)}%
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
-      )}
 
-      {/* 키워드 맵 */}
+        {/* 경쟁사 동향 */}
+        <section className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Building2 className="h-4 w-4 text-red-500" />
+            <h2 className="text-sm font-semibold text-foreground">경쟁사 동향</h2>
+            <span className="text-xs text-muted-foreground">최근 14일 · 논조</span>
+          </div>
+          {competitorNames.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
+            </p>
+          ) : competitorResults.length === 0 ? (
+            <p className="text-sm text-muted-foreground">최근 14일 경쟁사 관련 기사가 없습니다.</p>
+          ) : (
+            <ul className="space-y-3">
+              {competitorResults.map(({ name, articles, dist }) => {
+                const hasDistData = dist['긍정'] + dist['중립'] + dist['부정'] > 0
+                const topArticle = articles[0]
+                const topSourceName = topArticle
+                  ? (Array.isArray(topArticle.sources)
+                    ? (topArticle.sources as { name: string }[])[0]?.name
+                    : topArticle.sources?.name)
+                  : null
+                return (
+                  <li key={name} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">{name}</span>
+                      {hasDistData && (
+                        <div className="flex items-center gap-1 text-[11px]">
+                          {dist['긍정'] > 0 && (
+                            <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
+                              긍 {dist['긍정']}
+                            </span>
+                          )}
+                          {dist['중립'] > 0 && (
+                            <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">
+                              중 {dist['중립']}
+                            </span>
+                          )}
+                          {dist['부정'] > 0 && (
+                            <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
+                              부 {dist['부정']}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {topArticle && (
+                      <p className="text-xs text-muted-foreground leading-snug">
+                        <Link
+                          href={`/dashboard/contents/${topArticle.id}`}
+                          className="line-clamp-1 hover:text-brand-600"
+                        >
+                          {topArticle.title}
+                        </Link>
+                        <span className="text-muted-foreground/60">
+                          {topSourceName ? ` · ${topSourceName}` : ''}{' '}
+                          · {new Date(topArticle.collected_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </p>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* C. 키워드 띠 */}
       {classifiedKeywords.length > 0 && (
-        <section className="mt-6 rounded-xl border border-border bg-card p-5">
+        <section className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Tags className="h-4 w-4 text-brand-600" />
             <h2 className="text-sm font-semibold text-foreground">키워드 맵</h2>
@@ -370,268 +576,39 @@ export default async function AiInsightsView() {
         </section>
       )}
 
-      {/* 경쟁사 동향 */}
-      <section className="mt-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-red-500" />
-          <h2 className="text-sm font-semibold text-foreground">경쟁사 동향</h2>
-          <span className="text-xs text-muted-foreground">최근 14일 · 논조</span>
-        </div>
-
-        {competitorNames.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
+      {/* D. 관심업체 요약 */}
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-brand-600" />
+            <h2 className="text-sm font-semibold text-foreground">내 관심업체</h2>
           </div>
-        ) : competitorResults.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            최근 14일 경쟁사 관련 기사가 없습니다.
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {competitorResults.map(({ name, articles, dist }) => {
-              const hasDistData = dist['긍정'] + dist['중립'] + dist['부정'] > 0
-              return (
-                <div key={name} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-foreground">{name}</p>
-                    {hasDistData && (
-                      <div className="flex items-center gap-1.5 text-[11px]">
-                        {dist['긍정'] > 0 && (
-                          <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
-                            긍 {dist['긍정']}
-                          </span>
-                        )}
-                        {dist['중립'] > 0 && (
-                          <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">
-                            중 {dist['중립']}
-                          </span>
-                        )}
-                        {dist['부정'] > 0 && (
-                          <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
-                            부 {dist['부정']}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <ul className="space-y-1.5">
-                    {articles.map(a => {
-                      const sourceName = Array.isArray(a.sources)
-                        ? (a.sources as { name: string }[])[0]?.name
-                        : a.sources?.name
-                      return (
-                        <li key={a.id} className="text-xs leading-snug">
-                          <div className="flex items-start gap-1.5">
-                            {a.sentiment && (
-                              <span className={cn(
-                                'mt-0.5 shrink-0 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
-                                a.sentiment === '긍정' && 'bg-emerald-100 text-emerald-700',
-                                a.sentiment === '중립' && 'bg-muted text-muted-foreground',
-                                a.sentiment === '부정' && 'bg-red-100 text-red-700',
-                              )}>
-                                {a.sentiment}
-                              </span>
-                            )}
-                            <Link
-                              href={`/dashboard/contents/${a.id}`}
-                              className="line-clamp-2 text-foreground/90 hover:text-brand-600"
-                            >
-                              {a.title}
-                            </Link>
-                          </div>
-                          <span className="mt-0.5 block text-muted-foreground/70">
-                            {sourceName ? `${sourceName} · ` : ''}
-                            {new Date(a.collected_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* 관심업체 동향 */}
-      <section className="mt-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-brand-600" />
-          <h2 className="text-sm font-semibold text-foreground">내 관심업체 동향</h2>
+          {watchlist.length > 0 && (
+            <Link href="/dashboard/mypage" className="text-xs text-brand-600 hover:underline">
+              전체 보기 →
+            </Link>
+          )}
         </div>
 
         {watchlist.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             관심업체를 추가하면 여기서 동향을 볼 수 있습니다.{' '}
             <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">
               마이페이지에서 추가하기 →
             </Link>
-          </div>
+          </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {watchResults.map(({ company, articles }) => {
-              const compCard = companyCardMap.get(company.toLowerCase())
-              return (
-                <div key={company} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                  <p className="text-sm font-semibold text-foreground">{company}</p>
-
-                  {compCard && (
-                    <div className="rounded-lg bg-brand-600/5 border border-brand-600/15 px-3 py-2.5 space-y-1">
-                      <p className="text-xs font-semibold text-foreground leading-snug">{compCard.headline}</p>
-                      {compCard.implication && (
-                        <p className="text-xs text-muted-foreground leading-snug">
-                          <span className="font-medium text-brand-600">시사점</span>{' '}
-                          {compCard.implication}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {articles.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">최근 동향 없음</p>
-                  ) : (
-                    <ul className="space-y-1.5">
-                      {articles.map(a => {
-                        const sourceName = Array.isArray(a.sources)
-                          ? (a.sources as { name: string }[])[0]?.name
-                          : a.sources?.name
-                        return (
-                          <li key={a.id} className="text-xs leading-snug">
-                            <Link
-                              href={`/dashboard/contents/${a.id}`}
-                              className="line-clamp-2 text-foreground/90 hover:text-brand-600"
-                            >
-                              {a.title}
-                            </Link>
-                            <span className="mt-0.5 block text-muted-foreground/70">
-                              {sourceName ? `${sourceName} · ` : ''}
-                              {new Date(a.collected_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                            </span>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <ul className="divide-y divide-border">
+            {watchResults.map(({ company, articles }) => (
+              <li key={company} className="flex items-center justify-between py-2">
+                <span className="text-sm text-foreground">{company}</span>
+                <span className="text-xs text-muted-foreground">{articles.length}건</span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
-      {/* 빈 상태 */}
-      {cards.length === 0 && (
-        <div className="mt-6 rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-          아직 발행된 인사이트가 없습니다.
-        </div>
-      )}
-
-      {/* 기간별 카드 그룹 */}
-      <div className="mt-6 space-y-10">
-        {[...groups.entries()].map(([key, groupCards]) => {
-          const [start, end] = key.split('|')
-          return (
-            <section key={key}>
-              <div className="mb-4 flex items-center gap-3">
-                <span className="text-sm font-medium text-muted-foreground">
-                  {formatPeriod(start, end)}
-                </span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                {groupCards.map((card) => {
-                  const citations = card.citations as InsightCardCitation[]
-                  return (
-                    <article
-                      key={card.id}
-                      className="rounded-xl border border-border bg-card p-5 space-y-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
-                          {card.topic}
-                        </span>
-                      </div>
-
-                      <p className="text-base font-semibold text-foreground leading-snug">
-                        {card.headline}
-                      </p>
-
-                      {card.implication && (
-                        <div className="space-y-0.5">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                            시사점
-                          </span>
-                          <p className="text-sm text-muted-foreground leading-relaxed">
-                            {card.implication}
-                          </p>
-                        </div>
-                      )}
-
-                      {citations.length > 0 ? (
-                        <div className="space-y-2 pt-1 border-t border-border">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                            인용 출처
-                          </span>
-                          <ul className="space-y-2">
-                            {citations.map((c, i) => {
-                              const meta = contentMap.get(c.content_id)
-                              return (
-                                <li key={i} className="flex gap-2">
-                                  <Quote className="h-3 w-3 mt-0.5 shrink-0 text-brand-600/40" />
-                                  <div className="min-w-0">
-                                    <p className="text-xs text-muted-foreground italic leading-snug">
-                                      &ldquo;{c.quote}&rdquo;
-                                    </p>
-                                    {meta ? (
-                                      <Link
-                                        href={`/dashboard/contents/${c.content_id}`}
-                                        className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
-                                      >
-                                        {meta.title}
-                                      </Link>
-                                    ) : (
-                                      <span className="mt-0.5 block text-[11px] text-muted-foreground/60 truncate">
-                                        출처 비공개
-                                      </span>
-                                    )}
-                                  </div>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        </div>
-                      ) : card.source_content_ids.length > 0 ? (
-                        <div className="space-y-1.5 pt-1 border-t border-border">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                            관련 기사
-                          </span>
-                          <ul className="space-y-1">
-                            {card.source_content_ids.slice(0, 5).map((id) => {
-                              const meta = contentMap.get(id)
-                              return meta ? (
-                                <li key={id}>
-                                  <Link
-                                    href={`/dashboard/contents/${id}`}
-                                    className="block text-xs text-brand-600 hover:underline truncate"
-                                  >
-                                    {meta.title}
-                                  </Link>
-                                </li>
-                              ) : null
-                            })}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </article>
-                  )
-                })}
-              </div>
-            </section>
-          )
-        })}
-      </div>
     </div>
   )
 }

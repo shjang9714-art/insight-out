@@ -15,16 +15,16 @@ interface Props {
 
 export default function AnalysisTabs({ activeTab }: Props) {
   return (
-    <div className="flex border-b border-border mb-6">
+    <div className="mb-6 inline-flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
       {TABS.map(t => (
         <Link
           key={t.id}
           href={`/dashboard/ai-analysis?tab=${t.id}`}
           className={cn(
-            'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+            'rounded-md px-3 py-1 text-[13px] font-medium transition-colors',
             activeTab === t.id
-              ? 'border-brand-600 text-brand-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
           )}
         >
           {t.label}
