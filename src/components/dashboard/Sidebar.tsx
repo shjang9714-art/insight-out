@@ -2,7 +2,7 @@
 
 import { useState, useEffect, startTransition } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Radar, Sparkles, Network } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getRecentViews, type RecentView } from '@/lib/recent-views'
 
@@ -177,40 +177,6 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
 
         <div className="border-t border-border" />
 
-        {/* 이슈 */}
-        <section>
-          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            이슈
-          </h3>
-          <Link
-            href="/dashboard/issues"
-            onClick={() => onClose?.()}
-            className="flex items-center gap-1.5 w-full rounded-lg px-2 py-2 text-xs text-foreground/90 transition-colors hover:bg-brand-50"
-          >
-            <Radar className="h-3 w-3 text-brand-600 shrink-0" />
-            이슈 보드
-          </Link>
-        </section>
-
-        <div className="border-t border-border" />
-
-        {/* 지식그래프 */}
-        <section>
-          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            지식그래프
-          </h3>
-          <Link
-            href="/dashboard/entities"
-            onClick={() => onClose?.()}
-            className="flex items-center gap-1.5 w-full rounded-lg px-2 py-2 text-xs text-foreground/90 transition-colors hover:bg-brand-50"
-          >
-            <Network className="h-3 w-3 text-brand-600 shrink-0" />
-            엔티티 브라우즈
-          </Link>
-        </section>
-
-        <div className="border-t border-border" />
-
         {/* AI 분석 */}
         <section>
           <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -223,6 +189,20 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
           >
             <Sparkles className="h-3 w-3 text-brand-600 shrink-0" />
             AI 인사이트
+          </Link>
+          <Link
+            href="/dashboard/ai-analysis?tab=issues"
+            onClick={() => onClose?.()}
+            className="flex items-center w-full rounded-lg px-2 py-1.5 pl-5 text-xs text-muted-foreground transition-colors hover:bg-brand-50 hover:text-foreground"
+          >
+            이슈
+          </Link>
+          <Link
+            href="/dashboard/ai-analysis?tab=entities"
+            onClick={() => onClose?.()}
+            className="flex items-center w-full rounded-lg px-2 py-1.5 pl-5 text-xs text-muted-foreground transition-colors hover:bg-brand-50 hover:text-foreground"
+          >
+            지식그래프
           </Link>
         </section>
 
