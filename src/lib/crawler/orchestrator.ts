@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup } from './quality'
+import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, matchIssues, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef } from './quality'
 import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
@@ -288,7 +288,8 @@ async function processCrawlItem(
   summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   counts: CrawlCounts,
-  aliasMap: Map<string, string> = new Map()
+  aliasMap: Map<string, string> = new Map(),
+  issueList: IssueMatchDef[] = []
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
     const url = normalizeUrl(item.original_url)
@@ -515,6 +516,27 @@ async function processCrawlItem(
           console.error('[크롤러] content_entities 적재 실패(SQL 99 미적용 가능):', e)
         }
 
+        // post-insert: 이슈 자동배정 (101) — match_keywords 텍스트매칭 → issue_contents
+        // SQL 101 미적용 시 upsert 실패 → try/catch 격리로 크롤 무중단
+        try {
+          if (issueList.length > 0) {
+            const matchedIssueIds = matchIssues(item.title, item.body ?? '', issueList)
+            if (matchedIssueIds.length > 0) {
+              const issueRows = matchedIssueIds.map(issue_id => ({
+                issue_id,
+                content_id: newId,
+                source: 'rule',
+              }))
+              const { error: issueErr } = await admin
+                .from('issue_contents')
+                .upsert(issueRows, { onConflict: 'issue_id,content_id', ignoreDuplicates: true })
+              if (issueErr) console.error('[크롤러] issue_contents 적재 실패(SQL 101 미적용 가능):', issueErr.message)
+            }
+          }
+        } catch (e) {
+          console.error('[크롤러] issue_contents 적재 실패(SQL 101 미적용 가능):', e)
+        }
+
         // post-insert: 한국어 요약 (B3-1) — published·본문충분·예산 조건
         if (contentStatus === 'published' && summarizeBudget.remaining > 0) {
           const bodyKo = translatedContent?.body ?? item.body ?? ''
@@ -558,7 +580,8 @@ async function crawlOne(
   translationBudget: TranslationBudget,
   summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
-  aliasMap: Map<string, string> = new Map()
+  aliasMap: Map<string, string> = new Map(),
+  issueList: IssueMatchDef[] = []
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -591,7 +614,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -738,7 +761,8 @@ async function crawlKeywordSearch(
   translationBudget: TranslationBudget,
   summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
-  aliasMap: Map<string, string> = new Map()
+  aliasMap: Map<string, string> = new Map(),
+  issueList: IssueMatchDef[] = []
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -763,7 +787,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList
         )
         if (result.partial) hadError = true
       }
@@ -973,6 +997,24 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     console.warn('[크롤러] entity_aliases 로드 실패, 링킹 skip:', e)
   }
 
+  // 이슈 목록 로드 — SQL 101 미적용 시 빈 배열로 격리(크롤 무중단)
+  const issueList: IssueMatchDef[] = []
+  try {
+    const issueResult = await admin
+      .from('issues')
+      .select('id, match_keywords')
+      .eq('status', 'published')
+    if (issueResult.error) {
+      console.warn('[크롤러] issues 조회 실패 (SQL 101 미적용 가능), 배정 skip:', issueResult.error.message)
+    } else {
+      for (const row of (issueResult.data ?? []) as { id: string; match_keywords: string[] }[]) {
+        issueList.push({ id: row.id, match_keywords: row.match_keywords })
+      }
+    }
+  } catch (e) {
+    console.warn('[크롤러] issues 로드 실패, 배정 skip:', e)
+  }
+
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
@@ -1007,7 +1049,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             translationBudget,
             summarizeBudget,
             classifyBudget,
-            aliasMap
+            aliasMap,
+            issueList
           )
     )
   )
@@ -1063,7 +1106,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted

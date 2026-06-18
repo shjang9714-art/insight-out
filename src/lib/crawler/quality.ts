@@ -110,3 +110,18 @@ export function relatednessScore(
   }
   return Math.min(total / RELATEDNESS_CAP, 1)
 }
+
+/** 이슈 자동배정 경량 표현 (DB 로드 후 processCrawlItem 에 전달). */
+export interface IssueMatchDef {
+  id: string
+  match_keywords: string[]
+}
+
+/** 이슈 match_keywords 텍스트 부분일치 → 매칭된 issue_id 배열. matchKeywordGroups 미러. */
+export function matchIssues(title: string, body: string, issues: IssueMatchDef[]): string[] {
+  const text = `${title} ${body}`.toLowerCase()
+  return issues
+    .filter(issue => issue.match_keywords.some(kw => kw && text.includes(kw.toLowerCase())))
+    .map(issue => issue.id)
+}
+

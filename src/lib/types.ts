@@ -354,3 +354,28 @@ export const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
   policy:   '정책',
   industry: '산업',
 }
+
+// ============================================================
+// 이슈 1급화 (101-issues)
+// ============================================================
+
+export type IssueStatus = 'draft' | 'published' | 'archived'
+
+export interface Issue {
+  id: string
+  title: string
+  summary: string | null
+  status: IssueStatus
+  match_keywords: string[]
+  source: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IssueContent {
+  id: string
+  issue_id: string
+  content_id: string
+  source: string
+  created_at: string
+}
