@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import FeedSlot from '@/components/feed/FeedSlot'
 import CompetitorTrends from '@/components/dashboard/CompetitorTrends'
 import KATrends from '@/components/dashboard/KATrends'
+import IssueSignals from '@/components/dashboard/IssueSignals'
 
 export default function DashboardPage() {
   return (
@@ -14,12 +15,17 @@ export default function DashboardPage() {
           </Suspense>
         </section>
 
-        {/* 2블록: 경쟁사 동향 */}
+        {/* 2블록: 급상승 이슈 신호 (이슈 없으면 숨김) */}
+        <Suspense fallback={null}>
+          <IssueSignals />
+        </Suspense>
+
+        {/* 3블록: 경쟁사 동향 */}
         <section>
           <CompetitorTrends />
         </section>
 
-        {/* 3블록: KA 동향 */}
+        {/* 4블록: KA 동향 */}
         <section>
           <KATrends />
         </section>
