@@ -1045,6 +1045,52 @@ grant select, insert, update, delete on table public.user_service_prefs to authe
 grant select, insert, update, delete on table public.content_views      to authenticated;
 
 -- ============================================================
+-- insight_cards (지시서 89 — AI 핵심 인사이트 카드)
+-- ============================================================
+
+do $$ begin
+  create type insight_card_status as enum ('draft', 'published', 'archived');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.insight_cards (
+  id                 uuid primary key default gen_random_uuid(),
+  period_start       date not null,
+  period_end         date not null,
+  scope              text not null default 'industry',
+  topic              text not null,
+  headline           text not null,
+  implication        text,
+  source_content_ids uuid[] not null default '{}',
+  citations          jsonb  not null default '[]',
+  status             insight_card_status not null default 'draft',
+  generated_at       timestamptz,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create unique index if not exists insight_cards_period_scope_topic_key
+  on public.insight_cards (period_start, scope, topic);
+create index if not exists insight_cards_status_idx
+  on public.insight_cards (status, period_start desc);
+
+drop trigger if exists set_insight_cards_updated_at on public.insight_cards;
+create trigger set_insight_cards_updated_at
+  before update on public.insight_cards
+  for each row execute function public.set_updated_at();
+
+alter table public.insight_cards enable row level security;
+
+drop policy if exists "insight_cards: 인증 사용자 published 조회" on public.insight_cards;
+create policy "insight_cards: 인증 사용자 published 조회"
+  on public.insight_cards for select
+  using (auth.role() = 'authenticated' and status in ('published', 'archived'));
+
+drop policy if exists "insight_cards: admin 관리" on public.insight_cards;
+create policy "insight_cards: admin 관리"
+  on public.insight_cards for all
+  using (public.is_admin()) with check (public.is_admin());
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
