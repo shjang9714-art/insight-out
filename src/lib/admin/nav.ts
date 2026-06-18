@@ -14,6 +14,7 @@ import {
   Mail,
   Users,
   Boxes,
+  Radar,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -108,6 +109,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: 'AI·처리',
     items: [
+      {
+        href: '/admin/issues',
+        label: '이슈 관리',
+        description: '이슈 생성·발행·콘텐츠 배정',
+        icon: Radar,
+      },
       {
         href: '/admin/insights',
         label: 'AI 인사이트',
