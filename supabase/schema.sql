@@ -1242,6 +1242,59 @@ revoke all on function public.merge_entities(uuid, uuid) from public;
 grant execute on function public.merge_entities(uuid, uuid) to authenticated;
 
 -- ============================================================
+-- 이슈 1급화 토대 (101-issues — 2026-06-18)
+-- ============================================================
+
+do $$ begin
+  create type issue_status as enum ('draft', 'published', 'archived');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.issues (
+  id             uuid primary key default gen_random_uuid(),
+  title          text not null,
+  summary        text,
+  status         issue_status not null default 'draft',
+  match_keywords text[] not null default '{}',
+  source         text not null default 'claude',
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create index if not exists issues_status_idx on public.issues (status);
+
+drop trigger if exists set_issues_updated_at on public.issues;
+create trigger set_issues_updated_at
+  before update on public.issues
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.issue_contents (
+  id         uuid primary key default gen_random_uuid(),
+  issue_id   uuid not null references public.issues (id) on delete cascade,
+  content_id uuid not null references public.contents (id) on delete cascade,
+  source     text not null default 'rule',
+  created_at timestamptz not null default now(),
+  unique (issue_id, content_id)
+);
+create index if not exists issue_contents_issue_idx   on public.issue_contents (issue_id);
+create index if not exists issue_contents_content_idx on public.issue_contents (content_id);
+
+alter table public.issues         enable row level security;
+alter table public.issue_contents enable row level security;
+
+drop policy if exists "issues: 인증 published 조회" on public.issues;
+create policy "issues: 인증 published 조회" on public.issues
+  for select using (auth.uid() is not null and status in ('published', 'archived'));
+drop policy if exists "issues: admin 전체" on public.issues;
+create policy "issues: admin 전체" on public.issues
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "issue_contents: 인증 조회" on public.issue_contents;
+create policy "issue_contents: 인증 조회" on public.issue_contents
+  for select using (auth.uid() is not null);
+drop policy if exists "issue_contents: admin 전체" on public.issue_contents;
+create policy "issue_contents: admin 전체" on public.issue_contents
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
