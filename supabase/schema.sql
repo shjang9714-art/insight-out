@@ -1117,6 +1117,80 @@ create policy "user_watchlist: 본인 관리"
   with check (auth.uid() = user_id);
 
 -- ============================================================
+-- 엔티티 지식계층 (99-entities — 2026-06-18)
+-- ============================================================
+
+create type entity_type as enum ('company', 'tech', 'product', 'person', 'policy', 'industry');
+
+create table if not exists public.entities (
+  id             uuid primary key default gen_random_uuid(),
+  canonical_name text not null,
+  entity_type    entity_type not null,
+  description    text,
+  is_competitor  boolean not null default false,
+  service_id     uuid references public.services (id) on delete set null,
+  mention_count  integer not null default 0,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create unique index if not exists entities_canonical_type_key
+  on public.entities (lower(canonical_name), entity_type);
+create index if not exists entities_type_idx on public.entities (entity_type);
+
+drop trigger if exists set_entities_updated_at on public.entities;
+create trigger set_entities_updated_at
+  before update on public.entities
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.entity_aliases (
+  id         uuid primary key default gen_random_uuid(),
+  entity_id  uuid not null references public.entities (id) on delete cascade,
+  alias      text not null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists entity_aliases_alias_key
+  on public.entity_aliases (lower(alias));
+create index if not exists entity_aliases_entity_idx
+  on public.entity_aliases (entity_id);
+
+create table if not exists public.content_entities (
+  id         uuid primary key default gen_random_uuid(),
+  content_id uuid not null references public.contents (id) on delete cascade,
+  entity_id  uuid not null references public.entities (id) on delete cascade,
+  source     text not null default 'rule',
+  score      numeric not null default 1.0,
+  created_at timestamptz not null default now(),
+  unique (content_id, entity_id)
+);
+create index if not exists content_entities_content_idx on public.content_entities (content_id);
+create index if not exists content_entities_entity_idx  on public.content_entities (entity_id);
+
+alter table public.entities         enable row level security;
+alter table public.entity_aliases   enable row level security;
+alter table public.content_entities enable row level security;
+
+drop policy if exists "entities: 인증 조회" on public.entities;
+create policy "entities: 인증 조회" on public.entities
+  for select using (auth.uid() is not null);
+drop policy if exists "entities: admin 전체" on public.entities;
+create policy "entities: admin 전체" on public.entities
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "entity_aliases: 인증 조회" on public.entity_aliases;
+create policy "entity_aliases: 인증 조회" on public.entity_aliases
+  for select using (auth.uid() is not null);
+drop policy if exists "entity_aliases: admin 전체" on public.entity_aliases;
+create policy "entity_aliases: admin 전체" on public.entity_aliases
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "content_entities: 인증 조회" on public.content_entities;
+create policy "content_entities: 인증 조회" on public.content_entities
+  for select using (auth.uid() is not null);
+drop policy if exists "content_entities: admin 전체" on public.content_entities;
+create policy "content_entities: admin 전체" on public.content_entities
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
