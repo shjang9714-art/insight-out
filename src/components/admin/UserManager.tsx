@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, ShieldCheck, ShieldOff } from 'lucide-react'
-import { updateUserRole, promoteByEmail } from '@/app/admin/users/actions'
-import type { UserRole } from '@/lib/types'
+import { Badge } from '@/components/ui/badge'
+import { Loader2, ShieldCheck, ShieldOff, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { updateUserRole, promoteByEmail, approveUser, rejectUser } from '@/app/admin/users/actions'
+import type { UserRole, ApprovalStatus } from '@/lib/types'
 
 interface UserRow {
   id: string
@@ -17,6 +18,7 @@ interface UserRow {
   team: string | null
   position: string | null
   role: UserRole
+  approval_status: ApprovalStatus
   created_at: string
 }
 
@@ -89,8 +91,40 @@ export default function UserManager({ initialUsers }: Props) {
     }
   }
 
+  // ── 승인/거절 ──────────────────────────────────────────────────────────────
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+
+  const handleApprove = (user: UserRow) => {
+    if (!window.confirm(`${user.email}\n\n가입을 승인하시겠습니까?`)) return
+    setApprovingId(user.id)
+    startTransition(async () => {
+      const { error: err } = await approveUser(user.id)
+      if (err) {
+        setError(err)
+      } else {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, approval_status: 'approved' } : u))
+      }
+      setApprovingId(null)
+    })
+  }
+
+  const handleReject = (user: UserRow) => {
+    if (!window.confirm(`${user.email}\n\n가입을 거절하시겠습니까?`)) return
+    setApprovingId(user.id)
+    startTransition(async () => {
+      const { error: err } = await rejectUser(user.id)
+      if (err) {
+        setError(err)
+      } else {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, approval_status: 'rejected' } : u))
+      }
+      setApprovingId(null)
+    })
+  }
+
   // ── 렌더 ──────────────────────────────────────────────────────────────────
 
+  const pendingUsers = users.filter(u => u.approval_status === 'pending')
   const adminCount = users.filter(u => u.role === 'admin').length
 
   return (
@@ -152,6 +186,59 @@ export default function UserManager({ initialUsers }: Props) {
         </CardContent>
       </Card>
 
+      {/* ── 승인 대기 섹션 ── */}
+      {pendingUsers.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Clock className="h-4 w-4 text-amber-500" />
+              승인 대기 ({pendingUsers.length}명)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-border rounded-lg border border-border">
+              {pendingUsers.map(u => (
+                <div key={u.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">{u.email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {u.name || '이름 미입력'} · {u.department || '부서 미입력'} · {u.team || '팀 미입력'}
+                    </p>
+                  </div>
+                  <div className="ml-4 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleApprove(u)}
+                      disabled={approvingId === u.id || isPending}
+                    >
+                      {approvingId === u.id ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                      )}
+                      승인
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleReject(u)}
+                      disabled={approvingId === u.id || isPending}
+                    >
+                      {approvingId === u.id ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <XCircle className="mr-1 h-3 w-3" />
+                      )}
+                      거절
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
@@ -173,6 +260,7 @@ export default function UserManager({ initialUsers }: Props) {
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">부서</th>
                 <th className="px-4 py-3">권한</th>
+                <th className="px-4 py-3">승인</th>
                 <th className="px-4 py-3">가입일</th>
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
@@ -203,28 +291,59 @@ export default function UserManager({ initialUsers }: Props) {
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {u.approval_status === 'approved' ? (
+                      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">승인</Badge>
+                    ) : u.approval_status === 'rejected' ? (
+                      <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">거절</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {new Date(u.created_at).toLocaleDateString('ko-KR')}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleToggleRole(u)}
-                      disabled={togglingId === u.id || isPending}
-                      className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
-                      style={
-                        u.role === 'admin'
-                          ? { background: 'rgb(254 242 242)', color: 'rgb(220 38 38)' }
-                          : { background: 'rgb(240 253 244)', color: 'rgb(22 163 74)' }
-                      }
-                    >
-                      {togglingId === u.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : u.role === 'admin' ? (
-                        <><ShieldOff className="h-3 w-3" />user로 변경</>
-                      ) : (
-                        <><ShieldCheck className="h-3 w-3" />admin으로 승격</>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {u.approval_status !== 'approved' && (
+                        <button
+                          onClick={() => handleApprove(u)}
+                          disabled={approvingId === u.id || isPending}
+                          className="inline-flex items-center gap-1 rounded bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-600 transition-colors disabled:opacity-40"
+                        >
+                          {approvingId === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                          승인
+                        </button>
                       )}
-                    </button>
+                      {u.approval_status !== 'rejected' && u.approval_status !== 'approved' && (
+                        <button
+                          onClick={() => handleReject(u)}
+                          disabled={approvingId === u.id || isPending}
+                          className="inline-flex items-center gap-1 rounded bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors disabled:opacity-40"
+                        >
+                          {approvingId === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
+                          거절
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleToggleRole(u)}
+                        disabled={togglingId === u.id || isPending}
+                        className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
+                        style={
+                          u.role === 'admin'
+                            ? { background: 'rgb(254 242 242)', color: 'rgb(220 38 38)' }
+                            : { background: 'rgb(240 253 244)', color: 'rgb(22 163 74)' }
+                        }
+                      >
+                        {togglingId === u.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : u.role === 'admin' ? (
+                          <><ShieldOff className="h-3 w-3" />user로 변경</>
+                        ) : (
+                          <><ShieldCheck className="h-3 w-3" />admin으로 승격</>
+                        )}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -42,7 +42,7 @@ export async function proxy(request: NextRequest) {
   if (user && !publicPaths.some((p) => pathname.startsWith(p))) {
     const { data: profile } = await supabase
       .from('users')
-      .select('onboarding_completed, role')
+      .select('onboarding_completed, role, approval_status')
       .eq('id', user.id)
       .single()
 
@@ -51,6 +51,19 @@ export async function proxy(request: NextRequest) {
     }
 
     if (profile?.onboarding_completed && pathname === '/onboarding') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+
+    if (
+      profile?.onboarding_completed &&
+      profile.approval_status !== 'approved' &&
+      profile.role !== 'admin' &&
+      pathname !== '/pending'
+    ) {
+      return NextResponse.redirect(new URL('/pending', request.url))
+    }
+
+    if (pathname === '/pending' && (profile?.approval_status === 'approved' || profile?.role === 'admin')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 

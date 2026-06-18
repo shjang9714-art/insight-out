@@ -3,7 +3,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import type { UserRole } from '@/lib/types'
+import type { UserRole, ApprovalStatus } from '@/lib/types'
+import { revalidatePath } from 'next/cache'
 
 async function requireAdmin() {
   const cookieStore = await cookies()
@@ -58,7 +59,7 @@ export async function promoteByEmail(email: string) {
 
   const { data: target, error: findErr } = await svc
     .from('users')
-    .select('id, email, name, department, team, position, role, created_at')
+    .select('id, email, name, department, team, position, role, approval_status, created_at')
     .eq('email', email.trim().toLowerCase())
     .single()
 
@@ -73,4 +74,40 @@ export async function promoteByEmail(email: string) {
   if (updateErr) return { error: `권한 변경 실패: ${updateErr.message}`, user: null }
 
   return { error: null, user: { ...target, role: 'admin' as UserRole } }
+}
+
+export async function approveUser(userId: string) {
+  const admin = await requireAdmin()
+  if (!admin) return { error: '권한이 없습니다.' }
+
+  const { error } = await serviceClient()
+    .from('users')
+    .update({
+      approval_status: 'approved' as ApprovalStatus,
+      approved_at: new Date().toISOString(),
+      approved_by: admin.id,
+    })
+    .eq('id', userId)
+
+  if (error) return { error: `승인 처리 실패: ${error.message}` }
+  revalidatePath('/admin/users')
+  return { error: null }
+}
+
+export async function rejectUser(userId: string) {
+  const admin = await requireAdmin()
+  if (!admin) return { error: '권한이 없습니다.' }
+
+  const { error } = await serviceClient()
+    .from('users')
+    .update({
+      approval_status: 'rejected' as ApprovalStatus,
+      approved_at: new Date().toISOString(),
+      approved_by: admin.id,
+    })
+    .eq('id', userId)
+
+  if (error) return { error: `거절 처리 실패: ${error.message}` }
+  revalidatePath('/admin/users')
+  return { error: null }
 }
