@@ -4,6 +4,10 @@ import { AdminSidebar } from '@/components/admin/AdminSidebar'
 export const metadata: Metadata = {
   title: '어드민 | Insight Out',
   description: 'Insight Out 관리자 페이지',
+  icons: {
+    icon: [{ url: '/admin/icon.png', type: 'image/png', sizes: '512x512' }],
+    shortcut: '/admin/icon.png',
+  },
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
