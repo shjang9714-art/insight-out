@@ -46,7 +46,6 @@ export default async function IssueSignals() {
       {/* 이슈 목록 */}
       <div className="flex flex-col gap-2">
         {top.map(card => {
-          const isSurging = card.changePct === null || card.changePct > 30
           const sentimentTotal = card.sentimentPos + card.sentimentNeg
 
           return (
@@ -55,19 +54,20 @@ export default async function IssueSignals() {
               href={`/dashboard/issues/${card.id}`}
               className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:border-border hover:bg-accent/50"
             >
-              {/* 급상승 배지 */}
-              <span className={
-                isSurging
-                  ? 'shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600'
-                  : 'shrink-0 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
-              }>
-                {card.changePct === null
-                  ? '신규'
-                  : card.changePct > 0
-                    ? `+${card.changePct}%`
-                    : `${card.changePct}%`
-                }
-              </span>
+              {/* 변화 감지 배지 */}
+              {card.changeFlag === 'worsening' ? (
+                <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                  ⚠ 악화
+                </span>
+              ) : card.changeFlag === 'surge' ? (
+                <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
+                  {card.changePct === null ? '신규' : `+${card.changePct}%`}
+                </span>
+              ) : (
+                <span className="shrink-0 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  {card.changePct === null ? '-' : card.changePct > 0 ? `+${card.changePct}%` : `${card.changePct}%`}
+                </span>
+              )}
 
               {/* 제목 */}
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground group-hover:text-brand-600 transition-colors">

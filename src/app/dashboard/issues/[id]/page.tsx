@@ -37,10 +37,17 @@ interface IssueContentRow {
 }
 
 interface EntityFreq {
+  id: string
   canonical_name: string
   entity_type: EntityType
   is_competitor: boolean
   count: number
+}
+
+interface SimilarIssue {
+  id: string
+  title: string
+  score: number
 }
 
 // ─── KST 헬퍼 (98 패턴) ───────────────────────────────────────────────────────
@@ -179,6 +186,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
       const eid = row.entity_id
       if (!entMap.has(eid)) {
         entMap.set(eid, {
+          id: eid,
           canonical_name: row.entities.canonical_name,
           entity_type: row.entities.entity_type as EntityType,
           is_competitor: row.entities.is_competitor,
@@ -190,12 +198,65 @@ export default async function IssueDetailPage({ params }: PageProps) {
     entityFreqs = [...entMap.values()].sort((a, b) => b.count - a.count).slice(0, 30)
   }
 
+  // 유사 이슈 — 엔티티 공유도 기반
+  let similarIssues: SimilarIssue[] = []
+  const topEntityIds = entityFreqs.slice(0, 20).map(e => e.id)
+
+  if (topEntityIds.length > 0) {
+    // 이 엔티티들을 가진 콘텐츠 ID 집합
+    const { data: sharedContentsData } = await supabase
+      .from('content_entities')
+      .select('content_id')
+      .in('entity_id', topEntityIds)
+      .limit(500)
+
+    const sharedContentIds = [...new Set(
+      (sharedContentsData ?? []).map((r: { content_id: string }) => r.content_id)
+    )]
+
+    if (sharedContentIds.length > 0) {
+      // 그 콘텐츠가 속한 다른 이슈들 → issue_id별 공유 점수
+      const { data: sharedIssuesData } = await supabase
+        .from('issue_contents')
+        .select('issue_id')
+        .in('content_id', sharedContentIds)
+        .neq('issue_id', id)
+        .limit(1000)
+
+      const scoreMap = new Map<string, number>()
+      for (const row of (sharedIssuesData ?? []) as { issue_id: string }[]) {
+        scoreMap.set(row.issue_id, (scoreMap.get(row.issue_id) ?? 0) + 1)
+      }
+
+      const topCandidates = [...scoreMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+
+      if (topCandidates.length > 0) {
+        const candidateIds = topCandidates.map(([issueId]) => issueId)
+        const { data: candidateIssues } = await supabase
+          .from('issues')
+          .select('id, title')
+          .in('id', candidateIds)
+          .eq('status', 'published')
+
+        similarIssues = (candidateIssues ?? [])
+          .map((issue: { id: string; title: string }) => ({
+            id: issue.id,
+            title: issue.title,
+            score: scoreMap.get(issue.id) ?? 0,
+          }))
+          .sort((a, b) => b.score - a.score)
+      }
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       {/* 뒤로가기 */}
       <div className="mb-6">
         <Link
-          href="/dashboard/issues"
+          href="/dashboard/ai-analysis?tab=issues"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -345,6 +406,29 @@ export default async function IssueDetailPage({ params }: PageProps) {
                   </span>
                   <span className="text-foreground">{e.canonical_name}</span>
                   <span className="text-muted-foreground tabular-nums">{e.count}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── 유사 이슈 ── */}
+        {similarIssues.length > 0 && (
+          <section>
+            <h2 className="mb-4 text-sm font-semibold text-foreground">유사 이슈</h2>
+            <div className="flex flex-col gap-2">
+              {similarIssues.map(sim => (
+                <Link
+                  key={sim.id}
+                  href={`/dashboard/issues/${sim.id}`}
+                  className="group flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-brand-600/30 hover:bg-accent/40"
+                >
+                  <span className="text-sm text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-1">
+                    {sim.title}
+                  </span>
+                  <span className="ml-4 shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                    공유 {sim.score}건
+                  </span>
                 </Link>
               ))}
             </div>

@@ -26,6 +26,10 @@ export interface IssueCard {
   sentimentPos: number
   sentimentNeg: number
   total: number
+  // 105 추가
+  prevNeg: number
+  sentimentWorsening: boolean
+  changeFlag: 'surge' | 'worsening' | null
 }
 
 // ─── KST 헬퍼 ──────────────────────────────────────────────────────────────
@@ -36,7 +40,7 @@ export function getKstTodayStartMs(): number {
   return Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 60 * 60 * 1000
 }
 
-// ─── 급상승 집계 (91 computeTrendingTopics 방식, KST 주 경계) ───────────────
+// ─── 급상승 + 변화 감지 집계 (91 computeTrendingTopics 방식, KST 주 경계) ────
 
 export function computeIssueActivity(
   issues: IssueRow[],
@@ -46,11 +50,13 @@ export function computeIssueActivity(
   const thisWeekStart = todayStartMs - 6 * 24 * 60 * 60 * 1000
   const prevWeekStart = todayStartMs - 13 * 24 * 60 * 60 * 1000
 
-  const curMap:   Record<string, number> = {}
-  const prevMap:  Record<string, number> = {}
-  const posMap:   Record<string, number> = {}
-  const negMap:   Record<string, number> = {}
-  const totalMap: Record<string, number> = {}
+  const curMap:     Record<string, number> = {}
+  const prevMap:    Record<string, number> = {}
+  const posMap:     Record<string, number> = {}
+  const negMap:     Record<string, number> = {}
+  const totalMap:   Record<string, number> = {}
+  const curNegMap:  Record<string, number> = {}  // 이번 주 부정
+  const prevNegMap: Record<string, number> = {}  // 직전 주 부정
 
   for (const row of activityRows) {
     if (!row.contents) continue
@@ -64,12 +70,25 @@ export function computeIssueActivity(
     if (isPrevWeek) prevMap[id] = (prevMap[id] ?? 0) + 1
     if (row.contents.sentiment === '긍정') posMap[id] = (posMap[id] ?? 0) + 1
     if (row.contents.sentiment === '부정') negMap[id] = (negMap[id] ?? 0) + 1
+    if (isThisWeek && row.contents.sentiment === '부정') curNegMap[id]  = (curNegMap[id]  ?? 0) + 1
+    if (isPrevWeek && row.contents.sentiment === '부정') prevNegMap[id] = (prevNegMap[id] ?? 0) + 1
   }
 
   const cards: IssueCard[] = issues.map(issue => {
-    const cur  = curMap[issue.id]  ?? 0
-    const prev = prevMap[issue.id] ?? 0
+    const cur     = curMap[issue.id]  ?? 0
+    const prev    = prevMap[issue.id] ?? 0
     const changePct = prev > 0 ? Math.round((cur - prev) / prev * 100) : (cur > 0 ? null : 0)
+
+    const recentNeg = curNegMap[issue.id]  ?? 0
+    const prevNeg   = prevNegMap[issue.id] ?? 0
+    const recentNegRatio = cur  > 0 ? recentNeg / cur  : 0
+    const prevNegRatio   = prev > 0 ? prevNeg   / prev : 0
+    const sentimentWorsening = recentNeg >= 3 && (recentNegRatio - prevNegRatio) >= 0.15
+
+    const isSurge = cur > 0 && (changePct === null || changePct > 30)
+    const changeFlag: IssueCard['changeFlag'] =
+      sentimentWorsening ? 'worsening' : isSurge ? 'surge' : null
+
     return {
       id: issue.id,
       title: issue.title,
@@ -80,6 +99,9 @@ export function computeIssueActivity(
       sentimentPos: posMap[issue.id] ?? 0,
       sentimentNeg: negMap[issue.id] ?? 0,
       total: totalMap[issue.id] ?? 0,
+      prevNeg,
+      sentimentWorsening,
+      changeFlag,
     }
   })
 
