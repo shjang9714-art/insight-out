@@ -88,6 +88,17 @@ export default function ReportUploadForm() {
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const [success, setSuccess]     = useState(false)
+  const [extractResult, setExtractResult] = useState<{
+    ok: boolean
+    chars?: number
+    lang?: string
+    translated?: boolean
+    summarized?: boolean
+    entities?: number
+    issues?: number
+    reason?: string
+    message?: string
+  } | null>(null)
 
   // DB 메타데이터 로드
   useEffect(() => {
@@ -268,6 +279,19 @@ export default function ReportUploadForm() {
         if (ckErr) throw new Error(`키워드 연결 실패: ${ckErr.message}`)
       }
 
+      // ⑤ PDF 본문 추출 (PDF만, 실패해도 업로드 성공 처리)
+      const ext = file!.name.split('.').pop()?.toLowerCase() ?? ''
+      if (ext === 'pdf') {
+        try {
+          const extractRes = await fetch(`/api/admin/contents/${contentId}/extract`, { method: 'POST' })
+          const extractData = await extractRes.json()
+          setExtractResult(extractData)
+        } catch (extractErr) {
+          console.error('[upload] 추출 호출 실패:', extractErr)
+          setExtractResult({ ok: false, reason: 'fetch_error', message: '추출 요청 실패' })
+        }
+      }
+
       // 성공 → 폼 초기화
       setSuccess(true)
       clearFile()
@@ -290,10 +314,43 @@ export default function ReportUploadForm() {
       <Card className="max-w-md mx-auto text-center py-12 px-8">
         <CheckCircle className="mx-auto mb-4 h-12 w-12 text-green-500" />
         <h2 className="text-lg font-semibold text-foreground mb-1">업로드 완료</h2>
-        <p className="text-sm text-muted-foreground mb-6">
+        <p className="text-sm text-muted-foreground mb-4">
           리포트가 성공적으로 등록됐습니다.
         </p>
-        <Button onClick={() => setSuccess(false)}>다른 파일 업로드</Button>
+
+        {/* 추출 결과 */}
+        {extractResult && (
+          <div className={cn(
+            'mb-6 rounded-lg border px-4 py-3 text-left text-sm',
+            extractResult.ok
+              ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
+              : extractResult.reason === 'scanned'
+                ? 'border-amber-100 bg-amber-50 text-amber-800'
+                : 'border-muted bg-muted/50 text-muted-foreground'
+          )}>
+            {extractResult.ok ? (
+              <div className="space-y-0.5">
+                <p className="font-medium">본문 추출 완료</p>
+                <p className="text-xs">
+                  {extractResult.chars?.toLocaleString()}자
+                  {extractResult.lang === 'en' && (extractResult.translated ? ' · 한국어 번역 완료' : ' · 번역 미적용')}
+                  {extractResult.summarized ? ' · 요약 생성' : ''}
+                  {(extractResult.issues ?? 0) > 0 ? ` · 이슈 ${extractResult.issues}건 연결` : ''}
+                  {(extractResult.entities ?? 0) > 0 ? ` · 엔티티 ${extractResult.entities}건 연결` : ''}
+                </p>
+              </div>
+            ) : extractResult.reason === 'scanned' ? (
+              <div>
+                <p className="font-medium">스캔 PDF 추정 — 텍스트 추출 실패</p>
+                <p className="text-xs mt-0.5">OCR 처리가 필요합니다. 본문 없이 등록됐습니다.</p>
+              </div>
+            ) : (
+              <p>본문 추출을 건너뜀 ({extractResult.reason ?? '비 PDF'})</p>
+            )}
+          </div>
+        )}
+
+        <Button onClick={() => { setSuccess(false); setExtractResult(null) }}>다른 파일 업로드</Button>
       </Card>
     )
   }
