@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -330,6 +330,10 @@ export default function SourceManager() {
   const [crawlJob, setCrawlJob] = useState<CrawlJob | null>(null)
   const [crawlProgress, setCrawlProgress] = useState<CrawlProgress | null>(null)
 
+  // 소스별 개별 수집 추적 (병렬 허용)
+  const [crawlingIds, setCrawlingIds] = useState<Set<string>>(new Set())
+  const crawlStartedRef = useRef<Record<string, number>>({})
+
   useEffect(() => {
     const savedJob = window.localStorage.getItem(CRAWL_JOB_STORAGE_KEY)
     if (!savedJob) return
@@ -412,6 +416,48 @@ export default function SourceManager() {
     }
   }, [crawlJob, crawlProgress?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 소스별 완료 감지 폴링 — crawlingIds 에 항목이 있을 때만 가동
+  useEffect(() => {
+    if (crawlingIds.size === 0) return
+
+    const checkCompletion = async () => {
+      try {
+        const res = await fetch('/api/admin/source-status')
+        if (!res.ok) return
+        const statusMap = await res.json() as Record<string, { lastFinishedAt: string | null }>
+
+        const now = Date.now()
+        const toRemove: string[] = []
+
+        for (const sid of crawlingIds) {
+          const startedAt = crawlStartedRef.current[sid] ?? 0
+          const info = statusMap[sid]
+          const finishedMs = info?.lastFinishedAt ? new Date(info.lastFinishedAt).getTime() : 0
+
+          if (finishedMs > startedAt) {
+            toRemove.push(sid)
+          } else if (now - startedAt > 120_000) {
+            toRemove.push(sid)
+          }
+        }
+
+        if (toRemove.length > 0) {
+          setCrawlingIds(prev => {
+            const n = new Set(prev)
+            toRemove.forEach(id => n.delete(id))
+            return n
+          })
+          await loadSourceStatus()
+        }
+      } catch {
+        // 폴링 실패는 무시 — 120초 타임아웃으로 잠금 해제
+      }
+    }
+
+    const intervalId = window.setInterval(() => void checkCompletion(), 4000)
+    return () => window.clearInterval(intervalId)
+  }, [crawlingIds]) // loadSourceStatus 는 컴포넌트 생명주기에 고정
+
   const handleCrawlNow = async () => {
     const rangeLabel = crawlDays === 0 ? '오늘 발행분을' : `최근 ${crawlDays}일치를`
     if (!window.confirm(`모든 활성 소스의 ${rangeLabel} 지금 수집하시겠습니까?`)) return
@@ -439,8 +485,8 @@ export default function SourceManager() {
   }
 
   const handleCrawlSource = async (sourceId: string) => {
-    setIsStartingCrawl(true)
-    setCrawlProgress(null)
+    crawlStartedRef.current[sourceId] = Date.now()
+    setCrawlingIds(prev => new Set(prev).add(sourceId))
     setError(null)
     try {
       const res = await fetch('/api/admin/crawl-now', {
@@ -448,16 +494,10 @@ export default function SourceManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceId, backfillDays: crawlDays }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
-
-      const job = data as CrawlJob
-      window.localStorage.setItem(CRAWL_JOB_STORAGE_KEY, JSON.stringify(job))
-      setCrawlJob(job)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '수집 중 오류가 발생했습니다.')
-    } finally {
-      setIsStartingCrawl(false)
+      if (!res.ok) throw new Error((await res.json())?.error ?? '수집 시작 실패')
+    } catch (e) {
+      setCrawlingIds(prev => { const n = new Set(prev); n.delete(sourceId); return n })
+      setError(e instanceof Error ? e.message : '수집 시작에 실패했습니다.')
     }
   }
 
@@ -907,11 +947,14 @@ export default function SourceManager() {
                     <div className="flex items-center justify-end gap-0.5">
                       <button
                         onClick={() => handleCrawlSource(src.id)}
-                        disabled={isStartingCrawl || crawlProgress?.status === 'running'}
+                        disabled={crawlingIds.has(src.id)}
                         className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                        title="이 소스만 수집"
+                        title={crawlingIds.has(src.id) ? '수집 중...' : '이 소스만 수집'}
                       >
-                        <RefreshCw className="h-3.5 w-3.5" />
+                        {crawlingIds.has(src.id)
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <RefreshCw className="h-3.5 w-3.5" />
+                        }
                       </button>
                       <button
                         onClick={() => openEdit(src)}
