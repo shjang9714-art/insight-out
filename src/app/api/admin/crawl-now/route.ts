@@ -65,7 +65,13 @@ export async function POST(request: NextRequest) {
     if (authError) return authError
 
     let sourceId: string | undefined
-    try { sourceId = (await request.json())?.sourceId } catch { /* 전체 수집 */ }
+    let backfillDays: number | undefined
+    try {
+      const b = await request.json()
+      sourceId = b?.sourceId
+      const raw = b?.backfillDays
+      backfillDays = typeof raw === 'number' && raw >= 0 ? raw : undefined
+    } catch { /* 전체 수집 */ }
 
     const admin = createAdminClient()
     let sourcesTotal: number
@@ -85,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     after(async () => {
       try {
-        await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined })
+        await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined, backfillDays })
       } catch (error) {
         console.error('[/api/admin/crawl-now] 백그라운드 수집 오류:', error)
       }

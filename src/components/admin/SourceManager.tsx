@@ -129,6 +129,9 @@ export default function SourceManager() {
   const [isSaving,   setIsSaving]   = useState(false)
   const [showImport, setShowImport] = useState(false)
 
+  // 수동 수집 기간 (0=오늘, 3/7/14/30=최근 N일 소급)
+  const [crawlDays, setCrawlDays] = useState(0)
+
   // 유형 필터 상태 (§A) — 단일 탭
   const [selectedType, setSelectedType] = useState<SourceType | 'all'>('all')
 
@@ -410,13 +413,18 @@ export default function SourceManager() {
   }, [crawlJob, crawlProgress?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCrawlNow = async () => {
-    if (!window.confirm('모든 활성 소스를 지금 수집하시겠습니까?')) return
+    const rangeLabel = crawlDays === 0 ? '오늘 발행분을' : `최근 ${crawlDays}일치를`
+    if (!window.confirm(`모든 활성 소스의 ${rangeLabel} 지금 수집하시겠습니까?`)) return
 
     setIsStartingCrawl(true)
     setCrawlProgress(null)
     setError(null)
     try {
-      const res = await fetch('/api/admin/crawl-now', { method: 'POST' })
+      const res = await fetch('/api/admin/crawl-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backfillDays: crawlDays }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
 
@@ -438,7 +446,7 @@ export default function SourceManager() {
       const res = await fetch('/api/admin/crawl-now', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId }),
+        body: JSON.stringify({ sourceId, backfillDays: crawlDays }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '수집 요청 실패')
@@ -724,21 +732,46 @@ export default function SourceManager() {
         <div className="flex items-center gap-2">
           {!showForm && (
             <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCrawlNow}
-                disabled={isStartingCrawl || crawlProgress?.status === 'running'}
-              >
-                {isStartingCrawl ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                    시작 중...
-                  </>
-                ) : (
-                  '지금 수집'
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={String(crawlDays)}
+                    onValueChange={(v) => setCrawlDays(Number(v))}
+                    disabled={isStartingCrawl || crawlProgress?.status === 'running'}
+                  >
+                    <SelectTrigger className="h-8 w-[120px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">오늘</SelectItem>
+                      <SelectItem value="3">최근 3일</SelectItem>
+                      <SelectItem value="7">최근 7일</SelectItem>
+                      <SelectItem value="14">최근 14일</SelectItem>
+                      <SelectItem value="30">최근 30일</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCrawlNow}
+                    disabled={isStartingCrawl || crawlProgress?.status === 'running'}
+                  >
+                    {isStartingCrawl ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        시작 중...
+                      </>
+                    ) : (
+                      '지금 수집'
+                    )}
+                  </Button>
+                </div>
+                {crawlDays > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    RSS 특성상 피드에 남아있는 기사까지만 수집됩니다. 기간이 길면 시간이 걸릴 수 있습니다.
+                  </p>
                 )}
-              </Button>
+              </div>
               <Button
                 size="sm"
                 variant="outline"
