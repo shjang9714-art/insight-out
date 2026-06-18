@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import ContentCard from '@/components/dashboard/ContentCard'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { type ContentCategory } from '@/lib/types'
+import { dedupSimilarItems } from '@/lib/feed-dedup'
 import EditPreferencesButton from './EditPreferencesButton'
 import OnboardingKeywordPicker from './OnboardingKeywordPicker'
 
@@ -27,7 +28,7 @@ interface FeedItem {
 }
 
 interface Section {
-  slot: 'personalized' | 'trending' | 'editor' | 'explore'
+  slot: 'personalized' | 'trending' | 'editor'
   label: string
   quota: number
   items: FeedItem[]
@@ -55,7 +56,7 @@ function CardSkeleton() {
   )
 }
 
-// 슬롯 비율 60/20/10/10. fallbackTrending(건너뛰기) 시에는 personalized 대신 trending이 60%를 차지.
+// 슬롯 비율 60/20/10. fallbackTrending(건너뛰기) 시에는 personalized 대신 trending이 60%를 차지.
 function buildSlotMeta(fallbackTrending: boolean): { slot: Section['slot']; label: string; quota: number }[] {
   const dominant = fallbackTrending
     ? { slot: 'trending' as const, label: '트렌딩', quota: 6 }
@@ -68,7 +69,6 @@ function buildSlotMeta(fallbackTrending: boolean): { slot: Section['slot']; labe
     dominant,
     secondary,
     { slot: 'editor', label: '에디터픽', quota: 1 },
-    { slot: 'explore', label: '새로운 시도', quota: 1 },
   ]
 }
 
@@ -105,7 +105,7 @@ export default function RecommendedFeed({
         items: (results[i]?.items ?? []) as FeedItem[],
       }))
 
-      // 빈 슬롯(예: explore 0건)은 1순위(dominant) 슬롯에서 보충
+      // 빈 슬롯(예: editor 0건)은 1순위(dominant) 슬롯에서 보충
       const shortfall = built
         .slice(1)
         .reduce((sum, section) => sum + Math.max(0, section.quota - section.items.length), 0)
@@ -118,6 +118,14 @@ export default function RecommendedFeed({
         const existingIds = new Set(built[0].items.map((item) => item.id))
         const extra = ((res.items ?? []) as FeedItem[]).filter((item) => !existingIds.has(item.id)).slice(0, shortfall)
         built[0] = { ...built[0], items: [...built[0].items, ...extra] }
+      }
+
+      // 슬롯간 글로벌 dedup: 우선순위 순으로 합쳐 dedup 후 각 슬롯에서 제거된 항목 필터
+      const allItems = built.flatMap((s) => s.items)
+      const kept = dedupSimilarItems(allItems)
+      const keptIds = new Set(kept.map((item) => item.id))
+      for (const section of built) {
+        section.items = section.items.filter((item) => keptIds.has(item.id))
       }
 
       if (!cancelled) {
