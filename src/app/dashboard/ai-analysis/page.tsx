@@ -6,6 +6,9 @@ import { Sparkles, Quote, TrendingUp, Building2, Tags } from 'lucide-react'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
+import { tagTypeToBucket } from '@/lib/tag-buckets'
+import KeywordMap from '@/components/dashboard/KeywordMap'
+import type { KeywordItem } from '@/components/dashboard/KeywordMap'
 
 const WATCHLIST_LIMIT = 20
 const ARTICLES_PER_COMPANY = 5
@@ -112,8 +115,8 @@ export default async function AiAnalysisPage() {
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
-  // 발행된 산업동향 카드 + 14일 바운디드 페치 + 워치리스트 + 경쟁사 이름 병렬 실행
-  const [insightRes, trendRes, watchlistRes, competitorNamesRes] = await Promise.all([
+  // 발행된 산업동향 카드 + 14일 바운디드 페치 + 워치리스트 + 경쟁사 이름 + 키워드그룹 병렬 실행
+  const [insightRes, trendRes, watchlistRes, competitorNamesRes, keywordGroupsRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -141,6 +144,11 @@ export default async function AiAnalysisPage() {
       .select('name')
       .eq('is_competitor', true)
       .limit(50),
+    supabase
+      .from('keyword_groups')
+      .select('name, tag_type, include_patterns')
+      .eq('is_active', true)
+      .limit(200),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
@@ -174,6 +182,27 @@ export default async function AiAnalysisPage() {
         })
       )
     : []
+
+  // 관심업체 company 카드 조회 + JS 매칭
+  type CompanyCard = Pick<InsightCard, 'id' | 'topic' | 'headline' | 'implication' | 'period_start' | 'period_end'>
+  const companyCardMap = new Map<string, CompanyCard>() // lower(topic) → card
+  if (watchlist.length > 0) {
+    const { data: companyCardData } = await supabase
+      .from('insight_cards')
+      .select('id, topic, headline, implication, period_start, period_end')
+      .eq('scope', 'company')
+      .eq('status', 'published')
+      .order('period_start', { ascending: false })
+      .order('generated_at', { ascending: false })
+      .limit(60)
+
+    for (const row of (companyCardData ?? []) as CompanyCard[]) {
+      const lower = row.topic.toLowerCase()
+      if (!companyCardMap.has(lower)) {
+        companyCardMap.set(lower, row)
+      }
+    }
+  }
 
   // 경쟁사 기사 조회 (overlaps 매칭)
   type CompArticle = { id: string; title: string; collected_at: string; sentiment: '긍정' | '중립' | '부정' | null; matched_keywords: string[]; sources: { name: string } | null }
@@ -240,6 +269,35 @@ export default async function AiAnalysisPage() {
       if (kw.is_competitor) competitorSet.add(kw.name)
     }
   }
+
+  // 패턴→tag_type 역매핑 구성
+  type KgRow = { name: string; tag_type: string; include_patterns: string[] }
+  const patternTagMap = new Map<string, string>() // lower(pattern) → tag_type
+  for (const g of (keywordGroupsRes.data ?? []) as KgRow[]) {
+    const tagType = g.tag_type
+    // 그룹명 자체도 매핑
+    const gNameLower = g.name.toLowerCase()
+    if (!patternTagMap.has(gNameLower) || patternTagMap.get(gNameLower) === 'industry') {
+      patternTagMap.set(gNameLower, tagType)
+    }
+    for (const pat of (g.include_patterns ?? [])) {
+      const lower = pat.toLowerCase()
+      const existing = patternTagMap.get(lower)
+      // 비-industry 우선 (더 구체적)
+      if (!existing || existing === 'industry') {
+        patternTagMap.set(lower, tagType)
+      }
+    }
+  }
+
+  // topKeywords 에 bucket 부여
+  const classifiedKeywords: KeywordItem[] = topKeywords.map(({ name, count }) => {
+    const watched = isWatched(name)
+    const isCompetitor = !watched && competitorSet.has(name)
+    const tagType = patternTagMap.get(name.toLowerCase())
+    const bucket = tagTypeToBucket(tagType)
+    return { name, count, size: cloudSize(count), bucket, watched, isCompetitor }
+  })
 
   // 워치리스트 매칭 헬퍼 (대소문자 무시, 포함 관계)
   const watchlistLower = watchlist.map(w => w.company.toLowerCase())
@@ -311,7 +369,12 @@ export default async function AiAnalysisPage() {
           <ul className="space-y-2">
             {trendingTopics.map((t) => (
               <li key={t.group} className="flex items-center justify-between gap-3">
-                <span className="text-sm text-foreground truncate">{t.group}</span>
+                <Link
+                  href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
+                  className="text-sm text-foreground truncate hover:text-brand-600 transition-colors"
+                >
+                  {t.group}
+                </Link>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-xs text-muted-foreground">{t.cur}건</span>
                   {t.changePct === null ? (
@@ -335,55 +398,14 @@ export default async function AiAnalysisPage() {
       )}
 
       {/* 키워드 맵 */}
-      {topKeywords.length > 0 && (
+      {classifiedKeywords.length > 0 && (
         <section className="mt-6 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <div className="flex items-center gap-2">
-              <Tags className="h-4 w-4 text-brand-600" />
-              <h2 className="text-sm font-semibold text-foreground">키워드 맵</h2>
-              <span className="text-xs text-muted-foreground">최근 14일 빈도</span>
-            </div>
-            {/* 범례 */}
-            <div className="flex items-center gap-3 shrink-0">
-              {watchlistLower.length > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <span className="inline-block h-2 w-2 rounded-full bg-brand-600" />
-                  관심업체
-                </span>
-              )}
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
-                경쟁사
-              </span>
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
-                일반
-              </span>
-            </div>
+          <div className="flex items-center gap-2 mb-4">
+            <Tags className="h-4 w-4 text-brand-600" />
+            <h2 className="text-sm font-semibold text-foreground">키워드 맵</h2>
+            <span className="text-xs text-muted-foreground">최근 14일 빈도</span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-2 leading-relaxed">
-            {topKeywords.map(({ name, count }) => {
-              const watched = isWatched(name)
-              const isCompetitor = !watched && competitorSet.has(name)
-              return (
-                <Link
-                  key={name}
-                  href={`/dashboard/search?q=${encodeURIComponent(name)}`}
-                  style={{ fontSize: `${cloudSize(count)}px` }}
-                  className={cn(
-                    'transition-opacity hover:opacity-75',
-                    watched
-                      ? 'text-brand-600 font-semibold bg-brand-600/10 rounded px-1 py-0.5'
-                      : isCompetitor
-                        ? 'text-red-500'
-                        : 'text-muted-foreground',
-                  )}
-                >
-                  {name}
-                </Link>
-              )
-            })}
-          </div>
+          <KeywordMap keywords={classifiedKeywords} hasWatchlist={watchlistLower.length > 0} />
         </section>
       )}
 
@@ -487,39 +509,56 @@ export default async function AiAnalysisPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            {watchResults.map(({ company, articles }) => (
-              <div
-                key={company}
-                className="rounded-xl border border-border bg-card p-4 space-y-2"
-              >
-                <p className="text-sm font-semibold text-foreground">{company}</p>
-                {articles.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">최근 동향 없음</p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {articles.map(a => {
-                      const sourceName = Array.isArray(a.sources)
-                        ? (a.sources as { name: string }[])[0]?.name
-                        : a.sources?.name
-                      return (
-                        <li key={a.id} className="text-xs leading-snug">
-                          <Link
-                            href={`/dashboard/contents/${a.id}`}
-                            className="line-clamp-2 text-foreground/90 hover:text-brand-600"
-                          >
-                            {a.title}
-                          </Link>
-                          <span className="mt-0.5 block text-muted-foreground/70">
-                            {sourceName ? `${sourceName} · ` : ''}
-                            {new Date(a.collected_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            ))}
+            {watchResults.map(({ company, articles }) => {
+              const compCard = companyCardMap.get(company.toLowerCase())
+              return (
+                <div
+                  key={company}
+                  className="rounded-xl border border-border bg-card p-4 space-y-2"
+                >
+                  <p className="text-sm font-semibold text-foreground">{company}</p>
+
+                  {/* AI 브리핑 — 발행된 회사 카드가 있을 때만 */}
+                  {compCard && (
+                    <div className="rounded-lg bg-brand-600/5 border border-brand-600/15 px-3 py-2.5 space-y-1">
+                      <p className="text-xs font-semibold text-foreground leading-snug">{compCard.headline}</p>
+                      {compCard.implication && (
+                        <p className="text-xs text-muted-foreground leading-snug">
+                          <span className="font-medium text-brand-600">시사점</span>{' '}
+                          {compCard.implication}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {articles.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">최근 동향 없음</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {articles.map(a => {
+                        const sourceName = Array.isArray(a.sources)
+                          ? (a.sources as { name: string }[])[0]?.name
+                          : a.sources?.name
+                        return (
+                          <li key={a.id} className="text-xs leading-snug">
+                            <Link
+                              href={`/dashboard/contents/${a.id}`}
+                              className="line-clamp-2 text-foreground/90 hover:text-brand-600"
+                            >
+                              {a.title}
+                            </Link>
+                            <span className="mt-0.5 block text-muted-foreground/70">
+                              {sourceName ? `${sourceName} · ` : ''}
+                              {new Date(a.collected_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </section>
