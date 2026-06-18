@@ -1,0 +1,1858 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SoaP 전략 대시보드</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --bg-2: #0b1628;
+      --surface: rgba(15, 27, 48, 0.92);
+      --surface-2: rgba(21, 35, 58, 0.9);
+      --surface-3: rgba(28, 43, 70, 0.88);
+      --line: rgba(148, 163, 184, 0.18);
+      --line-strong: rgba(148, 163, 184, 0.34);
+      --text: #e5edf8;
+      --muted: #93a4b8;
+      --subtle: #64748b;
+      --accent: #8fb7ff;
+      --accent-2: #a6e3d7;
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --good: #34d399;
+      --neutral: #94a3b8;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --header-bg: rgba(7, 17, 31, 0.82);
+      --note-bg: rgba(245, 158, 11, 0.13);
+      --note-line: rgba(245, 158, 11, 0.35);
+      --focus: rgba(143, 183, 255, 0.3);
+      --chart-grid: rgba(148, 163, 184, 0.16);
+      --chart-text: #93a4b8;
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --bg-2: #eef2f7;
+      --surface: rgba(255, 255, 255, 0.96);
+      --surface-2: rgba(248, 250, 252, 0.98);
+      --surface-3: rgba(241, 245, 249, 0.95);
+      --line: rgba(15, 23, 42, 0.1);
+      --line-strong: rgba(15, 23, 42, 0.18);
+      --text: #0f172a;
+      --muted: #475569;
+      --subtle: #64748b;
+      --accent: #1d4ed8;
+      --accent-2: #047857;
+      --danger: #be123c;
+      --warn: #b45309;
+      --good: #047857;
+      --neutral: #64748b;
+      --shadow: 0 18px 55px rgba(15, 23, 42, 0.12);
+      --header-bg: rgba(245, 247, 251, 0.86);
+      --note-bg: rgba(254, 243, 199, 0.82);
+      --note-line: rgba(217, 119, 6, 0.34);
+      --focus: rgba(29, 78, 216, 0.18);
+      --chart-grid: rgba(15, 23, 42, 0.11);
+      --chart-text: #475569;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 34rem),
+        radial-gradient(circle at top right, rgba(16, 185, 129, 0.10), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+      letter-spacing: -0.015em;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+      color: inherit;
+    }
+
+    button { cursor: pointer; }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(22px);
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .header-inner {
+      display: grid;
+      grid-template-columns: minmax(220px, auto) 1fr auto;
+      gap: 18px;
+      align-items: center;
+      max-width: 1880px;
+      margin: 0 auto;
+      padding: 16px 28px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(143, 183, 255, 0.96), rgba(166, 227, 215, 0.88));
+      box-shadow: 0 12px 26px rgba(59, 130, 246, 0.22);
+      flex: none;
+    }
+
+    .brand-mark svg { width: 24px; height: 24px; color: #07111f; }
+
+    .brand-title { font-size: 17px; font-weight: 760; line-height: 1.15; white-space: nowrap; }
+    .brand-subtitle { font-size: 12px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+
+    .top-tabs {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      padding-bottom: 1px;
+    }
+
+    .nav-label {
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 820;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 0 8px 0 2px;
+      white-space: nowrap;
+      border-right: 1px solid var(--line);
+      margin-right: 4px;
+    }
+
+    .tab-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 10px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover { background: var(--surface-2); color: var(--text); }
+    .tab-btn.active { background: var(--surface); border-color: var(--line-strong); color: var(--text); box-shadow: 0 8px 25px rgba(0,0,0,0.08); }
+
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .theme-toggle { width: auto; padding: 0 12px; gap: 7px; }
+    .theme-toggle span { font-size: 12px; font-weight: 760; white-space: nowrap; }
+
+    .period-pill {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .period-pill strong { color: var(--text); font-weight: 760; }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+    }
+    .icon-btn:hover { border-color: var(--line-strong); color: var(--text); background: var(--surface-2); }
+    .icon-btn svg { width: 19px; height: 19px; }
+
+    main {
+      max-width: 1880px;
+      margin: 0 auto;
+      padding: 26px 28px 34px;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -0.04em; line-height: 1.05; }
+    h2 { font-size: 22px; letter-spacing: -0.03em; }
+    h3 { font-size: 16px; letter-spacing: -0.02em; }
+    .lead { margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.62; max-width: 920px; }
+
+    .grid { display: grid; gap: 16px; }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .overview-grid { grid-template-columns: minmax(0, 1.1fr) 430px; align-items: start; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+    }
+    .card-pad { padding: 20px; }
+    .section { margin-top: 18px; }
+
+    .stat-card {
+      padding: 18px;
+      min-height: 126px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .stat-label { color: var(--muted); font-size: 12px; font-weight: 720; }
+    .stat-value { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; margin-top: 8px; }
+    .stat-note { color: var(--subtle); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+
+    .group-card {
+      padding: 18px;
+      overflow: hidden;
+      position: relative;
+    }
+    .group-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 3px;
+      background: var(--group-color, var(--accent));
+      opacity: .92;
+    }
+    .group-card-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
+    .group-title-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .org-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--group-color) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--group-color) 38%, var(--line));
+      display: grid;
+      place-items: center;
+      flex: none;
+    }
+    .org-mark svg { width: 23px; height: 23px; color: var(--group-color); }
+    .group-name { font-size: 18px; font-weight: 780; }
+    .group-desc { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .achievement { text-align: right; flex: none; }
+    .achievement .num { font-size: 27px; font-weight: 820; line-height: 1; }
+    .achievement .caption { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    .metric-mini-list { display: grid; gap: 8px; }
+    .metric-mini {
+      display: grid;
+      grid-template-columns: 74px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 10px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      border-radius: 14px;
+    }
+    .metric-type {
+      display: inline-flex;
+      justify-content: center;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: var(--surface);
+      border-radius: 999px;
+      font-size: 11px;
+      padding: 4px 7px;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .metric-name { font-size: 13px; font-weight: 760; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .metric-sub { font-size: 11px; color: var(--subtle); margin-top: 3px; }
+    .metric-result { text-align: right; white-space: nowrap; }
+    .metric-rate { font-size: 13px; font-weight: 800; }
+    .target-actual { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status.good { color: var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
+    .status.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+    .status.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    .status.neutral { color: var(--neutral); background: color-mix(in srgb, var(--neutral) 9%, transparent); }
+
+    .ai-panel {
+      padding: 20px;
+      position: sticky;
+      top: 86px;
+      border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 42%),
+        var(--surface);
+    }
+    .ai-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .ai-title { font-size: 17px; font-weight: 800; }
+    .ai-label { color: var(--muted); font-size: 12px; }
+    .insight-list { display: grid; gap: 11px; }
+    .insight-item {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      border-radius: 16px;
+      padding: 13px;
+    }
+    .insight-kicker { color: var(--accent); font-size: 11px; font-weight: 800; margin-bottom: 6px; }
+    .insight-text { color: var(--text); line-height: 1.52; font-size: 13px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 9px 13px;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .btn:hover { background: var(--surface-3); border-color: var(--line-strong); }
+    .btn.primary { background: var(--accent); color: var(--bg); border-color: transparent; }
+    .btn.ghost { background: transparent; }
+    .btn.small { padding: 6px 9px; font-size: 11px; }
+
+    .detail-ai-top {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: start;
+      padding: 18px;
+      margin-bottom: 18px;
+      border-left: 4px solid var(--group-color, var(--accent));
+    }
+    .detail-ai-top .lead { margin-top: 6px; max-width: none; }
+    .ai-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+
+    .metric-block {
+      display: grid;
+      grid-template-columns: 285px minmax(0, 1fr) 280px;
+      grid-template-areas:
+        "summary chart note"
+        "summary raw note";
+      gap: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .metric-summary { grid-area: summary; padding: 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+    .metric-chart { grid-area: chart; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 14px; }
+    .metric-raw { grid-area: raw; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+    .metric-note { grid-area: note; padding: 16px; background: var(--note-bg); border: 1px solid var(--note-line); border-radius: var(--radius-lg); min-height: 180px; }
+    .metric-note h4 { margin: 0 0 9px; font-size: 13px; color: var(--text); }
+    .metric-note p { color: var(--muted); line-height: 1.55; font-size: 13px; }
+
+    .summary-label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .summary-name { font-size: 18px; font-weight: 820; line-height: 1.22; }
+    .summary-rate { font-size: 38px; font-weight: 850; margin-top: 16px; letter-spacing: -0.05em; }
+    .summary-grid { display: grid; gap: 9px; margin-top: 18px; }
+    .summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 9px; border-top: 1px solid var(--line); font-size: 12px; }
+    .summary-row span:first-child { color: var(--muted); }
+    .summary-row strong { font-weight: 780; }
+
+    .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+    .chart-title { font-weight: 780; font-size: 14px; }
+    .chart-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .legend { display: flex; gap: 11px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+    .legend-line { width: 18px; height: 2px; border-radius: 2px; background: currentColor; }
+    .svg-chart { width: 100%; height: 230px; display: block; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 12px; vertical-align: middle; }
+    th { color: var(--muted); font-weight: 780; background: var(--surface-3); }
+    td { color: var(--text); }
+    .table-wrap { overflow-x: auto; }
+    .muted { color: var(--muted); }
+    .subtle { color: var(--subtle); }
+    .nowrap { white-space: nowrap; }
+
+    .milestone-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 16px;
+      align-items: start;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: 12px 0 16px;
+    }
+    .field, select, input, textarea {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 4px var(--focus); border-color: var(--accent); }
+    textarea { width: 100%; resize: vertical; line-height: 1.5; min-height: 110px; }
+    label { display: block; color: var(--muted); font-size: 12px; font-weight: 760; margin-bottom: 7px; }
+
+    .heatmap {
+      display: grid;
+      grid-template-columns: 150px repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .heat-cell, .heat-head, .heat-row-label {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      min-height: 58px;
+      padding: 10px;
+      background: var(--surface-2);
+      font-size: 12px;
+    }
+    .heat-head { min-height: auto; color: var(--muted); font-weight: 800; text-align: center; background: var(--surface-3); }
+    .heat-row-label { display: flex; align-items: center; font-weight: 760; }
+    .heat-cell { cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+    .heat-cell:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+    .heat-main { font-size: 18px; font-weight: 850; }
+    .heat-sub { color: var(--muted); font-size: 11px; }
+
+    .risk-list { display: grid; gap: 10px; margin-top: 12px; }
+    .risk-card {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      border-radius: 16px;
+      padding: 13px;
+    }
+    .risk-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .risk-title { font-weight: 780; font-size: 13px; line-height: 1.35; }
+    .risk-meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
+    .progress {
+      height: 8px;
+      background: var(--surface-3);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+    }
+    .progress span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+
+    .llm-console { position: sticky; top: 86px; padding: 18px; }
+    .console-output {
+      margin-top: 12px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface-2);
+      min-height: 150px;
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 13px;
+      white-space: pre-line;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.48);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 18px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(980px, 100%);
+      max-height: 92vh;
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 26px;
+      box-shadow: var(--shadow);
+    }
+    .modal-head {
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 2;
+    }
+    .modal-body { padding: 20px; }
+    .settings-section { margin-bottom: 22px; }
+    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .full { grid-column: 1 / -1; }
+
+    .chat {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 70;
+    }
+    .chat-toggle {
+      width: 58px;
+      height: 58px;
+      border-radius: 20px;
+      border: 1px solid var(--line-strong);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      display: grid;
+      place-items: center;
+    }
+    .chat-toggle svg { width: 25px; height: 25px; color: var(--accent); }
+    .chat-panel {
+      position: absolute;
+      right: 0;
+      bottom: 70px;
+      width: min(420px, calc(100vw - 44px));
+      display: none;
+      padding: 16px;
+    }
+    .chat-panel.open { display: block; }
+    .chat-messages { max-height: 320px; overflow: auto; display: grid; gap: 10px; margin: 12px 0; }
+    .chat-msg { padding: 11px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); font-size: 13px; line-height: 1.5; }
+    .chat-msg.user { background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+    .chat-row { display: flex; gap: 8px; }
+    .chat-row input { flex: 1; }
+
+
+
+    .overview-ai-wide {
+      position: static;
+      padding: 22px;
+    }
+    .overview-ai-wide .ai-title-row { margin-bottom: 16px; }
+    .overview-ai-wide .insight-list {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .overview-group-list { display: grid; gap: 16px; }
+    .metric-mini-list.is-five {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      align-items: stretch;
+    }
+    .metric-mini.is-card {
+      grid-template-columns: 1fr;
+      align-content: space-between;
+      min-height: 152px;
+      padding: 13px;
+      gap: 12px;
+    }
+    .metric-mini-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .metric-mini .metric-rate { font-size: 20px; }
+    .core-star {
+      display: inline-grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      color: #fbbf24;
+      background: rgba(251,191,36,.12);
+      border: 1px solid rgba(251,191,36,.28);
+      flex: none;
+    }
+    .core-star svg { width: 14px; height: 14px; fill: currentColor; stroke: currentColor; }
+
+    .metric-main-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+    .metric-hero-box {
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--group-color, var(--accent)) 8%, var(--surface));
+      padding: 13px;
+    }
+    .metric-hero-box .hero-label { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .metric-hero-box .hero-value { margin-top: 6px; font-size: 26px; font-weight: 880; letter-spacing: -.04em; }
+    .metric-side-grid { display: grid; gap: 8px; margin-top: 14px; }
+    .metric-side-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 12px; }
+    .metric-side-row span:first-child { color: var(--muted); }
+    .metric-side-row strong { font-weight: 780; }
+    .rate-caption { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .wide-metric-table th, .wide-metric-table td { text-align: center; min-width: 74px; }
+    .wide-metric-table th:first-child, .wide-metric-table td:first-child { text-align: left; min-width: 96px; position: sticky; left: 0; z-index: 1; background: var(--surface-3); }
+    .wide-metric-table td:first-child { background: var(--surface-2); color: var(--muted); font-weight: 760; }
+    .wide-metric-table .current-col { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .svg-chart { height: 260px; }
+
+    .owner-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .owner-card { border: 1px solid var(--line); background: var(--surface-2); border-radius: 17px; padding: 13px; cursor: pointer; min-height: 128px; }
+    .owner-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+    .owner-card.active { border-color: var(--accent); box-shadow: 0 0 0 4px var(--focus); }
+    .owner-title { font-size: 13px; font-weight: 820; }
+    .owner-meta { color: var(--muted); font-size: 11px; margin-top: 5px; }
+    .owner-kpis { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 12px; }
+    .owner-kpi { border-top: 1px solid var(--line); padding-top: 8px; }
+    .owner-kpi strong { display:block; font-size: 18px; }
+    .owner-kpi span { color: var(--muted); font-size: 10px; }
+    .pqct-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .pqct-pill { border:1px solid var(--line); border-radius:999px; padding:3px 7px; font-size:10px; color:var(--muted); background:var(--surface); }
+    .milestone-task-grid { display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+    .task-card { border:1px solid var(--line); background:var(--surface-2); border-radius:16px; padding:13px; }
+    .task-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .task-title { font-weight:800; font-size:13px; line-height:1.35; }
+    .task-detail { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.5; }
+    .task-meta { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; }
+
+
+
+    /* v0.5 wide executive layout */
+    .overview-group-list {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+    .overview-group-list .group-card {
+      min-width: 0;
+      padding: 14px;
+    }
+    .overview-group-list .group-card-head {
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .overview-group-list .org-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 13px;
+    }
+    .overview-group-list .org-mark svg { width: 19px; height: 19px; }
+    .overview-group-list .group-name { font-size: 15px; }
+    .overview-group-list .group-desc { display: none; }
+    .overview-group-list .achievement .num { font-size: 21px; }
+    .overview-group-list .achievement .caption { margin-top: 4px; }
+
+    .metric-mini-list.overview-metrics { display: grid; gap: 8px; }
+    .metric-mini.is-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-height: auto;
+      padding: 10px;
+      gap: 8px;
+      align-items: center;
+    }
+    .metric-row-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .metric-row-title .metric-name { margin-top: 0; font-size: 12px; }
+    .metric-row-meta { margin-top: 6px; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+    .metric-row-result { text-align: right; min-width: 64px; }
+    .metric-row-result .metric-rate { font-size: 16px; }
+    .metric-row-result .status { margin-top: 6px; padding: 4px 7px; font-size: 10px; }
+    .metric-row-result .status::before { width: 5px; height: 5px; }
+
+    .actual-target-hero {
+      margin-top: 18px;
+      border: 1px solid color-mix(in srgb, #f3c969 34%, var(--line));
+      border-radius: 18px;
+      background: linear-gradient(135deg, color-mix(in srgb, #f3c969 16%, var(--surface-2)), var(--surface-2));
+      padding: 15px;
+    }
+    .actual-target-label { color: var(--muted); font-size: 11px; font-weight: 820; }
+    .actual-target-value { margin-top: 8px; display:flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+    .actual-gold { color: #f3c969; font-size: 32px; font-weight: 900; letter-spacing: -.055em; }
+    html[data-theme="light"] .actual-gold { color: #9a6700; }
+    .target-small { color: var(--muted); font-size: 15px; font-weight: 780; }
+    .summary-rate { margin-top: 14px; }
+    .rate-caption { margin-top: 5px; }
+
+    .chart-rate-band {
+      display:flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 10.5px;
+      font-weight: 760;
+      margin: 2px 26px 0 28px;
+      pointer-events: none;
+    }
+
+    .raw-two-row-table th, .raw-two-row-table td { text-align: center; min-width: 76px; }
+    .raw-two-row-table th:first-child, .raw-two-row-table td:first-child {
+      text-align: left;
+      min-width: 90px;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: var(--surface-3);
+    }
+    .raw-two-row-table td:first-child { background: var(--surface-2); color: var(--muted); font-weight: 800; }
+
+    @media (max-width: 1399px) {
+      .overview-group-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .milestone-layout { grid-template-columns: 1fr; }
+      .llm-console { position: static; }
+    }
+
+    @media (max-width: 1280px) {
+      .overview-grid, .milestone-layout { grid-template-columns: 1fr; }
+      .overview-group-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .overview-ai-wide .insight-list, .metric-mini-list.is-five, .owner-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .milestone-task-grid { grid-template-columns: 1fr; }
+      .ai-panel, .llm-console { position: static; }
+      .metric-block {
+        grid-template-columns: 260px minmax(0, 1fr);
+        grid-template-areas:
+          "summary chart"
+          "summary raw"
+          "note note";
+      }
+    }
+
+    @media (max-width: 880px) {
+      .header-inner { grid-template-columns: 1fr auto; }
+      .top-tabs { grid-column: 1 / -1; order: 3; }
+      .grid-4, .grid-3, .grid-2, .overview-ai-wide .insight-list, .metric-mini-list.is-five, .owner-grid, .overview-group-list { grid-template-columns: 1fr; }
+      .page-head { display: block; }
+      .metric-block { grid-template-columns: 1fr; grid-template-areas: "summary" "chart" "raw" "note"; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .heatmap { grid-template-columns: 105px repeat(4, minmax(86px, 1fr)); overflow-x: auto; }
+      main { padding: 18px; }
+      .header-inner { padding: 14px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16l3-5 3 3 5-8"/><path d="M17 6h2v2"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">SoaP</div>
+          <div class="brand-subtitle">대시보드 · Strategy Operating Alignment Platform</div>
+        </div>
+      </div>
+      <nav class="top-tabs" id="topTabs" aria-label="주요 메뉴"></nav>
+      <div class="header-actions">
+        <div class="period-pill">기준월 <strong id="periodText">2026년 6월</strong></div>
+        <button class="icon-btn theme-toggle" id="themeToggle" aria-label="화이트 모드로 전환">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/>
+          </svg>
+          <span id="themeToggleText">화이트</span>
+        </button>
+        <button class="icon-btn" id="settingsBtn" aria-label="설정 열기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/>
+            <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.05.05a2.2 2.2 0 1 1-3.12 3.12l-.05-.05a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.66V21.5a2.2 2.2 0 1 1-4.4 0v-.1a1.8 1.8 0 0 0-1.1-1.66 1.8 1.8 0 0 0-1.98.36l-.05.05a2.2 2.2 0 1 1-3.12-3.12l.05-.05A1.8 1.8 0 0 0 3.3 15a1.8 1.8 0 0 0-1.66-1.1H1.5a2.2 2.2 0 1 1 0-4.4h.14A1.8 1.8 0 0 0 3.3 8a1.8 1.8 0 0 0-.36-1.98l-.05-.05a2.2 2.2 0 1 1 3.12-3.12l.05.05A1.8 1.8 0 0 0 8 3.3a1.8 1.8 0 0 0 1.1-1.66V1.5a2.2 2.2 0 1 1 4.4 0v.14A1.8 1.8 0 0 0 14.6 3.3a1.8 1.8 0 0 0 1.98-.36l.05-.05a2.2 2.2 0 1 1 3.12 3.12l-.05.05A1.8 1.8 0 0 0 19.4 8c.18.65.72 1.1 1.66 1.1h.14a2.2 2.2 0 1 1 0 4.4h-.14A1.8 1.8 0 0 0 19.4 15Z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <div class="modal-backdrop" id="settingsModal" role="dialog" aria-modal="true" aria-label="설정">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2>설정</h2>
+          <p class="lead" style="margin-top:6px">기준월, 테마, 사내 LLM 연결 정보, 프롬프트, 데이터 내보내기를 관리합니다.</p>
+        </div>
+        <button class="icon-btn" id="closeSettings" aria-label="설정 닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="settingsBody"></div>
+      <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
+    </div>
+  </div>
+
+  <div class="chat">
+    <div class="chat-panel card" id="chatPanel">
+      <h3>대시보드 질의</h3>
+      <p class="lead" style="font-size:12px;margin-top:6px">현재 HTML 샘플 데이터 기준의 로컬 응답입니다. 사내 LLM Endpoint 연결 시 프롬프트 기반 호출로 전환할 수 있습니다.</p>
+      <div class="ai-chips">
+        <button class="btn small" data-chat-q="부문 전체 리스크를 요약해줘">부문 리스크</button>
+        <button class="btn small" data-chat-q="지연 실행과제를 요약해줘">지연 실행과제</button>
+        <button class="btn small" data-chat-q="다음 임원회의 안건을 뽑아줘">회의 안건</button>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-row">
+        <input id="chatInput" placeholder="질문을 입력하세요" />
+        <button class="btn primary" id="chatSend">질문</button>
+      </div>
+    </div>
+    <button class="chat-toggle" id="chatToggle" aria-label="챗봇 열기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"/></svg>
+    </button>
+  </div>
+
+<script>
+(function(){
+  'use strict';
+
+  const DEFAULT_SETTINGS = {
+    theme: 'dark',
+    reportYear: 2026,
+    reportMonthIndex: 5,
+    llmEndpoint: '',
+    apiKey: '',
+    modelName: 'internal-llm-strategy',
+    embeddingModel: 'internal-embedding-v1',
+    indexName: 'strategy-dashboard-kpi-milestone',
+    timeoutMs: 30000,
+    systemPrompt: '당신은 사내 전략회의를 지원하는 전략분석 담당자입니다. 지표와 마일스톤 데이터를 근거로 부문 전체 리스크, 조직별 실행 이슈, 의사결정이 필요한 안건을 구분해 간결하게 답변하세요. 성능이 낮은 LLM에서도 안정적으로 작동하도록 추론 단계를 과도하게 늘리지 말고, 데이터에 없는 내용은 추정하지 마세요.',
+    overallPrompt: '5개 그룹을 교차 비교해 1. 요약 2. 위험 신호 3. 원인 가설 4. 확인 필요 데이터 5. 다음 액션 6. 임원 보고용 한 줄 순서로 답하세요.',
+    organizationPrompt: '입력된 조직 데이터를 기준으로 1. 요약 2. 위험 신호 3. 원인 가설 4. 확인 필요 데이터 5. 다음 액션 6. 임원 보고용 한 줄 순서로 답하세요.',
+    metricPrompt: '입력된 단일 지표의 목표, 실적, 분자, 분모만 근거로 1. 요약 2. 위험 신호 3. 원인 가설 4. 확인 필요 데이터 5. 다음 액션 6. 임원 보고용 한 줄 순서로 답하세요.',
+    milestonePrompt: '전략과제 실행 데이터를 기준으로 1) PQCT별 병목 2) 담당조직별 지연/주의 집중도 3) 연결 전략지표 영향 4) 임원회의 의사결정 안건 5) 다음 주 액션을 우선순위 순으로 정리하세요.',
+    chatbotPrompt: '사용자 질문에 대해 현재 대시보드 데이터에 근거해서만 답변하세요. 답변은 요약, 근거 데이터, 추천 액션 순서로 작성하세요.'
+  };
+
+  const COLORS = {
+    customer: '#60a5fa',
+    innovation: '#a78bfa',
+    aidc: '#22d3ee',
+    aicc: '#34d399',
+    sw: '#fb923c'
+  };
+
+  const GROUPS = [
+    {
+      id:'customer', name:'고객그룹', shortName:'고객그룹', desc:'고객경험, 유지율, VOC 개선 중심', color: COLORS.customer, icon:'customer',
+      departments:['CX전략팀','고객데이터팀','VOC혁신팀','고객성장팀','채널운영팀'],
+      metrics:[
+        m('customer','NPS 개선','핵심지표','점',82,[72,73,74,75,76,77,78,79,80,81,82,82],[70,72,73,74,77,78,78,0,0,0,0,0],'주요 접점 개선 효과가 반영되고 있으나 프리미엄 고객군의 체감 품질 편차를 더 줄여야 합니다.', 'latest', {name:'긍정 응답률', formula:'긍정 응답 / 전체 응답', num:[822,841,866,901,924,951], den:[1160,1168,1183,1217,1202,1219]}),
+        m('customer','고객 유지율','주요지표','%',94,[90,90.5,91,91.5,92,92.5,93,93.2,93.5,93.8,94,94],[89,90,91.1,91.3,92.1,92.7,0,0,0,0,0,0],'유지율은 목표권에 진입했지만 이탈 징후 고객의 사전 대응 자동화가 필요합니다.', 'latest', {name:'유지 고객 비율', formula:'유지 고객 / 대상 고객', num:[8930,9012,9136,9201,9310,9362], den:[10034,10010,10029,10078,10109,10101]}),
+        m('customer','VOC 처리 리드타임','주요지표','시간',18,[25,24,23,22,21,20,20,19,19,18,18,18],[28,26,24,23,22,21,0,0,0,0,0,0],'처리 속도는 개선 중이나 SLA 초과 건이 특정 채널에 집중되고 있습니다.', 'latest', null, true),
+        m('customer','디지털 상담 전환율','그룹별지표','%',63,[48,50,52,54,56,58,59,60,61,62,63,63],[46,49,51,53,55,59,0,0,0,0,0,0],'디지털 전환율은 계획보다 빠르며, 상담 품질 저하 없이 유지되는지 추적해야 합니다.', 'latest'),
+        m('customer','고객 데이터 정합성','그룹별지표','%',98,[93,94,95,96,96.5,97,97.2,97.5,97.7,98,98,98],[91,93,94,95,96,96.4,0,0,0,0,0,0],'정합성은 목표보다 낮아 AI 분석 신뢰도에 직접적인 영향을 줄 수 있습니다.', 'latest')
+      ]
+    },
+    {
+      id:'innovation', name:'사업혁신그룹', shortName:'사업혁신그룹', desc:'신규사업, 비용구조, 프로세스 혁신 중심', color: COLORS.innovation, icon:'innovation',
+      departments:['신규사업기획팀','프로세스혁신팀','수익성개선팀','파트너전략팀','전략PMO'],
+      metrics:[
+        m('innovation','신규사업 매출','핵심지표','억원',420,[22,25,28,31,34,38,41,44,47,50,58,62],[20,24,27,32,35,36,0,0,0,0,0,0],'상반기 누적은 계획선에 근접하나 하반기 대형 과제 전환율이 관건입니다.','sum'),
+        m('innovation','비용 절감액','주요지표','억원',120,[6,7,8,9,10,10,11,12,12,13,14,18],[5,8,7,10,11,9,0,0,0,0,0,0],'비용 절감은 월별 변동성이 커서 구조적 절감과 일회성 절감을 분리해야 합니다.','sum'),
+        m('innovation','프로세스 자동화율','주요지표','%',72,[45,48,51,54,57,60,62,64,66,68,70,72],[43,47,50,52,55,57,0,0,0,0,0,0],'자동화율은 목표보다 낮으며, 현업 적용률 기준으로 재점검이 필요합니다.','latest'),
+        m('innovation','파트너십 전환 건수','그룹별지표','건',36,[2,2,2,3,3,3,3,4,4,4,3,3],[1,2,3,2,4,3,0,0,0,0,0,0],'파트너십 수는 양호하나 매출화 연결 지표를 함께 추적해야 합니다.','sum'),
+        m('innovation','혁신과제 완료율','그룹별지표','%',88,[42,46,50,54,58,62,66,70,74,78,83,88],[40,45,50,55,57,61,0,0,0,0,0,0],'완료율은 안정적이나 난이도 높은 과제가 3분기에 집중되어 있습니다.','latest')
+      ]
+    },
+    {
+      id:'aidc', name:'AI사업그룹-AIDC', shortName:'AIDC', desc:'AI 데이터센터, 인프라, GPU 효율 중심', color: COLORS.aidc, icon:'dc',
+      departments:['AIDC전략팀','GPU플랫폼팀','데이터센터운영팀','인프라영업팀','클라우드사업팀'],
+      metrics:[
+        m('aidc','AIDC 수주액','핵심지표','억원',980,[45,52,60,68,78,88,92,96,102,110,120,140],[42,50,62,65,76,82,0,0,0,0,0,0],'수주 파이프라인은 충분하지만 일부 대형 건의 의사결정 지연이 누적되고 있습니다.','sum'),
+        m('aidc','GPU 가동률','주요지표','%',86,[70,72,74,76,78,80,81,82,83,84,85,86],[68,72,73,75,79,81,0,0,0,0,0,0],'GPU 가동률은 목표권이나 피크 시간대 병목에 대한 용량 계획이 필요합니다.','latest'),
+        m('aidc','전력 효율 PUE','주요지표','PUE',1.32,[1.48,1.46,1.44,1.42,1.40,1.38,1.37,1.36,1.35,1.34,1.33,1.32],[1.50,1.47,1.44,1.43,1.41,1.39,0,0,0,0,0,0],'PUE는 개선되고 있으나 냉각 운영 최적화 효과를 지속 검증해야 합니다.','latest', null, true),
+        m('aidc','인프라 구축 진척률','그룹별지표','%',76,[32,36,40,45,50,55,60,64,68,71,74,76],[31,35,39,43,48,52,0,0,0,0,0,0],'진척률이 계획 대비 낮아 공급망/인허가 리스크 확인이 필요합니다.','latest'),
+        m('aidc','고객 PoC 전환율','그룹별지표','%',48,[24,26,28,30,32,34,36,38,40,43,46,48],[22,25,26,29,31,35,0,0,0,0,0,0],'PoC 전환율은 개선 중이나 기술 검증 이후 상용 전환 구간 관리가 필요합니다.','latest')
+      ]
+    },
+    {
+      id:'aicc', name:'AI사업그룹-AICC', shortName:'AICC', desc:'AI 컨택센터, 자동화, 상담 품질 중심', color: COLORS.aicc, icon:'cc',
+      departments:['AICC사업팀','AI상담플랫폼팀','음성AI팀','고객자동화팀','AICC품질팀'],
+      metrics:[
+        m('aicc','AICC 매출','핵심지표','억원',560,[28,30,34,38,42,46,48,50,52,56,64,72],[27,31,33,37,40,45,0,0,0,0,0,0],'매출은 목표 대비 근접하나 반복 매출 전환율을 같이 봐야 합니다.','sum'),
+        m('aicc','AI 상담 자동화율','주요지표','%',68,[35,38,41,44,47,50,53,56,59,62,65,68],[34,37,40,45,49,51,0,0,0,0,0,0],'자동화율은 초과 흐름이나 고객 불만률과 동시 모니터링이 필요합니다.','latest'),
+        m('aicc','상담 정확도','주요지표','%',91,[83,84,85,86,87,88,88.5,89,89.5,90,90.5,91],[81,83,84,86,87,87.5,0,0,0,0,0,0],'정확도는 목표보다 낮아 저품질 도메인 발화 데이터를 보강해야 합니다.','latest', {name:'정답 매칭률', formula:'정답 응답 / 검수 샘플', num:[810,830,845,861,874,879], den:[1000,1000,1000,1000,1000,1000]}),
+        m('aicc','도입 고객 수','그룹별지표','개사',72,[4,4,5,5,6,6,6,7,7,7,7,8],[3,4,5,5,5,6,0,0,0,0,0,0],'도입 고객 수는 계획선이나 고객군별 활성 사용률 추적이 필요합니다.','sum'),
+        m('aicc','상담 비용 절감률','그룹별지표','%',34,[15,17,19,21,23,25,27,29,30,31,32,34],[14,16,18,22,23,24,0,0,0,0,0,0],'비용 절감률은 유지되지만 품질 저하가 없는지 균형 지표가 필요합니다.','latest')
+      ]
+    },
+    {
+      id:'sw', name:'ENT.SW 트라이브', shortName:'ENT.SW', desc:'엔터프라이즈 SW, SaaS, 플랫폼 품질 중심', color: COLORS.sw, icon:'sw',
+      departments:['SaaS사업팀','플랫폼개발팀','엔터프라이즈영업팀','SW품질팀','기술전략팀'],
+      metrics:[
+        m('sw','ENT.SW ARR','핵심지표','억원',310,[15,17,19,21,23,25,26,27,28,30,33,36],[14,16,18,22,24,24,0,0,0,0,0,0],'ARR은 성장 중이나 6월 목표 미달로 하반기 갱신/업셀 전략이 중요합니다.','sum'),
+        m('sw','SaaS 활성 고객 수','주요지표','개사',230,[120,128,136,144,152,160,170,180,190,204,218,230],[118,127,137,142,150,157,0,0,0,0,0,0],'활성 고객 수는 목표 하회이며 온보딩 병목을 확인해야 합니다.','latest'),
+        m('sw','플랫폼 장애 건수','주요지표','건',18,[4,4,3,3,2,2,2,2,2,1,1,1],[5,4,3,4,2,3,0,0,0,0,0,0],'장애 건수는 목표보다 높아 안정화 스프린트를 우선 배치해야 합니다.','sum', null, true),
+        m('sw','영업 파이프라인 전환율','그룹별지표','%',41,[22,24,26,28,30,32,34,36,38,39,40,41],[20,23,25,27,29,31,0,0,0,0,0,0],'전환율은 소폭 낮아 제안서/PoC 이후 전환 구간을 보강해야 합니다.','latest'),
+        m('sw','릴리즈 적시성','그룹별지표','%',92,[78,80,82,84,86,88,89,90,90.5,91,91.5,92],[77,79,83,84,85,86,0,0,0,0,0,0],'릴리즈 적시성이 낮아지고 있어 의존 개발팀 간 조율 이슈를 점검해야 합니다.','latest')
+      ]
+    }
+  ];
+
+  const QUARTERS = ['1분기','2분기','3분기','4분기'];
+  const STATUS_ORDER = ['지연','주의','진행중','완료'];
+  const app = document.getElementById('app');
+  const tabs = document.getElementById('topTabs');
+  const periodText = document.getElementById('periodText');
+  const themeToggle = document.getElementById('themeToggle');
+  const themeToggleText = document.getElementById('themeToggleText');
+  const settingsModal = document.getElementById('settingsModal');
+  const settingsBody = document.getElementById('settingsBody');
+  const importJsonInput = document.getElementById('importJsonInput');
+  let settings = loadSettings();
+  let activePage = 'overview';
+  let milestoneFilters = { group:'all', department:'all', quarter:'all', pqct:'all', status:'all', query:'' };
+  let milestones = buildMilestones();
+
+  function m(groupId, name, type, unit, annualTarget, targets, actuals, insight, mode, raw, lowerIsBetter) {
+    return { groupId, name, type, unit, annualTarget, targets, actuals, insight, mode: mode || 'latest', raw: raw || null, lowerIsBetter: !!lowerIsBetter };
+  }
+
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('strategyDashboardSettings') || '{}');
+      const migrated = Object.assign({}, saved);
+      if (!migrated.reportYear && migrated.reportMonthLabel) {
+        migrated.reportYear = Number.parseInt(migrated.reportMonthLabel, 10) || DEFAULT_SETTINGS.reportYear;
+      }
+      if (!migrated.organizationPrompt && migrated.kpiPrompt) migrated.organizationPrompt = migrated.kpiPrompt;
+      return Object.assign({}, DEFAULT_SETTINGS, migrated);
+    } catch (e) {
+      return Object.assign({}, DEFAULT_SETTINGS);
+    }
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem('strategyDashboardSettings', JSON.stringify(settings));
+      return true;
+    } catch (error) {
+      console.warn('설정을 브라우저 저장소에 저장하지 못했습니다.', error);
+      return false;
+    }
+  }
+
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
+    const isLight = settings.theme === 'light';
+    periodText.textContent = getReportMonthLabel();
+    themeToggleText.textContent = isLight ? '다크' : '화이트';
+    themeToggle.setAttribute('aria-label', isLight ? '다크 모드로 전환' : '화이트 모드로 전환');
+  }
+
+  function getReportMonthLabel() {
+    return `${settings.reportYear}년 ${settings.reportMonthIndex + 1}월`;
+  }
+
+  function fmt(n, unit) {
+    if (n === null || n === undefined || n === 0) return '-';
+    const fixed = Math.abs(n) >= 100 ? 0 : (Math.abs(n) % 1 === 0 ? 0 : 1);
+    return Number(n).toLocaleString('ko-KR', { maximumFractionDigits: fixed }) + (unit || '');
+  }
+
+  function sumUntil(arr, idx) {
+    return arr.slice(0, idx + 1).reduce((a,b) => a + (Number(b) || 0), 0);
+  }
+
+  function metricCurrent(metric) {
+    const idx = settings.reportMonthIndex;
+    const target = metric.targets[idx] || 0;
+    const actual = metric.actuals[idx] || 0;
+    const cumulativeActual = metric.mode === 'sum' ? sumUntil(metric.actuals, idx) : actual;
+    const annualBase = metric.mode === 'sum' ? metric.annualTarget : metric.annualTarget;
+    const monthlyRate = getRate(actual, target, metric.lowerIsBetter);
+    const annualRate = getRate(cumulativeActual, annualBase, metric.lowerIsBetter);
+    return { idx, target, actual, cumulativeActual, monthlyRate, annualRate };
+  }
+
+  function getRate(actual, target, lowerIsBetter) {
+    if (!target || !actual) return 0;
+    if (lowerIsBetter) return Math.max(0, Math.min(160, (target / actual) * 100));
+    return Math.max(0, Math.min(160, (actual / target) * 100));
+  }
+
+  function groupAverage(group) {
+    const rates = group.metrics.map(metric => metricCurrent(metric).monthlyRate).filter(Boolean);
+    return rates.length ? rates.reduce((a,b)=>a+b,0)/rates.length : 0;
+  }
+
+  function statusFor(rate) {
+    if (rate >= 100) return { label:'달성', cls:'good' };
+    if (rate >= 90) return { label:'정상', cls:'good' };
+    if (rate >= 70) return { label:'주의', cls:'warn' };
+    return { label:'위험', cls:'danger' };
+  }
+
+  function milestoneStatusClass(status) {
+    if (status === '완료') return 'good';
+    if (status === '지연') return 'danger';
+    if (status === '주의') return 'warn';
+    return 'neutral';
+  }
+
+  function buildMilestones() {
+    const dimensions = [
+      {code:'P', name:'Performance', label:'성과'},
+      {code:'Q', name:'Quality', label:'품질'},
+      {code:'C', name:'Cost', label:'비용'},
+      {code:'T', name:'Time', label:'일정'}
+    ];
+    const verbs = ['상용화','고도화','전환','검증','확산','안정화','표준화','자동화','정합성 개선','운영 내재화'];
+    const risks = ['의사결정 지연','외부 의존 일정','데이터 품질 편차','현업 적용률 저조','인프라 리소스 제약','검수 지연','계약 조건 협의','릴리즈 병목','목표 정의 불명확','성과지표 연결 미흡'];
+    const list = [];
+    GROUPS.forEach((g, gi) => {
+      g.departments.forEach((dept, di) => {
+        QUARTERS.forEach((q, qi) => {
+          dimensions.forEach((dim, pi) => {
+            const seed = gi * 29 + di * 11 + qi * 7 + pi * 5;
+            const progress = Math.min(100, Math.max(15, 34 + seed + qi * 8 + (di % 3) * 5 - (pi === 3 ? 5 : 0)));
+            let status = progress >= 92 ? '완료' : progress < 58 ? '지연' : progress < 76 ? '주의' : '진행중';
+            if (qi === 0 && progress > 70) status = '완료';
+            if (qi >= 2 && progress < 72) status = seed % 2 ? '주의' : '지연';
+            list.push({
+              id: `${g.id}-${di + 1}-q${qi + 1}-${dim.code}`,
+              groupId: g.id,
+              groupName: g.name,
+              department: dept,
+              quarter: q,
+              dimension: dim.code,
+              dimensionLabel: dim.label,
+              title: `${dept} ${q} ${dim.label} ${verbs[(seed + qi + pi) % verbs.length]} 과제`,
+              target: `${dim.label} 관점의 실행목표를 ${q} 내 완료하고 관련 전략지표 개선에 기여`,
+              result: progress > 90 ? '완료 산출물 검수 및 운영 반영' : progress > 70 ? '핵심 산출물 진행, 일부 협의 잔여' : '일정 지연 및 실행 리스크 발생',
+              progress,
+              status,
+              risk: risks[(seed + 2) % risks.length],
+              nextAction: progress < 70 ? '담당 임원 의사결정 및 우선순위 재조정' : '다음 게이트 통과 기준 재확인'
+            });
+          });
+        });
+      });
+    });
+    return list;
+  }
+
+  function iconSvg(type) {
+    const icons = {
+      customer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z"/><path d="M9 10h.01M15 10h.01"/><path d="M9 14c1.8 1.4 4.2 1.4 6 0"/></svg>',
+      innovation: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.8 5.7L21 9.6l-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg>',
+      dc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 4v16M15 4v16M4 9h16M4 15h16"/></svg>',
+      cc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M4 12v3a3 3 0 0 0 3 3h1v-6H7a3 3 0 0 0-3 3Z"/><path d="M20 12v3a3 3 0 0 1-3 3h-1v-6h1a3 3 0 0 1 3 3Z"/><path d="M12 20v-3"/></svg>',
+      sw: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l-4 3 4 3"/><path d="M16 9l4 3-4 3"/><path d="M14 5l-4 14"/></svg>'
+    };
+    return icons[type] || icons.innovation;
+  }
+
+  function renderTabs() {
+    const items = [{id:'overview', label:'전체'}].concat(GROUPS.map(g => ({id:g.id, label:g.shortName || g.name})), [{id:'milestones', label:'마일스톤'}]);
+    tabs.innerHTML = `<span class="nav-label">대시보드</span>` + items.map(item => `<button class="tab-btn ${activePage === item.id ? 'active' : ''}" data-page="${item.id}">${item.label}</button>`).join('');
+    tabs.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => { activePage = btn.dataset.page; render(); }));
+  }
+
+  function render() {
+    applyTheme();
+    renderTabs();
+    if (activePage === 'overview') renderOverview();
+    else if (activePage === 'milestones') renderMilestones();
+    else renderGroupDetail(GROUPS.find(g => g.id === activePage) || GROUPS[0]);
+  }
+
+  function renderOverview() {
+    const avg = GROUPS.reduce((a,g)=>a+groupAverage(g),0)/GROUPS.length;
+    const allMetrics = GROUPS.flatMap(g => g.metrics);
+    const missed = allMetrics.filter(metric => metricCurrent(metric).monthlyRate < 90).length;
+    const risks = allMetrics.filter(metric => metricCurrent(metric).monthlyRate < 70).length;
+    const delayed = milestones.filter(x => x.status === '지연').length;
+    app.innerHTML = `
+      <section class="page active">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Portfolio View</div>
+            <h1>부문 전략지표 현황</h1>
+            <p class="lead">${getReportMonthLabel()} 기준 5개 조직의 핵심지표, 주요지표, 그룹별지표 달성 여부와 부문 차원의 의사결정 포인트를 요약합니다.</p>
+          </div>
+          <button class="btn primary" id="overallAIButton">AI 전체 인사이트 갱신</button>
+        </div>
+
+        <aside class="card ai-panel overview-ai-wide section" id="overallAI">
+          ${renderOverallAI()}
+        </aside>
+
+        <div class="grid grid-4 section">
+          <div class="card stat-card"><div><div class="stat-label">부문 평균 달성률</div><div class="stat-value">${avg.toFixed(1)}%</div></div><div class="stat-note">5개 조직, 25개 월 지표 평균</div></div>
+          <div class="card stat-card"><div><div class="stat-label">목표 미달 지표</div><div class="stat-value">${missed}개</div></div><div class="stat-note">90% 미만 또는 위험/주의 지표</div></div>
+          <div class="card stat-card"><div><div class="stat-label">위험 지표</div><div class="stat-value">${risks}개</div></div><div class="stat-note">월 달성률 70% 미만 기준</div></div>
+          <div class="card stat-card"><div><div class="stat-label">지연 마일스톤</div><div class="stat-value">${delayed}개</div></div><div class="stat-note">25개 담당조직, PQCT 과제 기준</div></div>
+        </div>
+
+        <div class="overview-group-list section" id="overviewCards">
+          ${GROUPS.map(renderGroupCard).join('')}
+        </div>
+      </section>
+    `;
+    document.getElementById('overallAIButton').addEventListener('click', async () => {
+      await updateOverallAI();
+    });
+    document.querySelectorAll('[data-open-group]').forEach(btn => btn.addEventListener('click', () => { activePage = btn.dataset.openGroup; render(); }));
+  }
+
+  function coreStar() {
+    return `<span class="core-star" title="핵심지표" aria-label="핵심지표"><svg viewBox="0 0 24 24"><path d="M12 2.8l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.7l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 2.8Z"/></svg></span>`;
+  }
+
+  function renderGroupCard(group) {
+    const avg = groupAverage(group);
+    const status = statusFor(avg);
+    return `
+      <article class="card group-card" style="--group-color:${group.color}">
+        <div class="group-card-head">
+          <div class="group-title-wrap">
+            <div class="org-mark" aria-hidden="true">${iconSvg(group.icon)}</div>
+            <div>
+              <div class="group-name">${group.name}</div>
+              <div class="group-desc">${group.desc}</div>
+            </div>
+          </div>
+          <div class="achievement">
+            <div class="num">${avg.toFixed(1)}%</div>
+            <div class="caption"><span class="status ${status.cls}">${status.label}</span></div>
+          </div>
+        </div>
+        <div class="metric-mini-list overview-metrics">
+          ${group.metrics.map(metric => {
+            const cur = metricCurrent(metric);
+            const s = statusFor(cur.monthlyRate);
+            return `<div class="metric-mini is-row">
+              <div class="metric-row-main">
+                <div class="metric-row-title">
+                  ${metric.type === '핵심지표' ? coreStar() : ''}
+                  <span class="metric-type">${metric.type}</span>
+                  <div class="metric-name">${metric.name}</div>
+                </div>
+                <div class="metric-row-meta">월실적 ${fmt(cur.actual, metric.unit)} / 월목표 ${fmt(cur.target, metric.unit)}<br>연목표 ${fmt(metric.annualTarget, metric.unit)}</div>
+              </div>
+              <div class="metric-row-result">
+                <div class="metric-rate">${cur.monthlyRate.toFixed(0)}%</div>
+                <span class="status ${s.cls}">${s.label}</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <button class="btn small" data-open-group="${group.id}">상세 보기</button>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderOverallAI(refreshed) {
+    const worstMetric = GROUPS.flatMap(g => g.metrics.map(metric => ({group:g.name, metric, rate:metricCurrent(metric).monthlyRate}))).sort((a,b)=>a.rate-b.rate)[0];
+    const delayedByGroup = GROUPS.map(g => ({ name:g.name, count:milestones.filter(m=>m.groupId===g.id && m.status==='지연').length })).sort((a,b)=>b.count-a.count)[0];
+    return `
+      <div class="ai-title-row">
+        <div><div class="ai-title">AI 전체 인사이트</div><div class="ai-label">부문 전략지표 간 연결 리스크, 공통 병목, 임원 의사결정 안건 중심</div></div>
+        <span class="status neutral">${refreshed ? '갱신됨' : '샘플'}</span>
+      </div>
+      <div class="insight-list">
+        <div class="insight-item"><div class="insight-kicker">부문 종합 판단</div><div class="insight-text">부문 평균 달성률은 ${ (GROUPS.reduce((a,g)=>a+groupAverage(g),0)/GROUPS.length).toFixed(1)}%입니다. 단순 조직 순위보다 목표 미달 지표와 지연 실행과제의 결합 리스크를 우선 확인해야 합니다.</div></div>
+        <div class="insight-item"><div class="insight-kicker">교차 조직 리스크</div><div class="insight-text">가장 낮은 월 달성률은 ${worstMetric.group}의 ${worstMetric.metric.name}입니다. 원인이 단일 조직 문제가 아니라 데이터, 인프라, 영업 전환 병목과 연결되는지 확인해야 합니다.</div></div>
+        <div class="insight-item"><div class="insight-kicker">실행과제 연계</div><div class="insight-text">지연 실행과제는 ${delayedByGroup.name}에 가장 많이 집중되어 있습니다. 담당조직별 일정 리스크를 임원회의 안건으로 전환할 필요가 있습니다.</div></div>
+        <div class="insight-item"><div class="insight-kicker">임원회의 안건</div><div class="insight-text">이번 회의에서는 1) 목표 미달 지표의 회복 계획 2) 지연 실행과제의 의사결정 필요사항 3) 하반기 연목표 달성 가능성 재전망을 중심으로 보는 것이 적절합니다.</div></div>
+        <div class="insight-item"><div class="insight-kicker">다음 액션</div><div class="insight-text">위험 지표와 지연 마일스톤을 조직별로 연결하고, 공통 의존 과제의 책임자와 의사결정 기한을 회의 전에 확정하세요.</div></div>
+      </div>
+    `;
+  }
+
+  function renderGroupDetail(group) {
+    app.innerHTML = `
+      <section class="page active">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Organization Detail</div>
+            <h1>${group.name}</h1>
+            <p class="lead">5개 지표를 카드, 월별 추이 차트, raw data 테이블, 지표별 한줄 인사이트로 묶어 봅니다. 상단 AI 분석은 조직 단위 실행 리스크에 집중합니다.</p>
+          </div>
+          <button class="btn primary" id="groupAIRefresh">조직 AI 분석 갱신</button>
+        </div>
+        <div class="card detail-ai-top" style="--group-color:${group.color}" id="groupAIBox">
+          ${renderGroupAI(group)}
+        </div>
+        <div class="grid grid-4 section">
+          ${renderGroupStats(group)}
+        </div>
+        <div class="section">
+          ${group.metrics.map(metric => renderMetricBlock(group, metric)).join('')}
+        </div>
+      </section>
+    `;
+    document.getElementById('groupAIRefresh').addEventListener('click', async () => {
+      await updateGroupAI(group);
+    });
+    document.querySelectorAll('[data-ask]').forEach(btn => btn.addEventListener('click', () => {
+      openChat(`'${btn.dataset.ask}' 지표의 원인과 다음 액션을 설명해줘`);
+    }));
+  }
+
+  function renderGroupAI(group, refreshed, externalText) {
+    const items = group.metrics.map(metric => ({metric, cur:metricCurrent(metric)})).sort((a,b)=>a.cur.monthlyRate-b.cur.monthlyRate);
+    const worst = items[0];
+    const best = items[items.length - 1];
+    const delays = milestones.filter(m => m.groupId === group.id && m.status === '지연').length;
+    const caution = milestones.filter(m => m.groupId === group.id && m.status === '주의').length;
+    if (externalText) {
+      return `
+        <div>
+          <h2>${group.name} AI 분석</h2>
+          <p class="lead">사내 LLM Endpoint를 통해 갱신된 조직 단위 분석입니다. 전체현황은 부문 교차 이슈, 이 영역은 ${group.name} 내부 실행 액션에 집중합니다.</p>
+          <div class="ai-chips"><span class="status neutral">사내 LLM 분석 갱신</span><span class="status ${statusFor(groupAverage(group)).cls}">조직 달성률 ${groupAverage(group).toFixed(1)}%</span></div>
+        </div>
+        <div class="insight-list" style="min-width:min(560px,100%)">
+          <div class="insight-item"><div class="insight-kicker">LLM 분석 결과</div><div class="insight-text">${escapeHtml(externalText).replace(/\n/g,'<br>')}</div></div>
+        </div>
+      `;
+    }
+    return `
+      <div>
+        <h2>${group.name} AI 분석</h2>
+        <p class="lead">${getReportMonthLabel()} 기준 조직 내부 지표의 실행 리스크를 요약합니다. 설정의 사내 LLM Endpoint/API Key를 입력하면 “조직 AI 분석 갱신” 버튼으로 실제 분석 결과를 갱신할 수 있습니다.</p>
+        <div class="ai-chips">
+          <span class="status ${statusFor(groupAverage(group)).cls}">조직 달성률 ${groupAverage(group).toFixed(1)}%</span>
+          <span class="status ${delays ? 'danger' : 'good'}">지연 실행과제 ${delays}개</span>
+          <span class="status ${caution ? 'warn' : 'good'}">주의 실행과제 ${caution}개</span>
+          <span class="status neutral">${refreshed ? '분석 갱신' : '샘플 분석'}</span>
+        </div>
+      </div>
+      <div class="insight-list" style="min-width:min(560px,100%)">
+        <div class="insight-item"><div class="insight-kicker">취약 지표</div><div class="insight-text">${worst.metric.name}의 월 달성률이 ${worst.cur.monthlyRate.toFixed(1)}%로 가장 낮습니다. ${worst.metric.insight}</div></div>
+        <div class="insight-item"><div class="insight-kicker">회복 레버</div><div class="insight-text">${best.metric.name}은 ${best.cur.monthlyRate.toFixed(1)}%입니다. 우수 지표의 실행 방식이 다른 지표의 회복 레버로 전환 가능한지 확인하세요.</div></div>
+        <div class="insight-item"><div class="insight-kicker">실행과제 연결</div><div class="insight-text">지연 ${delays}개, 주의 ${caution}개 실행과제가 있습니다. 지표 부진과 직접 연결되는 담당조직/PQCT 과제를 우선 분리해 확인해야 합니다.</div></div>
+        <div class="insight-item"><div class="insight-kicker">다음 액션</div><div class="insight-text">다음 회의에서는 1) 취약 지표 원인 2) 연목표 대비 회복 가능성 3) 담당조직 실행과제 병목 4) 임원 의사결정 필요사항 순서로 점검하는 구성이 적절합니다.</div></div>
+      </div>
+    `;
+  }
+
+  function renderGroupStats(group) {
+    const avg = groupAverage(group);
+    const delayed = milestones.filter(m => m.groupId === group.id && m.status === '지연').length;
+    const caution = milestones.filter(m => m.groupId === group.id && m.status === '주의').length;
+    const missed = group.metrics.filter(metric => metricCurrent(metric).monthlyRate < 90).length;
+    return `
+      <div class="card stat-card"><div><div class="stat-label">조직 달성률</div><div class="stat-value">${avg.toFixed(1)}%</div></div><div class="stat-note">5개 월 지표 평균</div></div>
+      <div class="card stat-card"><div><div class="stat-label">목표 미달 지표</div><div class="stat-value">${missed}개</div></div><div class="stat-note">90% 미만 기준</div></div>
+      <div class="card stat-card"><div><div class="stat-label">지연 실행과제</div><div class="stat-value">${delayed}개</div></div><div class="stat-note">담당조직 기준</div></div>
+      <div class="card stat-card"><div><div class="stat-label">주의 마일스톤</div><div class="stat-value">${caution}개</div></div><div class="stat-note">선제 관리 대상</div></div>
+    `;
+  }
+
+  function renderMetricBlock(group, metric) {
+    const cur = metricCurrent(metric);
+    const s = statusFor(cur.monthlyRate);
+    return `
+      <article class="card metric-block" style="--group-color:${group.color}">
+        <div class="metric-summary">
+          <div class="summary-label">${metric.type}</div>
+          <div class="summary-name">${metric.name}</div>
+          <div class="actual-target-hero">
+            <div class="actual-target-label">월실적 / 월목표</div>
+            <div class="actual-target-value"><span class="actual-gold">${fmt(cur.actual, metric.unit)}</span><span class="target-small">/ ${fmt(cur.target, metric.unit)}</span></div>
+          </div>
+          <div class="summary-rate">${cur.monthlyRate.toFixed(1)}%</div>
+          <div class="rate-caption">월 달성률 · <span class="status ${s.cls}">${s.label}</span></div>
+          <div class="metric-side-grid">
+            <div class="metric-side-row"><span>연목표</span><strong>${fmt(metric.annualTarget, metric.unit)}</strong></div>
+            <div class="metric-side-row"><span>${metric.mode === 'sum' ? '누적실적' : '현재실적'}</span><strong>${fmt(cur.cumulativeActual, metric.unit)}</strong></div>
+            <div class="metric-side-row"><span>연목표 대비</span><strong>${cur.annualRate.toFixed(1)}%</strong></div>
+          </div>
+        </div>
+        <div class="metric-chart">
+          <div class="chart-head">
+            <div><div class="chart-title">월별 목표/실적 추이</div><div class="chart-sub">상단 고정 위치에 월별 달성률 표시 · 목표와 실적 모두 꺾은선</div></div>
+            <div class="legend"><span class="legend-item" style="color:var(--muted)"><span class="legend-line"></span>목표</span><span class="legend-item" style="color:${group.color}"><span class="legend-line"></span>실적</span></div>
+          </div>
+          ${lineChart(metric, group.color)}
+        </div>
+        <div class="metric-raw">
+          ${metricTable(metric)}
+        </div>
+        <aside class="metric-note">
+          <h4>지표 인사이트</h4>
+          <p>${metric.insight}</p>
+          <div class="ai-chips" style="margin-top:14px">
+            <button class="btn small" data-ask="${metric.name}">LLM에 질문</button>
+          </div>
+        </aside>
+      </article>
+    `;
+  }
+
+  function lineChart(metric, color) {
+    const width = 820, height = 260, pad = {l:34, r:18, t:62, b:30};
+    const values = metric.targets.concat(metric.actuals.filter(Boolean));
+    let min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if (metric.lowerIsBetter) { min = Math.min(min, metric.annualTarget); max = Math.max(max, metric.annualTarget); }
+    const span = max - min || 1;
+    min = min - span * 0.16; max = max + span * 0.22;
+    const x = i => pad.l + i * ((width - pad.l - pad.r) / 11);
+    const y = v => height - pad.b - ((v - min) / (max - min)) * (height - pad.t - pad.b);
+    const path = arr => arr.map((v,i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v || min).toFixed(1)}`).join(' ');
+    const idx = settings.reportMonthIndex;
+    const grid = [0,1,2,3].map(i => {
+      const gy = pad.t + i * ((height - pad.t - pad.b)/3);
+      return `<line x1="${pad.l}" y1="${gy}" x2="${width-pad.r}" y2="${gy}" stroke="var(--chart-grid)"/>`;
+    }).join('');
+    const labels = metric.targets.map((_,i)=> `<text x="${x(i)}" y="${height-9}" text-anchor="middle" fill="var(--chart-text)" font-size="10.5">${i+1}월</text>`).join('');
+    const actualPath = metric.actuals.map((v,i)=> v ? `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}` : '').filter(Boolean).join(' ');
+    const points = metric.actuals.map((v,i)=> v ? `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${color}"/>` : '').join('');
+    const rateLabels = metric.actuals.map((v,i)=> {
+      if (!v) return '';
+      const rate = getRate(v, metric.targets[i], metric.lowerIsBetter);
+      const label = i === 0 ? `달성률: ${rate.toFixed(0)}%` : `${rate.toFixed(0)}%`;
+      const tx = i === 0 ? x(i) + 20 : x(i);
+      return `<text x="${tx}" y="26" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="820">${label}</text>`;
+    }).join('');
+    return `<svg class="svg-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${metric.name} 월별 목표 실적 차트">
+      ${grid}
+      <line x1="${x(idx)}" y1="${pad.t}" x2="${x(idx)}" y2="${height-pad.b}" stroke="${color}" stroke-opacity="0.28" stroke-dasharray="5 5"/>
+      <path d="${path(metric.targets)}" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${actualPath}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      ${points}
+      ${rateLabels}
+      ${labels}
+    </svg>`;
+  }
+
+  function metricTable(metric) {
+    const idx = settings.reportMonthIndex;
+    const months = metric.targets.map((_,i)=>`${i+1}월`);
+    const cell = (content, i) => `<td class="${i === idx ? 'current-col' : ''}">${content}</td>`;
+    const head = months.map((m,i)=>`<th class="${i === idx ? 'current-col' : ''}">${m}</th>`).join('');
+    const nums = metric.targets.map((_,i)=>cell(metric.raw && metric.raw.num[i] ? metric.raw.num[i].toLocaleString('ko-KR') : '', i)).join('');
+    const dens = metric.targets.map((_,i)=>cell(metric.raw && metric.raw.den[i] ? metric.raw.den[i].toLocaleString('ko-KR') : '', i)).join('');
+    return `<div class="table-wrap"><table class="wide-metric-table raw-two-row-table"><thead><tr><th>구분</th>${head}</tr></thead><tbody>
+      <tr><td>분자</td>${nums}</tr>
+      <tr><td>분모</td>${dens}</tr>
+    </tbody></table></div>`;
+  }
+
+  function renderMilestones() {
+    const filtered = filteredMilestones();
+    const delayed = filtered.filter(m=>m.status==='지연').length;
+    const caution = filtered.filter(m=>m.status==='주의').length;
+    const avgProgress = filtered.length ? filtered.reduce((a,b)=>a+b.progress,0)/filtered.length : 0;
+    const selectedDept = milestoneFilters.department !== 'all' ? milestoneFilters.department : null;
+    app.innerHTML = `
+      <section class="page active">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Milestone</div>
+            <h1>마일스톤</h1>
+            <p class="lead">마일스톤은 대시보드 하위의 실행 관리 레이어입니다. 담당조직별 PQCT 과제 목표/실적을 분기 단위로 보고, 전략지표와 연결 가능한 병목과 의사결정 포인트를 확인합니다.</p>
+          </div>
+          <button class="btn primary" id="milestoneAIButton">마일스톤 인사이트 갱신</button>
+        </div>
+        <div class="grid grid-4 section">
+          <div class="card stat-card"><div><div class="stat-label">표시 실행과제</div><div class="stat-value">${filtered.length}</div></div><div class="stat-note">필터 적용 결과</div></div>
+          <div class="card stat-card"><div><div class="stat-label">평균 완료율</div><div class="stat-value">${avgProgress.toFixed(1)}%</div></div><div class="stat-note">담당조직/PQCT 전체 평균</div></div>
+          <div class="card stat-card"><div><div class="stat-label">지연 과제</div><div class="stat-value">${delayed}</div></div><div class="stat-note">즉시 의사결정 필요</div></div>
+          <div class="card stat-card"><div><div class="stat-label">주의 과제</div><div class="stat-value">${caution}</div></div><div class="stat-note">선제 관리 대상</div></div>
+        </div>
+        <div class="milestone-layout section">
+          <div>
+            <div class="card card-pad">
+              <h2>담당조직별 실행 현황</h2>
+              <p class="lead" style="font-size:12px;margin-top:6px">25개 담당조직을 먼저 보고, 클릭하면 해당 담당조직의 분기별 PQCT 과제 목록으로 좁혀봅니다.</p>
+              <div class="filters">
+                <select id="fGroup"><option value="all">전체 그룹</option>${GROUPS.map(g=>`<option value="${g.id}">${g.name}</option>`).join('')}</select>
+                <select id="fDept"><option value="all">전체 담당조직</option>${GROUPS.flatMap(g=>g.departments.map(d=>`<option value="${d}">${d}</option>`)).join('')}</select>
+                <select id="fQuarter"><option value="all">전체 분기</option>${QUARTERS.map(q=>`<option value="${q}">${q}</option>`).join('')}</select>
+                <select id="fPqct"><option value="all">전체 PQCT</option>${['P','Q','C','T'].map(code=>`<option value="${code}">${code}</option>`).join('')}</select>
+                <select id="fStatus"><option value="all">전체 상태</option>${STATUS_ORDER.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
+                <input id="fQuery" placeholder="검색" value="${escapeHtml(milestoneFilters.query)}" />
+              </div>
+              ${renderOwnerCards()}
+            </div>
+            <div class="card card-pad section">
+              <h2>${selectedDept ? selectedDept + ' 과제 목록' : '지연·주의 우선 과제'}</h2>
+              ${selectedDept ? renderTaskCards(filtered) : `<div class="risk-list">${renderRiskList(filtered)}</div>`}
+            </div>
+            <div class="card card-pad section">
+              <h2>실행과제 상세 테이블</h2>
+              ${renderMilestoneTable(filtered)}
+            </div>
+          </div>
+          <aside class="card llm-console">
+            <h2>AI 마일스톤 인사이트</h2>
+            <p class="lead" style="font-size:12px;margin-top:8px">담당조직별 PQCT 목표/실적을 압축해 사내 LLM에 넘기고, 지표 영향·병목·의사결정·다음 액션 중심으로 결과를 받는 영역입니다.</p>
+            <div class="ai-chips">
+              <button class="btn small" data-milestone-prompt="risk">지연 과제 요약</button>
+              <button class="btn small" data-milestone-prompt="pqct">전략지표 영향 분석</button>
+              <button class="btn small" data-milestone-prompt="owner">담당조직 위험 분석</button>
+              <button class="btn small" data-milestone-prompt="meeting">임원 보고 안건 생성</button>
+            </div>
+            <div class="console-output" id="milestoneConsole">${milestoneInsight('risk')}</div>
+          </aside>
+        </div>
+      </section>
+    `;
+    setSelectValue('fGroup', milestoneFilters.group);
+    setSelectValue('fDept', milestoneFilters.department);
+    setSelectValue('fQuarter', milestoneFilters.quarter);
+    setSelectValue('fPqct', milestoneFilters.pqct);
+    setSelectValue('fStatus', milestoneFilters.status);
+    ['fGroup','fDept','fQuarter','fPqct','fStatus','fQuery'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener(id === 'fQuery' ? 'input' : 'change', () => {
+        milestoneFilters = { group:document.getElementById('fGroup').value, department:document.getElementById('fDept').value, quarter:document.getElementById('fQuarter').value, pqct:document.getElementById('fPqct').value, status:document.getElementById('fStatus').value, query:document.getElementById('fQuery').value };
+        renderMilestones();
+      });
+    });
+    document.querySelectorAll('[data-owner-dept]').forEach(card => card.addEventListener('click', () => {
+      milestoneFilters.department = card.dataset.ownerDept;
+      milestoneFilters.group = card.dataset.ownerGroup;
+      renderMilestones();
+    }));
+    document.querySelectorAll('[data-milestone-prompt]').forEach(btn => btn.addEventListener('click', () => {
+      document.getElementById('milestoneConsole').textContent = milestoneInsight(btn.dataset.milestonePrompt);
+    }));
+    document.getElementById('milestoneAIButton').addEventListener('click', async () => {
+      await updateMilestoneAI();
+    });
+  }
+
+  function renderOwnerCards() {
+    const visibleGroups = GROUPS.filter(g => milestoneFilters.group === 'all' || milestoneFilters.group === g.id);
+    const cards = visibleGroups.flatMap(g => g.departments.map(dept => {
+      const list = milestones.filter(m => m.department === dept && (milestoneFilters.quarter === 'all' || m.quarter === milestoneFilters.quarter));
+      const total = list.length;
+      const avg = total ? list.reduce((a,b)=>a+b.progress,0)/total : 0;
+      const delayed = list.filter(m=>m.status==='지연').length;
+      const caution = list.filter(m=>m.status==='주의').length;
+      const pqct = ['P','Q','C','T'].map(code => `${code} ${list.filter(m=>m.dimension===code && m.status==='지연').length}`).join(' · ');
+      const active = milestoneFilters.department === dept ? 'active' : '';
+      return `<div class="owner-card ${active}" data-owner-dept="${dept}" data-owner-group="${g.id}">
+        <div class="owner-title">${dept}</div>
+        <div class="owner-meta">${g.name}</div>
+        <div class="owner-kpis"><div class="owner-kpi"><strong>${total}</strong><span>과제</span></div><div class="owner-kpi"><strong>${avg.toFixed(0)}%</strong><span>완료율</span></div><div class="owner-kpi"><strong>${delayed}</strong><span>지연</span></div></div>
+        <div class="pqct-row"><span class="pqct-pill">${pqct}</span><span class="pqct-pill">주의 ${caution}</span></div>
+      </div>`;
+    }));
+    return `<div class="owner-grid">${cards.join('')}</div>`;
+  }
+
+  function renderTaskCards(list) {
+    const rows = list.slice(0,36).map(m => `<div class="task-card">
+      <div class="task-head"><div><div class="task-title">${m.title}</div><div class="risk-meta">${m.quarter} · ${m.dimension}(${m.dimensionLabel}) · ${m.groupName}</div></div><span class="status ${milestoneStatusClass(m.status)}">${m.status}</span></div>
+      <div class="task-detail"><strong>목표</strong> ${m.target}<br><strong>실적</strong> ${m.result}</div>
+      <div class="progress"><span style="width:${m.progress}%"></span></div>
+      <div class="task-meta"><span class="pqct-pill">완료율 ${m.progress}%</span><span class="pqct-pill">리스크 ${m.risk}</span></div>
+      <div class="task-detail"><strong>다음 액션</strong> ${m.nextAction}</div>
+    </div>`).join('');
+    return `<div class="milestone-task-grid">${rows}</div>`;
+  }
+
+  function setSelectValue(id, value) { const el = document.getElementById(id); if (el) el.value = value; }
+
+  function filteredMilestones() {
+    const q = milestoneFilters.query.trim().toLowerCase();
+    return milestones.filter(m =>
+      (milestoneFilters.group === 'all' || m.groupId === milestoneFilters.group) &&
+      (milestoneFilters.department === 'all' || m.department === milestoneFilters.department) &&
+      (milestoneFilters.quarter === 'all' || m.quarter === milestoneFilters.quarter) &&
+      (milestoneFilters.pqct === 'all' || m.dimension === milestoneFilters.pqct) &&
+      (milestoneFilters.status === 'all' || m.status === milestoneFilters.status) &&
+      (!q || [m.groupName, m.department, m.title, m.risk, m.nextAction].join(' ').toLowerCase().includes(q))
+    );
+  }
+
+  function renderHeatmap() {
+    const heads = `<div></div>${QUARTERS.map(q=>`<div class="heat-head">${q}</div>`).join('')}`;
+    const rows = GROUPS.map(g => {
+      const cells = QUARTERS.map(q => {
+        const list = milestones.filter(m => m.groupId === g.id && m.quarter === q);
+        const delayed = list.filter(m=>m.status==='지연').length;
+        const caution = list.filter(m=>m.status==='주의').length;
+        const color = delayed ? 'var(--danger)' : caution ? 'var(--warn)' : 'var(--good)';
+        return `<div class="heat-cell" data-heat-group="${g.id}" data-heat-quarter="${q}" style="border-color:color-mix(in srgb, ${color} 34%, var(--line)); background:color-mix(in srgb, ${color} 8%, var(--surface-2))">
+          <div class="heat-main" style="color:${color}">${delayed}</div><div class="heat-sub">지연 · 주의 ${caution}</div>
+        </div>`;
+      }).join('');
+      return `<div class="heat-row-label" style="color:${g.color}">${g.name}</div>${cells}`;
+    }).join('');
+    return `<div class="heatmap">${heads}${rows}</div>`;
+  }
+
+  function renderRiskList(list) {
+    const risks = list.filter(m=>m.status==='지연' || m.status==='주의').sort((a,b)=> a.status === b.status ? a.progress - b.progress : (a.status === '지연' ? -1 : 1)).slice(0,10);
+    if (!risks.length) return '<div class="muted">현재 필터 기준 지연·주의 항목이 없습니다.</div>';
+    return risks.map(m => `<div class="risk-card">
+      <div class="risk-top"><div><div class="risk-title">${m.title}</div><div class="risk-meta">${m.groupName} · ${m.department} · ${m.quarter} · ${m.dimensionLabel} · 리스크: ${m.risk}</div></div><span class="status ${milestoneStatusClass(m.status)}">${m.status}</span></div>
+      <div class="progress"><span style="width:${m.progress}%"></span></div>
+      <div class="risk-meta">다음 액션: ${m.nextAction}</div>
+    </div>`).join('');
+  }
+
+  function renderMilestoneTable(list) {
+    const rows = list.slice(0,80).map(m => `<tr>
+      <td>${m.groupName}</td><td>${m.department}</td><td>${m.quarter}</td><td>${m.dimension}</td><td>${m.title}</td><td>${m.target}</td><td>${m.result}</td><td>${m.progress}%</td><td><span class="status ${milestoneStatusClass(m.status)}">${m.status}</span></td><td>${m.risk}</td><td>${m.nextAction}</td>
+    </tr>`).join('');
+    return `<div class="table-wrap"><table><thead><tr><th>그룹</th><th>담당조직</th><th>분기</th><th>PQCT</th><th>과제</th><th>목표</th><th>실적</th><th>완료율</th><th>상태</th><th>리스크</th><th>다음 액션</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  function milestoneInsight(type) {
+    const list = filteredMilestones();
+    const delayed = list.filter(m=>m.status==='지연');
+    const caution = list.filter(m=>m.status==='주의');
+    const byGroup = GROUPS.map(g => ({name:g.name, delayed:delayed.filter(m=>m.groupId===g.id).length, caution:caution.filter(m=>m.groupId===g.id).length})).sort((a,b)=>(b.delayed+b.caution)-(a.delayed+a.caution));
+    const top = byGroup[0] || {name:'-', delayed:0, caution:0};
+    const byDept = Object.values(list.reduce((acc,m)=>{ acc[m.department] = acc[m.department] || {dept:m.department, delayed:0, caution:0, total:0}; acc[m.department].total++; if(m.status==='지연')acc[m.department].delayed++; if(m.status==='주의')acc[m.department].caution++; return acc; },{})).sort((a,b)=>(b.delayed+b.caution)-(a.delayed+a.caution))[0];
+    if (type === 'pqct') {
+      const byDim = ['P','Q','C','T'].map(code => ({code, delayed:delayed.filter(m=>m.dimension===code).length, caution:caution.filter(m=>m.dimension===code).length})).sort((a,b)=>(b.delayed+b.caution)-(a.delayed+a.caution));
+      const topDim = byDim[0] || {code:'-', delayed:0, caution:0};
+      return `PQCT 병목 요약
+- 현재 필터 기준 ${topDim.code} 영역의 지연/주의가 가장 큽니다. 지연 ${topDim.delayed}개, 주의 ${topDim.caution}개입니다.
+- 지표와 얼라인하려면 각 과제에 연결 KPI ID를 추가하고, 지표 부진과 동일 담당조직의 지연 과제를 함께 묶어 LLM에 전달하는 방식이 적합합니다.
+- 출력 형식은 병목영역 / 근거과제 / 필요한 의사결정 / 다음 액션 4개로 제한하는 것이 좋습니다.`;
+    }
+    if (type === 'quarter') return `분기 병목 요약\n- 현재 필터 기준 지연 ${delayed.length}개, 주의 ${caution.length}개입니다.\n- 분기별 히트맵에서 지연 수가 높은 셀을 클릭하면 해당 그룹/분기 목록으로 좁혀볼 수 있습니다.\n- LLM 연동 시에는 분기, 담당조직, 상태, 리스크 메모만 먼저 넣고 상세 설명은 2차 질의로 분리하는 것이 안전합니다.`;
+    if (type === 'owner') return `담당조직 과부하 요약\n- 우선 확인 대상은 ${byDept ? byDept.dept : '-'}입니다. 지연 ${byDept ? byDept.delayed : 0}개, 주의 ${byDept ? byDept.caution : 0}개가 있습니다.\n- 담당조직별 마일스톤 수와 지연 수를 함께 넣어 LLM에 묻는 방식이 단순 상태 나열보다 유용합니다.\n- 권장 질문: “이 담당조직의 지연 원인을 리스크 유형별로 묶고, 임원 의사결정이 필요한 항목만 분리해줘.”`;
+    if (type === 'meeting') return `임원회의 안건 초안\n1. ${top.name}의 지연/주의 마일스톤 집중 원인 확인\n2. 지연 ${delayed.length}개 중 외부 의존, 데이터 품질, 인프라 리소스 제약 항목 분리\n3. 다음 분기 목표 달성에 영향을 주는 선행 마일스톤 재조정\n4. 담당조직별 과부하 해소를 위한 우선순위 조정안 확정`;
+    return `지연 위험 요약\n- 현재 필터 기준 지연 ${delayed.length}개, 주의 ${caution.length}개입니다.\n- 가장 관리가 필요한 그룹은 ${top.name}입니다.\n- LLM에는 전체 100개를 한 번에 넣기보다 “지연/주의 항목만 압축한 JSON”을 넣고, 출력은 위험요인/필요결정/다음액션 3개 필드로 제한하는 것이 좋습니다.`;
+  }
+
+  function renderSettings() {
+    settingsBody.innerHTML = `
+      <div class="settings-section">
+        <h3>기본 표시</h3>
+        <div class="settings-grid" style="margin-top:12px">
+          <div><label>테마</label><select id="setTheme"><option value="dark">다크 모드</option><option value="light">화이트 모드</option></select></div>
+          <div><label>기준연도</label><input id="setReportYear" type="number" min="2000" max="2100" value="${settings.reportYear}" style="width:100%" /></div>
+          <div><label>기준월</label><select id="setReportMonthIndex">${Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}월</option>`).join('')}</select></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>사내 LLM 연결</h3>
+        <div class="settings-grid" style="margin-top:12px">
+          <div class="full"><label>사내 LLM Endpoint</label><input id="setEndpoint" value="${escapeHtml(settings.llmEndpoint)}" placeholder="예: https://internal-llm.company/api/chat" style="width:100%" /></div>
+          <div><label>API Key</label><input id="setApiKey" type="password" value="${escapeHtml(settings.apiKey)}" style="width:100%" /></div>
+          <div><label>모델명</label><input id="setModelName" value="${escapeHtml(settings.modelName)}" style="width:100%" /></div>
+          <div><label>임베딩 모델</label><input id="setEmbeddingModel" value="${escapeHtml(settings.embeddingModel)}" style="width:100%" /></div>
+          <div><label>인덱스명</label><input id="setIndexName" value="${escapeHtml(settings.indexName)}" style="width:100%" /></div>
+          <div><label>Timeout (밀리초)</label><input id="setTimeoutMs" type="number" min="1000" max="120000" step="1000" value="${settings.timeoutMs}" style="width:100%" /></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>프롬프트 관리</h3>
+        <div class="settings-grid" style="margin-top:12px">
+          <div class="full"><label>시스템 프롬프트</label><textarea id="setSystemPrompt">${escapeHtml(settings.systemPrompt)}</textarea></div>
+          <div class="full"><label>전체 인사이트 프롬프트</label><textarea id="setOverallPrompt">${escapeHtml(settings.overallPrompt)}</textarea></div>
+          <div class="full"><label>조직별 KPI 분석 프롬프트</label><textarea id="setOrganizationPrompt">${escapeHtml(settings.organizationPrompt)}</textarea></div>
+          <div class="full"><label>지표별 분석 프롬프트</label><textarea id="setMetricPrompt">${escapeHtml(settings.metricPrompt)}</textarea></div>
+          <div class="full"><label>마일스톤 인사이트 프롬프트</label><textarea id="setMilestonePrompt">${escapeHtml(settings.milestonePrompt)}</textarea></div>
+          <div class="full"><label>챗봇 응답 프롬프트</label><textarea id="setChatbotPrompt">${escapeHtml(settings.chatbotPrompt)}</textarea></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>데이터 관리</h3>
+        <div class="settings-grid" style="margin-top:12px">
+          <button class="btn" id="exportJson">JSON 내보내기</button>
+          <button class="btn" id="importJson">JSON 가져오기</button>
+          <button class="btn" id="restoreSampleData">샘플 데이터 복원</button>
+          <button class="btn" id="clearLocalStorage">localStorage 초기화</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn ghost" id="restorePrompts">기본값 복원</button><button class="btn" id="testAnalysis">테스트 분석 실행</button></div>
+        <div style="display:flex;gap:10px"><button class="btn" id="clearApiKey">API Key 삭제</button><button class="btn primary" id="saveSettings">설정 저장</button></div>
+      </div>
+      <div class="console-output" id="settingsMessage" style="display:none;min-height:auto;margin-top:14px"></div>
+    `;
+    setSelectValue('setTheme', settings.theme);
+    setSelectValue('setReportMonthIndex', String(settings.reportMonthIndex));
+    document.getElementById('saveSettings').addEventListener('click', collectAndSaveSettings);
+    document.getElementById('setTheme').addEventListener('change', () => { settings.theme = document.getElementById('setTheme').value; saveSettings(); applyTheme(); });
+    document.getElementById('exportJson').addEventListener('click', exportJson);
+    document.getElementById('importJson').addEventListener('click', () => importJsonInput.click());
+    document.getElementById('restoreSampleData').addEventListener('click', restoreSampleData);
+    document.getElementById('clearLocalStorage').addEventListener('click', clearStoredData);
+    document.getElementById('testAnalysis').addEventListener('click', testAnalysis);
+    document.getElementById('clearApiKey').addEventListener('click', () => { settings.apiKey = ''; saveSettings(); renderSettings(); });
+    document.getElementById('restorePrompts').addEventListener('click', () => {
+      settings.systemPrompt = DEFAULT_SETTINGS.systemPrompt;
+      settings.overallPrompt = DEFAULT_SETTINGS.overallPrompt;
+      settings.organizationPrompt = DEFAULT_SETTINGS.organizationPrompt;
+      settings.metricPrompt = DEFAULT_SETTINGS.metricPrompt;
+      settings.milestonePrompt = DEFAULT_SETTINGS.milestonePrompt;
+      settings.chatbotPrompt = DEFAULT_SETTINGS.chatbotPrompt;
+      saveSettings(); renderSettings();
+    });
+  }
+
+  function collectAndSaveSettings() {
+    collectSettingsFromForm();
+    saveSettings();
+    settingsModal.classList.remove('open');
+    render();
+  }
+
+  function exportJson() {
+    const payload = { settings, groups: GROUPS, milestones, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'strategy-dashboard-data.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function showSettingsMessage(message, isError) {
+    const box = document.getElementById('settingsMessage');
+    if (!box) return;
+    box.style.display = 'block';
+    box.style.color = isError ? 'var(--danger)' : 'var(--text)';
+    box.textContent = message;
+  }
+
+  async function importJsonFile(file) {
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!parsed || typeof parsed !== 'object') throw new Error('올바른 JSON 객체가 아닙니다.');
+      if (parsed.settings && typeof parsed.settings === 'object') {
+        settings = Object.assign({}, DEFAULT_SETTINGS, parsed.settings);
+      }
+      if (Array.isArray(parsed.milestones)) milestones = parsed.milestones;
+      saveSettings();
+      renderSettings();
+      showSettingsMessage('JSON 데이터를 가져왔습니다.');
+      render();
+    } catch (error) {
+      showSettingsMessage(error instanceof Error ? error.message : 'JSON 파일을 가져오지 못했습니다.', true);
+    } finally {
+      importJsonInput.value = '';
+    }
+  }
+
+  function restoreSampleData() {
+    milestones = buildMilestones();
+    milestoneFilters = { group:'all', department:'all', quarter:'all', pqct:'all', status:'all', query:'' };
+    showSettingsMessage('샘플 데이터를 복원했습니다.');
+  }
+
+  function clearStoredData() {
+    try {
+      localStorage.removeItem('strategyDashboardSettings');
+    } catch (error) {
+      console.warn('브라우저 저장소를 초기화하지 못했습니다.', error);
+    }
+    settings = Object.assign({}, DEFAULT_SETTINGS);
+    milestones = buildMilestones();
+    applyTheme();
+    renderSettings();
+    showSettingsMessage('localStorage와 설정을 초기화했습니다.');
+    render();
+  }
+
+  async function testAnalysis() {
+    collectSettingsFromForm();
+    showSettingsMessage('테스트 분석을 실행 중입니다.');
+    try {
+      const text = await callInternalLLM({
+        taskType: 'test',
+        prompt: settings.overallPrompt,
+        data: { reportMonth: getReportMonthLabel(), groupCount: GROUPS.length }
+      });
+      showSettingsMessage(text || fallbackLocalInsight('test'));
+    } catch (error) {
+      showSettingsMessage(error instanceof Error ? error.message : '테스트 분석 중 오류가 발생했습니다.', true);
+    }
+  }
+
+  function collectSettingsFromForm() {
+    settings.theme = document.getElementById('setTheme').value;
+    settings.reportYear = Math.min(2100, Math.max(2000, Number(document.getElementById('setReportYear').value) || DEFAULT_SETTINGS.reportYear));
+    settings.reportMonthIndex = Number(document.getElementById('setReportMonthIndex').value || 5);
+    settings.llmEndpoint = document.getElementById('setEndpoint').value.trim();
+    settings.apiKey = document.getElementById('setApiKey').value.trim();
+    settings.modelName = document.getElementById('setModelName').value.trim();
+    settings.embeddingModel = document.getElementById('setEmbeddingModel').value.trim();
+    settings.indexName = document.getElementById('setIndexName').value.trim();
+    settings.timeoutMs = Math.min(120000, Math.max(1000, Number(document.getElementById('setTimeoutMs').value) || DEFAULT_SETTINGS.timeoutMs));
+    settings.systemPrompt = document.getElementById('setSystemPrompt').value;
+    settings.overallPrompt = document.getElementById('setOverallPrompt').value;
+    settings.organizationPrompt = document.getElementById('setOrganizationPrompt').value;
+    settings.metricPrompt = document.getElementById('setMetricPrompt').value;
+    settings.milestonePrompt = document.getElementById('setMilestonePrompt').value;
+    settings.chatbotPrompt = document.getElementById('setChatbotPrompt').value;
+  }
+
+  function buildGroupPrompt(group) {
+    const metrics = group.metrics.map(metric => {
+      const cur = metricCurrent(metric);
+      return {name:metric.name, type:metric.type, monthlyTarget:cur.target, monthlyActual:cur.actual, monthlyRate:Number(cur.monthlyRate.toFixed(1)), annualTarget:metric.annualTarget, annualRate:Number(cur.annualRate.toFixed(1)), insight:metric.insight};
+    });
+    const exec = milestones.filter(m=>m.groupId===group.id).map(m=>({department:m.department, quarter:m.quarter, pqct:m.dimension, task:m.title, progress:m.progress, status:m.status, risk:m.risk}));
+    return `${settings.systemPrompt}\n\n${settings.organizationPrompt}\n\n분석대상: ${group.name}\n기준월: ${getReportMonthLabel()}\n지표 데이터 JSON:\n${JSON.stringify(metrics)}\n\n실행과제 요약 JSON:\n${JSON.stringify(exec.filter(x=>x.status==='지연'||x.status==='주의').slice(0,80))}`;
+  }
+
+  function buildOverallPrompt() {
+    const metrics = GROUPS.flatMap(g => g.metrics.map(metric => {
+      const cur = metricCurrent(metric);
+      return {group:g.name, metric:metric.name, type:metric.type, monthlyTarget:cur.target, monthlyActual:cur.actual, monthlyRate:Number(cur.monthlyRate.toFixed(1)), annualTarget:metric.annualTarget, annualRate:Number(cur.annualRate.toFixed(1))};
+    }));
+    const exec = milestones.filter(x=>x.status==='지연'||x.status==='주의').slice(0,120).map(m=>({group:m.groupName, department:m.department, quarter:m.quarter, pqct:m.dimension, task:m.title, progress:m.progress, status:m.status, risk:m.risk}));
+    return `${settings.systemPrompt}\n\n${settings.overallPrompt}\n\n부문 전체 관점으로 분석하세요. 조직별 화면과 중복되지 않도록 교차 조직 리스크, 공통 병목, 임원 의사결정 안건만 뽑으세요.\n기준월: ${getReportMonthLabel()}\n지표 데이터 JSON:\n${JSON.stringify(metrics)}\n\n지연/주의 실행과제 JSON:\n${JSON.stringify(exec)}`;
+  }
+
+  function buildMilestonePrompt() {
+    const list = filteredMilestones().filter(m=>m.status==='지연'||m.status==='주의').slice(0,150).map(m=>({group:m.groupName, department:m.department, quarter:m.quarter, pqct:m.dimension, title:m.title, target:m.target, result:m.result, progress:m.progress, status:m.status, risk:m.risk, nextAction:m.nextAction}));
+    return `${settings.systemPrompt}\n\n${settings.milestonePrompt}\n\n기준월: ${getReportMonthLabel()}\n전략과제 실행 데이터 JSON:\n${JSON.stringify(list)}`;
+  }
+
+  function fallbackLocalInsight(taskType) {
+    if (taskType === 'test') return '로컬 샘플 분석이 정상 동작합니다. Endpoint를 입력하면 같은 버튼으로 사내 LLM 연결을 검증합니다.';
+    if (taskType === 'overall') return 'Endpoint가 설정되지 않아 부문 전체 샘플 인사이트를 표시했습니다.';
+    if (taskType === 'organization') return 'Endpoint가 설정되지 않아 조직별 샘플 분석을 표시했습니다.';
+    if (taskType === 'milestone') return milestoneInsight('meeting');
+    return 'Endpoint가 설정되지 않아 현재 대시보드 데이터 기반의 로컬 분석을 표시했습니다.';
+  }
+
+  async function callInternalLLM({ taskType, prompt, data }) {
+    if (!settings.llmEndpoint) return fallbackLocalInsight(taskType, data);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), settings.timeoutMs);
+    try {
+      const response = await fetch(settings.llmEndpoint, {
+        method: 'POST',
+        headers: Object.assign({'Content-Type':'application/json'}, settings.apiKey ? {'Authorization': `Bearer ${settings.apiKey}`} : {}),
+        body: JSON.stringify({ taskType, model: settings.modelName, prompt, data }),
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`사내 LLM 호출에 실패했습니다. 상태 코드: ${response.status}`);
+      const result = await response.json();
+      return result.text || result.answer || result.output || result.message || JSON.stringify(result);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error(`사내 LLM 응답이 ${settings.timeoutMs / 1000}초 안에 도착하지 않았습니다.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async function updateGroupAI(group) {
+    const box = document.getElementById('groupAIBox');
+    box.innerHTML = renderGroupAI(group, true) + `<div class="console-output" style="grid-column:1/-1;min-height:auto">사내 LLM 연결 정보가 있으면 실제 분석을 호출합니다. 현재는 로컬 샘플 분석을 표시합니다.</div>`;
+    try {
+      const text = await callInternalLLM({
+        taskType: 'organization',
+        prompt: buildGroupPrompt(group),
+        data: { groupId: group.id, reportMonth: getReportMonthLabel() }
+      });
+      if (text) box.innerHTML = renderGroupAI(group, true, text);
+    } catch (e) {
+      box.insertAdjacentHTML('beforeend', `<div class="console-output" style="grid-column:1/-1;min-height:auto;color:var(--danger)">${escapeHtml(e.message)}</div>`);
+    }
+  }
+
+  async function updateOverallAI() {
+    const box = document.getElementById('overallAI');
+    box.innerHTML = renderOverallAI(true);
+    try {
+      const text = await callInternalLLM({
+        taskType: 'overall',
+        prompt: buildOverallPrompt(),
+        data: { reportMonth: getReportMonthLabel(), groupCount: GROUPS.length }
+      });
+      if (text) box.innerHTML = `<div class="ai-title-row"><div><div class="ai-title">AI 전체 인사이트</div><div class="ai-label">사내 LLM 분석 갱신 결과</div></div><span class="status neutral">갱신됨</span></div><div class="insight-item"><div class="insight-kicker">LLM 분석 결과</div><div class="insight-text">${escapeHtml(text).replace(/\n/g,'<br>')}</div></div>`;
+    } catch(e) {
+      box.insertAdjacentHTML('beforeend', `<div class="insight-item"><div class="insight-kicker">호출 오류</div><div class="insight-text" style="color:var(--danger)">${escapeHtml(e.message)}</div></div>`);
+    }
+  }
+
+  async function updateMilestoneAI() {
+    const box = document.getElementById('milestoneConsole');
+    box.textContent = milestoneInsight('meeting');
+    try {
+      const text = await callInternalLLM({
+        taskType: 'milestone',
+        prompt: buildMilestonePrompt(),
+        data: { filters: milestoneFilters, itemCount: filteredMilestones().length }
+      });
+      if (text) box.textContent = text;
+    } catch(e) {
+      box.textContent = milestoneInsight('meeting') + '\n\n호출 오류: ' + e.message;
+    }
+  }
+
+  function openChat(prefill) {
+    document.getElementById('chatPanel').classList.add('open');
+    if (prefill) {
+      document.getElementById('chatInput').value = prefill;
+      answerChat(prefill);
+    }
+  }
+
+  function answerChat(question) {
+    const messages = document.getElementById('chatMessages');
+    messages.insertAdjacentHTML('beforeend', `<div class="chat-msg user">${escapeHtml(question)}</div>`);
+    const avg = GROUPS.reduce((a,g)=>a+groupAverage(g),0)/GROUPS.length;
+    const delayed = milestones.filter(m=>m.status==='지연').length;
+    let answer = `요약: ${getReportMonthLabel()} 기준 부문 평균 달성률은 ${avg.toFixed(1)}%이고, 지연 실행과제는 ${delayed}개입니다.\n근거: 5개 조직의 25개 월 지표와 25개 담당조직의 분기 마일스톤을 기준으로 계산했습니다.\n추천 액션: 목표 미달 지표와 지연 실행과제가 동시에 발생한 조직을 우선 확인하세요.`;
+    if (question.includes('회의')) answer = milestoneInsight('meeting');
+    if (question.includes('지연')) answer = milestoneInsight('risk');
+    messages.insertAdjacentHTML('beforeend', `<div class="chat-msg">${escapeHtml(answer).replace(/\n/g,'<br>')}</div>`);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  }
+
+  document.getElementById('settingsBtn').addEventListener('click', () => { renderSettings(); settingsModal.classList.add('open'); });
+  themeToggle.addEventListener('click', () => {
+    settings.theme = settings.theme === 'light' ? 'dark' : 'light';
+    saveSettings();
+    applyTheme();
+  });
+  importJsonInput.addEventListener('change', () => {
+    const file = importJsonInput.files && importJsonInput.files[0];
+    if (file) importJsonFile(file);
+  });
+  document.getElementById('closeSettings').addEventListener('click', () => settingsModal.classList.remove('open'));
+  settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) settingsModal.classList.remove('open'); });
+  document.getElementById('chatToggle').addEventListener('click', () => document.getElementById('chatPanel').classList.toggle('open'));
+  document.getElementById('chatSend').addEventListener('click', () => { const input = document.getElementById('chatInput'); const q = input.value.trim(); if (q) { answerChat(q); input.value = ''; } });
+  document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('chatSend').click(); });
+  document.querySelectorAll('[data-chat-q]').forEach(btn => btn.addEventListener('click', () => answerChat(btn.dataset.chatQ)));
+
+  applyTheme();
+  render();
+})();
+</script>
+</body>
+</html>
