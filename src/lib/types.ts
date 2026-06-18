@@ -156,6 +156,7 @@ export interface Content {
   cluster_id?: string | null
   importance_score: number
   status: ContentStatus
+  sentiment?: '긍정' | '중립' | '부정' | null
   published_at?: string | null
   collected_at: string
   created_at: string

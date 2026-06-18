@@ -373,6 +373,8 @@ create table public.contents (
   collected_at       timestamptz not null default now(),-- 수집 시각
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
+  -- 경쟁사 기사 논조 (지시서 96 — LLM 온디맨드 백필, null=미분석)
+  sentiment          text check (sentiment is null or sentiment in ('긍정', '중립', '부정')),
   -- 전문 검색 벡터 — 트리거로 자동 관리 (제목 A · 요약 B · 번역 본문 C)
   search_vector      tsvector,
   -- 유사중복 대표 그룹 — 같은 사건 보도를 묶는 자기참조 (BL-3)
