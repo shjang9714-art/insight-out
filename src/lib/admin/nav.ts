@@ -13,6 +13,7 @@ import {
   Sparkles,
   Mail,
   Users,
+  Boxes,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -95,6 +96,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '수집 키워드',
         description: '수집 관련도·검색어·시그널 기준',
         icon: Network,
+      },
+      {
+        href: '/admin/entities',
+        label: '엔티티 사전',
+        description: '기업·기술·인물 등 엔티티 정규화·병합',
+        icon: Boxes,
       },
     ],
   },
