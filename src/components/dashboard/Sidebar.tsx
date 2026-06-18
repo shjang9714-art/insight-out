@@ -2,7 +2,7 @@
 
 import { useState, useEffect, startTransition } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getRecentViews, type RecentView } from '@/lib/recent-views'
 
@@ -173,6 +173,23 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
               ))}
             </div>
           )}
+        </section>
+
+        <div className="border-t border-border" />
+
+        {/* AI 분석 */}
+        <section>
+          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            AI 분석
+          </h3>
+          <Link
+            href="/dashboard/ai-analysis"
+            onClick={() => onClose?.()}
+            className="flex items-center gap-1.5 w-full rounded-lg px-2 py-2 text-xs text-foreground/90 transition-colors hover:bg-brand-50"
+          >
+            <Sparkles className="h-3 w-3 text-brand-600 shrink-0" />
+            AI 인사이트
+          </Link>
         </section>
 
         <div className="border-t border-border" />
