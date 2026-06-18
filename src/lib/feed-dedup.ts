@@ -10,13 +10,42 @@ const HTML_ENTITIES: Record<string, string> = {
 
 const ENTITY_PATTERN = new RegExp(Object.keys(HTML_ENTITIES).join('|'), 'gi')
 
+const KO_SUFFIXES = [
+  '이라는', '에서', '에게', '으로', '까지', '부터', '이라', '라는',
+  '은', '는', '이', '가', '을', '를', '와', '과', '도', '만', '의', '로', '에',
+]
+
+function stripSuffix(token: string): string {
+  for (const s of KO_SUFFIXES) {
+    if (token.length > s.length && token.endsWith(s)) {
+      return token.slice(0, -s.length)
+    }
+  }
+  return token
+}
+
+function buildTrigrams(text: string): string[] {
+  const cleaned = text.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase()
+  if (cleaned.length < 3) return []
+  const grams: string[] = []
+  for (let i = 0; i <= cleaned.length - 3; i++) {
+    grams.push(cleaned.slice(i, i + 3))
+  }
+  return grams
+}
+
 export function tokenizeTitle(title: string): string[] {
-  return title
-    .replace(ENTITY_PATTERN, (m) => HTML_ENTITIES[m.toLowerCase()] ?? m)
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
+  const decoded = title.replace(ENTITY_PATTERN, (m) => HTML_ENTITIES[m.toLowerCase()] ?? m)
+  const cleaned = decoded.replace(/[^\p{L}\p{N}\s]/gu, '')
+
+  const words = cleaned
     .split(/\s+/)
+    .map((t) => stripSuffix(t.toLowerCase()))
     .filter((t) => t.length >= 2)
-    .map((t) => t.toLowerCase())
+
+  const trigrams = buildTrigrams(decoded)
+
+  return [...new Set([...words, ...trigrams])]
 }
 
 export function jaccardSimilarity(a: string[], b: string[]): number {
@@ -31,18 +60,44 @@ export function jaccardSimilarity(a: string[], b: string[]): number {
   return union === 0 ? 0 : intersection / union
 }
 
-export function dedupSimilarItems<T extends { title: string }>(
+export function keywordsJaccard(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0
+  const setA = new Set(a)
+  const setB = new Set(b)
+  let intersection = 0
+  for (const kw of setA) {
+    if (setB.has(kw)) intersection++
+  }
+  const union = new Set([...setA, ...setB]).size
+  return union === 0 ? 0 : intersection / union
+}
+
+interface DedupOptions {
+  titleThreshold?: number
+  keywordsThreshold?: number
+}
+
+export function dedupSimilarItems<T extends { title: string; matched_keywords?: string[] }>(
   items: T[],
-  threshold = 0.4,
+  options: DedupOptions | number = {},
 ): T[] {
-  const kept: { item: T; tokens: string[] }[] = []
+  const opts: DedupOptions = typeof options === 'number'
+    ? { titleThreshold: options }
+    : options
+  const titleTh = opts.titleThreshold ?? 0.35
+  const kwTh = opts.keywordsThreshold ?? 0.5
+
+  const kept: { item: T; tokens: string[]; keywords: string[] }[] = []
   for (const item of items) {
     const tokens = tokenizeTitle(item.title)
-    const isDuplicate = kept.some(
-      (k) => jaccardSimilarity(tokens, k.tokens) >= threshold,
-    )
+    const keywords = item.matched_keywords ?? []
+    const isDuplicate = kept.some((k) => {
+      if (jaccardSimilarity(tokens, k.tokens) >= titleTh) return true
+      if (keywordsJaccard(keywords, k.keywords) >= kwTh) return true
+      return false
+    })
     if (!isDuplicate) {
-      kept.push({ item, tokens })
+      kept.push({ item, tokens, keywords })
     }
   }
   return kept.map((k) => k.item)
