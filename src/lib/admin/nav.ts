@@ -10,6 +10,7 @@ import {
   Tags,
   Network,
   Cpu,
+  Sparkles,
   Mail,
   Users,
 } from 'lucide-react'
@@ -100,6 +101,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: 'AI·처리',
     items: [
+      {
+        href: '/admin/insights',
+        label: 'AI 인사이트',
+        description: 'AI 핵심 인사이트 카드 생성·검토·발행',
+        icon: Sparkles,
+      },
       {
         href: '/admin/translation',
         label: '번역',

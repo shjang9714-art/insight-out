@@ -257,6 +257,33 @@ export interface ArchiveItem {
 }
 
 // ============================================================
+// ============================================================
+// AI 인사이트 카드 (지시서 89)
+// ============================================================
+
+export type InsightCardStatus = 'draft' | 'published' | 'archived'
+
+export interface InsightCardCitation {
+  content_id: string
+  quote: string
+}
+
+export interface InsightCard {
+  id: string
+  period_start: string
+  period_end: string
+  scope: string
+  topic: string
+  headline: string
+  implication: string | null
+  source_content_ids: string[]
+  citations: InsightCardCitation[]
+  status: InsightCardStatus
+  generated_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // 카테고리 enum → UI 표시 라벨 매핑 (BL-2)
 // ============================================================
 
