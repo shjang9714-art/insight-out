@@ -112,8 +112,8 @@ export default async function AiAnalysisPage() {
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
-  // 발행된 산업동향 카드 + 14일 바운디드 페치 + 워치리스트 병렬 실행
-  const [insightRes, trendRes, watchlistRes] = await Promise.all([
+  // 발행된 산업동향 카드 + 14일 바운디드 페치 + 워치리스트 + 경쟁사 이름 병렬 실행
+  const [insightRes, trendRes, watchlistRes, competitorNamesRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -136,10 +136,16 @@ export default async function AiAnalysisPage() {
           .order('created_at', { ascending: true })
           .limit(WATCHLIST_LIMIT)
       : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from('keywords')
+      .select('name')
+      .eq('is_competitor', true)
+      .limit(50),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
   const watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
+  const competitorNames = (competitorNamesRes.data ?? []).map((k: { name: string }) => k.name).filter(Boolean)
 
   // 뜨는 토픽 집계
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
@@ -168,6 +174,45 @@ export default async function AiAnalysisPage() {
         })
       )
     : []
+
+  // 경쟁사 기사 조회 (overlaps 매칭)
+  type CompArticle = { id: string; title: string; collected_at: string; sentiment: '긍정' | '중립' | '부정' | null; matched_keywords: string[]; sources: { name: string } | null }
+  type CompResult = { name: string; articles: CompArticle[]; dist: { 긍정: number; 중립: number; 부정: number } }
+
+  const competitorResults: CompResult[] = []
+  if (competitorNames.length > 0) {
+    const { data: compArticleData } = await supabase
+      .from('contents')
+      .select('id, title, collected_at, sentiment, matched_keywords, sources(name)')
+      .eq('status', 'published')
+      .gte('collected_at', fourteenDaysStart)
+      .overlaps('matched_keywords', competitorNames)
+      .order('collected_at', { ascending: false })
+      .limit(80)
+
+    const allCompArticles = (compArticleData ?? []) as unknown as CompArticle[]
+
+    for (const compName of competitorNames) {
+      const nameLower = compName.toLowerCase()
+      const matched = allCompArticles.filter(a =>
+        (a.matched_keywords ?? []).some(k => k.toLowerCase() === nameLower)
+      )
+      if (matched.length === 0) continue
+
+      const dist = { 긍정: 0, 중립: 0, 부정: 0 }
+      for (const a of matched) {
+        if (a.sentiment === '긍정') dist['긍정']++
+        else if (a.sentiment === '중립') dist['중립']++
+        else if (a.sentiment === '부정') dist['부정']++
+      }
+
+      competitorResults.push({
+        name: compName,
+        articles: matched.slice(0, 5),
+        dist,
+      })
+    }
+  }
 
   // 키워드 클라우드 집계 (14일 matched_keywords 바운디드)
   const TOP_KEYWORDS_N = 30
@@ -341,6 +386,90 @@ export default async function AiAnalysisPage() {
           </div>
         </section>
       )}
+
+      {/* 경쟁사 동향 */}
+      <section className="mt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-red-500" />
+          <h2 className="text-sm font-semibold text-foreground">경쟁사 동향</h2>
+          <span className="text-xs text-muted-foreground">최근 14일 · 논조</span>
+        </div>
+
+        {competitorNames.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
+          </div>
+        ) : competitorResults.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            최근 14일 경쟁사 관련 기사가 없습니다.
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {competitorResults.map(({ name, articles, dist }) => {
+              const hasDistData = dist['긍정'] + dist['중립'] + dist['부정'] > 0
+              return (
+                <div key={name} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-sm font-semibold text-foreground">{name}</p>
+                    {hasDistData && (
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        {dist['긍정'] > 0 && (
+                          <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
+                            긍 {dist['긍정']}
+                          </span>
+                        )}
+                        {dist['중립'] > 0 && (
+                          <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">
+                            중 {dist['중립']}
+                          </span>
+                        )}
+                        {dist['부정'] > 0 && (
+                          <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
+                            부 {dist['부정']}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {articles.map(a => {
+                      const sourceName = Array.isArray(a.sources)
+                        ? (a.sources as { name: string }[])[0]?.name
+                        : a.sources?.name
+                      return (
+                        <li key={a.id} className="text-xs leading-snug">
+                          <div className="flex items-start gap-1.5">
+                            {a.sentiment && (
+                              <span className={cn(
+                                'mt-0.5 shrink-0 rounded px-1 py-0.5 text-[10px] font-medium leading-none',
+                                a.sentiment === '긍정' && 'bg-emerald-100 text-emerald-700',
+                                a.sentiment === '중립' && 'bg-muted text-muted-foreground',
+                                a.sentiment === '부정' && 'bg-red-100 text-red-700',
+                              )}>
+                                {a.sentiment}
+                              </span>
+                            )}
+                            <Link
+                              href={`/dashboard/contents/${a.id}`}
+                              className="line-clamp-2 text-foreground/90 hover:text-brand-600"
+                            >
+                              {a.title}
+                            </Link>
+                          </div>
+                          <span className="mt-0.5 block text-muted-foreground/70">
+                            {sourceName ? `${sourceName} · ` : ''}
+                            {new Date(a.collected_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       {/* 관심업체 동향 */}
       <section className="mt-6 space-y-4">

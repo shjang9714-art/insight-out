@@ -48,6 +48,8 @@ export default function InsightsAdminPage() {
   const [generateDays, setGenerateDays] = useState('7')
   const [generateResult, setGenerateResult] = useState<{ created: number; topics: string[] } | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [isSentiment, setIsSentiment] = useState(false)
+  const [sentimentResult, setSentimentResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
 
   async function fetchCards() {
     try {
@@ -92,6 +94,27 @@ export default function InsightsAdminPage() {
       setError(e instanceof Error ? e.message : '생성에 실패했습니다.')
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleSentiment = async () => {
+    if (!window.confirm('최근 14일 경쟁사 기사(최대 40건)의 논조를 LLM으로 분석하시겠습니까?')) return
+    setIsSentiment(true)
+    setSentimentResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/sentiment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? '논조 분석 실패')
+      setSentimentResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '논조 분석에 실패했습니다.')
+    } finally {
+      setIsSentiment(false)
     }
   }
 
@@ -185,6 +208,32 @@ export default function InsightsAdminPage() {
             {generateResult.created > 0
               ? `${generateResult.created}개 카드 생성됨: ${generateResult.topics.join(', ')}`
               : '생성된 카드 없음 (태깅 콘텐츠 부족 또는 LLM 키 미설정)'}
+          </p>
+        )}
+      </div>
+
+      {/* 경쟁사 논조 분석 패널 */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-foreground">경쟁사 논조 분석</h2>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => void handleSentiment()}
+            disabled={isSentiment}
+            size="sm"
+            variant="outline"
+          >
+            {isSentiment ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />분석 중...</>
+            ) : (
+              <>논조 분석 실행</>
+            )}
+          </Button>
+        </div>
+        {sentimentResult && (
+          <p className="text-sm text-muted-foreground">
+            {sentimentResult.reason
+              ? sentimentResult.reason
+              : `후보 ${sentimentResult.candidates}건 중 ${sentimentResult.analyzed}건 분석 완료`}
           </p>
         )}
       </div>
