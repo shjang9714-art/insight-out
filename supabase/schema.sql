@@ -1191,6 +1191,57 @@ create policy "content_entities: admin 전체" on public.content_entities
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- ============================================================
+-- 엔티티 병합 RPC (100-merge-entities — 2026-06-18)
+-- SECURITY DEFINER + is_admin() 내부 검사 → authenticated(어드민만) 허용
+-- ============================================================
+
+create or replace function public.merge_entities(p_source uuid, p_target uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception '관리자만 병합할 수 있습니다.';
+  end if;
+  if p_source is null or p_target is null or p_source = p_target then
+    return;
+  end if;
+
+  -- 1) content_entities: 충돌 row 먼저 삭제 후 이전
+  delete from public.content_entities cs
+  where cs.entity_id = p_source
+    and exists (
+      select 1 from public.content_entities ct
+      where ct.entity_id = p_target and ct.content_id = cs.content_id
+    );
+  update public.content_entities set entity_id = p_target where entity_id = p_source;
+
+  -- 2) alias 이전
+  update public.entity_aliases set entity_id = p_target where entity_id = p_source;
+
+  -- 3) 소스 canonical_name → 타깃 alias 보존
+  insert into public.entity_aliases (entity_id, alias)
+  select p_target, e.canonical_name from public.entities e where e.id = p_source
+  on conflict (lower(alias)) do nothing;
+
+  -- 4) 소스 삭제 (cascade)
+  delete from public.entities where id = p_source;
+
+  -- 5) 타깃 mention_count 재계산
+  update public.entities e
+  set mention_count = (
+    select count(*) from public.content_entities ce where ce.entity_id = p_target
+  )
+  where e.id = p_target;
+end;
+$$;
+
+revoke all on function public.merge_entities(uuid, uuid) from public;
+grant execute on function public.merge_entities(uuid, uuid) to authenticated;
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
