@@ -70,6 +70,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: 'AI분석',
     category: 'AI분석',
     dbCategories: ['AI보고서', 'AI분석'],
+    href: '/dashboard/ai-analysis',
     generated: true,
     iconClass: 'text-violet-600 dark:text-violet-400',
     activeClass: 'border-violet-600 text-violet-600 dark:border-violet-400 dark:text-violet-400',
