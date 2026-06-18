@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Sparkles, Quote } from 'lucide-react'
+import { Sparkles, Quote, TrendingUp } from 'lucide-react'
+import { getKstTodayStartIso } from '@/lib/date'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
 
 export const metadata: Metadata = {
@@ -16,6 +17,58 @@ interface ContentMeta {
   title: string
   category: string | null
   sourceName: string | null
+}
+
+// ─── 뜨는 토픽 집계 ──────────────────────────────────────────────────────────
+
+interface TopicTrend {
+  group: string
+  cur: number
+  prev: number
+  changePct: number | null // null = 신규
+}
+
+function computeTrendingTopics(
+  rows: { matched_groups: string[] | null; collected_at: string }[],
+  todayStartMs: number,
+  topN = 6,
+): TopicTrend[] {
+  const curMap: Record<string, number> = {}
+  const prevMap: Record<string, number> = {}
+
+  const thisWeekStart = todayStartMs - 6 * 24 * 60 * 60 * 1000
+  const prevWeekStart = todayStartMs - 13 * 24 * 60 * 60 * 1000
+
+  for (const row of rows) {
+    if (!row.matched_groups?.length) continue
+    const kstMs = new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000
+    const isThisWeek = kstMs >= thisWeekStart + 9 * 60 * 60 * 1000
+    const isPrevWeek = !isThisWeek && kstMs >= prevWeekStart + 9 * 60 * 60 * 1000
+    for (const g of row.matched_groups) {
+      if (isThisWeek)  curMap[g]  = (curMap[g]  ?? 0) + 1
+      if (isPrevWeek)  prevMap[g] = (prevMap[g] ?? 0) + 1
+    }
+  }
+
+  const results: TopicTrend[] = []
+  for (const group of Object.keys(curMap)) {
+    const cur  = curMap[group]  ?? 0
+    const prev = prevMap[group] ?? 0
+    if (cur === 0) continue
+    const changePct = prev > 0 ? Math.round((cur - prev) / prev * 100) : null
+    results.push({ group, cur, prev, changePct })
+  }
+
+  return results
+    .sort((a, b) => {
+      // 신규(prev=0) 먼저, 그 다음 changePct desc, 동률은 cur desc
+      const aScore = a.changePct === null ? Infinity : a.changePct
+      const bScore = b.changePct === null ? Infinity : b.changePct
+      if (bScore !== aScore) return bScore - aScore
+      return b.cur - a.cur
+    })
+    .filter(t => t.changePct === null || t.changePct >= 0) // 감소만인 토픽 제외
+    .slice(0, topN)
 }
 
 // ─── 날짜 포맷 ────────────────────────────────────────────────────────────────
@@ -47,17 +100,37 @@ export default async function AiAnalysisPage() {
     }
   )
 
-  // 발행된 산업동향 카드 조회
-  const { data: rawCards } = await supabase
-    .from('insight_cards')
-    .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
-    .eq('status', 'published')
-    .eq('scope', 'industry')
-    .order('period_start', { ascending: false })
-    .order('generated_at', { ascending: false })
-    .limit(30)
+  // KST 기준 날짜 경계
+  const todayStart   = getKstTodayStartIso()
+  const todayStartMs = new Date(todayStart).getTime()
+  const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
-  const cards = (rawCards ?? []) as InsightCard[]
+  // 발행된 산업동향 카드 + 14일 바운디드 페치 병렬 실행
+  const [insightRes, trendRes] = await Promise.all([
+    supabase
+      .from('insight_cards')
+      .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
+      .eq('status', 'published')
+      .eq('scope', 'industry')
+      .order('period_start', { ascending: false })
+      .order('generated_at', { ascending: false })
+      .limit(30),
+    supabase
+      .from('contents')
+      .select('matched_groups, collected_at')
+      .eq('status', 'published')
+      .gte('collected_at', fourteenDaysStart)
+      .limit(1000),
+  ])
+
+  const cards = (insightRes.data ?? []) as InsightCard[]
+
+  // 뜨는 토픽 집계
+  type TrendRow = { matched_groups: string[] | null; collected_at: string }
+  const trendingTopics = computeTrendingTopics(
+    (trendRes.data ?? []) as TrendRow[],
+    todayStartMs,
+  )
 
   // 출처 제목 1회 조회
   const contentMap = new Map<string, ContentMeta>()
@@ -101,6 +174,40 @@ export default async function AiAnalysisPage() {
         </div>
         <p className="text-sm text-muted-foreground">AI가 짚는 산업 동향과 시사점</p>
       </div>
+
+      {/* 뜨는 토픽 위젯 */}
+      {trendingTopics.length > 0 && (
+        <section className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-4 w-4 text-brand-600" />
+            <h2 className="text-sm font-semibold text-foreground">이번 주 뜨는 토픽</h2>
+            <span className="text-xs text-muted-foreground">직전 주 대비</span>
+          </div>
+          <ul className="space-y-2">
+            {trendingTopics.map((t) => (
+              <li key={t.group} className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground truncate">{t.group}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-muted-foreground">{t.cur}건</span>
+                  {t.changePct === null ? (
+                    <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
+                      NEW
+                    </span>
+                  ) : t.changePct > 0 ? (
+                    <span className="text-[11px] font-semibold text-emerald-600">
+                      ▲{t.changePct}%
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground/60">
+                      ▼{Math.abs(t.changePct)}%
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* 빈 상태 */}
       {cards.length === 0 && (
