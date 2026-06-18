@@ -12,6 +12,7 @@ export interface KeywordItem {
   bucket: TagBucket
   watched: boolean
   isCompetitor: boolean
+  direction?: '▲' | '▽' | null
 }
 
 interface KeywordMapProps {
@@ -70,22 +71,29 @@ export default function KeywordMap({ keywords, hasWatchlist }: KeywordMapProps) 
         })}
       </div>
 
-      {/* 키워드 클라우드 */}
-      <div className="flex flex-wrap gap-x-3 gap-y-2 leading-relaxed">
-        {visible.map(({ name, size, watched, isCompetitor }) => (
+      {/* 키워드 칩 */}
+      <div className="flex flex-wrap gap-2">
+        {visible.map(({ name, watched, isCompetitor, direction }) => (
           <Link
             key={name}
             href={`/dashboard/topics/${encodeURIComponent(name)}`}
-            style={{ fontSize: `${size}px` }}
             className={cn(
-              'transition-opacity hover:opacity-75',
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-opacity hover:opacity-80',
               watched
-                ? 'text-brand-600 font-semibold bg-brand-600/10 rounded px-1 py-0.5'
+                ? 'bg-brand-600/10 text-brand-600 font-semibold'
                 : isCompetitor
-                  ? 'text-red-500'
-                  : 'text-muted-foreground',
+                  ? 'bg-red-50 text-red-600'
+                  : 'bg-muted text-muted-foreground',
             )}
           >
+            {direction && (
+              <span className={cn(
+                'font-semibold leading-none',
+                direction === '▲' ? 'text-emerald-600' : 'text-red-400',
+              )}>
+                {direction}
+              </span>
+            )}
             {name}
           </Link>
         ))}

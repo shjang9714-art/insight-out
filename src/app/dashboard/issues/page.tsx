@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function IssuesPage() {
-  redirect('/dashboard/ai-analysis?tab=issues')
+  redirect('/dashboard/ai-analysis')
 }

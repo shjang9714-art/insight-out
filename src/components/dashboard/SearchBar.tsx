@@ -47,16 +47,6 @@ export default function SearchBar({ onClose }: Props) {
     return () => document.removeEventListener('keydown', handler)
   }, [scopeOpen])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === '/') {
-      const input = e.currentTarget
-      if (searchQuery === '' || input.selectionStart === 0) {
-        e.preventDefault()
-        setScopeOpen(true)
-      }
-    }
-  }
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = searchQuery.trim()
@@ -147,8 +137,7 @@ export default function SearchBar({ onClose }: Props) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="콘텐츠 검색 — '/' 로 영역 선택"
+            placeholder="콘텐츠 검색"
             className="w-full bg-transparent py-2.5 pl-8 pr-8 text-sm text-foreground placeholder-muted-foreground outline-none"
           />
           {searchQuery && (
