@@ -5,6 +5,7 @@ export interface SimilarityCandidate {
   id: string
   title: string
   published_at: string | null
+  collected_at: string
   cluster_id: string | null
 }
 
@@ -62,29 +63,28 @@ export async function findByBodyHash(
 
 /**
  * near-dup 전수비교 회피용 후보 좁히기.
- * 기준 시각 기준 최근 sinceDays 일 이내 '뉴스' 카테고리 행만 조회.
- * - published_at 인덱스(contents_published_at_idx) 활용.
+ * collected_at 기준(항상 존재)으로 최근 sinceDays 일 이내 '뉴스' 카테고리 행 조회.
+ * published_at 이 null 인 RSS 기사도 후보에 포함 → 클러스터 형성 가능.
  * - limit 500: 하루 수백 건 수준에서 성능 안전.
  *
  * @param publishedAt 새 기사의 발행일(ISO). null/undefined 이면 현재 시각 기준.
- * @param sinceDays 과거 며칠까지 후보로 볼지 (기본 2일)
+ * @param sinceDays 과거 며칠까지 후보로 볼지 (기본 3일 — 같은 사건 보도 포착)
  */
 export async function findSimilarCandidates(
   admin: SupabaseClient,
   publishedAt: string | null | undefined,
-  sinceDays = 2
+  sinceDays = 3
 ): Promise<SimilarityCandidate[]> {
   const baseMs = publishedAt ? new Date(publishedAt).getTime() : Date.now()
-  // published_at 이 null 인 행을 포함하기 위해 collected_at 도 OR 조건 추가 불필요
-  // — null 행은 단독으로만 취급(그룹핑 후보 제외). 날짜 없는 기사는 비교 생략.
   if (isNaN(baseMs)) return []
   const sinceIso = new Date(baseMs - sinceDays * 24 * 60 * 60 * 1000).toISOString()
 
   const { data, error } = await admin
     .from('contents')
-    .select('id, title, published_at, cluster_id')
+    .select('id, title, published_at, collected_at, cluster_id')
     .eq('category', '뉴스')
-    .gte('published_at', sinceIso)
+    .gte('collected_at', sinceIso)
+    .order('collected_at', { ascending: false })
     .limit(500)
 
   if (error) {

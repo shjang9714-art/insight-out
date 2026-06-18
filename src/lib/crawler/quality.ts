@@ -3,6 +3,24 @@
  * 설계 근거: docs/묶음B-LLM양질엔진-설계.md §1·§2·§7
  */
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 패턴 히트 판정 (109 — 단어경계 오탐 방지).
+ * 짧은 영숫자 패턴(≤4자)은 단어경계로만 매칭 — "AI"가 "said"·"storage"에 오탐 차단.
+ * 한글·공백 포함·5자+ 패턴은 기존 substring 유지.
+ */
+export function patternHit(textLower: string, pattern: string): boolean {
+  const p = pattern.trim().toLowerCase()
+  if (!p) return false
+  if (/^[a-z0-9]{1,4}$/.test(p)) {
+    return new RegExp(`(?<![a-z0-9])${escapeRegex(p)}(?![a-z0-9])`, 'i').test(textLower)
+  }
+  return textLower.includes(p)
+}
+
 /**
  * 제목+본문 합산 최소 글자수.
  */
@@ -63,7 +81,7 @@ export function matchKeywordGroups(title: string, body: string, groups: ScoringG
     if (g.weight <= 0) continue
     let hit = false
     for (const p of g.include_patterns) {
-      if (text.includes(p.toLowerCase())) { kwSet.add(p); hit = true }
+      if (patternHit(text, p)) { kwSet.add(p); hit = true }
     }
     if (hit) groupSet.add(g.name)
   }
@@ -81,7 +99,7 @@ export function matchKeywordGroups(title: string, body: string, groups: ScoringG
 export function isExcludedByGroups(title: string, groups: ScoringGroup[]): boolean {
   const lower = title.toLowerCase()
   return groups.some(g =>
-    g.exclude_patterns.some(p => lower.includes(p.toLowerCase()))
+    g.exclude_patterns.some(p => patternHit(lower, p))
   )
 }
 
@@ -104,8 +122,8 @@ export function relatednessScore(
   let total = 0
   for (const g of groups) {
     if (g.weight <= 0) continue  // 노이즈 그룹(weight 0) 점수 제외
-    const t = g.include_patterns.filter(p => titleLower.includes(p.toLowerCase())).length
-    const b = g.include_patterns.filter(p => bodyLower.includes(p.toLowerCase())).length
+    const t = g.include_patterns.filter(p => patternHit(titleLower, p)).length
+    const b = g.include_patterns.filter(p => patternHit(bodyLower, p)).length
     if (t + b > 0) total += g.weight * (t * 2 + b)
   }
   return Math.min(total / RELATEDNESS_CAP, 1)
