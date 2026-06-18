@@ -1091,6 +1091,30 @@ create policy "insight_cards: admin 관리"
   using (public.is_admin()) with check (public.is_admin());
 
 -- ============================================================
+-- 관심업체 워치리스트 (지시서 93)
+-- ============================================================
+
+create table if not exists public.user_watchlist (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.users (id) on delete cascade,
+  company    text not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists user_watchlist_user_company_key
+  on public.user_watchlist (user_id, lower(company));
+create index if not exists user_watchlist_user_idx
+  on public.user_watchlist (user_id);
+
+alter table public.user_watchlist enable row level security;
+
+drop policy if exists "user_watchlist: 본인 관리" on public.user_watchlist;
+create policy "user_watchlist: 본인 관리"
+  on public.user_watchlist for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
