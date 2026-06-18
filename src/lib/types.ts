@@ -1,5 +1,7 @@
 export type UserRole = 'user' | 'admin'
 
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
+
 export type Department =
   | 'Enterprise사업부문'
   | 'SMB사업부문'
