@@ -12,6 +12,7 @@ import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
+import { getRelatedContents } from '@/lib/contents/related'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +41,9 @@ interface ContentDetail {
   sources: { name: string } | null
   content_services: { services: { name: string } | null }[]
   content_keywords: { keywords: { name: string } | null }[]
+  matched_keywords: string[] | null
+  matched_groups: string[] | null
+  cluster_id: string | null
 }
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -163,6 +167,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
       id, title, title_original, category,
       summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
       file_path, original_url, author, published_at, collected_at,
+      matched_keywords, matched_groups, cluster_id,
       sources(name),
       content_services(services(name)),
       content_keywords(keywords(name))
@@ -192,6 +197,13 @@ export default async function ContentDetailPage({ params }: PageProps) {
     isPdf = content.file_path!.toLowerCase().endsWith('.pdf')
   }
   // 뉴스 분기: ensureFullBody 는 ArticleBody 안에서 스트리밍 — 이 시점엔 호출하지 않음
+
+  const related = await getRelatedContents(supabase, {
+    id: content.id,
+    matched_keywords: content.matched_keywords,
+    matched_groups: content.matched_groups,
+    cluster_id: content.cluster_id,
+  })
 
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
@@ -446,6 +458,44 @@ export default async function ContentDetailPage({ params }: PageProps) {
           </div>
         </div>
       </article>
+
+      {/* 관련 기사 */}
+      {related.length > 0 && (
+        <section className="mt-10 border-t border-border pt-8">
+          <h2 className="mb-4 text-base font-semibold text-foreground">관련 기사</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {related.map((r) => {
+              const relDate = r.published_at ?? r.collected_at
+              const relDateStr = relDate
+                ? new Date(relDate).toLocaleDateString('ko-KR', {
+                    timeZone: 'Asia/Seoul',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })
+                : null
+              return (
+                <Link
+                  key={r.id}
+                  href={`/dashboard/contents/${r.id}`}
+                  className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
+                >
+                  <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-brand-600">
+                    {r.title}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
+                      {r.category}
+                    </span>
+                    {r.sources?.name && <span>{r.sources.name}</span>}
+                    {relDateStr && <span>{relDateStr}</span>}
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
