@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { generateIndustryInsightCards } from '@/lib/insight/generate'
+import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib/insight/generate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,15 +54,24 @@ export async function POST(request: NextRequest) {
 
     let days: number | undefined
     let maxThemes: number | undefined
+    let maxCompanies: number | undefined
+    let scope: 'industry' | 'company' = 'industry'
     try {
       const body = await request.json() as Record<string, unknown>
       if (typeof body.days === 'number' && body.days > 0) days = body.days
       if (typeof body.maxThemes === 'number' && body.maxThemes > 0) maxThemes = body.maxThemes
+      if (typeof body.maxCompanies === 'number' && body.maxCompanies > 0) maxCompanies = body.maxCompanies
+      if (body.scope === 'company') scope = 'company'
     } catch { /* body 없음 — 기본값 사용 */ }
 
     const admin = createAdminClient()
-    const result = await generateIndustryInsightCards(admin, { days, maxThemes })
 
+    if (scope === 'company') {
+      const result = await generateCompanyInsightCards(admin, { days, maxCompanies })
+      return NextResponse.json({ created: result.created, topics: result.companies })
+    }
+
+    const result = await generateIndustryInsightCards(admin, { days, maxThemes })
     return NextResponse.json(result)
   } catch (err) {
     console.error('[POST /api/admin/insights] 오류:', err)

@@ -50,6 +50,8 @@ export default function InsightsAdminPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [isSentiment, setIsSentiment] = useState(false)
   const [sentimentResult, setSentimentResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
+  const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
+  const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
 
   async function fetchCards() {
     try {
@@ -115,6 +117,28 @@ export default function InsightsAdminPage() {
       setError(e instanceof Error ? e.message : '논조 분석에 실패했습니다.')
     } finally {
       setIsSentiment(false)
+    }
+  }
+
+  const handleGenerateCompany = async () => {
+    if (!window.confirm('워치리스트 업체별 AI 동향 카드를 생성하시겠습니까? (LLM 호출)')) return
+    setIsGeneratingCompany(true)
+    setCompanyResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'company' }),
+      })
+      const data = await res.json() as { created?: number; topics?: string[]; error?: string }
+      if (!res.ok) throw new Error(data.error ?? '생성 실패')
+      setCompanyResult({ created: data.created ?? 0, topics: data.topics ?? [] })
+      await fetchCards()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '관심업체 카드 생성에 실패했습니다.')
+    } finally {
+      setIsGeneratingCompany(false)
     }
   }
 
@@ -212,6 +236,32 @@ export default function InsightsAdminPage() {
         )}
       </div>
 
+      {/* 관심업체 동향 생성 패널 */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-foreground">관심업체 동향 생성</h2>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => void handleGenerateCompany()}
+            disabled={isGeneratingCompany}
+            size="sm"
+            variant="outline"
+          >
+            {isGeneratingCompany ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
+            ) : (
+              <><Sparkles className="h-3.5 w-3.5 mr-1.5" />관심업체 카드 생성</>
+            )}
+          </Button>
+        </div>
+        {companyResult && (
+          <p className="text-sm text-muted-foreground">
+            {companyResult.created > 0
+              ? `${companyResult.created}개 카드 생성됨: ${companyResult.topics.join(', ')}`
+              : '생성된 카드 없음 (워치리스트 없음 또는 기사 부족)'}
+          </p>
+        )}
+      </div>
+
       {/* 경쟁사 논조 분석 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
         <h2 className="text-sm font-semibold text-foreground">경쟁사 논조 분석</h2>
@@ -268,6 +318,14 @@ export default function InsightsAdminPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-medium text-brand-600 bg-brand-600/10 rounded px-1.5 py-0.5">
                       {card.topic}
+                    </span>
+                    <span className={cn(
+                      'text-xs rounded px-1.5 py-0.5 font-medium',
+                      card.scope === 'company'
+                        ? 'bg-violet-100 text-violet-700'
+                        : 'bg-sky-100 text-sky-700'
+                    )}>
+                      {card.scope === 'company' ? '관심업체' : '산업'}
                     </span>
                     <span className={cn(
                       'text-xs rounded px-1.5 py-0.5 font-medium',

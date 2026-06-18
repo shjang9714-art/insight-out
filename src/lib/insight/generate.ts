@@ -214,3 +214,159 @@ export async function generateIndustryInsightCards(
 
   return { created: created.length, topics: created }
 }
+
+// ─── 회사 카드 엔진 ───────────────────────────────────────────────────────────
+
+interface CompanyArticleRow {
+  id: string
+  title: string
+  summary_ko: string | null
+  cluster_id: string | null
+  importance_score: number | null
+  collected_at: string
+}
+
+interface CompanyOptions {
+  days?: number
+  maxCompanies?: number
+  articlesPerCompany?: number
+  minArticles?: number
+}
+
+const COMPANY_SYSTEM_PROMPT =
+  '당신은 LG U+ B2B 시장 인텔리전스 분석가다. 주어진 한 기업 관련 기사들로 그 기업의 **최근 핵심 동향 1줄(headline)** 과 **LG U+ B2B 관점 시사점 1~2줄(implication, 경쟁/협력/위협)** 을 쓰라. ' +
+  '근거 없는 주장 금지 — 각 핵심 주장은 입력 기사의 15단어 이내 인용과 content_id 를 citations 로. ' +
+  'JSON만 출력: {"headline":"","implication":"","citations":[{"content_id":"","quote":""}]}'
+
+function buildCompanyUserPrompt(company: string, articles: CompanyArticleRow[]): string {
+  const lines = articles
+    .map((a) => `[${a.id}] ${a.title}\n${a.summary_ko ?? ''}`)
+    .join('\n\n')
+  return `기업: ${company}\n\n${lines}`
+}
+
+export async function generateCompanyInsightCards(
+  adminClient: SupabaseClient,
+  opts?: CompanyOptions,
+): Promise<{ created: number; companies: string[] }> {
+  const days = Math.max(1, opts?.days ?? 7)
+  const maxCompanies = Math.max(1, Math.min(opts?.maxCompanies ?? 15, 30))
+  const articlesPerCompany = Math.max(1, opts?.articlesPerCompany ?? 8)
+  const minArticles = Math.max(1, opts?.minArticles ?? 2)
+
+  // 1. 전체 워치리스트 조회 → lower dedup + 인기순
+  const { data: watchRows, error: watchError } = await adminClient
+    .from('user_watchlist')
+    .select('company')
+
+  if (watchError) {
+    console.error('[CompanyInsightGen] 워치리스트 조회 실패:', watchError.message)
+    return { created: 0, companies: [] }
+  }
+
+  // lower dedup + count
+  const countMap = new Map<string, { original: string; count: number }>()
+  for (const row of (watchRows ?? []) as { company: string }[]) {
+    if (!row.company?.trim()) continue
+    const lower = row.company.toLowerCase()
+    if (!countMap.has(lower)) {
+      countMap.set(lower, { original: row.company.trim(), count: 1 })
+    } else {
+      countMap.get(lower)!.count++
+    }
+  }
+
+  if (countMap.size === 0) {
+    console.log('[CompanyInsightGen] 워치리스트 비어 있음 — 생성 건너뜀')
+    return { created: 0, companies: [] }
+  }
+
+  const sortedCompanies = [...countMap.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, maxCompanies)
+    .map((v) => v.original)
+
+  const periodEnd = kstDateString(0)
+  const periodStart = kstDateString(days - 1)
+  const sinceIso = kstDateToUtcIso(periodStart)
+
+  const created: string[] = []
+
+  for (const company of sortedCompanies) {
+    try {
+      const escaped = company.replace(/[%_\\]/g, '\\$&')
+      const { data: rawArticles } = await adminClient
+        .from('contents')
+        .select('id, title, summary_ko, cluster_id, importance_score, collected_at')
+        .eq('status', 'published')
+        .gte('collected_at', sinceIso)
+        .or(`title.ilike.%${escaped}%,summary_ko.ilike.%${escaped}%`)
+        .limit(articlesPerCompany * 3)
+
+      const articles = (rawArticles ?? []) as CompanyArticleRow[]
+
+      if (articles.length < minArticles) {
+        console.log(`[CompanyInsightGen] company="${company}" 기사 부족(${articles.length}) — 건너뜀`)
+        continue
+      }
+
+      // 클러스터 대표 우선(cluster_id null) + importance desc
+      const sorted = [...articles].sort((a, b) => {
+        const aIsRep = a.cluster_id === null ? 0 : 1
+        const bIsRep = b.cluster_id === null ? 0 : 1
+        if (aIsRep !== bIsRep) return aIsRep - bIsRep
+        return (b.importance_score ?? 0) - (a.importance_score ?? 0)
+      })
+      const picked = sorted.slice(0, articlesPerCompany)
+
+      const raw = await llmComplete('report', COMPANY_SYSTEM_PROMPT, buildCompanyUserPrompt(company, picked))
+      if (!raw) {
+        console.warn(`[CompanyInsightGen] company="${company}" LLM 응답 없음 — 건너뜀`)
+        continue
+      }
+
+      const parsed = parseLlmOutput(raw)
+      if (!parsed) {
+        console.warn(`[CompanyInsightGen] company="${company}" LLM 파싱 실패 — 건너뜀`)
+        continue
+      }
+
+      // citation 검증 (환각 차단)
+      const articleIdSet = new Set(picked.map((a) => a.id))
+      const validCitations = parsed.citations.filter((c) => articleIdSet.has(c.content_id))
+      const sourceIds = picked.map((a) => a.id)
+
+      const { error: upsertError } = await adminClient
+        .from('insight_cards')
+        .upsert(
+          {
+            period_start: periodStart,
+            period_end: periodEnd,
+            scope: 'company',
+            topic: company,
+            headline: parsed.headline,
+            implication: parsed.implication || null,
+            source_content_ids: sourceIds,
+            citations: validCitations,
+            status: 'draft',
+            generated_at: new Date().toISOString(),
+          },
+          { onConflict: 'period_start,scope,topic' }
+        )
+
+      if (upsertError) {
+        console.error(`[CompanyInsightGen] company="${company}" upsert 실패:`, upsertError.message)
+      } else {
+        created.push(company)
+        console.log(`[CompanyInsightGen] company="${company}" 생성 완료 (citations=${validCitations.length})`)
+      }
+    } catch (err) {
+      console.error(
+        `[CompanyInsightGen] company="${company}" 처리 오류:`,
+        err instanceof Error ? err.message : String(err)
+      )
+    }
+  }
+
+  return { created: created.length, companies: created }
+}
