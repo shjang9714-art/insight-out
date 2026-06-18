@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
@@ -12,7 +13,7 @@ import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
-import { getRelatedContents } from '@/lib/contents/related'
+import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -198,12 +199,16 @@ export default async function ContentDetailPage({ params }: PageProps) {
   }
   // 뉴스 분기: ensureFullBody 는 ArticleBody 안에서 스트리밍 — 이 시점엔 호출하지 않음
 
-  const related = await getRelatedContents(supabase, {
+  const currentMeta = {
     id: content.id,
     matched_keywords: content.matched_keywords,
     matched_groups: content.matched_groups,
     cluster_id: content.cluster_id,
-  })
+  }
+  const [grouped, youtubeRelated] = await Promise.all([
+    getRelatedGrouped(supabase, currentMeta),
+    getRelatedYoutube(supabase, currentMeta),
+  ])
 
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
@@ -459,41 +464,91 @@ export default async function ContentDetailPage({ params }: PageProps) {
         </div>
       </article>
 
-      {/* 관련 기사 */}
-      {related.length > 0 && (
-        <section className="mt-10 border-t border-border pt-8">
-          <h2 className="mb-4 text-base font-semibold text-foreground">관련 기사</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {related.map((r) => {
-              const relDate = r.published_at ?? r.collected_at
-              const relDateStr = relDate
-                ? new Date(relDate).toLocaleDateString('ko-KR', {
-                    timeZone: 'Asia/Seoul',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })
-                : null
-              return (
-                <Link
-                  key={r.id}
-                  href={`/dashboard/contents/${r.id}`}
-                  className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
-                >
-                  <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-brand-600">
-                    {r.title}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                    <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
-                      {r.category}
-                    </span>
-                    {r.sources?.name && <span>{r.sources.name}</span>}
-                    {relDateStr && <span>{relDateStr}</span>}
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
+      {/* 관련 기사 — 유형별 가로 캐러셀 */}
+      {(Object.keys(grouped).length > 0 || youtubeRelated.length > 0) && (
+        <section className="mt-10 space-y-7 border-t border-border pt-8">
+          {(['뉴스', '리서치', '웹인사이트'] as const).map((bucket) => {
+            const items = grouped[bucket]
+            if (!items?.length) return null
+            return (
+              <div key={bucket}>
+                <h2 className="mb-3 text-sm font-semibold text-foreground">
+                  관련 {bucket}
+                </h2>
+                <div className="scrollbar-hide flex snap-x gap-3 overflow-x-auto pb-2">
+                  {items.map((r) => {
+                    const relDate = r.published_at ?? r.collected_at
+                    const relDateStr = relDate
+                      ? new Date(relDate).toLocaleDateString('ko-KR', {
+                          timeZone: 'Asia/Seoul',
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : null
+                    return (
+                      <Link
+                        key={r.id}
+                        href={`/dashboard/contents/${r.id}`}
+                        className="group flex min-w-[260px] max-w-[260px] shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
+                      >
+                        <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-brand-600">
+                          {r.title}
+                        </p>
+                        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                          {r.sources?.name && <span>{r.sources.name}</span>}
+                          {relDateStr && <span>{relDateStr}</span>}
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+          {youtubeRelated.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-foreground">관련 유튜브</h2>
+              <div className="scrollbar-hide flex snap-x gap-3 overflow-x-auto pb-2">
+                {youtubeRelated.map((v) => {
+                  const relDateStr = v.published_at
+                    ? new Date(v.published_at).toLocaleDateString('ko-KR', {
+                        timeZone: 'Asia/Seoul',
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    : null
+                  return (
+                    <a
+                      key={v.id}
+                      href={`https://www.youtube.com/watch?v=${v.video_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex min-w-[260px] max-w-[260px] shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-red-400/40 hover:bg-accent/50"
+                    >
+                      {v.thumbnail_url && (
+                        <Image
+                          src={v.thumbnail_url}
+                          alt={v.title}
+                          width={260}
+                          height={120}
+                          className="h-[120px] w-full rounded-lg object-cover"
+                          unoptimized
+                        />
+                      )}
+                      <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-red-600">
+                        {v.title}
+                      </p>
+                      <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                        <span>{v.channel_name}</span>
+                        {relDateStr && <span>{relDateStr}</span>}
+                      </div>
+                    </a>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>
