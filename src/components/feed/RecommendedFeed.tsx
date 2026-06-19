@@ -193,7 +193,7 @@ export default function RecommendedFeed({
                     category={item.category}
                     sourceName={item.sources?.name ?? null}
                     publishedAt={item.published_at}
-                    thumbnailUrl={item.thumbnail_url}
+                    thumbnailUrl={null}
                     href={item.category === '유튜브' ? null : undefined}
                     keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   />
