@@ -1270,7 +1270,8 @@ revoke all on function public.entity_cooccurrence(integer, integer) from public;
 grant execute on function public.entity_cooccurrence(integer, integer) to authenticated;
 
 -- ============================================================
--- entity_neighbors RPC (116 — ego 중심 그래프, 2026-06-19)
+-- entity_neighbors RPC (116 ego, 117 최근성 가중 교체 — 2026-06-19)
+-- 최근 30일 동시언급 ×2 가중. 반환 컬럼 동일(드롭인).
 -- ============================================================
 
 create or replace function public.entity_neighbors(
@@ -1279,27 +1280,50 @@ create or replace function public.entity_neighbors(
   p_min_weight integer default 1
 )
 returns table (entity_id uuid, weight bigint)
-language sql
-stable
-security invoker
-set search_path = public
+language sql stable security invoker set search_path = public
 as $$
   select
     case when a.entity_id = p_entity_id then b.entity_id else a.entity_id end as entity_id,
-    count(*) as weight
+    sum(case when c.collected_at >= now() - interval '30 days' then 2 else 1 end)::bigint as weight
   from public.content_entities a
   join public.content_entities b
-    on a.content_id = b.content_id
-   and a.entity_id < b.entity_id
+    on a.content_id = b.content_id and a.entity_id < b.entity_id
+  join public.contents c on c.id = a.content_id
   where a.entity_id = p_entity_id or b.entity_id = p_entity_id
   group by 1
-  having count(*) >= greatest(p_min_weight, 1)
-  order by count(*) desc
+  having sum(case when c.collected_at >= now() - interval '30 days' then 2 else 1 end) >= greatest(p_min_weight, 1)
+  order by 2 desc
   limit least(greatest(p_limit, 1), 50)
 $$;
 
 revoke all on function public.entity_neighbors(uuid, integer, integer) from public;
 grant execute on function public.entity_neighbors(uuid, integer, integer) to authenticated;
+
+-- ============================================================
+-- entity_pair_contents RPC (117 — 엣지 호버 맥락, 2026-06-19)
+-- 두 엔티티가 함께 등장한 published 기사 반환.
+-- ============================================================
+
+create or replace function public.entity_pair_contents(
+  p_a     uuid,
+  p_b     uuid,
+  p_limit integer default 5
+)
+returns table (content_id uuid, title text, collected_at timestamptz)
+language sql stable security invoker set search_path = public
+as $$
+  select c.id, c.title, c.collected_at
+  from public.content_entities ca
+  join public.content_entities cb on ca.content_id = cb.content_id
+  join public.contents c on c.id = ca.content_id
+  where ca.entity_id = p_a and cb.entity_id = p_b and ca.entity_id <> cb.entity_id
+    and c.status = 'published'
+  order by c.collected_at desc
+  limit least(greatest(p_limit, 1), 20)
+$$;
+
+revoke all on function public.entity_pair_contents(uuid, uuid, integer) from public;
+grant execute on function public.entity_pair_contents(uuid, uuid, integer) to authenticated;
 
 -- ============================================================
 -- 이슈 1급화 토대 (101-issues — 2026-06-18)
