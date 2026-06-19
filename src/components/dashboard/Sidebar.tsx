@@ -177,6 +177,25 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
 
         <div className="border-t border-border" />
 
+        {/* 내 북마크 */}
+        <section>
+          <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            내 북마크
+          </h3>
+          <Link
+            href="/dashboard/mypage#bookmarks"
+            onClick={() => onClose?.()}
+            className="block w-full rounded-lg px-2 py-2 text-xs text-foreground/90 transition-colors hover:bg-brand-50"
+          >
+            북마크 모아보기
+          </Link>
+          <p className="mt-1 px-2 text-[10px] leading-relaxed text-muted-foreground">
+            빠르게 다시 보고 싶은 콘텐츠를 모아둡니다
+          </p>
+        </section>
+
+        <div className="border-t border-border" />
+
         {/* 지난 브리핑 */}
         <section>
           <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

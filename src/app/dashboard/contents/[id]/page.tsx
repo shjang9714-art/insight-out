@@ -11,7 +11,6 @@ import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
-import { ensureFullBody } from '@/lib/contents/full-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
@@ -88,52 +87,6 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   'KRG':      'bg-orange-50 text-orange-700 border-orange-100',
   '오피니언':  'bg-green-50 text-green-700 border-green-100',
   '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
-}
-
-// ─── 본문 로딩 fallback: 스니펫을 즉시 표시 ─────────────────────────────────
-
-function ArticleBodyFallback({ snippet }: { snippet: string }) {
-  if (!snippet) {
-    return <p className="text-sm text-muted-foreground">본문을 불러오는 중입니다…</p>
-  }
-  return (
-    <div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {snippet}
-      </p>
-      <p className="mt-3 text-xs text-muted-foreground">본문 불러오는 중…</p>
-    </div>
-  )
-}
-
-// ─── 풀본문 async 서버 컴포넌트 (Suspense 스트리밍) ──────────────────────────
-
-async function ArticleBody({ content }: { content: ContentDetail }) {
-  const body = await ensureFullBody({
-    ...content,
-    original_language: content.original_language ?? 'ko',
-    source_id: null,
-    thumbnail_url: null,
-    title_hash: null,
-    body_hash: null,
-    view_count: 0,
-    bookmark_count: 0,
-    is_editor_pick: false,
-    cluster_id: null,
-    importance_score: 0,
-    status: 'published',
-    collected_at: '',
-    created_at: '',
-    updated_at: '',
-  })
-
-  return body ? (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-      {body}
-    </p>
-  ) : (
-    <p className="text-sm text-muted-foreground">본문 내용을 불러올 수 없습니다.</p>
-  )
 }
 
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
@@ -438,6 +391,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
             ) : (
               <ArticleBodyLoader
                 contentId={content.id}
+                contentTitle={content.title}
                 snippet={cleanBodyText(htmlToPlainText(content.summary_ko ?? content.body_original ?? ''))}
                 originalUrl={content.original_url}
               />
@@ -520,7 +474,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <h2 className="mb-3 text-sm font-semibold text-foreground">
                   관련 {bucket}
                 </h2>
-                <div className="scrollbar-hide flex snap-x gap-3 overflow-x-auto pb-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((r) => {
                     const relDate = r.published_at ?? r.collected_at
                     const relDateStr = relDate
@@ -534,7 +488,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       <Link
                         key={r.id}
                         href={`/dashboard/contents/${r.id}`}
-                        className="group flex min-w-[260px] max-w-[260px] shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
+                        className="group flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
                       >
                         <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-brand-600">
                           {r.title}
@@ -554,7 +508,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
           {youtubeRelated.length > 0 && (
             <div>
               <h2 className="mb-3 text-sm font-semibold text-foreground">관련 유튜브</h2>
-              <div className="scrollbar-hide flex snap-x gap-3 overflow-x-auto pb-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {youtubeRelated.map((v) => {
                   const relDateStr = v.published_at
                     ? new Date(v.published_at).toLocaleDateString('ko-KR', {
@@ -569,7 +523,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       href={`https://www.youtube.com/watch?v=${v.video_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex min-w-[260px] max-w-[260px] shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-red-400/40 hover:bg-accent/50"
+                      className="group flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-red-400/40 hover:bg-accent/50"
                     >
                       {v.thumbnail_url && (
                         <Image

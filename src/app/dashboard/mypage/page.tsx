@@ -736,7 +736,7 @@ export default function MyPage() {
         </section>
 
         {/* 내 북마크 */}
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <section id="bookmarks" className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5">
             <h2 className="text-base font-semibold text-foreground">내 북마크</h2>
             <p className="mt-1 text-xs text-muted-foreground">

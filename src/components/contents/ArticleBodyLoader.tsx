@@ -3,15 +3,15 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink, Loader2 } from 'lucide-react'
 
-type LoadState = 'loading' | 'done' | 'failed'
+type LoadState = 'loading' | 'loaded' | 'empty' | 'failed'
 
 interface Props {
   contentId: string
+  contentTitle: string
   snippet: string
   originalUrl: string | null
 }
 
-// 잘린 문장 트리밍: "… - 디지털데일리" 또는 "...더보기" 패턴 제거
 function trimTruncated(text: string): string {
   return text
     .replace(/[\s…\.]+[-–—]\s*[\p{L}\w]+\s*$/u, '…')
@@ -19,7 +19,16 @@ function trimTruncated(text: string): string {
     .trim()
 }
 
-export default function ArticleBodyLoader({ contentId, snippet, originalUrl }: Props) {
+function isBodyEffectivelyEmpty(body: string, title: string): boolean {
+  if (!body || body.length < 30) return true
+  const norm = (s: string) => s.replace(/[\s\n\r\t.,!?·…\-–—"''""\[\]()]/g, '').toLowerCase()
+  const normBody = norm(body)
+  const normTitle = norm(title)
+  if (normTitle && normBody.length <= normTitle.length * 1.3 && normBody.includes(normTitle)) return true
+  return false
+}
+
+export default function ArticleBodyLoader({ contentId, contentTitle, snippet, originalUrl }: Props) {
   const [state, setState] = useState<LoadState>('loading')
   const [body, setBody] = useState('')
 
@@ -35,12 +44,17 @@ export default function ArticleBodyLoader({ contentId, snippet, originalUrl }: P
       .then(({ status, body: rawBody }: { status: string; body: string }) => {
         clearTimeout(timeoutId)
         const cleaned = trimTruncated(rawBody)
-        setState(status === 'done' && cleaned ? 'done' : 'failed')
-        setBody(cleaned)
+        if (status !== 'done' || !cleaned) {
+          setState('empty')
+        } else if (isBodyEffectivelyEmpty(cleaned, contentTitle)) {
+          setState('empty')
+        } else {
+          setState('loaded')
+          setBody(cleaned)
+        }
       })
       .catch(() => {
         clearTimeout(timeoutId)
-        // abort 에러면 timeout이 이미 setState('failed')를 호출했으므로 중복 방지
         setState((prev) => (prev === 'loading' ? 'failed' : prev))
       })
 
@@ -48,7 +62,7 @@ export default function ArticleBodyLoader({ contentId, snippet, originalUrl }: P
       controller.abort()
       clearTimeout(timeoutId)
     }
-  }, [contentId])
+  }, [contentId, contentTitle])
 
   if (state === 'loading') {
     return (
@@ -66,35 +80,56 @@ export default function ArticleBodyLoader({ contentId, snippet, originalUrl }: P
     )
   }
 
-  if (state === 'failed' || !body) {
+  if (state === 'loaded') {
     return (
-      <div>
-        {snippet && (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-            {trimTruncated(snippet)}
-          </p>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{body}</p>
+    )
+  }
+
+  if (state === 'empty') {
+    return (
+      <div className="mt-2 rounded-lg border border-dashed border-border p-5 text-center">
+        <p className="text-sm text-muted-foreground">
+          본문 미수집 콘텐츠입니다. 원문 보기로 확인하세요.
+        </p>
+        {originalUrl && (
+          <a
+            href={originalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-brand-600 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-600 transition-colors hover:bg-brand-100 dark:bg-brand-950/30 dark:hover:bg-brand-950/50"
+          >
+            <ExternalLink className="h-4 w-4" />
+            원문 보기
+          </a>
         )}
-        <div className="mt-6 rounded-lg border border-dashed border-border p-4">
-          <p className="text-sm text-muted-foreground">
-            본문 미리보기는 여기까지예요. 전체 내용은 원문에서 확인하세요.
-          </p>
-          {originalUrl && (
-            <a
-              href={originalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              원문 보기
-            </a>
-          )}
-        </div>
       </div>
     )
   }
 
   return (
-    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{body}</p>
+    <div>
+      {snippet && (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {trimTruncated(snippet)}
+        </p>
+      )}
+      <div className="mt-6 rounded-lg border border-dashed border-border p-4">
+        <p className="text-sm text-muted-foreground">
+          본문 미리보기는 여기까지예요. 전체 내용은 원문에서 확인하세요.
+        </p>
+        {originalUrl && (
+          <a
+            href={originalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            원문 보기
+          </a>
+        )}
+      </div>
+    </div>
   )
 }

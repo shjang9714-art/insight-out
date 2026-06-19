@@ -114,7 +114,7 @@ export default function ContentCard({
   // 썸네일 없는 경우 — 컴팩트 가로형 레이아웃
   if (!thumbnailUrl) {
     const compactInner = (
-      <div className="flex flex-col gap-1.5 p-4">
+      <div className="flex h-full flex-col gap-1.5 p-4">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}>
             {CONTENT_CATEGORY_LABEL[category] ?? category}
@@ -133,7 +133,7 @@ export default function ContentCard({
             {summaryKo}
           </p>
         )}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="mt-auto text-[11px] text-muted-foreground">
           {publishedAt ? timeAgo(publishedAt) : '발행일 미상'}
         </p>
       </div>
@@ -197,7 +197,7 @@ export default function ContentCard({
   )
 
   const cardClass =
-    'group flex flex-col rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
+    'group flex h-full flex-col rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
 
   if (resolvedHref) {
     return <Link href={resolvedHref} className={cardClass}>{inner}</Link>
