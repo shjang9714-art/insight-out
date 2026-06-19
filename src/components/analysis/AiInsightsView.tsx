@@ -371,13 +371,12 @@ export default async function AiInsightsView() {
                               {card.topic}
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <button
-                                disabled
-                                title="전략보고서 기능 준비 중"
-                                className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground/50 cursor-not-allowed"
+                              <Link
+                                href="/dashboard/reports"
+                                className="rounded px-2 py-0.5 text-[11px] font-medium bg-brand-600/10 text-brand-600 hover:bg-brand-600/20 transition-colors"
                               >
                                 보고서로 만들기
-                              </button>
+                              </Link>
                             </div>
                           </div>
 

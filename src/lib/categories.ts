@@ -82,6 +82,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '전략보고서',
     category: '전략보고서',
     dbCategories: ['전략보고서'],
+    href: '/dashboard/reports',
     generated: true,
     iconClass: 'text-amber-600 dark:text-amber-400',
     activeClass: 'border-amber-600 text-amber-600 dark:border-amber-400 dark:text-amber-400',
