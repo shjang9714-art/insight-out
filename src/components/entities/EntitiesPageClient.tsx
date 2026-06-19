@@ -5,13 +5,13 @@ import { Network, List } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import EntityBrowse from '@/components/entities/EntityBrowse'
 import { cn } from '@/lib/utils'
-import type { GraphNode, GraphLink } from '@/components/entities/KnowledgeGraph'
+import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import type { EntityType } from '@/lib/types'
 
 const KnowledgeGraph = dynamic(() => import('@/components/entities/KnowledgeGraph'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[560px] items-center justify-center rounded-xl border bg-muted/20 text-sm text-muted-foreground">
+    <div className="flex h-[520px] items-center justify-center rounded-xl border bg-muted/20 text-sm text-muted-foreground">
       그래프 로딩 중…
     </div>
   ),
@@ -29,14 +29,13 @@ interface EntityItem {
 }
 
 interface Props {
-  nodes: GraphNode[]
-  links: GraphLink[]
-  rpcUnavailable: boolean
-  entities: EntityItem[]
+  initialCenter: EntitySummary | null
+  entities: EntitySummary[]
+  allEntities: EntityItem[]
   totalByType: Record<string, number>
 }
 
-export default function EntitiesPageClient({ nodes, links, rpcUnavailable, entities, totalByType }: Props) {
+export default function EntitiesPageClient({ initialCenter, entities, allEntities, totalByType }: Props) {
   const [view, setView] = useState<ViewMode>('graph')
 
   return (
@@ -74,18 +73,11 @@ export default function EntitiesPageClient({ nodes, links, rpcUnavailable, entit
         </div>
       </div>
 
-      {/* RPC 미적용 안내 (그래프 뷰에서만) */}
-      {view === 'graph' && rpcUnavailable && (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-          관계 데이터(RPC) 미적용 상태입니다. 수희가 SQL을 적용한 후 엣지가 표시됩니다.
-        </div>
-      )}
-
       {/* 뷰 전환 */}
       {view === 'graph' ? (
-        <KnowledgeGraph nodes={nodes} links={links} />
+        <KnowledgeGraph initialCenter={initialCenter} entities={entities} />
       ) : (
-        <EntityBrowse entities={entities} totalByType={totalByType} />
+        <EntityBrowse entities={allEntities} totalByType={totalByType} />
       )}
     </div>
   )

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
-import type { GraphNode, GraphLink } from '@/components/entities/KnowledgeGraph'
+import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 
 export const dynamic = 'force-dynamic'
@@ -29,14 +29,26 @@ export default async function EntitiesPage() {
     }
   )
 
-  // ─── 노드: mention 상위 60 ──────────────────────────────────────────────────
+  // 검색·선택용 전체 엔티티 목록 (상위 500)
   const { data: entityRows } = await supabase
+    .from('entities')
+    .select('id, canonical_name, entity_type, is_competitor, mention_count')
+    .order('mention_count', { ascending: false })
+    .limit(500)
+
+  const entities = (entityRows ?? []) as EntitySummary[]
+
+  // 초기 중심 = mention 최상위 1개
+  const initialCenter = entities.length > 0 ? entities[0] : null
+
+  // 목록 뷰용 상세 데이터 (description 포함)
+  const { data: allEntityRows } = await supabase
     .from('entities')
     .select('id, canonical_name, entity_type, is_competitor, mention_count, description')
     .order('mention_count', { ascending: false })
-    .limit(60)
+    .limit(500)
 
-  const entities = (entityRows ?? []) as {
+  const allEntities = (allEntityRows ?? []) as {
     id: string
     canonical_name: string
     entity_type: EntityType
@@ -45,38 +57,6 @@ export default async function EntitiesPage() {
     description: string | null
   }[]
 
-  const nodeIdSet = new Set(entities.map((e) => e.id))
-
-  const nodes: GraphNode[] = entities.map((e) => ({
-    id: e.id,
-    label: e.canonical_name,
-    type: e.entity_type,
-    val: Math.max(1, Math.min(12, Math.sqrt(e.mention_count) * 1.5)),
-    isCompetitor: e.is_competitor,
-    mentionCount: e.mention_count,
-  }))
-
-  // ─── 엣지: 공기출현 RPC ────────────────────────────────────────────────────
-  let links: GraphLink[] = []
-  const { data: edgeRows, error: rpcError } = await supabase.rpc('entity_cooccurrence', {
-    p_min_weight: 3,
-    p_limit: 400,
-  })
-
-  if (!rpcError && edgeRows) {
-    links = (edgeRows as { source: string; target: string; weight: number }[])
-      .filter((e) => nodeIdSet.has(e.source) && nodeIdSet.has(e.target))
-      .map((e) => ({ source: e.source, target: e.target, weight: e.weight }))
-  }
-
-  // ─── 목록 뷰용 통계 ────────────────────────────────────────────────────────
-  const { data: allEntityRows } = await supabase
-    .from('entities')
-    .select('id, canonical_name, entity_type, is_competitor, mention_count, description')
-    .order('mention_count', { ascending: false })
-    .limit(500)
-
-  const allEntities = (allEntityRows ?? []) as typeof entities
   const totalByType: Record<string, number> = { 전체: allEntities.length }
   for (const type of Object.keys(ENTITY_TYPE_LABEL) as EntityType[]) {
     totalByType[type] = allEntities.filter((e) => e.entity_type === type).length
@@ -84,10 +64,9 @@ export default async function EntitiesPage() {
 
   return (
     <EntitiesPageClient
-      nodes={nodes}
-      links={links}
-      rpcUnavailable={!!rpcError}
-      entities={allEntities}
+      initialCenter={initialCenter}
+      entities={entities}
+      allEntities={allEntities}
       totalByType={totalByType}
     />
   )
