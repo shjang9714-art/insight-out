@@ -38,24 +38,39 @@ interface EgoLink {
   weight: number
 }
 
+interface PairContent {
+  content_id: string
+  title: string
+  collected_at: string
+}
+
+interface EdgeTooltip {
+  forCenterId: string   // 어느 중심일 때의 툴팁인지 (centerId 바뀌면 무효화)
+  neighborId: string
+  neighborName: string
+  contents: PairContent[]
+  loading: boolean
+}
+
 interface Props {
   initialCenter: EntitySummary | null
   entities: EntitySummary[]
 }
 
-// ─── 색상 맵 (canvas는 CSS 변수 불가 → hex 직접 정의) ─────────────────────────
+// ─── 색상 (canvas는 CSS 변수 불가 → hex) ──────────────────────────────────────
 
 const TYPE_COLOR: Record<EntityType, string> = {
-  company:  '#E6007E', // brand-600
-  tech:     '#3B82F6', // blue-500
-  product:  '#8B5CF6', // violet-500
-  person:   '#10B981', // emerald-500
-  policy:   '#F59E0B', // amber-500
-  industry: '#9CA3AF', // gray-400
+  company:  '#E6007E',
+  tech:     '#3B82F6',
+  product:  '#8B5CF6',
+  person:   '#10B981',
+  policy:   '#F59E0B',
+  industry: '#9CA3AF',
 }
 
-const COMPETITOR_COLOR = '#EF4444' // red-500
-const LINK_COLOR = 'rgba(150,150,150,0.4)'
+const COMPETITOR_COLOR = '#EF4444'
+const LINK_COLOR       = 'rgba(150,150,150,0.35)'
+const LINK_COLOR_HI    = 'rgba(99,102,241,0.7)'
 
 const TYPE_ENTRIES = (Object.keys(ENTITY_TYPE_LABEL) as EntityType[]).map((t) => ({
   type: t,
@@ -82,6 +97,11 @@ function entityToNode(e: EntitySummary, isCenter: boolean): EgoNode {
   }
 }
 
+// 최근성 가중치로 weight 범위가 커질 수 있어 로그 스케일로 두께 정규화
+function linkWidthFromWeight(weight: number): number {
+  return Math.max(0.5, Math.min(5, Math.log2(weight + 1) * 0.9))
+}
+
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function KnowledgeGraph({ initialCenter, entities }: Props) {
@@ -93,7 +113,6 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   // ego 상태
   const [centerId, setCenterId] = useState<string | null>(initialCenter?.id ?? null)
   const [history, setHistory] = useState<string[]>([])
-  // forId = 현재 graphState가 어느 center에 대한 데이터인지 (centerId와 다르면 로딩 중)
   const [graphState, setGraphState] = useState<{
     forId: string | null
     nodes: EgoNode[]
@@ -111,6 +130,13 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDrop, setShowSearchDrop] = useState(false)
 
+  // 엣지 호버 툴팁 (forCenterId !== centerId이면 무효 = 렌더에서 null 처리)
+  const [edgeTooltip, setEdgeTooltip] = useState<EdgeTooltip | null>(null)
+  const activeTooltip = edgeTooltip?.forCenterId === centerId ? edgeTooltip : null
+  const pairCacheRef = useRef<Map<string, PairContent[]>>(new Map())
+  const hoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoveredLinkRef = useRef<string | null>(null)
+
   // ResizeObserver
   useEffect(() => {
     const el = containerRef.current
@@ -123,10 +149,16 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     return () => ro.disconnect()
   }, [])
 
-  // 중심 엔티티 메타
   const centerEntity = centerId
     ? (entities.find((e) => e.id === centerId) ?? null)
     : null
+
+  // 중심 바뀌면 캐시 초기화 (툴팁은 forCenterId 비교로 자동 무효화)
+  useEffect(() => {
+    pairCacheRef.current.clear()
+    hoveredLinkRef.current = null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerId])
 
   // 이웃 로드 (동기 setState 없음 — React Compiler 호환)
   useEffect(() => {
@@ -191,6 +223,57 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     (l) => visibleIds.has(String(l.source)) && visibleIds.has(String(l.target))
   )
 
+  // 엣지 호버 핸들러 (디바운스 200ms + 캐시)
+  const handleLinkHover = useCallback((
+    link: { source?: unknown; target?: unknown } | null,
+    _prevLink: { source?: unknown; target?: unknown } | null,
+  ) => {
+    if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+
+    if (!link || !centerId) {
+      hoveredLinkRef.current = null
+      hoverDebounceRef.current = setTimeout(() => {
+        setEdgeTooltip((prev) => prev && prev.forCenterId !== centerId ? null : prev?.neighborId === hoveredLinkRef.current ? prev : null)
+      }, 80)
+      return
+    }
+
+    const srcId = String(typeof link.source === 'object' && link.source !== null
+      ? (link.source as { id?: string }).id : link.source)
+    const tgtId = String(typeof link.target === 'object' && link.target !== null
+      ? (link.target as { id?: string }).id : link.target)
+    const neighborId = srcId === centerId ? tgtId : srcId
+    if (neighborId === centerId) return
+    if (hoveredLinkRef.current === neighborId) return
+    hoveredLinkRef.current = neighborId
+
+    const neighbor = graphState.nodes.find((n) => n.id === neighborId)
+    const neighborName = neighbor?.label ?? ''
+    const currentCenterId = centerId
+
+    const cached = pairCacheRef.current.get(neighborId)
+    if (cached) {
+      setEdgeTooltip({ forCenterId: currentCenterId, neighborId, neighborName, contents: cached, loading: false })
+      return
+    }
+
+    setEdgeTooltip({ forCenterId: currentCenterId, neighborId, neighborName, contents: [], loading: true })
+
+    hoverDebounceRef.current = setTimeout(() => {
+      if (hoveredLinkRef.current !== neighborId) return
+      const supabase = createClient()
+      supabase
+        .rpc('entity_pair_contents', { p_a: currentCenterId, p_b: neighborId, p_limit: 5 })
+        .then(({ data }) => {
+          if (hoveredLinkRef.current !== neighborId) return
+          const rows = (data ?? []) as PairContent[]
+          pairCacheRef.current.set(neighborId, rows)
+          setEdgeTooltip({ forCenterId: currentCenterId, neighborId, neighborName, contents: rows, loading: false })
+        })
+    }, 200)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerId, graphState.nodes])
+
   // 노드 클릭 — 이웃 → 재중심
   const handleNodeClick = useCallback((node: { id?: string | number }) => {
     const id = String(node.id)
@@ -206,7 +289,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     setCenterId(prev)
   }
 
-  const handleBackgroundClick = useCallback(() => {}, [])
+  const handleBackgroundClick = useCallback(() => {
+    hoveredLinkRef.current = null
+    setEdgeTooltip(null)
+  }, [])
 
   const toggleType = (type: EntityType) => {
     setHiddenTypes((prev) => {
@@ -217,6 +303,13 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     })
   }
 
+  const selectCenter = (id: string) => {
+    if (centerId) setHistory((prev) => [...prev, centerId])
+    setCenterId(id)
+    setSearchQuery('')
+    setShowSearchDrop(false)
+  }
+
   // 검색 필터
   const searchResults = searchQuery.trim()
     ? entities.filter((e) =>
@@ -224,12 +317,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       ).slice(0, 8)
     : []
 
-  const selectCenter = (id: string) => {
-    if (centerId) setHistory((prev) => [...prev, centerId])
-    setCenterId(id)
-    setSearchQuery('')
-    setShowSearchDrop(false)
-  }
+  // 프리셋: 경쟁사 + mention 상위(비경쟁사) 합쳐 최대 8개
+  const competitors = entities.filter((e) => e.is_competitor).slice(0, 5)
+  const topNonCompetitors = entities.filter((e) => !e.is_competitor).slice(0, 3)
+  const presets = [...competitors, ...topNonCompetitors]
 
   if (!centerId && !initialCenter) {
     return (
@@ -286,6 +377,30 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         </div>
       </div>
 
+      {/* 경쟁사·상위 프리셋 */}
+      {presets.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <span className="self-center text-xs text-muted-foreground">빠른 중심:</span>
+          {presets.map((e) => (
+            <button
+              key={e.id}
+              onClick={() => selectCenter(e.id)}
+              className={cn(
+                'flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
+                centerId === e.id
+                  ? 'border-foreground bg-foreground text-background'
+                  : 'hover:border-foreground/50 hover:bg-muted/50'
+              )}
+            >
+              {e.is_competitor && (
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
+              )}
+              {e.canonical_name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 현재 중심 표시 */}
       {centerEntity && (
         <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
@@ -340,7 +455,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         {graphState.rpcError && !isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
             <p>관계 데이터(RPC) 미적용 상태입니다.</p>
-            <p className="text-xs">수희가 116-entity-neighbors.sql을 적용한 후 표시됩니다.</p>
+            <p className="text-xs">수희가 117-graph-enrich.sql을 적용한 후 표시됩니다.</p>
           </div>
         )}
 
@@ -357,7 +472,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             width={dimensions.width}
             height={520}
             nodeId="id"
-            nodeLabel="label"
+            nodeLabel=""
             nodeVal={(node) => (node as unknown as EgoNode).val}
             nodeCanvasObject={(node, ctx, globalScale) => {
               const n = node as unknown as EgoNode & { x: number; y: number }
@@ -387,23 +502,80 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               ctx.restore()
             }}
             nodeCanvasObjectMode={() => 'replace'}
-            linkColor={() => LINK_COLOR}
+            linkColor={(link) => {
+              const raw = link as { source?: unknown; target?: unknown }
+              const tgtId = String(typeof raw.target === 'object' && raw.target !== null
+                ? (raw.target as { id?: string }).id : raw.target)
+              const srcId = String(typeof raw.source === 'object' && raw.source !== null
+                ? (raw.source as { id?: string }).id : raw.source)
+              const neighborId = srcId === centerId ? tgtId : srcId
+              return activeTooltip?.neighborId === neighborId ? LINK_COLOR_HI : LINK_COLOR
+            }}
             linkWidth={(link) => {
-              const raw = link as { weight?: number }
-              return Math.max(0.5, Math.min(4, (raw.weight ?? 1) * 0.4))
+              const raw = link as { weight?: number; source?: unknown; target?: unknown }
+              const base = linkWidthFromWeight(raw.weight ?? 1)
+              const tgtId = String(typeof raw.target === 'object' && raw.target !== null
+                ? (raw.target as { id?: string }).id : raw.target)
+              const srcId = String(typeof raw.source === 'object' && raw.source !== null
+                ? (raw.source as { id?: string }).id : raw.source)
+              const neighborId = srcId === centerId ? tgtId : srcId
+              return activeTooltip?.neighborId === neighborId ? base + 1.5 : base
             }}
             onNodeClick={handleNodeClick}
             onBackgroundClick={handleBackgroundClick}
+            onLinkHover={handleLinkHover}
             cooldownTicks={80}
             enableZoomInteraction
             enablePanInteraction
           />
         )}
 
-        {/* 우측 하단: 닫기 버튼 없는 미니 안내 */}
+        {/* 안내 힌트 */}
         {!isLoading && !graphState.rpcError && visibleNodes.length > 0 && (
           <div className="absolute bottom-3 left-3 rounded-lg border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-            이웃 노드 클릭 → 재중심 탐색
+            노드 클릭 → 재중심 · 엣지 호버 → 공동 기사
+          </div>
+        )}
+
+        {/* 엣지 호버 툴팁 */}
+        {activeTooltip && (
+          <div
+            className="pointer-events-none absolute z-20 w-64 rounded-xl border bg-background shadow-lg"
+            style={{ bottom: 48, right: 12 }}
+          >
+            <div className="border-b px-3 py-2">
+              <p className="text-xs font-semibold text-foreground">
+                {centerEntity?.canonical_name} · {activeTooltip.neighborName}
+              </p>
+              {!activeTooltip.loading && (
+                <p className="text-xs text-muted-foreground">
+                  함께 등장 {activeTooltip.contents.length}건
+                </p>
+              )}
+            </div>
+            <div className="px-3 py-2">
+              {activeTooltip.loading ? (
+                <p className="text-xs text-muted-foreground">기사 로딩 중…</p>
+              ) : activeTooltip.contents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">공동 기사 없음 (RPC 미적용 또는 데이터 없음)</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {activeTooltip.contents.slice(0, 3).map((c) => (
+                    <li key={c.content_id}>
+                      <Link
+                        href={`/dashboard/contents/${c.content_id}`}
+                        className="pointer-events-auto block text-xs leading-tight text-foreground hover:text-brand-600 hover:underline"
+                      >
+                        {c.title}
+                      </Link>
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Date(c.collected_at).toLocaleDateString('ko-KR')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
       </div>
