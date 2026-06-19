@@ -62,16 +62,16 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // 1. 경쟁사 이름 조회
+    // 1. 경쟁사 이름 조회 (entities.is_competitor 기준)
     const { data: kwData } = await supabase
-      .from('keywords')
-      .select('name')
+      .from('entities')
+      .select('canonical_name')
       .eq('is_competitor', true)
       .limit(50)
 
-    const names = (kwData ?? []).map((k: { name: string }) => k.name).filter(Boolean)
+    const names = (kwData ?? []).map((k: { canonical_name: string }) => k.canonical_name).filter(Boolean)
     if (names.length === 0) {
-      return NextResponse.json({ analyzed: 0, candidates: 0, reason: '경쟁사 키워드 미등록' })
+      return NextResponse.json({ analyzed: 0, candidates: 0, reason: '경쟁사 엔티티 미등록' })
     }
 
     // 2. 후보 기사 조회 (KST 기준 since)

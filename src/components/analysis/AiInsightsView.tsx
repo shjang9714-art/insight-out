@@ -141,8 +141,8 @@ export default async function AiInsightsView() {
           .limit(WATCHLIST_LIMIT)
       : Promise.resolve({ data: [], error: null }),
     supabase
-      .from('keywords')
-      .select('name')
+      .from('entities')
+      .select('canonical_name')
       .eq('is_competitor', true)
       .limit(50),
     supabase
@@ -159,7 +159,7 @@ export default async function AiInsightsView() {
 
   const cards = (insightRes.data ?? []) as InsightCard[]
   const watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
-  const competitorNames = (competitorNamesRes.data ?? []).map((k: { name: string }) => k.name).filter(Boolean)
+  const competitorNames = (competitorNamesRes.data ?? []).map((k: { canonical_name: string }) => k.canonical_name).filter(Boolean)
 
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
   const trendingTopics = computeTrendingTopics(
@@ -235,17 +235,8 @@ export default async function AiInsightsView() {
     }
   }
 
-  // ─── 키워드 분류 ───────────────────────────────────────────────────────────
-  const competitorSet = new Set<string>()
-  if (topKeywords.length > 0) {
-    const { data: kwData } = await supabase
-      .from('keywords')
-      .select('name, is_competitor')
-      .in('name', topKeywords.map(k => k.name))
-    for (const kw of (kwData ?? []) as { name: string; is_competitor: boolean }[]) {
-      if (kw.is_competitor) competitorSet.add(kw.name)
-    }
-  }
+  // ─── 키워드 분류 (경쟁사 Set = entities.is_competitor 기준, 별도 쿼리 불필요) ─
+  const competitorSet = new Set<string>(competitorNames)
 
   type KgRow = { name: string; tag_type: string; include_patterns: string[] }
   const patternTagMap = new Map<string, string>()
