@@ -1242,6 +1242,34 @@ revoke all on function public.merge_entities(uuid, uuid) from public;
 grant execute on function public.merge_entities(uuid, uuid) to authenticated;
 
 -- ============================================================
+-- 지식그래프 공기출현 RPC (112-entity-cooccurrence — 2026-06-19)
+-- ============================================================
+
+create or replace function public.entity_cooccurrence(
+  p_min_weight integer default 3,
+  p_limit      integer default 400
+)
+returns table (source uuid, target uuid, weight bigint)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select a.entity_id as source, b.entity_id as target, count(*) as weight
+  from public.content_entities a
+  join public.content_entities b
+    on a.content_id = b.content_id
+   and a.entity_id < b.entity_id
+  group by a.entity_id, b.entity_id
+  having count(*) >= greatest(p_min_weight, 1)
+  order by count(*) desc
+  limit least(greatest(p_limit, 1), 1000)
+$$;
+
+revoke all on function public.entity_cooccurrence(integer, integer) from public;
+grant execute on function public.entity_cooccurrence(integer, integer) to authenticated;
+
+-- ============================================================
 -- 이슈 1급화 토대 (101-issues — 2026-06-18)
 -- ============================================================
 
