@@ -2,14 +2,13 @@ import type React from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Quote, TrendingUp, Building2, Tags, Network, FileText } from 'lucide-react'
+import { Quote, TrendingUp, Building2, Network, FileText } from 'lucide-react'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
 import type { EntityType } from '@/lib/types'
 import { tagTypeToBucket } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
-import KeywordMap from '@/components/dashboard/KeywordMap'
 import type { KeywordItem } from '@/components/dashboard/KeywordMap'
 
 const WATCHLIST_LIMIT = 20
@@ -314,197 +313,15 @@ export default async function AiInsightsView() {
   type EntityTeaser = { id: string; canonical_name: string; entity_type: EntityType; mention_count: number }
   const entityTeasers = (entityTeaserRes.data ?? []) as EntityTeaser[]
 
+  // ─── 키워드 트렌드 한 줄 (상승 4 + 하락 2) ───────────────────────────────
+  const risingKws  = classifiedKeywords.filter(k => k.direction === '▲').slice(0, 4)
+  const fallingKws = classifiedKeywords.filter(k => k.direction === '▽').slice(0, 2)
+  const kwStrip    = [...risingKws, ...fallingKws]
+
   return (
     <div className="space-y-10">
 
-      {/* ① 이번 주 뜨는 토픽 — 가로 스크롤 */}
-      <section>
-        <SectionHeader
-          icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
-          title="이번 주 뜨는 토픽"
-          desc="이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비"
-        />
-        {trendingTopics.length === 0 ? (
-          <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
-        ) : (
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {trendingTopics.map((t) => (
-              <Link
-                key={t.group}
-                href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
-                className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
-              >
-                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
-                <div className="flex items-center gap-2">
-                  {t.changePct === null ? (
-                    <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
-                      NEW
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-emerald-600">
-                      ▲{t.changePct}%
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground">{t.cur}건</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ② 키워드 트렌드 */}
-      {classifiedKeywords.length > 0 && (
-        <section>
-          <SectionHeader
-            icon={<Tags className="h-4 w-4 text-brand-600" />}
-            title="키워드 트렌드"
-            desc="빈도가 아니라 뜨는/식는 방향 — ▲이번 주 상승 ▽하락"
-          />
-          <KeywordMap keywords={classifiedKeywords} hasWatchlist={watchlistLower.length > 0} />
-        </section>
-      )}
-
-      {/* ③ 시장 주요 이슈 */}
-      <section>
-        <SectionHeader
-          icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
-          title="시장 주요 이슈"
-          desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
-        />
-        {issueCards.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            아직 등록된 이슈가 없습니다.
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {issueCards.map(card => {
-              const total14Days = card.recentCount + card.prevCount
-              const sentimentTotal = card.sentimentPos + card.sentimentNeg
-              return (
-                <Link
-                  key={card.id}
-                  href={`/dashboard/issues/${card.id}`}
-                  className="group flex flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/30 hover:bg-accent/40"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <h3 className="text-xs font-semibold text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-2">
-                      {card.title}
-                    </h3>
-                    {card.changeFlag === 'worsening' && (
-                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                        ⚠ 논조 악화
-                      </span>
-                    )}
-                    {card.changeFlag === 'surge' && (
-                      <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
-                        <TrendingUp className="h-2.5 w-2.5" />
-                        {card.changePct === null ? '신규' : `+${card.changePct}%`}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-auto flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>
-                      7일 <span className="font-medium text-foreground">{card.recentCount}건</span>
-                      {total14Days > card.recentCount && (
-                        <span className="ml-1 opacity-60">/ 14일 {total14Days}</span>
-                      )}
-                    </span>
-                    {sentimentTotal > 0 && (
-                      <div className="flex items-center gap-1">
-                        {card.sentimentPos > 0 && (
-                          <span className="rounded px-1 py-0.5 bg-emerald-50 text-emerald-700">긍{card.sentimentPos}</span>
-                        )}
-                        {card.sentimentNeg > 0 && (
-                          <span className="rounded px-1 py-0.5 bg-red-50 text-red-600">부{card.sentimentNeg}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ④ 경쟁사 동향 */}
-      <section>
-        <SectionHeader
-          icon={<Building2 className="h-4 w-4 text-red-500" />}
-          title="경쟁사 동향"
-          desc="경쟁사가 뭘 했고 시장이 어떻게 봤나 — 최근 14일 논조"
-        />
-        {competitorNames.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
-          </div>
-        ) : competitorResults.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            최근 14일 경쟁사 관련 기사가 없습니다.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {competitorResults.map(({ name, articles, dist }) => {
-              const hasDistData = dist['긍정'] + dist['중립'] + dist['부정'] > 0
-              const topArticle = articles[0]
-              const topSourceName = topArticle
-                ? (Array.isArray(topArticle.sources)
-                  ? (topArticle.sources as { name: string }[])[0]?.name
-                  : topArticle.sources?.name)
-                : null
-              return (
-                <div key={name} className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
-                    <span className="text-sm font-semibold text-foreground">{name}</span>
-                    <div className="flex items-center gap-2">
-                      {hasDistData && (
-                        <div className="flex items-center gap-1 text-[11px]">
-                          {dist['긍정'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
-                              긍 {dist['긍정']}
-                            </span>
-                          )}
-                          {dist['중립'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">
-                              중 {dist['중립']}
-                            </span>
-                          )}
-                          {dist['부정'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
-                              부 {dist['부정']}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <button
-                        disabled
-                        title="전략보고서 기능 준비 중"
-                        className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground/50 cursor-not-allowed"
-                      >
-                        배틀카드
-                      </button>
-                    </div>
-                  </div>
-                  {topArticle && (
-                    <Link
-                      href={`/dashboard/contents/${topArticle.id}`}
-                      className="text-xs text-foreground/80 hover:text-brand-600 line-clamp-1"
-                    >
-                      {topArticle.title}
-                      {topSourceName && (
-                        <span className="ml-1 text-muted-foreground/60">· {topSourceName}</span>
-                      )}
-                    </Link>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ⑤ AI 인사이트 */}
+      {/* ① AI 인사이트 — 최상단 */}
       <section>
         <SectionHeader
           icon={<FileText className="h-4 w-4 text-brand-600" />}
@@ -645,7 +462,203 @@ export default async function AiInsightsView() {
         )}
       </section>
 
-      {/* ⑥ 지식그래프 티저 */}
+      {/* ② 이번 주 뜨는 토픽 + 키워드 한 줄 */}
+      <section>
+        <SectionHeader
+          icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
+          title="이번 주 뜨는 토픽"
+          desc="이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비"
+        />
+        {trendingTopics.length === 0 ? (
+          <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+            {trendingTopics.map((t) => (
+              <Link
+                key={t.group}
+                href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
+                className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
+              >
+                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
+                <div className="flex items-center gap-2">
+                  {t.changePct === null ? (
+                    <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
+                      NEW
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-emerald-600">
+                      ▲{t.changePct}%
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">{t.cur}건</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* 키워드 트렌드 한 줄 */}
+        {kwStrip.length > 0 && (
+          <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <span className="shrink-0 text-[11px] text-muted-foreground/60">키워드</span>
+            {kwStrip.map((kw) => (
+              <Link
+                key={kw.name}
+                href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
+                className={cn(
+                  'shrink-0 inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                  kw.direction === '▲'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : 'border-red-100 bg-red-50 text-red-600 hover:bg-red-100'
+                )}
+              >
+                {kw.direction} {kw.name}
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ③ 시장 주요 이슈 */}
+      <section>
+        <SectionHeader
+          icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
+          title="시장 주요 이슈"
+          desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
+        />
+        {issueCards.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            아직 등록된 이슈가 없습니다.
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {issueCards.map(card => {
+              const total14Days = card.recentCount + card.prevCount
+              const sentimentTotal = card.sentimentPos + card.sentimentNeg
+              return (
+                <Link
+                  key={card.id}
+                  href={`/dashboard/issues/${card.id}`}
+                  className="group flex flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/30 hover:bg-accent/40"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <h3 className="text-xs font-semibold text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-2">
+                      {card.title}
+                    </h3>
+                    {card.changeFlag === 'worsening' && (
+                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        ⚠ 논조 악화
+                      </span>
+                    )}
+                    {card.changeFlag === 'surge' && (
+                      <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
+                        <TrendingUp className="h-2.5 w-2.5" />
+                        {card.changePct === null ? '신규' : `+${card.changePct}%`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-auto flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>
+                      7일 <span className="font-medium text-foreground">{card.recentCount}건</span>
+                      {total14Days > card.recentCount && (
+                        <span className="ml-1 opacity-60">/ 14일 {total14Days}</span>
+                      )}
+                    </span>
+                    {sentimentTotal > 0 && (
+                      <div className="flex items-center gap-1">
+                        {card.sentimentPos > 0 && (
+                          <span className="rounded px-1 py-0.5 bg-emerald-50 text-emerald-700">긍{card.sentimentPos}</span>
+                        )}
+                        {card.sentimentNeg > 0 && (
+                          <span className="rounded px-1 py-0.5 bg-red-50 text-red-600">부{card.sentimentNeg}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ④ 경쟁사 동향 */}
+      <section>
+        <SectionHeader
+          icon={<Building2 className="h-4 w-4 text-red-500" />}
+          title="경쟁사 동향"
+          desc="경쟁사가 뭘 했고 시장이 어떻게 봤나 — 최근 14일 논조"
+        />
+        {competitorNames.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
+          </div>
+        ) : competitorResults.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            최근 14일 경쟁사 관련 기사가 없습니다.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {competitorResults.map(({ name, articles, dist }) => {
+              const hasDistData = dist['긍정'] + dist['중립'] + dist['부정'] > 0
+              const topArticle = articles[0]
+              const topSourceName = topArticle
+                ? (Array.isArray(topArticle.sources)
+                  ? (topArticle.sources as { name: string }[])[0]?.name
+                  : topArticle.sources?.name)
+                : null
+              return (
+                <div key={name} className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                    <span className="text-sm font-semibold text-foreground">{name}</span>
+                    <div className="flex items-center gap-2">
+                      {hasDistData && (
+                        <div className="flex items-center gap-1 text-[11px]">
+                          {dist['긍정'] > 0 && (
+                            <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
+                              긍 {dist['긍정']}
+                            </span>
+                          )}
+                          {dist['중립'] > 0 && (
+                            <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">
+                              중 {dist['중립']}
+                            </span>
+                          )}
+                          {dist['부정'] > 0 && (
+                            <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
+                              부 {dist['부정']}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        disabled
+                        title="전략보고서 기능 준비 중"
+                        className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground/50 cursor-not-allowed"
+                      >
+                        배틀카드
+                      </button>
+                    </div>
+                  </div>
+                  {topArticle && (
+                    <Link
+                      href={`/dashboard/contents/${topArticle.id}`}
+                      className="text-xs text-foreground/80 hover:text-brand-600 line-clamp-1"
+                    >
+                      {topArticle.title}
+                      {topSourceName && (
+                        <span className="ml-1 text-muted-foreground/60">· {topSourceName}</span>
+                      )}
+                    </Link>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ⑤ 지식그래프 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <SectionHeader
           icon={<Network className="h-4 w-4 text-brand-600" />}
