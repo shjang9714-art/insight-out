@@ -4,6 +4,11 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { getKstTodayStartIso } from '@/lib/date'
 import { DashboardCharts, type ChartData, type DayTrend } from '@/components/admin/DashboardCharts'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getKstPeriod } from '@/lib/translate'
+import { LLM_PROVIDERS } from '@/lib/llm'
+import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
+import AdminOpsSignals, { type LlmProviderUsage, type OpsSignalCounts } from '@/components/admin/AdminOpsSignals'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +42,12 @@ export default async function AdminPage() {
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
   const thirtyDaysStart  = new Date(todayStartMs - 29 * 24 * 60 * 60 * 1000).toISOString()
+  const yesterday = new Date(todayStartMs - 24 * 60 * 60 * 1000).toISOString()
+  const period = getKstPeriod()
+
+  // admin 클라이언트 — usage/신호등 집계(graceful)
+  let admin: ReturnType<typeof createAdminClient> | null = null
+  try { admin = createAdminClient() } catch { /* env 미설정 시 무시 */ }
 
   const [
     totalRes, todayRes, pendingRes, publishedRes, rejectedRes,
@@ -44,6 +55,12 @@ export default async function AdminPage() {
     newsRes, reportRes, webRes, ytRes, aiRes,
     newsTodayRes, reportTodayRes, webTodayRes, ytTodayRes, aiTodayRes,
     trendRes, sourceRes,
+    // 신규 — 오늘 할 일
+    crawlFailedRes, crawlSourcesRes,
+    // 신규 — usage
+    llmUsageRes, llmSettingsRes, transUsageRes, ttsUsageRes,
+    // 신규 — 데이터 점등
+    issuesCountRes, entitiesCountRes, insightCardsCountRes, aiReportsCountRes, contentSignalsRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }),
@@ -71,6 +88,24 @@ export default async function AdminPage() {
     supabase.from('contents').select('category, collected_at').gte('collected_at', fourteenDaysStart),
     // 소스 Top 10 (바운디드 30일)
     supabase.from('contents').select('source_id, sources(name)').gte('collected_at', thirtyDaysStart).not('source_id', 'is', null),
+    // 오늘 크롤 실패 건수
+    supabase.from('crawl_logs').select('*', { count: 'exact', head: true }).in('status', ['failed', 'partial']).gte('started_at', todayStart),
+    // 최근 24h 실패 소스 목록 (distinct source_id 집계용)
+    supabase.from('crawl_logs').select('source_id').in('status', ['failed', 'partial']).gte('started_at', yesterday).not('source_id', 'is', null),
+    // LLM usage
+    admin ? admin.from('llm_usage').select('provider, tokens').eq('period', period) : Promise.resolve({ data: [], error: null }),
+    admin ? admin.from('llm_settings').select('provider, enabled, monthly_token_limit') : Promise.resolve({ data: [], error: null }),
+    // 번역 usage
+    admin ? admin.from('translation_usage').select('chars').eq('period', period) : Promise.resolve({ data: [], error: null }),
+    // TTS usage
+    admin ? admin.from('tts_usage').select('chars').eq('period', period) : Promise.resolve({ data: [], error: null }),
+    // 데이터 점등
+    supabase.from('issues').select('*', { count: 'exact', head: true }),
+    supabase.from('entities').select('*', { count: 'exact', head: true }),
+    supabase.from('insight_cards').select('*', { count: 'exact', head: true }),
+    supabase.from('ai_reports').select('*', { count: 'exact', head: true }),
+    // content_signals — graceful(테이블 없으면 0)
+    supabase.from('content_signals').select('*', { count: 'exact', head: true }).limit(0),
   ])
 
   // ── 카테고리 집계 ──────────────────────────────────────────────────────────
@@ -129,6 +164,43 @@ export default async function AdminPage() {
     .slice(0, 10)
     .map(([sourceId, { name, count }]) => ({ sourceId, name, count }))
 
+  // ── 오늘 할 일 집계 ────────────────────────────────────────────────────────
+  const todayFailed   = crawlFailedRes.count ?? 0
+  type CrawlSrcRow = { source_id: string }
+  const failedSrcIds  = new Set((crawlSourcesRes.data ?? []).map((r: CrawlSrcRow) => r.source_id))
+  const sourcesToCheck = failedSrcIds.size
+
+  // ── LLM 사용량 집계 ────────────────────────────────────────────────────────
+  const usageMap = new Map<string, number>(
+    ((llmUsageRes.data ?? []) as { provider: string; tokens: number }[]).map(r => [r.provider, r.tokens ?? 0])
+  )
+  const settingsMap = new Map<string, { enabled: boolean; monthly_token_limit: number }>(
+    ((llmSettingsRes.data ?? []) as { provider: string; enabled: boolean; monthly_token_limit: number }[]).map(r => [r.provider, r])
+  )
+  const llmProviders: LlmProviderUsage[] = LLM_PROVIDERS.map(p => {
+    const s = settingsMap.get(p.name)
+    return {
+      name:        p.name,
+      configured:  p.isConfigured(),
+      enabled:     s?.enabled ?? true,
+      tokensUsed:  usageMap.get(p.name) ?? 0,
+      tokenLimit:  s?.monthly_token_limit ?? 1_000_000,
+    }
+  })
+
+  const translationChars = ((transUsageRes.data ?? []) as { chars: number }[]).reduce((sum, r) => sum + (r.chars ?? 0), 0)
+  const ttsChars         = ((ttsUsageRes.data ?? []) as { chars: number }[]).reduce((sum, r) => sum + (r.chars ?? 0), 0)
+  const ttsMonthlyCap    = process.env.TTS_MONTHLY_CHAR_CAP ? Number(process.env.TTS_MONTHLY_CHAR_CAP) : null
+
+  // ── 데이터 점등 집계 ────────────────────────────────────────────────────────
+  const signalCounts: OpsSignalCounts = {
+    issues:        issuesCountRes.count      ?? 0,
+    entities:      entitiesCountRes.count    ?? 0,
+    insightCards:  insightCardsCountRes.count ?? 0,
+    aiReports:     aiReportsCountRes.count   ?? 0,
+    contentSignals: contentSignalsRes.count  ?? 0,
+  }
+
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
   const chartData: ChartData = {
@@ -154,7 +226,24 @@ export default async function AdminPage() {
         </p>
       </div>
 
-      {/* ① KPI 카드 */}
+      {/* ① 오늘 할 일 */}
+      <AdminTodoBlock
+        pending={pendingRes.count ?? 0}
+        todayCollected={todayRes.count ?? 0}
+        todayFailed={todayFailed}
+        sourcesToCheck={sourcesToCheck}
+      />
+
+      {/* ② 운영 신호등 */}
+      <AdminOpsSignals
+        llmProviders={llmProviders}
+        translationChars={translationChars}
+        ttsChars={ttsChars}
+        ttsMonthlyCap={ttsMonthlyCap}
+        signalCounts={signalCounts}
+      />
+
+      {/* ③ KPI 카드 */}
       <section aria-labelledby="kpi-heading">
         <h2 id="kpi-heading" className="mb-3 text-sm font-semibold text-foreground">
           운영 현황
