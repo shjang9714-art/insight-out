@@ -50,13 +50,15 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+      <div className="print:hidden">
+        <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+      </div>
 
       {/* ── 2단 그리드: 좌(사이드바) | 중앙(카테고리+콘텐츠) ──────────────── */}
-      <div className={`grid grid-cols-1 ${sidebarCollapsed ? 'lg:grid-cols-[56px_minmax(0,1fr)]' : 'lg:grid-cols-[224px_minmax(0,1fr)]'} transition-[grid-template-columns] duration-200`}>
+      <div className={`grid grid-cols-1 ${sidebarCollapsed ? 'lg:grid-cols-[56px_minmax(0,1fr)]' : 'lg:grid-cols-[224px_minmax(0,1fr)]'} transition-[grid-template-columns] duration-200 print:block`}>
 
         {/* 좌 패널: 데스크톱(lg+) 고정 사이드바 */}
-        <div className="hidden lg:block">
+        <div className="hidden lg:block print:hidden">
           <Sidebar
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
@@ -68,7 +70,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           {/* 카테고리 타일 + 검색 (목록형 페이지에서만, sticky) */}
           {!hideTiles && (
             <div
-              className={`sticky top-14 z-10 border-b border-border bg-background transition-transform duration-200 ${
+              className={`sticky top-14 z-10 border-b border-border bg-background transition-transform duration-200 print:hidden ${
                 tilesVisible ? 'translate-y-0' : '-translate-y-full'
               }`}
             >
@@ -78,7 +80,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
 
-          <main className="mx-auto w-full max-w-screen-xl">
+          <main className="mx-auto w-full max-w-screen-xl print:max-w-none">
             {children}
           </main>
         </div>
@@ -86,7 +88,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
       {/* 모바일 드로어 */}
       {sidebarOpen && (
-        <>
+        <div className="print:hidden">
           <div
             className="fixed inset-0 z-30 bg-black/30 lg:hidden"
             onClick={() => setSidebarOpen(false)}
@@ -95,11 +97,13 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           <div className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-card lg:hidden">
             <Sidebar onClose={() => setSidebarOpen(false)} />
           </div>
-        </>
+        </div>
       )}
 
       {/* 플로팅 모닝브리핑 미니 플레이어 */}
-      <FloatingBriefingMini />
+      <div className="print:hidden">
+        <FloatingBriefingMini />
+      </div>
     </div>
   )
 }

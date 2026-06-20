@@ -70,8 +70,8 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
   if (!isEditing) {
     return (
       <div>
-        {/* 편집 버튼 */}
-        <div className="mb-4 flex justify-end">
+        {/* 편집 버튼 — 인쇄 시 숨김 */}
+        <div className="print:hidden mb-4 flex justify-end">
           <button
             onClick={() => setIsEditing(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-brand-600/40 hover:text-brand-600 transition-colors"
@@ -96,7 +96,7 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 print:hidden">
       {/* 툴바 */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">

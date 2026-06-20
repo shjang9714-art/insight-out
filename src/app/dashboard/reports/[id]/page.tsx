@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
 import ReportEditor from '@/components/reports/ReportEditor'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
+import PrintButton from '@/components/reports/PrintButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,15 +94,18 @@ export default async function ReportDetailPage({ params }: PageProps) {
     .filter((c): c is { id: string; title: string } => c !== null)
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      {/* 뒤로 */}
-      <Link
-        href="/dashboard/reports"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        전략보고서로
-      </Link>
+    <div className="mx-auto max-w-3xl px-4 py-8 print:px-0 print:py-0 print:max-w-none">
+      {/* 뒤로 + PDF 버튼 */}
+      <div className="print:hidden mb-6 flex items-center justify-between">
+        <Link
+          href="/dashboard/reports"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          전략보고서로
+        </Link>
+        <PrintButton />
+      </div>
 
       {/* 헤더 */}
       <div className="mb-8 space-y-2">
@@ -129,7 +133,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
           initialStatus={report.status as AiReportStatus}
         />
       ) : report.body_md ? (
-        <div className="rounded-xl border border-border bg-card p-6 sm:p-8">
+        <div className="rounded-xl border border-border bg-card p-6 sm:p-8 print:border-0 print:bg-white print:p-0 print:shadow-none">
           <ReportMarkdown>{report.body_md}</ReportMarkdown>
         </div>
       ) : (
