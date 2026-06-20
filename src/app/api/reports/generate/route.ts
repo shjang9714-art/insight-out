@@ -323,7 +323,8 @@ export async function POST(req: NextRequest) {
       ai_report_id: reportId,
       content_id: cid,
     }))
-    await supabase.from('ai_report_sources').upsert(sourceRows, { onConflict: 'ai_report_id,content_id', ignoreDuplicates: true })
+    const { error: srcErr } = await supabase.from('ai_report_sources').insert(sourceRows)
+    if (srcErr) console.error('[generate] ai_report_sources insert error:', srcErr)
   }
 
   return NextResponse.json({ id: reportId })
