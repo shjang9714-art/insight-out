@@ -73,14 +73,13 @@ export default async function ReportsPage() {
             AI가 분석한 시장동향·경쟁사 전략보고서 모음
           </p>
         </div>
-        <button
-          disabled
-          title="생성 워크벤치 준비 중"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+        <Link
+          href="/dashboard/reports/new"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
         >
           <PlusCircle className="h-4 w-4" />
           새 보고서
-        </button>
+        </Link>
       </div>
 
       {reports.length === 0 ? (

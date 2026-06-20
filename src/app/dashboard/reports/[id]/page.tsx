@@ -5,7 +5,8 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { AiReport, AiReportType } from '@/lib/types'
+import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
+import ReportEditor from '@/components/reports/ReportEditor'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
 
 export const dynamic = 'force-dynamic'
@@ -63,15 +64,18 @@ export default async function ReportDetailPage({ params }: PageProps) {
     }
   )
 
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data: reportData } = await supabase
     .from('ai_reports')
-    .select('id, title, type, status, prompt, body_md, created_at')
+    .select('id, user_id, title, type, status, prompt, body_md, created_at')
     .eq('id', id)
     .single()
 
   if (!reportData) notFound()
 
-  const report = reportData as Pick<AiReport, 'id' | 'title' | 'type' | 'status' | 'prompt' | 'body_md' | 'created_at'>
+  const report = reportData as Pick<AiReport, 'id' | 'user_id' | 'title' | 'type' | 'status' | 'prompt' | 'body_md' | 'created_at'>
+  const isOwner = user?.id === report.user_id
 
   // ─── 근거 출처 ──────────────────────────────────────────────────────────────
   const { data: sourcesData } = await supabase
@@ -117,7 +121,14 @@ export default async function ReportDetailPage({ params }: PageProps) {
       </div>
 
       {/* 본문 */}
-      {report.body_md ? (
+      {isOwner ? (
+        <ReportEditor
+          reportId={report.id}
+          initialTitle={report.title}
+          initialBodyMd={report.body_md ?? null}
+          initialStatus={report.status as AiReportStatus}
+        />
+      ) : report.body_md ? (
         <div className="rounded-xl border border-border bg-card p-6 sm:p-8">
           <ReportMarkdown>{report.body_md}</ReportMarkdown>
         </div>

@@ -363,7 +363,7 @@ export default async function AiInsightsView() {
                             </span>
                             <div className="flex items-center gap-1.5">
                               <Link
-                                href="/dashboard/reports"
+                                href={`/dashboard/reports/new?type=시장동향&topic=${encodeURIComponent(card.topic ?? '')}`}
                                 className="rounded px-2 py-0.5 text-[11px] font-medium bg-brand-600/10 text-brand-600 hover:bg-brand-600/20 transition-colors"
                               >
                                 보고서로 만들기
@@ -526,15 +526,19 @@ export default async function AiInsightsView() {
               const total14Days = card.recentCount + card.prevCount
               const sentimentTotal = card.sentimentPos + card.sentimentNeg
               return (
-                <Link
+                <div
                   key={card.id}
-                  href={`/dashboard/issues/${card.id}`}
                   className="group flex flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/30 hover:bg-accent/40"
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <h3 className="text-xs font-semibold text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-2">
-                      {card.title}
-                    </h3>
+                    <Link
+                      href={`/dashboard/issues/${card.id}`}
+                      className="min-w-0"
+                    >
+                      <h3 className="text-xs font-semibold text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-2">
+                        {card.title}
+                      </h3>
+                    </Link>
                     {card.changeFlag === 'worsening' && (
                       <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                         ⚠ 논조 악화
@@ -565,7 +569,15 @@ export default async function AiInsightsView() {
                       </div>
                     )}
                   </div>
-                </Link>
+                  <div className="mt-3 pt-2 border-t border-border">
+                    <Link
+                      href={`/dashboard/reports/new?issue=${card.id}`}
+                      className="text-[11px] font-medium text-brand-600 hover:underline"
+                    >
+                      보고서로 만들기 →
+                    </Link>
+                  </div>
+                </div>
               )
             })}
           </div>
