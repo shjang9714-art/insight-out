@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, X, Save, Loader2 } from 'lucide-react'
+import { Pencil, X, Save, Loader2, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import type { AiReportStatus } from '@/lib/types'
@@ -27,6 +27,7 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
   const [bodyMd, setBodyMd] = useState(initialBodyMd ?? '')
   const [status, setStatus] = useState<AiReportStatus>(initialStatus)
   const [isSaving, setIsSaving] = useState(false)
+  const [isRefining, setIsRefining] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
@@ -59,6 +60,25 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
     router.refresh()
   }
 
+  const handleRefine = async () => {
+    if (!confirm('판단 섹션(시사점·기회/리스크·대응)을 AI가 작성한 초안으로 채웁니다. 기존 판단 내용은 대체됩니다.')) return
+    setIsRefining(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/reports/${reportId}/refine`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        setError(json.error ?? 'AI 다듬기에 실패했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+      router.refresh()
+    } catch {
+      setError('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setIsRefining(false)
+    }
+  }
+
   const handleCancel = () => {
     setTitle(initialTitle)
     setBodyMd(initialBodyMd ?? '')
@@ -70,8 +90,24 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
   if (!isEditing) {
     return (
       <div>
-        {/* 편집 버튼 — 인쇄 시 숨김 */}
-        <div className="print:hidden mb-4 flex justify-end">
+        {/* 편집·AI 다듬기 버튼 — 인쇄 시 숨김 */}
+        <div className="print:hidden mb-4 flex items-center justify-end gap-2">
+          <button
+            onClick={handleRefine}
+            disabled={isRefining}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors',
+              isRefining
+                ? 'text-muted-foreground/50 cursor-not-allowed'
+                : 'text-muted-foreground hover:border-brand-600/40 hover:text-brand-600',
+            )}
+          >
+            {isRefining
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Sparkles className="h-3.5 w-3.5" />
+            }
+            AI로 다듬기
+          </button>
           <button
             onClick={() => setIsEditing(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-brand-600/40 hover:text-brand-600 transition-colors"
@@ -80,6 +116,11 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
             편집
           </button>
         </div>
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* 본문 렌더 */}
         {bodyMd ? (
