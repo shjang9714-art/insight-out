@@ -148,6 +148,10 @@ export default function AdminContentManager() {
   const [isYtPurging,   setIsYtPurging]   = useState(false)
   const [ytPurgeResult, setYtPurgeResult] = useState<string | null>(null)
 
+  // 본문 보강 백필
+  const [isEnriching,    setIsEnriching]    = useState(false)
+  const [enrichResult,   setEnrichResult]   = useState<string | null>(null)
+
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
     const id = setTimeout(() => {
@@ -432,6 +436,28 @@ export default function AdminContentManager() {
     }
   }
 
+  const handleEnrich = async () => {
+    setIsEnriching(true)
+    setEnrichResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/body-backfill?limit=15', { method: 'POST' })
+      if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '본문 보강 실패')
+      const { processed, improved, remaining } = await res.json() as {
+        processed: number
+        improved: number
+        skipped: number
+        remaining: number
+      }
+      const msg = `본문 보강 완료: ${processed}건 처리 (개선 ${improved}건)${remaining > 0 ? ` · 남은 ${remaining.toLocaleString()}건 → 다시 실행` : ' · 완료'}`
+      setEnrichResult(msg)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '본문 보강 중 오류가 발생했습니다.')
+    } finally {
+      setIsEnriching(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
   // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
@@ -498,6 +524,11 @@ export default function AdminContentManager() {
               ✅ {ytPurgeResult}
             </span>
           )}
+          {enrichResult && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+              ✅ {enrichResult}
+            </span>
+          )}
         </div>
         <div className="flex gap-2">
           <Button
@@ -524,6 +555,18 @@ export default function AdminContentManager() {
             {isYtPurging
               ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
               : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />유튜브 비우기</>
+            }
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isEnriching}
+            onClick={handleEnrich}
+          >
+            {isEnriching
+              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />보강 중…</>
+              : '본문 보강'
             }
           </Button>
         </div>
