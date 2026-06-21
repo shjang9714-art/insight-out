@@ -200,7 +200,7 @@ function ContentsContent() {
   const relevant = searchParams.get('relevant') ?? '1'
   const srcParam = searchParams.get('src') ?? ''
   const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
-  const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+  const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10)))
   const sort     = (searchParams.get('sort') ?? 'published') as 'published' | 'collected'
 
   const isReportCategory = category === '리포트' || category === 'AI보고서'
@@ -234,8 +234,8 @@ function ContentsContent() {
       const p = new URLSearchParams(window.location.search)
       if (value) p.set(key, value)
       else p.delete(key)
-      if (key !== 'page') p.delete('page')
-      router.push(`${pathname}?${p.toString()}`, { scroll: key !== 'page' })
+      if (key !== 'page') { p.delete('page'); startTransition(() => setPage(1)) }
+      router.push(`${pathname}?${p.toString()}`)
     },
     [router, pathname]
   )
@@ -353,7 +353,13 @@ function ContentsContent() {
   }, [category, date, svcIds, srcIds, relevant, page, sort, sortByCollected])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
-  const handleLoadMore = () => updateParam('page', String(page + 1))
+  const handleLoadMore = () => {
+    const next = page + 1
+    setPage(next)
+    const p = new URLSearchParams(window.location.search)
+    p.set('page', String(next))
+    window.history.replaceState(null, '', `${pathname}?${p.toString()}`)
+  }
   const hasMore = total !== null && items.length < total
 
   // ── cluster 그룹핑 (표시 전용 — total·더보기는 원시 items 기준 유지) ──────────
@@ -624,7 +630,7 @@ function ContentsContent() {
               <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
             ))}
             <button
-              onClick={() => router.push(pathname + (category ? `?category=${encodeURIComponent(category)}` : ''))}
+              onClick={() => { setPage(1); router.push(pathname + (category ? `?category=${encodeURIComponent(category)}` : '')) }}
               className="text-[11px] text-muted-foreground underline hover:text-foreground"
             >
               전체 초기화
