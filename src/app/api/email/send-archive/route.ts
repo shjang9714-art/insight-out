@@ -10,8 +10,11 @@ function categorizeSendError(err: { name?: string; message?: string }): string {
   const msg = (err.message ?? '').toLowerCase()
   const name = (err.name ?? '').toLowerCase()
 
-  if (name === 'missing_required_field' || msg.includes('from') || msg.includes('domain')) {
-    return '발신 도메인이 검증되지 않았습니다. 관리자에게 문의하세요.'
+  if (name === 'missing_required_field') {
+    return '이메일 발송 설정이 완료되지 않았습니다. 관리자에게 환경변수(BREVO_FROM_EMAIL) 설정을 요청하세요.'
+  }
+  if (msg.includes('from') || msg.includes('domain')) {
+    return '발신 도메인이 검증되지 않았습니다. 관리자에게 Brevo 도메인 검증을 요청하세요.'
   }
   if (msg.includes('not allowed') || msg.includes('unauthorized') || msg.includes('forbidden')) {
     return '발신 권한이 없습니다. 발신 도메인 검증(Brevo) 후 이용 가능합니다.'
