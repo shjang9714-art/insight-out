@@ -138,9 +138,9 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
               아카이빙 콘텐츠
             </h3>
             <Link
-              href="/dashboard/mypage"
+              href="/dashboard/mypage#archives"
               onClick={() => onClose?.()}
-              className="text-[10px] text-brand-600 hover:underline"
+              className="px-1.5 py-0.5 -m-1 text-[10px] text-brand-600 hover:underline"
             >
               전체
             </Link>
