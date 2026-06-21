@@ -1,0 +1,25 @@
+name,type,rss_url,is_active,crawl_interval_minutes
+TechCrunch,news_site,https://techcrunch.com/feed/,true,60
+The Verge,news_site,https://www.theverge.com/rss/index.xml,true,120
+VentureBeat AI,news_site,https://venturebeat.com/category/ai/feed/,true,120
+전자신문 AI,news_site,http://rss.etnews.com/04046.xml,true,60
+전자신문 보안,news_site,http://rss.etnews.com/04045.xml,true,120
+AWS News Blog,web_insight,https://aws.amazon.com/blogs/aws/feed/,true,180
+AWS What's New,web_insight,https://aws.amazon.com/about-aws/whats-new/recent/feed/,true,360
+Google Cloud Blog,web_insight,https://cloudblog.withgoogle.com/rss,true,180
+Microsoft Official Blog,web_insight,https://blogs.microsoft.com/feed/,true,240
+Hugging Face Blog,web_insight,https://huggingface.co/blog/feed.xml,true,240
+NAVER D2,web_insight,https://d2.naver.com/d2.atom,true,360
+Kakao Tech,web_insight,https://tech.kakao.com/feed/,true,360
+Toss Tech,web_insight,https://toss.tech/rss.xml,true,360
+우아한형제들 기술블로그,web_insight,https://techblog.woowahan.com/feed/,true,360
+The Pragmatic Engineer,web_insight,https://newsletter.pragmaticengineer.com/feed,true,360
+Stratechery,web_insight,https://stratechery.com/feed/,true,360
+One Useful Thing,web_insight,https://www.oneusefulthing.org/feed,true,360
+Latent Space,web_insight,https://www.latent.space/feed,true,360
+SemiAnalysis,web_insight,https://www.semianalysis.com/feed,true,360
+Google Threat Intelligence,web_insight,https://feeds.feedburner.com/GoogleCloudSecurity-Research,true,360
+CrowdStrike Blog,web_insight,https://www.crowdstrike.com/blog/feed/,true,360
+Cisco Security Advisories,web_insight,https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml,true,360
+Hacker News Frontpage,news_site,https://hnrss.org/frontpage,true,360
+arXiv cs.AI,report_publisher,http://export.arxiv.org/rss/cs.AI,true,720
