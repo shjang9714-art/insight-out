@@ -27,12 +27,31 @@ const ENTERTAINMENT_KEYWORDS = [
   '연예인', '팬미팅', '데뷔 앨범', 'OST',
 ]
 
+/** 통신 B2C 키워드 — 모닝브리핑 후보에서 소비자向 기사 제외 */
+const TELECOM_B2C_KEYWORDS = [
+  '요금제', '데이터 무제한', '알뜰폰', '번호이동', '약정 할인',
+  '단말 보조금', '단말기 유통', '공시 지원금', '자급제',
+  '가입자 유치', '소비자 프로모션', 'MVNO',
+  '멤버십 혜택', '포인트 적립', '통신비 할인',
+]
+
 /** 통합 블록리스트 */
 export const FEED_BLOCKLIST: string[] = [
   ...ESPORTS_KEYWORDS,
   ...REALESTATE_KEYWORDS,
   ...ENTERTAINMENT_KEYWORDS,
 ]
+
+/** 브리핑용 확장 블록리스트 (기본 블록리스트 + 통신 B2C) */
+export const BRIEFING_BLOCKLIST: string[] = [
+  ...FEED_BLOCKLIST,
+  ...TELECOM_B2C_KEYWORDS,
+]
+
+export function isBriefingRelevant(title: string, summaryKo: string | null): boolean {
+  const text = (title + ' ' + (summaryKo ?? '')).toLowerCase()
+  return !BRIEFING_BLOCKLIST.some((kw) => text.includes(kw.toLowerCase()))
+}
 
 /**
  * 제목 또는 요약에 블록 키워드가 포함된 경우 false를 반환.
