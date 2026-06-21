@@ -107,7 +107,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
-    group: 'AI·처리',
+    group: '이슈·인사이트',
     items: [
       {
         href: '/admin/issues',
@@ -121,6 +121,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: 'AI 핵심 인사이트 카드 생성·검토·발행',
         icon: Sparkles,
       },
+    ],
+  },
+  {
+    group: '연동·사용량',
+    items: [
       {
         href: '/admin/translation',
         label: '번역',
