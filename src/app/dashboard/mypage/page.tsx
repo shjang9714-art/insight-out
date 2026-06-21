@@ -202,6 +202,14 @@ export default function MyPage() {
     load()
   }, [])
 
+  useEffect(() => {
+    if (archivesLoading || bookmarksLoading) return
+    const hash = window.location.hash?.slice(1)
+    if (!hash) return
+    const el = document.getElementById(hash)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [archivesLoading, bookmarksLoading])
+
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -736,7 +744,7 @@ export default function MyPage() {
         </section>
 
         {/* 내 북마크 */}
-        <section id="bookmarks" className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <section id="bookmarks" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5">
             <h2 className="text-base font-semibold text-foreground">내 북마크</h2>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -810,7 +818,7 @@ export default function MyPage() {
         </section>
 
         {/* 내 아카이브 */}
-        <section id="archives" className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <section id="archives" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="mb-5">
             <h2 className="text-base font-semibold text-foreground">내 아카이브</h2>
             <p className="mt-1 text-xs text-muted-foreground">
