@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { sendBrevoEmail, normalizeBrevoError } from '@/lib/email/brevo'
+import { sendBrevoEmail, normalizeBrevoError, type BrevoAttachment } from '@/lib/email/brevo'
 import { buildArchiveEmailHtml, type ArchiveEmailItem } from '@/lib/email/archive-template'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-// sendError.name/message → 사용자 노출 메시지로 카테고리화
+const MAX_RECIPIENTS = 10
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8MB (Brevo 제한 ~10MB, 여유분)
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 function categorizeSendError(err: { name?: string; message?: string }): string {
   const msg = (err.message ?? '').toLowerCase()
   const name = (err.name ?? '').toLowerCase()
@@ -31,9 +35,12 @@ function categorizeSendError(err: { name?: string; message?: string }): string {
   return '이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
 }
 
+function sanitizeFileName(name: string): string {
+  return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 100)
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // ── 0. 발신자 환경변수 가드 ────────────────────────────────────────────
     if (!process.env.BREVO_FROM_EMAIL) {
       console.warn('[send-archive] BREVO_FROM_EMAIL 미설정 — Brevo 발신 도메인 인증 후 설정 필요')
     }
@@ -58,10 +65,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
     }
 
-    // ── 2. 요청 파싱 ──────────────────────────────────────────────────────
-    const { archiveId } = (await req.json()) as { archiveId: string }
+    // ── 2. 요청 파싱 + 수신자 검증 ───────────────────────────────────────
+    const body = (await req.json()) as { archiveId: string; recipients?: string[] }
+    const { archiveId } = body
     if (!archiveId) {
       return NextResponse.json({ error: 'archiveId 가 필요합니다.' }, { status: 400 })
+    }
+
+    let recipientList: string[] = []
+    if (body.recipients && body.recipients.length > 0) {
+      const raw = body.recipients
+        .flatMap((r: string) => r.split(/[,;\s]+/))
+        .map((e: string) => e.trim().toLowerCase())
+        .filter(Boolean)
+      const unique = [...new Set(raw)]
+      const invalid = unique.filter((e) => !EMAIL_RE.test(e))
+      if (invalid.length > 0) {
+        return NextResponse.json({ error: `올바르지 않은 이메일 주소: ${invalid.join(', ')}` }, { status: 400 })
+      }
+      if (unique.length > MAX_RECIPIENTS) {
+        return NextResponse.json({ error: `수신자는 최대 ${MAX_RECIPIENTS}명까지 가능합니다.` }, { status: 400 })
+      }
+      recipientList = unique
     }
 
     // ── 3. 아카이브 + 항목 조회 ───────────────────────────────────────────
@@ -82,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '아카이브를 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    // ── 4. 수신 이메일 결정 ───────────────────────────────────────────────
+    // ── 4. 수신자 결정 ───────────────────────────────────────────────────
     const [{ data: userProfile }, { data: newsletterSub }] = await Promise.all([
       supabase.from('users').select('name').eq('id', user.id).single(),
       supabase
@@ -92,13 +117,18 @@ export async function POST(req: NextRequest) {
         .single(),
     ])
 
-    const toEmail = newsletterSub?.newsletter_email ?? user.email
-    if (!toEmail) {
-      return NextResponse.json({ error: '수신 이메일을 찾을 수 없습니다.' }, { status: 400 })
+    if (recipientList.length === 0) {
+      const fallback = newsletterSub?.newsletter_email ?? user.email
+      if (!fallback) {
+        return NextResponse.json({ error: '수신 이메일을 찾을 수 없습니다.' }, { status: 400 })
+      }
+      recipientList = [fallback]
     }
 
-    // ── 5. 이메일 항목 빌드 ───────────────────────────────────────────────
+    // ── 5. 이메일 항목 빌드 + PDF 첨부 준비 ──────────────────────────────
     const items: ArchiveEmailItem[] = []
+    const attachments: BrevoAttachment[] = []
+    let totalAttachmentSize = 0
 
     for (const archiveItem of archive.archive_items as unknown as {
       content_id: string | null
@@ -118,8 +148,25 @@ export async function POST(req: NextRequest) {
       if (!content) continue
 
       let reportSignedUrl: string | null = null
+      let isAttached = false
+
       if (content.file_path) {
-        reportSignedUrl = await getReportSignedUrl(content.file_path)
+        const admin = createAdminClient()
+        const { data: fileData } = await admin.storage
+          .from('reports')
+          .download(content.file_path)
+
+        if (fileData && totalAttachmentSize + fileData.size <= MAX_ATTACHMENT_BYTES) {
+          const buffer = Buffer.from(await fileData.arrayBuffer())
+          totalAttachmentSize += buffer.length
+          attachments.push({
+            content: buffer.toString('base64'),
+            name: `${sanitizeFileName(content.title)}.pdf`,
+          })
+          isAttached = true
+        } else {
+          reportSignedUrl = await getReportSignedUrl(content.file_path)
+        }
       }
 
       items.push({
@@ -130,6 +177,7 @@ export async function POST(req: NextRequest) {
         summaryKo: content.summary_ko ?? null,
         originalUrl: content.original_url ?? null,
         reportSignedUrl,
+        isAttached,
       })
     }
 
@@ -145,16 +193,19 @@ export async function POST(req: NextRequest) {
     })
 
     try {
-      await sendBrevoEmail({ to: toEmail, subject: `[Insight Out] ${archive.name} — ${items.length}건의 인사이트`, html })
+      await sendBrevoEmail({
+        to: recipientList,
+        subject: `[Insight Out] ${archive.name} — ${items.length}건의 인사이트`,
+        html,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      })
     } catch (err) {
       const norm = normalizeBrevoError(err)
-      // 수신자는 서버 로그에만 기록 (응답 본문 노출 금지)
-      console.error('[send-archive] Brevo 발송 실패 | to=<hidden> | name=%s | message=%s', norm.name, norm.message)
-      console.error('[send-archive] 수신자 도메인: %s', toEmail.split('@')[1] ?? 'unknown')
+      console.error('[send-archive] Brevo 발송 실패 | name=%s | message=%s', norm.name, norm.message)
       return NextResponse.json({ error: categorizeSendError(norm) }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, to: toEmail, count: items.length })
+    return NextResponse.json({ success: true, to: recipientList.join(', '), count: items.length })
 
   } catch (err) {
     console.error('[send-archive] 예상치 못한 오류:', err)

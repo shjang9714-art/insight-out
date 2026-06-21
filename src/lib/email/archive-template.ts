@@ -7,7 +7,8 @@ export interface ArchiveEmailItem {
   publishedAt: string | null
   summaryKo: string | null
   originalUrl: string | null
-  reportSignedUrl: string | null // PDF 서명 URL (있으면 원문 URL 대신 사용)
+  reportSignedUrl: string | null
+  isAttached?: boolean
 }
 
 export interface ArchiveEmailData {
@@ -19,8 +20,14 @@ export interface ArchiveEmailData {
 export function buildArchiveEmailHtml(data: ArchiveEmailData): string {
   const itemsHtml = data.items
     .map((item, i) => {
-      const linkUrl = item.reportSignedUrl ?? item.originalUrl
-      const linkLabel = item.reportSignedUrl ? 'PDF 보기' : '원문 보기'
+      let linkHtml = ''
+      if (item.isAttached) {
+        linkHtml = '<p style="margin: 4px 0 0; font-size: 13px; color: #6b7280;">📎 PDF 파일이 첨부되어 있습니다</p>'
+      } else if (item.reportSignedUrl) {
+        linkHtml = `<p style="margin: 4px 0 0;"><a href="${item.reportSignedUrl}" style="font-size: 13px; color: #E6007E; text-decoration: none;">PDF 다운로드 →</a></p>`
+      } else if (item.originalUrl) {
+        linkHtml = `<p style="margin: 4px 0 0;"><a href="${item.originalUrl}" style="font-size: 13px; color: #E6007E; word-break: break-all;">${item.originalUrl}</a></p>`
+      }
 
       return `
       <tr>
@@ -28,7 +35,7 @@ export function buildArchiveEmailHtml(data: ArchiveEmailData): string {
           <p style="margin: 0 0 4px; font-size: 13px; color: #6b7280;">${i + 1}. ${item.category}${item.sourceName ? ` · ${item.sourceName}` : ''}${item.publishedAt ? ` · ${new Date(item.publishedAt).toLocaleDateString('ko-KR')}` : ''}</p>
           <p style="margin: 0 0 6px; font-size: 16px; font-weight: 600; color: #111827; line-height: 1.4;">${item.title}</p>
           ${item.summaryKo ? `<p style="margin: 0 0 8px; font-size: 14px; color: #374151; line-height: 1.6;">${item.summaryKo}</p>` : ''}
-          ${linkUrl ? `<a href="${linkUrl}" style="font-size: 13px; color: #E6007E; text-decoration: none;">${linkLabel} →</a>` : ''}
+          ${linkHtml}
         </td>
       </tr>
     `

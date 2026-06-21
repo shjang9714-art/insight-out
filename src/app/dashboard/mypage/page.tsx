@@ -128,6 +128,8 @@ export default function MyPage() {
   const [archiveError, setArchiveError]     = useState<string | null>(null)
   const [sendingArchiveId, setSendingArchiveId] = useState<string | null>(null)
   const [sendResult, setSendResult]         = useState<{ archiveId: string; to: string } | null>(null)
+  const [emailInputArchiveId, setEmailInputArchiveId] = useState<string | null>(null)
+  const [emailInputValue, setEmailInputValue] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -425,19 +427,24 @@ export default function MyPage() {
     }
   }
 
-  async function handleSendEmail(archiveId: string) {
+  async function handleSendEmail(archiveId: string, recipientsInput?: string) {
     setSendingArchiveId(archiveId)
     setArchiveError(null)
     setSendResult(null)
+    const recipients = recipientsInput
+      ? recipientsInput.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean)
+      : []
     try {
       const res = await fetch('/api/email/send-archive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archiveId }),
+        body: JSON.stringify({ archiveId, recipients }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '발송에 실패했습니다.')
       setSendResult({ archiveId, to: data.to })
+      setEmailInputArchiveId(null)
+      setEmailInputValue('')
     } catch (err) {
       setArchiveError(err instanceof Error ? err.message : '이메일 발송에 실패했습니다.')
     } finally {
@@ -861,12 +868,20 @@ export default function MyPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => handleSendEmail(archive.id)}
-                        disabled={sendingArchiveId === archive.id}
+                        onClick={() => {
+                          if (emailInputArchiveId === archive.id) {
+                            setEmailInputArchiveId(null)
+                          } else {
+                            setEmailInputArchiveId(archive.id)
+                            setEmailInputValue(authEmail)
+                            setSendResult(null)
+                            setArchiveError(null)
+                          }
+                        }}
                         className="h-7 text-xs"
                       >
                         <Mail className="mr-1 h-3.5 w-3.5" />
-                        {sendingArchiveId === archive.id ? '발송 중...' : '이메일로 받기'}
+                        이메일로 받기
                       </Button>
                       {/* 삭제 */}
                       <button
@@ -879,6 +894,41 @@ export default function MyPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* 수신처 입력 */}
+                  {emailInputArchiveId === archive.id && (
+                    <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+                      <input
+                        type="text"
+                        value={emailInputValue}
+                        onChange={(e) => setEmailInputValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleSendEmail(archive.id, emailInputValue)
+                          }
+                        }}
+                        placeholder="수신 이메일 (쉼표로 여러 명)"
+                        className="h-8 flex-1 rounded-md border border-border bg-background px-2.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-brand-600"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleSendEmail(archive.id, emailInputValue)}
+                        disabled={sendingArchiveId === archive.id || !emailInputValue.trim()}
+                        className="h-8 bg-brand-600 px-3 text-xs text-white hover:bg-brand-700"
+                      >
+                        {sendingArchiveId === archive.id ? '발송 중...' : '발송'}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setEmailInputArchiveId(null)}
+                        className="rounded p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
 
                   {/* 발송 완료 메시지 */}
                   {sendResult?.archiveId === archive.id && (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Mail } from 'lucide-react'
+import { Mail, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface ArchiveRow {
@@ -17,24 +17,29 @@ export default function EmailArchiveWidget() {
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [result, setResult]       = useState<{ id: string; to: string } | null>(null)
   const [error, setError]         = useState<string | null>(null)
+  const [emailInputId, setEmailInputId] = useState<string | null>(null)
+  const [emailInputValue, setEmailInputValue] = useState('')
+  const [userEmail, setUserEmail] = useState('')
 
   useEffect(() => {
     const supabase = createClient()
 
-    const loadArchives = () => {
-      supabase
+    const loadArchives = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) setUserEmail(user.email)
+
+      const { data } = await supabase
         .from('archives')
         .select('id, name, archive_items(content_id)')
         .order('created_at', { ascending: false })
-        .then(({ data }) => {
-          const rows = (data ?? []).map((a: { id: string; name: string; archive_items: unknown[] }) => ({
-            id: a.id,
-            name: a.name,
-            itemCount: Array.isArray(a.archive_items) ? a.archive_items.length : 0,
-          }))
-          setArchives(rows)
-          setLoading(false)
-        })
+
+      const rows = (data ?? []).map((a: { id: string; name: string; archive_items: unknown[] }) => ({
+        id: a.id,
+        name: a.name,
+        itemCount: Array.isArray(a.archive_items) ? a.archive_items.length : 0,
+      }))
+      setArchives(rows)
+      setLoading(false)
     }
 
     loadArchives()
@@ -42,19 +47,24 @@ export default function EmailArchiveWidget() {
     return () => window.removeEventListener('archive:changed', loadArchives)
   }, [])
 
-  async function handleSend(archiveId: string) {
+  async function handleSend(archiveId: string, recipientsInput?: string) {
     setSendingId(archiveId)
     setError(null)
     setResult(null)
+    const recipients = recipientsInput
+      ? recipientsInput.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean)
+      : []
     try {
       const res = await fetch('/api/email/send-archive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archiveId }),
+        body: JSON.stringify({ archiveId, recipients }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '발송에 실패했습니다.')
       setResult({ id: archiveId, to: data.to })
+      setEmailInputId(null)
+      setEmailInputValue('')
     } catch (err) {
       setError(err instanceof Error ? err.message : '이메일 발송에 실패했습니다.')
     } finally {
@@ -62,7 +72,6 @@ export default function EmailArchiveWidget() {
     }
   }
 
-  // 아카이브 0건이면 한 줄 안내 배너로 축소
   if (!loading && archives.length === 0) {
     return (
       <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
@@ -88,7 +97,7 @@ export default function EmailArchiveWidget() {
             <h2 className="text-sm font-semibold text-foreground">아카이빙 콘텐츠 메일로 받기</h2>
           </div>
           <p className="text-xs text-muted-foreground">
-            담아둔 아카이브를 골라 등록된 이메일로 바로 보내보세요
+            담아둔 아카이브를 골라 이메일로 바로 보내보세요
           </p>
         </div>
         <Link
@@ -117,13 +126,51 @@ export default function EmailArchiveWidget() {
                 <span className="text-[10px] text-muted-foreground">{a.itemCount}건</span>
               </div>
               <button
-                onClick={() => handleSend(a.id)}
-                disabled={sendingId === a.id}
-                className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
+                onClick={() => {
+                  if (emailInputId === a.id) {
+                    setEmailInputId(null)
+                  } else {
+                    setEmailInputId(a.id)
+                    setEmailInputValue(userEmail)
+                    setResult(null)
+                    setError(null)
+                  }
+                }}
+                className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
               >
                 <Mail className="h-3.5 w-3.5" />
-                {sendingId === a.id ? '발송 중...' : '이메일로 받기'}
+                이메일로 받기
               </button>
+              {emailInputId === a.id && (
+                <div className="mt-2 flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={emailInputValue}
+                    onChange={(e) => setEmailInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleSend(a.id, emailInputValue)
+                      }
+                    }}
+                    placeholder="수신 이메일"
+                    className="h-7 flex-1 rounded border border-border bg-background px-2 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-brand-600"
+                  />
+                  <button
+                    onClick={() => handleSend(a.id, emailInputValue)}
+                    disabled={sendingId === a.id || !emailInputValue.trim()}
+                    className="h-7 shrink-0 rounded bg-brand-600 px-2 text-[11px] font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    {sendingId === a.id ? '...' : '발송'}
+                  </button>
+                  <button
+                    onClick={() => setEmailInputId(null)}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -131,7 +178,7 @@ export default function EmailArchiveWidget() {
 
       {result && (
         <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-600">
-          발송되었습니다. 받은 편지함을 확인해 보세요.
+          {result.to} 으로 발송되었습니다.
         </p>
       )}
       {error && (
