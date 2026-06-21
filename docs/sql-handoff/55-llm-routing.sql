@@ -3,7 +3,7 @@
 -- 수희 실행: Supabase Dashboard → SQL Editor 에서 1회 실행
 -- ⚠️ model_id 현행화 메모 (2026-06):
 --   - Cerebras 공개 API: gpt-oss-120b, zai-glm-4.7 (llama/qwen은 전용엔드포인트로 이동)
---   - Groq: llama-4-scout-17b-16e-instruct 확인, qwen-3-32b는 추후 admin(56)에서 수정 가능
+--   - Groq: openai/gpt-oss-120b (llama-4-scout 2026-06-17 폐기 → 교체)
 --   - Gemini 2.0 종료(2026-06-01) → gemini-2.5-flash 사용
 -- ============================================================
 
@@ -53,11 +53,9 @@ insert into public.llm_models (provider, model_id, label, strengths, context_tok
   -- Gemini: 2.5 Flash (무료, 2.0은 2026-06-01 종료)
   ('gemini',     'gemini-2.5-flash',
    'Gemini 2.5 Flash',           array['korean','balanced'],          1000000),
-  -- Groq: 확인된 무료 모델
-  ('groq',       'llama-4-scout-17b-16e-instruct',
-   'Llama 4 Scout (Groq)',        array['speed'],                      131072),
-  ('groq',       'llama-3.3-70b-versatile',
-   'Llama 3.3 70B (Groq)',        array['fallback'],                   128000),
+  -- Groq: 현행 모델 (llama-4-scout 2026-06-17 폐기)
+  ('groq',       'openai/gpt-oss-120b',
+   'GPT-OSS 120B (Groq)',         array['speed','reasoning'],          131072),
   -- Cerebras: 공개 API 확인 모델 (2026-06 기준 gpt-oss-120b, zai-glm-4.7)
   ('cerebras',   'gpt-oss-120b',
    'GPT OSS 120B (Cerebras)',     array['speed','volume'],             8192),
@@ -74,7 +72,7 @@ on conflict (provider, model_id) do nothing;
 -- report: 추론·장문 우선. Cerebras 고성능 → Gemini
 insert into public.llm_task_routing (task_type, priority, provider, model_id) values
   ('classify',  1, 'cerebras',   'gpt-oss-120b'),
-  ('classify',  2, 'groq',       'llama-4-scout-17b-16e-instruct'),
+  ('classify',  2, 'groq',       'openai/gpt-oss-120b'),
   ('classify',  3, 'gemini',     'gemini-2.5-flash'),
   ('classify',  4, 'openrouter', 'meta-llama/llama-3.3-70b-instruct:free'),
   ('summarize', 1, 'gemini',     'gemini-2.5-flash'),
