@@ -101,10 +101,11 @@ export async function POST(request: NextRequest) {
 
     // 3. 순차 루프: classifySentiment → update
     let analyzed = 0
+    let nullCount = 0
     for (const row of rows) {
       const snippet = row.summary_ko ?? row.body_original?.slice(0, 300) ?? row.title
       const result = await classifySentiment(row.title, snippet)
-      if (!result) continue
+      if (!result) { nullCount++; continue }
 
       const { error } = await supabase
         .from('contents')
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
       if (!error) analyzed++
     }
 
-    return NextResponse.json({ analyzed, candidates: rows.length })
+    return NextResponse.json({ analyzed, candidates: rows.length, nullCount })
   } catch (err) {
     console.error('[sentiment backfill]', err)
     return NextResponse.json({ error: '논조 분석 중 오류가 발생했습니다.' }, { status: 500 })
