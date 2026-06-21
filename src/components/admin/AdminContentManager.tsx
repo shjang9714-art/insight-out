@@ -55,6 +55,7 @@ interface EditState {
   sourceId: string // '' = 없음
   author: string
   publishedAt: string // 'YYYY-MM-DD' 또는 ''
+  bodyOriginal: string
 }
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
@@ -258,7 +259,7 @@ export default function AdminContentManager() {
     setWorkingId(content.id)
     const { data, error: loadError } = await supabase
       .from('contents')
-      .select('id, title, summary_ko, category, source_id, author, published_at')
+      .select('id, title, summary_ko, category, source_id, author, published_at, body_original')
       .eq('id', content.id)
       .single()
     setWorkingId(null)
@@ -268,13 +269,14 @@ export default function AdminContentManager() {
       return
     }
     setEdit({
-      id:          data.id,
-      title:       data.title ?? '',
-      summary:     data.summary_ko ?? '',
-      category:    data.category as ContentCategory,
-      sourceId:    data.source_id ?? '',
-      author:      data.author ?? '',
-      publishedAt: toDateInput(data.published_at),
+      id:           data.id,
+      title:        data.title ?? '',
+      summary:      data.summary_ko ?? '',
+      category:     data.category as ContentCategory,
+      sourceId:     data.source_id ?? '',
+      author:       data.author ?? '',
+      publishedAt:  toDateInput(data.published_at),
+      bodyOriginal: data.body_original ?? '',
     })
   }
 
@@ -291,11 +293,12 @@ export default function AdminContentManager() {
       .from('contents')
       .update({
         title,
-        summary_ko:   edit.summary.trim() || null,
-        category:     edit.category,
-        source_id:    edit.sourceId || null,
-        author:       edit.author.trim() || null,
-        published_at: edit.publishedAt || null,
+        summary_ko:    edit.summary.trim() || null,
+        category:      edit.category,
+        source_id:     edit.sourceId || null,
+        author:        edit.author.trim() || null,
+        published_at:  edit.publishedAt || null,
+        body_original: edit.bodyOriginal.trim() || null,
       })
       .eq('id', edit.id)
 
@@ -949,6 +952,25 @@ export default function AdminContentManager() {
                   rows={4}
                   className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
+              </div>
+
+              {/* 본문 원문 */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-body">
+                  본문 (원문){' '}
+                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                </Label>
+                <textarea
+                  id="edit-body"
+                  value={edit.bodyOriginal}
+                  onChange={(e) => setEdit((p) => p && { ...p, bodyOriginal: e.target.value })}
+                  rows={12}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-600/30 resize-y"
+                  placeholder="본문 원문(HTML·텍스트). 표시 시 자동 정리됩니다."
+                />
+                <p className="text-xs text-muted-foreground">
+                  표시 화면에서 HTML·&amp;nbsp; 는 자동 정리됩니다. 여기서는 원문을 그대로 편집하세요.
+                </p>
               </div>
             </div>
           )}
