@@ -27,6 +27,15 @@ export interface DrainResult {
   remaining: number
 }
 
+export interface EnrichByIdsResult {
+  processed: number
+  improved: number
+  skipped: number
+  truncated: boolean
+}
+
+const MAX_IDS_PER_CALL = 50
+
 /**
  * 단일 콘텐츠 행의 풀본문을 추출해 DB에 업데이트한다.
  * - improved: 풀본문 추출 성공 → body_original + body_fetched_at 업데이트
@@ -73,6 +82,37 @@ export async function enrichOneBody(
     console.error('[본문보강] 아이템 오류 (id:', row.id, '):', e)
     return 'error'
   }
+}
+
+/**
+ * 선택한 ID 목록의 풀본문을 채운다. body_fetched_at 조건 없이 강제 재시도.
+ * ids > 50 이면 앞 50건만 처리하고 truncated=true 반환.
+ */
+export async function enrichByIds(
+  admin: SupabaseClient,
+  ids: string[],
+  { deadline }: { deadline?: number } = {},
+): Promise<EnrichByIdsResult> {
+  const truncated = ids.length > MAX_IDS_PER_CALL
+  const limitedIds = ids.slice(0, MAX_IDS_PER_CALL)
+
+  const { data: targets } = await admin
+    .from('contents')
+    .select('id, original_url, body_original')
+    .in('id', limitedIds)
+    .not('original_url', 'is', null)
+
+  let processed = 0, improved = 0, skipped = 0
+
+  for (const row of (targets ?? []) as EnrichBodyRow[]) {
+    if (deadline !== undefined && Date.now() >= deadline) break
+    const result = await enrichOneBody(admin, row)
+    if (result === 'improved') improved++
+    else skipped++
+    processed++
+  }
+
+  return { processed, improved, skipped, truncated }
 }
 
 async function pendingCount(

@@ -40,6 +40,8 @@ interface AdminContentRow {
   status: ContentStatus
   collected_at: string
   bookmark_count: number | null
+  body_fetched_at: string | null
+  body_len: number | null
   sources: { name: string } | null
 }
 
@@ -82,6 +84,18 @@ const CATEGORY_SOURCE_TYPE: Partial<Record<ContentCategory, SourceType>> = {
   '리포트':    'report_publisher',
   '웹인사이트': 'web_insight',
   '유튜브':    'youtube_channel',
+}
+
+function getBodyState(r: AdminContentRow): 'full' | 'snippet' | 'none' {
+  if (!r.body_fetched_at) return 'none'
+  if (r.body_len == null) return 'full'  // degrade: 처리됨으로 표시
+  return r.body_len >= 400 ? 'full' : 'snippet'
+}
+
+const BODY_STATE_CLASS: Record<'full' | 'snippet' | 'none', string> = {
+  full:    'text-emerald-700',
+  snippet: 'text-amber-600',
+  none:    'text-muted-foreground',
 }
 
 function formatKst(iso: string): string {
@@ -154,6 +168,17 @@ export default function AdminContentManager() {
   const [backfillRange, setBackfillRange] = useState<'all' | '7d' | '30d'>('30d')
   const stopRef = useRef(false)
 
+  // 본문 상태 필터 + body_len degrade 추적
+  const [bodyFilter,      setBodyFilter]      = useState<'all' | 'full' | 'snippet' | 'none'>('all')
+  const [bodyLenAvailable, setBodyLenAvailable] = useState(true)
+  const bodyLenRef = useRef(true)  // 쿼리 빌드용 (렌더 트리거 없이 최신값 유지)
+
+  // 선택 풀본문 채우기
+  const [isEnrichingSel, setIsEnrichingSel] = useState(false)
+
+  // 목록 강제 새로고침 (enrich-by-ids 완료 후)
+  const [fetchSeq, setFetchSeq] = useState(0)
+
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
     const id = setTimeout(() => {
@@ -188,37 +213,79 @@ export default function AdminContentManager() {
       setSelectedIds(new Set())
       setError(null)
 
-      let q = supabase
-        .from('contents')
-        .select('id, title, category, status, collected_at, bookmark_count, sources(name)', { count: 'exact' })
-        .order('collected_at', { ascending: false })
+      const withLen = bodyLenRef.current
 
-      if (status !== 'all')          q = q.eq('status', status as ContentStatus)
-      if (category !== 'all') {
-        const dbCats = toDbCategories(category as ContentCategory)
-        if (dbCats.length === 1) q = q.eq('category', dbCats[0])
-        else if (dbCats.length > 1) q = q.in('category', dbCats)
-        else q = q.eq('category', '__none__' as ContentCategory)
+      const buildBase = (sel: string) => {
+        let q = supabase
+          .from('contents')
+          .select(sel, { count: 'exact' })
+          .order('collected_at', { ascending: false })
+        if (status !== 'all')             q = q.eq('status', status as ContentStatus)
+        if (category !== 'all') {
+          const dbCats = toDbCategories(category as ContentCategory)
+          if (dbCats.length === 1)        q = q.eq('category', dbCats[0])
+          else if (dbCats.length > 1)     q = q.in('category', dbCats)
+          else                            q = q.eq('category', '__none__' as ContentCategory)
+        }
+        if (sourceId === SOURCE_NULL)     q = q.is('source_id', null)
+        else if (sourceId !== SOURCE_ALL) q = q.eq('source_id', sourceId)
+        if (debouncedTerm.trim())         q = q.ilike('title', `%${debouncedTerm.trim()}%`)
+        if (todayOnly)                    q = q.gte('collected_at', getKstTodayStartIso())
+        if (bookmarkedOnly)               q = q.gt('bookmark_count', 0)
+        return q
       }
-      if (sourceId === SOURCE_NULL)  q = q.is('source_id', null)
-      else if (sourceId !== SOURCE_ALL) q = q.eq('source_id', sourceId)
-      if (debouncedTerm.trim())      q = q.ilike('title', `%${debouncedTerm.trim()}%`)
-      if (todayOnly)                 q = q.gte('collected_at', getKstTodayStartIso())
-      if (bookmarkedOnly)            q = q.gt('bookmark_count', 0)
 
+      // 기본 쿼리 (body_len 포함 여부에 따라 분기)
+      let q = buildBase(
+        withLen
+          ? 'id, title, category, status, collected_at, bookmark_count, body_fetched_at, body_len, sources(name)'
+          : 'id, title, category, status, collected_at, bookmark_count, body_fetched_at, sources(name)'
+      )
+      if (bodyFilter === 'none')         q = q.is('body_fetched_at', null)
+      else if (withLen) {
+        if (bodyFilter === 'full')        q = q.not('body_fetched_at', 'is', null).gte('body_len', 400)
+        else if (bodyFilter === 'snippet') q = q.not('body_fetched_at', 'is', null).lt('body_len', 400)
+      }
       q = q.range((page - 1) * pageSize, page * pageSize - 1)
 
-      const { data, count, error: loadError } = await q
-      if (loadError) {
-        setError(`콘텐츠 목록을 불러오지 못했습니다: ${loadError.message}`)
+      const r1 = await q
+
+      // Graceful fallback: body_len 컬럼 미적용(42703) → degrade 모드
+      if (r1.error?.code === '42703') {
+        bodyLenRef.current = false
+        setBodyLenAvailable(false)
+
+        let qf = buildBase('id, title, category, status, collected_at, bookmark_count, body_fetched_at, sources(name)')
+        if (bodyFilter === 'none') qf = qf.is('body_fetched_at', null)
+        qf = qf.range((page - 1) * pageSize, page * pageSize - 1)
+        const r2 = await qf
+
+        if (r2.error) {
+          setError(`콘텐츠 목록을 불러오지 못했습니다: ${r2.error.message}`)
+        } else {
+          setContents((r2.data ?? []) as unknown as AdminContentRow[])
+          setTotalCount(r2.count ?? 0)
+        }
+        setIsLoading(false)
+        return
+      }
+
+      if (r1.error) {
+        setError(`콘텐츠 목록을 불러오지 못했습니다: ${r1.error.message}`)
       } else {
-        setContents((data ?? []) as unknown as AdminContentRow[])
-        setTotalCount(count ?? 0)
+        const rows = (r1.data ?? []) as unknown as AdminContentRow[]
+        setContents(rows)
+        setTotalCount(r1.count ?? 0)
+        // body_len 컬럼 실제 존재 감지
+        if (!bodyLenRef.current && rows.some((r) => r.body_len != null)) {
+          bodyLenRef.current = true
+          setBodyLenAvailable(true)
+        }
       }
       setIsLoading(false)
     }
     void run()
-  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter, fetchSeq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -482,6 +549,33 @@ export default function AdminContentManager() {
     }
   }
 
+  const handleEnrichSelected = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    setIsEnrichingSel(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/body-backfill/by-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '선택 채우기 실패')
+      const { processed, improved, skipped, truncated } = await res.json() as {
+        processed: number; improved: number; skipped: number; truncated: boolean
+      }
+      setEnrichResult(
+        `선택 ${processed}건 처리 · 개선 ${improved} · 실패 ${skipped}${truncated ? ' · 50건 초과분 제외' : ''}`
+      )
+      setSelectedIds(new Set())
+      setFetchSeq((s) => s + 1)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '선택 풀본문 채우기 중 오류가 발생했습니다.')
+    } finally {
+      setIsEnrichingSel(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
   // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
@@ -629,8 +723,8 @@ export default function AdminContentManager() {
         ))}
       </div>
 
-      {/* ── 검색·소스·상태·페이지 크기 필터 ── */}
-      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_200px_180px_100px]">
+      {/* ── 검색·소스·상태·본문 상태·페이지 크기 필터 ── */}
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_200px_180px_160px_100px]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -661,6 +755,17 @@ export default function AdminContentManager() {
             {CONTENT_STATUSES.map((value) => (
               <SelectItem key={value} value={value}>{STATUS_STYLE[value].label}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={bodyFilter} onValueChange={(v) => { setBodyFilter(v as 'all' | 'full' | 'snippet' | 'none'); setPage(1) }}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="본문 상태" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 본문</SelectItem>
+            <SelectItem value="full"  disabled={!bodyLenAvailable}>풀본문</SelectItem>
+            <SelectItem value="snippet" disabled={!bodyLenAvailable}>스니펫</SelectItem>
+            <SelectItem value="none">미시도</SelectItem>
           </SelectContent>
         </Select>
         <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1) }}>
@@ -743,8 +848,19 @@ export default function AdminContentManager() {
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              disabled={isBulkWorking || isEnrichingSel || selectedIds.size > 50}
+              onClick={handleEnrichSelected}
+            >
+              {isEnrichingSel
+                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />채우는 중…</>
+                : `선택 풀본문 채우기${selectedIds.size > 50 ? ' (50건 초과)' : ''}`
+              }
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
-              disabled={isBulkWorking}
+              disabled={isBulkWorking || isEnrichingSel}
               onClick={() => setSelectedIds(new Set())}
             >
               선택 해제
@@ -781,6 +897,7 @@ export default function AdminContentManager() {
                 <th className="px-4 py-3">카테고리</th>
                 <th className="px-4 py-3">소스</th>
                 <th className="px-4 py-3">상태</th>
+                <th className="px-4 py-3">본문</th>
                 <th className="px-4 py-3">수집일 (KST)</th>
                 <th className="px-4 py-3 text-right">관리</th>
               </tr>
@@ -822,6 +939,19 @@ export default function AdminContentManager() {
                       <span className={cn('whitespace-nowrap text-xs font-medium', statusStyle.className)}>
                         {statusStyle.label}
                       </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {(() => {
+                        const bs = getBodyState(content)
+                        const label = bs === 'none' ? '미시도'
+                          : bs === 'snippet' ? '스니펫'
+                          : bodyLenAvailable ? '풀본문' : '처리됨'
+                        return (
+                          <span className={cn('text-xs font-medium', BODY_STATE_CLASS[bs])}>
+                            {label}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
                       {formatKst(content.collected_at)}
