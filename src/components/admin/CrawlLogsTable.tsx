@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import {
   Dialog,
   DialogContent,
@@ -271,9 +272,10 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
   return (
     <>
       {logs.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-          아직 수집 기록이 없습니다.
-        </div>
+        <AdminEmptyState
+          message="아직 수집 기록이 없습니다."
+          hint="소스를 등록하고 수집을 실행하면 기록이 쌓입니다."
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[780px] border-collapse text-sm">

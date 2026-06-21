@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ClipboardCheck } from 'lucide-react'
+import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 
 interface Props {
   pending: number
@@ -13,11 +14,7 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
 
   return (
     <section aria-labelledby="todo-heading">
-      <div className="mb-3 flex items-center gap-2">
-        <ClipboardCheck className="h-4 w-4 text-brand-600" />
-        <h2 id="todo-heading" className="text-sm font-semibold text-foreground">오늘 할 일</h2>
-        <span className="text-xs text-muted-foreground">검토·수집·점검을 한눈에</span>
-      </div>
+      <AdminSectionHeader icon={ClipboardCheck} title="오늘 할 일" hint="검토·수집·점검을 한눈에" />
 
       {allClear && (
         <p className="mb-3 text-xs text-muted-foreground">오늘은 급한 작업이 없습니다.</p>

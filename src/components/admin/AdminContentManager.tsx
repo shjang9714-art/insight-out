@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
+import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -473,30 +475,26 @@ export default function AdminContentManager() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           {pendingCount !== null && pendingCount > 0 && (
-            <button
+            <AdminFilterChip
+              active={status === 'pending'}
               onClick={() => { setStatus('pending'); setPage(1) }}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
-                status === 'pending'
-                  ? 'border-yellow-400 bg-yellow-400 text-white'
-                  : 'border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
-              )}
+              count={pendingCount}
             >
-              ⏳ 검토 대기 {pendingCount}건
-            </button>
+              ⏳ 검토 대기
+            </AdminFilterChip>
           )}
           {pendingCount === 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
               ✅ 검토 대기 없음
             </span>
           )}
           {purgeResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
               ✅ {purgeResult}
             </span>
           )}
           {ytPurgeResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
               ✅ {ytPurgeResult}
             </span>
           )}
@@ -679,9 +677,10 @@ export default function AdminContentManager() {
       </p>
 
       {!isLoading && contents.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-          조건에 맞는 콘텐츠가 없습니다.
-        </div>
+        <AdminEmptyState
+          message="조건에 맞는 콘텐츠가 없습니다."
+          hint="필터를 바꾸거나 수집을 실행해보세요."
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full min-w-[960px] border-collapse text-sm">

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_BOTTOM } from '@/lib/admin/nav'
+import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 
 export function AdminSidebar() {
   const pathname = usePathname()
@@ -98,9 +99,10 @@ export function AdminSidebar() {
               })}
             </ul>
           ) : (
-            <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-              일치하는 메뉴가 없습니다.
-            </p>
+            <AdminEmptyState
+              message="일치하는 메뉴가 없습니다."
+              className="p-4 rounded-lg"
+            />
           )
         ) : (
           /* 기본 그룹 네비 */

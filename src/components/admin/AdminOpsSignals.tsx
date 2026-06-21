@@ -1,5 +1,6 @@
 import { Activity } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 
 export interface LlmProviderUsage {
   name: string
@@ -77,11 +78,7 @@ export default function AdminOpsSignals({
 
   return (
     <section aria-labelledby="ops-signals-heading">
-      <div className="mb-3 flex items-center gap-2">
-        <Activity className="h-4 w-4 text-brand-600" />
-        <h2 id="ops-signals-heading" className="text-sm font-semibold text-foreground">운영 신호등</h2>
-        <span className="text-xs text-muted-foreground">사용량 한도와 데이터 점등 상태</span>
-      </div>
+      <AdminSectionHeader icon={Activity} title="운영 신호등" hint="사용량 한도와 데이터 점등 상태" />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* 사용량 바 */}
