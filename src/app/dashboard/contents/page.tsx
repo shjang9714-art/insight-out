@@ -235,7 +235,7 @@ function ContentsContent() {
       if (value) p.set(key, value)
       else p.delete(key)
       if (key !== 'page') p.delete('page')
-      router.push(`${pathname}?${p.toString()}`)
+      router.push(`${pathname}?${p.toString()}`, { scroll: key !== 'page' })
     },
     [router, pathname]
   )
