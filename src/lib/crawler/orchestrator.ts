@@ -32,7 +32,7 @@ const MAX_MERGED_TAGS = 8
 const OPINION_LOOKBACK_DAYS = 7
 
 // enrichment(풀본문 보강) 상수
-const MAX_ENRICH_PER_CRAWL = 15
+const MAX_ENRICH_PER_CRAWL = 30
 const ENRICH_MIN_BODY_LEN = 400
 
 // ── 키워드 검색 수집 상수 ────────────────────────────────────────────────

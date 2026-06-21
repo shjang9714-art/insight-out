@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { enrichOneBody, type EnrichBodyRow } from '@/lib/contents/enrich-body'
+import { drainBackfill } from '@/lib/contents/enrich-body'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,65 +44,21 @@ async function verifyAdmin() {
 }
 
 /**
- * POST /api/admin/body-backfill?limit=N
- * body_fetched_at IS NULL 전체 대상으로 풀본문 백필.
- * limit: 1~30, 기본 15 (추출 6초/건 기준).
+ * POST /api/admin/body-backfill?limit=N&from=YYYY-MM-DD&to=YYYY-MM-DD
+ * body_fetched_at IS NULL 대상으로 풀본문 백필 (단일 배치).
+ * limit: 1~30, 기본 15. from/to: 선택적 수집일 범위 필터.
  */
 export async function POST(request: NextRequest) {
   const denied = await verifyAdmin()
   if (denied) return denied
 
-  const limitParam = request.nextUrl.searchParams.get('limit')
+  const sp = request.nextUrl.searchParams
+  const limitParam = sp.get('limit')
   const limit = Math.min(Math.max(parseInt(limitParam || '15', 10) || 15, 1), 30)
+  const from = sp.get('from')
+  const to = sp.get('to')
 
   const admin = createAdminClient()
-
-  const { data: targets, error: queryError } = await admin
-    .from('contents')
-    .select('id, original_url, body_original')
-    .is('body_fetched_at', null)
-    .not('original_url', 'is', null)
-    .order('collected_at', { ascending: false })
-    .limit(limit)
-
-  if (queryError) {
-    return NextResponse.json(
-      { error: '대상 조회 실패: ' + queryError.message },
-      { status: 500 }
-    )
-  }
-
-  const rows = (targets ?? []) as EnrichBodyRow[]
-
-  if (rows.length === 0) {
-    const { count } = await admin
-      .from('contents')
-      .select('id', { count: 'exact', head: true })
-      .is('body_fetched_at', null)
-      .not('original_url', 'is', null)
-
-    return NextResponse.json({ processed: 0, improved: 0, skipped: 0, remaining: count ?? 0 })
-  }
-
-  let improved = 0
-  let skipped = 0
-
-  for (const row of rows) {
-    const result = await enrichOneBody(admin, row)
-    if (result === 'improved') improved++
-    else skipped++
-  }
-
-  const { count: remaining } = await admin
-    .from('contents')
-    .select('id', { count: 'exact', head: true })
-    .is('body_fetched_at', null)
-    .not('original_url', 'is', null)
-
-  return NextResponse.json({
-    processed: rows.length,
-    improved,
-    skipped,
-    remaining: remaining ?? 0,
-  })
+  const result = await drainBackfill(admin, { limit, from, to })
+  return NextResponse.json(result)
 }

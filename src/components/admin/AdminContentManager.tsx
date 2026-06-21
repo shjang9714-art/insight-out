@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
@@ -148,9 +148,11 @@ export default function AdminContentManager() {
   const [isYtPurging,   setIsYtPurging]   = useState(false)
   const [ytPurgeResult, setYtPurgeResult] = useState<string | null>(null)
 
-  // 본문 보강 백필
-  const [isEnriching,    setIsEnriching]    = useState(false)
-  const [enrichResult,   setEnrichResult]   = useState<string | null>(null)
+  // 풀본문 채우기
+  const [isEnriching,   setIsEnriching]   = useState(false)
+  const [enrichResult,  setEnrichResult]  = useState<string | null>(null)
+  const [backfillRange, setBackfillRange] = useState<'all' | '7d' | '30d'>('30d')
+  const stopRef = useRef(false)
 
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
@@ -437,22 +439,44 @@ export default function AdminContentManager() {
   }
 
   const handleEnrich = async () => {
+    stopRef.current = false
     setIsEnriching(true)
     setEnrichResult(null)
     setError(null)
+
+    const acc = { processed: 0, improved: 0, skipped: 0 }
     try {
-      const res = await fetch('/api/admin/body-backfill?limit=15', { method: 'POST' })
-      if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '본문 보강 실패')
-      const { processed, improved, remaining } = await res.json() as {
-        processed: number
-        improved: number
-        skipped: number
-        remaining: number
+      const from =
+        backfillRange === '7d'  ? new Date(Date.now() - 7  * 864e5).toISOString().slice(0, 10) :
+        backfillRange === '30d' ? new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10) :
+        null
+
+      while (true) {
+        const url = `/api/admin/body-backfill?limit=30${from ? `&from=${from}` : ''}`
+        const res = await fetch(url, { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '풀본문 채우기 실패')
+        const { processed, improved, skipped, remaining } = await res.json() as {
+          processed: number; improved: number; skipped: number; remaining: number
+        }
+        acc.processed += processed
+        acc.improved  += improved
+        acc.skipped   += skipped
+
+        if (stopRef.current) {
+          setEnrichResult(`중단됨 · 누적 처리 ${acc.processed} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setEnrichResult(`완료 · 처리 ${acc.processed} · 개선 ${acc.improved} · 실패 ${acc.skipped}`)
+          break
+        }
+        if (processed === 0) break
+
+        setEnrichResult(`채우는 중… 누적 처리 ${acc.processed} · 개선 ${acc.improved} · 실패 ${acc.skipped} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
       }
-      const msg = `본문 보강 완료: ${processed}건 처리 (개선 ${improved}건)${remaining > 0 ? ` · 남은 ${remaining.toLocaleString()}건 → 다시 실행` : ' · 완료'}`
-      setEnrichResult(msg)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '본문 보강 중 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : '풀본문 채우기 중 오류가 발생했습니다.')
     } finally {
       setIsEnriching(false)
     }
@@ -498,7 +522,7 @@ export default function AdminContentManager() {
       )}
 
       {/* ── 검토 대기 칩 + 수집 기사 비우기 ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           {pendingCount !== null && pendingCount > 0 && (
             <AdminFilterChip
@@ -526,49 +550,63 @@ export default function AdminContentManager() {
           )}
           {enrichResult && (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-              ✅ {enrichResult}
+              {isEnriching ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {enrichResult}
             </span>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={isPurging}
-            onClick={handlePurge}
-            className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
-          >
-            {isPurging
-              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
-              : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />수집 기사 비우기</>
-            }
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={isYtPurging}
-            onClick={handleYoutubePurge}
-            className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
-          >
-            {isYtPurging
-              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
-              : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />유튜브 비우기</>
-            }
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={isEnriching}
-            onClick={handleEnrich}
-          >
-            {isEnriching
-              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />보강 중…</>
-              : '본문 보강'
-            }
-          </Button>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isPurging}
+              onClick={handlePurge}
+              className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+            >
+              {isPurging
+                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
+                : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />수집 기사 비우기</>
+              }
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isYtPurging}
+              onClick={handleYoutubePurge}
+              className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+            >
+              {isYtPurging
+                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
+                : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />유튜브 비우기</>
+              }
+            </Button>
+            <Select
+              value={backfillRange}
+              onValueChange={(v) => setBackfillRange(v as 'all' | '7d' | '30d')}
+            >
+              <SelectTrigger className="h-8 w-[110px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30d">최근 30일</SelectItem>
+                <SelectItem value="7d">최근 7일</SelectItem>
+                <SelectItem value="all">전체</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isEnriching ? () => { stopRef.current = true } : handleEnrich}
+            >
+              {isEnriching ? '중단' : '기사 풀본문 채우기'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            추출 성공률 ~60%(구글뉴스·봇차단 사이트는 구조적 실패). 탭을 열어둔 채 진행됩니다.
+          </p>
         </div>
       </div>
 
