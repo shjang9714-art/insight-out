@@ -3,11 +3,12 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { llmComplete } from '@/lib/llm'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
+import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 
 // ─── 환경변수 기본값 ─────────────────────────────────────────────────────────
-
-const WINDOW_HOURS = Number(process.env.BRIEFING_WINDOW_HOURS ?? 24)
-const TOP_N = Number(process.env.BRIEFING_TOP_N ?? 4)
+// 윈도우 48h: 일일 크롤이 배치로 들어와 24h 창은 후보가 한 자릿수까지 떨어진다(라이브 확인: h24=7, h48=128).
+const WINDOW_HOURS = Number(process.env.BRIEFING_WINDOW_HOURS ?? 48)
+const TOP_N = Number(process.env.BRIEFING_TOP_N ?? 5)
 const MIN_ARTICLES = Number(process.env.BRIEFING_MIN_ARTICLES ?? 3)
 
 // ─── 복합 점수 가중치 (한 곳에 모아 튜닝 용이) ──────────────────────────────
@@ -26,17 +27,25 @@ const CATEGORY_WEIGHT: Record<string, number> = {
   '유튜브': 0,
 }
 
-const MAX_PER_CATEGORY = 2
+// 다양성은 category(뉴스/리포트…) 가 아니라 토픽(matched_groups) 으로 잡는다.
+// 라이브 후보가 거의 전부 category='뉴스' 라 category 캡을 두면 브리핑이 2건에서 멈춘다.
+const MAX_PER_TOPIC = 2
+const BODY_INPUT_MAXCHARS = 1200
 const SUMMARY_INPUT_MAXCHARS = 400
 
-// ─── 산업 주제 버킷 ──────────────────────────────────────────────────────────
-// matched_groups 에는 keyword_groups.name 이 저장된다(quality.ts). name 이 슬러그('ai_tech')인지
-// 한글 라벨('인공지능')인지 레포 SQL 로는 확정 불가(시드가 라이브 DB 에만 존재) → 양쪽 모두 커버.
-// ⚠️ 'ai' 는 'ai_tech' 의 부분문자열이므로 ai 버킷을 tech 보다 먼저 검사해야 한다(아래 순서 유지).
+// 노이즈로 분류된 콘텐츠는 후보에서 제외(keyword_groups._noise → name '노이즈 제외').
+const NOISE_LABEL = '노이즈 제외'
+
+// ─── 산업 주제 버킷 (라이브 keyword_groups.name 기준, 5개 시장 앵글) ─────────
+// matched_groups 에는 keyword_groups.name(한글 라벨) 이 저장된다. 라이브 확인 라벨:
+// 통신 B2B·경쟁사·AI 기술·AIDC·피지컬 AI·AICC·빅테크·IT 동향·제조 DX·모빌리티·SME 솔루션·CCTV·영상보안·에너지·정부 사업·정부 규제·ESG
+// 키워드는 소문자 부분일치(아래 매칭 함수). 순서 = 우선순위(통신 산업각을 먼저 잡는다).
 const TOPIC_BUCKETS = {
-  ai: ['ai_tech', '인공지능', 'ai'],
-  telecom: ['telecom_b2b', 'telecom', '통신', 'b2b'],
-  tech: ['bigtech', 'it_trend', '기술', 'tech'],
+  telecom: ['통신 b2b', '경쟁사'],
+  ai_infra: ['ai 기술', 'aidc', '피지컬 ai', 'aicc'],
+  bigtech_it: ['빅테크', 'it 동향'],
+  industry_dx: ['제조 dx', '모빌리티', 'sme 솔루션', 'cctv', '영상보안', '에너지'],
+  policy_esg: ['정부 사업', '정부 규제', 'esg'],
 } as const
 
 // ─── KST 날짜 헬퍼 ──────────────────────────────────────────────────────────
@@ -68,22 +77,32 @@ function getKstDateParts(date?: Date): { year: number; month: number; day: numbe
 // ─── 시스템 프롬프트 ─────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT =
-  '당신은 LG유플러스 임직원을 위한 1인 모닝 라디오 \'모닝브리핑\'의 진행자다.\n' +
-  '입력으로 오늘 선정된 통신·테크·AI 산업 기사 3~5건(제목·요약·카테고리)이 주어진다.\n' +
-  '이를 한 명의 진행자가 친근하게 풀어 주는 한국어 팟캐스트 스크립트로 작성하라.\n\n' +
+  '당신은 LG유플러스 임직원을 위한 1인 모닝 라디오 \'모닝브리핑\'의 진행자이자 산업 애널리스트다.\n' +
+  '입력으로 오늘 선정된 통신·테크·AI 산업 기사 3~5건(산업영역·태그·제목·요약·본문)이 주어진다.\n' +
+  '단순 요약 낭독이 아니라, 시장을 다각도로 읽어 주는 인사이트 있는 한국어 팟캐스트 스크립트를 작성하라.\n\n' +
   '대상·목적:\n' +
-  '- 청취자는 LG유플러스 전 임직원. 특정 부서가 아니라 모두가 알아야 할 산업 전반(통신·테크·AI)의 큰 흐름을 쉽게 전달한다.\n' +
-  '- 특정 회사 동향 나열이 아니라, 오늘 업계에서 무슨 일이 있었고 왜 중요한지 맥락을 짚어 준다.\n' +
+  '- 청취자는 LG유플러스 전 임직원. 모두가 알아야 할 산업 전반(통신·테크·AI)의 큰 흐름과 그 의미를 전달한다.\n' +
+  '- "무슨 일이 있었나"에서 멈추지 말고 "왜 중요한가, 무엇을 시사하는가"까지 한 발 더 들어가라.\n' +
   '- 통신은 B2B(기업·엔터프라이즈) 관점이다. 요금제·단말·소비자 프로모션 같은 B2C 소식은 다루지 않는다.\n\n' +
+  '분석 관점(각 기사마다 가장 잘 맞는 1~2개를 골라 그 각도로 해석한다. 모든 관점을 나열하지 마라):\n' +
+  '- 시장 규모·성장성: 시장이 커지나 줄어드나, 수요는 어디서 오나.\n' +
+  '- 경쟁 구도: 누가 앞서고 누가 쫓는가, 판도가 어떻게 바뀌나.\n' +
+  '- 기술 동인: 어떤 기술이 변화를 끌고 있나, 성숙도는 어디쯤인가.\n' +
+  '- 규제·정책: 정부·제도가 기회인가 제약인가.\n' +
+  '- 투자·자본 흐름: 돈이 어디로 움직이나, 그 신호는 무엇인가.\n' +
+  '- 고객·수요 변화: 기업 고객의 니즈가 어떻게 달라지나.\n' +
+  '- B2B 사업 기회: 통신·엔터프라이즈 사업자에게 어떤 기회·위협이 되나(단, 모든 기사에 통신을 억지로 끼워 맞추지 말 것. 자연스러울 때만).\n' +
+  '- 리스크·불확실성: 무엇을 경계해야 하나.\n\n' +
   '스타일:\n' +
   '- 1인 진행 팟캐스트 톤. 따뜻하고 자연스러운 구어체로, 청취자에게 말 걸듯 진행한다.\n' +
-  '- 구조: 짧은 인사·오늘 날짜·오늘 다룰 주제 한두 줄 예고 → 기사별 2~4문장 꼭지(중요도 높은 순, 자연스러운 연결어로 이어 가기) → 한 줄 정리·마무리 인사.\n' +
-  '- 딱딱한 보도체 금지. 그렇다고 과장·농담 과다도 금지. 차분하고 신뢰감 있는 진행자.\n\n' +
+  '- 구조: ① 짧은 인사·오늘 날짜·오늘의 큰 그림 한두 줄(오늘 기사들을 관통하는 흐름 예고) → ② 기사별 꼭지 3~5문장(사실 → 그 각도의 해석·시사점, 중요도 높은 순, 자연스러운 연결어로 이어 가기) → ③ 오늘 흐름을 한 문장으로 꿰는 마무리 + 인사.\n' +
+  '- 기사들을 따로 노는 토막이 아니라 하나의 흐름으로 엮어라. 가능하면 기사 간 연결고리(공통 동인·대비)를 짚어 준다.\n' +
+  '- 딱딱한 보도체·억지 통신 연결·공허한 미사여구 금지. 차분하고 신뢰감 있되 통찰이 담긴 진행자.\n\n' +
   '규칙:\n' +
   '- TTS 로 읽힐 글이다. 마크다운·이모지·불릿·따옴표·괄호 메모 금지. 순수 문장만.\n' +
   '- 영어 약어·숫자는 자연스러운 한국어 구어로(예: "AI" 는 "에이아이", "5G" 는 "파이브지"). 단위·금액도 읽기 쉽게.\n' +
-  '- 사실만. 입력에 없는 내용 추측·창작 금지. 기사 출처/회사명은 입력대로.\n' +
-  '- 전체 분량 1,200~2,000자(약 3~5분 낭독). 문장은 짧고 끊어 읽기 쉽게.\n' +
+  '- 사실만. 입력에 없는 수치·사건 추측·창작 금지. 다만 입력된 사실에 근거한 해석·시사점은 적극적으로 제시하라. 회사명·출처는 입력대로.\n' +
+  '- 전체 분량 1,500~2,200자(약 4~5분 낭독). 문장은 짧고 끊어 읽기 쉽게.\n' +
   '- 출력은 스크립트 본문만. 제목·머리말·설명 없이.'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -96,6 +115,9 @@ interface ContentCandidate {
   id: string
   title: string
   summary_ko: string | null
+  body_translated_ko: string | null
+  body_md: string | null
+  body_original: string | null
   category: string
   importance_score: number
   view_count: number
@@ -142,34 +164,47 @@ function computeScore(c: ContentCandidate, now: Date): number {
   return c.importance_score + recencyBonus + catWeight + editorBonus + viewScore + bookmarkScore + industryBonus
 }
 
-// ─── 선정 로직 (중복·카테고리·주제 균형) ─────────────────────────────────────
-
+// ─── 선정 로직 (중복 제거 + 토픽 다양성 우선 2패스) ──────────────────────────
+// 라이브 후보는 'AI 기술/IT 동향' 토픽이 압도적이라(72h 53건), 점수순으로만 뽑으면 AI 일색이 된다.
+// 패스1: 각 토픽 버킷에서 최고점 1건씩(시장 앵글 분산 보장) → 패스2: 점수순으로 빈 슬롯 채움.
 function selectArticles(candidates: ContentCandidate[], now: Date): ContentCandidate[] {
-  const scored = candidates.map(c => ({ c, score: computeScore(c, now) }))
-  scored.sort((a, b) => b.score - a.score)
+  const scored = candidates
+    .map(c => ({ c, score: computeScore(c, now), topic: getTopicBucket(c.matched_groups) ?? 'other' }))
+    .sort((a, b) => b.score - a.score)
 
   const selected: ContentCandidate[] = []
   const usedClusters = new Set<string>()
-  const categoryCounts: Record<string, number> = {}
+  const usedIds = new Set<string>()
   const topicCounts: Record<string, number> = {}
-  const maxPerTopic = Math.ceil(TOP_N / 2)
 
-  for (const { c } of scored) {
+  const take = (entry: { c: ContentCandidate; topic: string }) => {
+    selected.push(entry.c)
+    usedIds.add(entry.c.id)
+    if (entry.c.cluster_id) usedClusters.add(entry.c.cluster_id)
+    topicCounts[entry.topic] = (topicCounts[entry.topic] ?? 0) + 1
+  }
+
+  const isBlocked = (entry: { c: ContentCandidate; topic: string }) =>
+    usedIds.has(entry.c.id) ||
+    (entry.c.cluster_id ? usedClusters.has(entry.c.cluster_id) : false)
+
+  // 패스 1: 버킷별 최고점 1건씩 (다양성 보장, 'other' 제외)
+  const seenBucket = new Set<string>()
+  for (const entry of scored) {
     if (selected.length >= TOP_N) break
+    if (entry.topic === 'other' || seenBucket.has(entry.topic)) continue
+    if (isBlocked(entry)) continue
+    seenBucket.add(entry.topic)
+    take(entry)
+  }
 
-    if (c.cluster_id && usedClusters.has(c.cluster_id)) continue
-
-    const catCount = categoryCounts[c.category] ?? 0
-    if (catCount >= MAX_PER_CATEGORY) continue
-
-    const topic = getTopicBucket(c.matched_groups) ?? 'other'
-    const topicCount = topicCounts[topic] ?? 0
-    if (topic !== 'other' && topicCount >= maxPerTopic) continue
-
-    selected.push(c)
-    if (c.cluster_id) usedClusters.add(c.cluster_id)
-    categoryCounts[c.category] = catCount + 1
-    topicCounts[topic] = topicCount + 1
+  // 패스 2: 점수순으로 빈 슬롯 채움 (버킷당 MAX_PER_TOPIC 까지)
+  for (const entry of scored) {
+    if (selected.length >= TOP_N) break
+    if (isBlocked(entry)) continue
+    const count = topicCounts[entry.topic] ?? 0
+    if (entry.topic !== 'other' && count >= MAX_PER_TOPIC) continue
+    take(entry)
   }
 
   return selected
@@ -177,16 +212,39 @@ function selectArticles(candidates: ContentCandidate[], now: Date): ContentCandi
 
 // ─── 유저 프롬프트 구성 ──────────────────────────────────────────────────────
 
+// 한국어 본문을 우선순위대로 골라 정제·절단. 번역본 > 마크다운 > 원문 > 요약 순.
+function pickKoBody(c: ContentCandidate): string {
+  const raw = c.body_translated_ko || c.body_md || c.body_original || c.summary_ko || ''
+  const clean = cleanBodyText(htmlToPlainText(raw))
+  return clean.slice(0, BODY_INPUT_MAXCHARS)
+}
+
+const TOPIC_LABEL: Record<string, string> = {
+  telecom: '통신·경쟁',
+  ai_infra: 'AI·인프라',
+  bigtech_it: '빅테크·IT',
+  industry_dx: '산업 DX',
+  policy_esg: '정책·ESG',
+  other: '기타',
+}
+
 function buildUserPrompt(articles: ContentCandidate[], dateParts: { year: number; month: number; day: number }): string {
   const lines: string[] = [
     `오늘 날짜: ${dateParts.year}년 ${dateParts.month}월 ${dateParts.day}일`,
+    `선정 기사 ${articles.length}건. 각 기사를 시장 관점에서 해석해 하나의 라디오 스크립트로 엮어라.`,
     '',
   ]
   articles.forEach((a, i) => {
-    lines.push(`[기사 ${i + 1}] (카테고리: ${a.category})`)
+    const topic = getTopicBucket(a.matched_groups) ?? 'other'
+    const tags = (a.matched_groups ?? []).filter(g => g !== NOISE_LABEL).join(', ')
+    lines.push(`[기사 ${i + 1}] 산업영역: ${TOPIC_LABEL[topic] ?? '기타'}${tags ? ` (태그: ${tags})` : ''} / 카테고리: ${a.category}`)
     lines.push(`제목: ${a.title}`)
     if (a.summary_ko) {
       lines.push(`요약: ${a.summary_ko.slice(0, SUMMARY_INPUT_MAXCHARS)}`)
+    }
+    const body = pickKoBody(a)
+    if (body && body.length > (a.summary_ko?.length ?? 0)) {
+      lines.push(`본문: ${body}`)
     }
     lines.push('')
   })
@@ -237,7 +295,7 @@ export async function generateBriefing(
 
   const { data: rawCandidates, error: fetchError } = await admin
     .from('contents')
-    .select('id, title, summary_ko, category, importance_score, view_count, bookmark_count, is_editor_pick, cluster_id, matched_groups, published_at, collected_at')
+    .select('id, title, summary_ko, body_translated_ko, body_md, body_original, category, importance_score, view_count, bookmark_count, is_editor_pick, cluster_id, matched_groups, published_at, collected_at')
     .eq('status', 'published')
     .neq('category', '유튜브')
     .or(`published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`)
@@ -250,7 +308,9 @@ export async function generateBriefing(
   }
 
   const candidates = (rawCandidates ?? []).filter(
-    (c: ContentCandidate) => isBriefingRelevant(c.title, c.summary_ko)
+    (c: ContentCandidate) =>
+      !(c.matched_groups ?? []).includes(NOISE_LABEL) &&
+      isBriefingRelevant(c.title, c.summary_ko)
   )
 
   console.log(`[브리핑] 후보 ${rawCandidates?.length ?? 0}건 → B2B 필터 후 ${candidates.length}건`)
