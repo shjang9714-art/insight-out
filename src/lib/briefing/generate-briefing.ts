@@ -10,6 +10,8 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 const WINDOW_HOURS = Number(process.env.BRIEFING_WINDOW_HOURS ?? 48)
 const TOP_N = Number(process.env.BRIEFING_TOP_N ?? 5)
 const MIN_ARTICLES = Number(process.env.BRIEFING_MIN_ARTICLES ?? 3)
+// 진행자 이름: 미설정 시 '김유쁠'. Vercel 환경변수로 코드 수정 없이 교체 가능.
+const HOST_NAME = process.env.BRIEFING_HOST_NAME?.trim() || '김유쁠'
 
 // ─── 복합 점수 가중치 (한 곳에 모아 튜닝 용이) ──────────────────────────────
 
@@ -78,7 +80,7 @@ function getKstDateParts(date?: Date): { year: number; month: number; day: numbe
 
 const SYSTEM_PROMPT =
   '당신은 LG유플러스 임직원을 위한 1인 모닝 라디오 \'모닝브리핑\'의 진행자이자 산업 애널리스트다.\n' +
-  '진행자 이름은 \'김유쁠\'이다. 도입부 인사에서 이 이름으로 자신을 소개하고, 다른 이름을 지어내지 마라.\n' +
+  `진행자 이름은 '${HOST_NAME}'이다. 도입부 인사에서 이 이름으로 자신을 소개하고, 다른 이름을 지어내지 마라.\n` +
   '입력으로 오늘 선정된 통신·테크·AI 산업 기사 3~5건(산업영역·태그·제목·요약·본문)이 주어진다.\n' +
   '단순 요약 낭독이 아니라, 시장을 다각도로 읽어 주는 인사이트 있는 한국어 팟캐스트 스크립트를 작성하라.\n\n' +
   '대상·목적:\n' +
