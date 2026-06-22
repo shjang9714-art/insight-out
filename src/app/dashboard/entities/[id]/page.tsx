@@ -6,6 +6,11 @@ import { createServerClient } from '@supabase/ssr'
 import { ArrowLeft, Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, CONTENT_CATEGORY_LABEL, type EntityType, type ContentCategory } from '@/lib/types'
+import EntityEventTimeline, {
+  EntityEventGenerateButton,
+  type EntityEventItem,
+} from '@/components/entities/EntityEventTimeline'
+import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,6 +102,20 @@ function entityStyle(type: EntityType, isCompetitor: boolean): string {
   return ENTITY_TYPE_STYLE[type]
 }
 
+function computeTrend(data: SentimentDay[]): '개선' | '악화' | '유지' {
+  if (data.length < 2) return '유지'
+  const half = Math.floor(data.length / 2)
+  const recent = data.slice(0, half)
+  const prev = data.slice(half)
+  const score = (days: SentimentDay[]) =>
+    days.reduce((s, d) => s + d.긍정 - d.부정, 0)
+  const recentScore = score(recent)
+  const prevScore = score(prev)
+  if (recentScore > prevScore) return '개선'
+  if (recentScore < prevScore) return '악화'
+  return '유지'
+}
+
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -124,12 +143,15 @@ export default async function EntityDetailPage({ params }: PageProps) {
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
-  // 1. 엔티티 기본 정보
-  const { data: entity, error: entityError } = await supabase
-    .from('entities')
-    .select('id, canonical_name, entity_type, description, is_competitor, mention_count')
-    .eq('id', id)
-    .single()
+  // 1. 로그인 유저 + 엔티티 기본 정보
+  const [{ data: { user } }, { data: entity, error: entityError }] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase
+      .from('entities')
+      .select('id, canonical_name, entity_type, description, is_competitor, mention_count')
+      .eq('id', id)
+      .single(),
+  ])
 
   if (entityError || !entity) {
     notFound()
@@ -137,7 +159,18 @@ export default async function EntityDetailPage({ params }: PageProps) {
 
   const e = entity as EntityRow
 
-  // 2. 동의어
+  // 2. 관리자 여부
+  let isAdmin = false
+  if (user) {
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    isAdmin = profile?.role === 'admin'
+  }
+
+  // 3. 동의어
   const { data: aliasData } = await supabase
     .from('entity_aliases')
     .select('alias')
@@ -145,7 +178,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
 
   const aliases: AliasRow[] = (aliasData ?? []) as AliasRow[]
 
-  // 3. 기준 콘텐츠 id 목록 (최근 200건)
+  // 4. 기준 콘텐츠 id 목록 (최근 200건)
   const { data: ceData } = await supabase
     .from('content_entities')
     .select('content_id')
@@ -154,7 +187,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
 
   const contentIds: string[] = (ceData ?? []).map((r: { content_id: string }) => r.content_id)
 
-  // 4. 콘텐츠 상세 조회 (타임라인·카테고리 집계용)
+  // 5. 콘텐츠 상세 조회
   let contents: ContentRow[] = []
   if (contentIds.length > 0) {
     const { data: contentsData } = await supabase
@@ -168,14 +201,14 @@ export default async function EntityDetailPage({ params }: PageProps) {
     contents = (contentsData ?? []) as unknown as ContentRow[]
   }
 
-  // 5. 카테고리별 집계
+  // 6. 카테고리별 집계
   const categoryMap = new Map<ContentCategory, ContentRow[]>()
   for (const c of contents) {
     if (!categoryMap.has(c.category)) categoryMap.set(c.category, [])
     categoryMap.get(c.category)!.push(c)
   }
 
-  // 6. 타임라인 그룹 (상위 40건)
+  // 7. 타임라인 그룹 (상위 40건)
   const timelineContents = contents.slice(0, 40)
   const timelineGroups = new Map<string, ContentRow[]>()
   for (const c of timelineContents) {
@@ -184,7 +217,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
     timelineGroups.get(key)!.push(c)
   }
 
-  // 7. 관련 엔티티 (co-occurrence) — 기준 집합 있을 때만
+  // 8. 관련 엔티티 (co-occurrence)
   const relatedEntityMap = new Map<string, { count: number; entity: RelatedEntityRow }>()
   if (contentIds.length > 0) {
     const { data: coData } = await supabase
@@ -209,7 +242,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 20)
 
-  // 8. 관련 이슈
+  // 9. 관련 이슈
   let relatedIssues: IssueRow[] = []
   if (contentIds.length > 0) {
     const issueCountMap = new Map<string, number>()
@@ -239,7 +272,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
     }
   }
 
-  // 9. 논조 분포
+  // 10. 논조 분포
   const sentimentCount = { 긍정: 0, 중립: 0, 부정: 0 }
   for (const c of contents) {
     if (c.sentiment === '긍정') sentimentCount['긍정'] += 1
@@ -247,6 +280,61 @@ export default async function EntityDetailPage({ params }: PageProps) {
     else sentimentCount['중립'] += 1
   }
   const totalSentiment = contents.length
+
+  // 11. 논조 추세 (일자별 집계, 최근 30일)
+  const sentimentDayMap = new Map<string, SentimentDay>()
+  for (const c of contents) {
+    const dateKey = getKstDateKey(c.collected_at)
+    if (!sentimentDayMap.has(dateKey)) {
+      sentimentDayMap.set(dateKey, { date: dateKey, 긍정: 0, 중립: 0, 부정: 0 })
+    }
+    const day = sentimentDayMap.get(dateKey)!
+    if (c.sentiment === '긍정') day.긍정++
+    else if (c.sentiment === '부정') day.부정++
+    else day.중립++
+  }
+  const sentimentTrendData: SentimentDay[] = [...sentimentDayMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-30)
+    .map(([, v]) => v)
+
+  const sentimentTrend = computeTrend(sentimentTrendData)
+
+  // 12. 사건 타임라인 (entity_events) — 테이블 없어도 graceful
+  let entityEvents: EntityEventItem[] = []
+  try {
+    const { data: evData, error: evError } = await supabase
+      .from('entity_events')
+      .select('id, event_date, signal_type, headline, detail, sentiment, citations')
+      .eq('entity_id', id)
+      .order('event_date', { ascending: false })
+      .limit(30)
+
+    // 42703: undefined_table (테이블 미존재), graceful 처리
+    if (!evError) {
+      entityEvents = (evData ?? []).map((row: {
+        id: string
+        event_date: string
+        signal_type: string | null
+        headline: string
+        detail: string | null
+        sentiment: '긍정' | '중립' | '부정' | null
+        citations: string[] | null
+      }) => ({
+        id: row.id,
+        event_date: row.event_date,
+        signal_type: row.signal_type,
+        headline: row.headline,
+        detail: row.detail,
+        sentiment: row.sentiment,
+        citations: Array.isArray(row.citations) ? row.citations : [],
+      }))
+    } else if (evError.code !== '42703' && !evError.message?.includes('does not exist')) {
+      console.error('[EntityDetailPage] entity_events 조회 오류:', evError.message)
+    }
+  } catch (err) {
+    console.error('[EntityDetailPage] entity_events 예외:', err instanceof Error ? err.message : String(err))
+  }
 
   const typeStyle = entityStyle(e.entity_type, e.is_competitor)
   const typeLabel = ENTITY_TYPE_LABEL[e.entity_type]
@@ -302,6 +390,30 @@ export default async function EntityDetailPage({ params }: PageProps) {
           </div>
         )}
       </div>
+
+      {/* 사건 타임라인 */}
+      <section className="mb-8">
+        <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-sm font-semibold text-foreground">사건 타임라인</h2>
+          {isAdmin && <EntityEventGenerateButton entityId={id} />}
+        </div>
+        {entityEvents.length > 0 ? (
+          <EntityEventTimeline events={entityEvents} />
+        ) : (
+          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {isAdmin
+              ? '사건 타임라인을 생성하려면 위 버튼을 클릭하세요.'
+              : '아직 사건 타임라인이 생성되지 않았습니다.'}
+          </div>
+        )}
+      </section>
+
+      {/* 논조 추세 차트 (IssueSentimentTrend 재사용) */}
+      {sentimentTrendData.length > 1 && (
+        <section className="mb-8 rounded-xl border border-border bg-card p-5">
+          <IssueSentimentTrend data={sentimentTrendData} trend={sentimentTrend} />
+        </section>
+      )}
 
       {/* 관련 엔티티 (co-occurrence) */}
       {relatedEntities.length > 0 && (
@@ -400,7 +512,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
         </section>
       )}
 
-      {/* 타임라인 */}
+      {/* 최근 콘텐츠 타임라인 */}
       {timelineGroups.size > 0 ? (
         <section className="mb-8">
           <h2 className="mb-4 text-sm font-semibold text-foreground">최근 콘텐츠 타임라인</h2>
