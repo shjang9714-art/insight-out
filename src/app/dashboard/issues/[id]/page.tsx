@@ -6,6 +6,9 @@ import { createServerClient } from '@supabase/ssr'
 import { ArrowLeft, Radar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
+import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
+import IssueEvidenceExplorer, { type EvidenceItem } from '@/components/issues/IssueEvidenceExplorer'
+import type { IssueBrief } from '@/lib/issues/brief'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -20,6 +23,8 @@ interface IssueDetail {
   status: string
   match_keywords: string[]
   created_at: string
+  brief?: IssueBrief | null
+  brief_generated_at?: string | null
 }
 
 interface IssueContentRow {
@@ -36,6 +41,12 @@ interface IssueContentRow {
   } | null
 }
 
+interface SignalRow {
+  content_id: string
+  signal_type: string
+  score: number
+}
+
 interface EntityFreq {
   id: string
   canonical_name: string
@@ -50,7 +61,7 @@ interface SimilarIssue {
   score: number
 }
 
-// ─── KST 헬퍼 (98 패턴) ───────────────────────────────────────────────────────
+// ─── KST 헬퍼 ─────────────────────────────────────────────────────────────────
 
 function getKstDateLabel(iso: string): string {
   return new Date(iso).toLocaleDateString('ko-KR', {
@@ -72,6 +83,12 @@ const ENTITY_TYPE_COLOR: Record<EntityType, string> = {
   person:   'bg-emerald-50 text-emerald-700',
   policy:   'bg-amber-50 text-amber-700',
   industry: 'bg-muted text-muted-foreground',
+}
+
+// ─── 신호 유형 색상 ───────────────────────────────────────────────────────────
+
+function signalBadgeClass(): string {
+  return 'bg-blue-50 text-blue-700'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,17 +133,31 @@ export default async function IssueDetailPage({ params }: PageProps) {
     }
   )
 
-  // 이슈 조회
-  const { data: issueData } = await supabase
+  // ── 이슈 조회 (brief 컬럼 graceful degrade) ────────────────────────────────
+  let issueData: IssueDetail | null = null
+
+  const { data: issueWithBrief, error: issueErr } = await supabase
     .from('issues')
-    .select('id, title, summary, status, match_keywords, created_at')
+    .select('id, title, summary, status, match_keywords, created_at, brief, brief_generated_at')
     .eq('id', id)
     .single()
 
-  if (!issueData) return notFound()
-  const issue = issueData as unknown as IssueDetail
+  if (issueErr?.code === '42703') {
+    // brief 컬럼 미적용 — 폴백 select
+    const { data: issueFallback } = await supabase
+      .from('issues')
+      .select('id, title, summary, status, match_keywords, created_at')
+      .eq('id', id)
+      .single()
+    issueData = issueFallback as unknown as IssueDetail | null
+  } else {
+    issueData = issueWithBrief as unknown as IssueDetail | null
+  }
 
-  // 이슈 콘텐츠 조회 (최근 200건)
+  if (!issueData) return notFound()
+  const issue = issueData
+
+  // ── 이슈 콘텐츠 조회 (최근 200건) ─────────────────────────────────────────
   const { data: icData } = await supabase
     .from('issue_contents')
     .select('content_id, contents!inner(id, title, summary_ko, category, published_at, collected_at, sentiment, sources(name))')
@@ -144,21 +175,78 @@ export default async function IssueDetailPage({ params }: PageProps) {
       return bDate.localeCompare(aDate)
     })
 
-  // 카테고리별 집계
+  const contentIds = issueContents.map(ic => ic.content_id)
+
+  // ── content_signals 조회 ───────────────────────────────────────────────────
+  let signals: SignalRow[] = []
+  if (contentIds.length > 0) {
+    const { data: sigData } = await supabase
+      .from('content_signals')
+      .select('content_id, signal_type, score')
+      .in('content_id', contentIds.slice(0, 100))
+    signals = (sigData ?? []) as SignalRow[]
+  }
+
+  // 신호 집계 (signal_type별 건수)
+  const signalTypeCount = new Map<string, number>()
+  for (const s of signals) {
+    signalTypeCount.set(s.signal_type, (signalTypeCount.get(s.signal_type) ?? 0) + 1)
+  }
+  const sortedSignals = [...signalTypeCount.entries()].sort((a, b) => b[1] - a[1])
+
+  // content_id → 대표 signal_type(score 최대) 맵
+  const signalByContent = new Map<string, string>()
+  for (const s of signals) {
+    const existing = signals
+      .filter(r => r.content_id === s.content_id)
+      .sort((a, b) => b.score - a.score)[0]
+    if (!signalByContent.has(s.content_id) && existing) {
+      signalByContent.set(s.content_id, existing.signal_type)
+    }
+  }
+
+  // ── 카테고리별 집계 ────────────────────────────────────────────────────────
   const categoryCountMap: Record<string, number> = {}
   for (const a of articles) {
     const cat = a.category ?? '기타'
     categoryCountMap[cat] = (categoryCountMap[cat] ?? 0) + 1
   }
 
-  // 논조 집계
+  // ── 논조 집계 ──────────────────────────────────────────────────────────────
   const sentimentCount = { 긍정: 0, 중립: 0, 부정: 0 }
   for (const a of articles) {
     if (a.sentiment) sentimentCount[a.sentiment]++
   }
   const sentimentTotal = sentimentCount.긍정 + sentimentCount.중립 + sentimentCount.부정
 
-  // 타임라인 — 상위 40건, KST 일자별 그룹
+  // ── 논조 시계열 집계 (KST 일자별) ─────────────────────────────────────────
+  const dayMap = new Map<string, { 긍정: number; 중립: number; 부정: number }>()
+  for (const a of articles) {
+    const key = getKstDateKey(a.published_at ?? a.collected_at)
+    if (!dayMap.has(key)) dayMap.set(key, { 긍정: 0, 중립: 0, 부정: 0 })
+    if (a.sentiment) dayMap.get(key)![a.sentiment]++
+  }
+  const sentimentTimeline: SentimentDay[] = [...dayMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, counts]) => ({ date, ...counts }))
+
+  // 추세 방향 (최근 절반 vs 이전 절반 부정비율)
+  let trendDir: '개선' | '악화' | '유지' = '유지'
+  if (sentimentTimeline.length >= 2) {
+    const half = Math.ceil(sentimentTimeline.length / 2)
+    const first = sentimentTimeline.slice(0, half)
+    const last  = sentimentTimeline.slice(half)
+    const negRate = (days: SentimentDay[]) => {
+      const total = days.reduce((s, d) => s + d.긍정 + d.중립 + d.부정, 0)
+      const neg   = days.reduce((s, d) => s + d.부정, 0)
+      return total > 0 ? neg / total : 0
+    }
+    const diff = negRate(last) - negRate(first)
+    if (diff < -0.05) trendDir = '개선'
+    else if (diff > 0.05) trendDir = '악화'
+  }
+
+  // ── 타임라인 — 상위 40건, KST 일자별 그룹 ────────────────────────────────
   const timelineArticles = articles.slice(0, 40)
   const timelineGroups = new Map<string, typeof timelineArticles>()
   for (const a of timelineArticles) {
@@ -167,15 +255,13 @@ export default async function IssueDetailPage({ params }: PageProps) {
     timelineGroups.get(key)!.push(a)
   }
 
-  // 관련 엔티티 — 상위 100 콘텐츠 기준 빈도순
-  const contentIds = issueContents.map(ic => ic.content_id).slice(0, 100)
+  // ── 관련 엔티티 ────────────────────────────────────────────────────────────
   let entityFreqs: EntityFreq[] = []
-
   if (contentIds.length > 0) {
     const { data: entData } = await supabase
       .from('content_entities')
       .select('entity_id, entities!inner(canonical_name, entity_type, is_competitor)')
-      .in('content_id', contentIds)
+      .in('content_id', contentIds.slice(0, 100))
       .limit(500)
 
     const entMap = new Map<string, EntityFreq>()
@@ -198,12 +284,10 @@ export default async function IssueDetailPage({ params }: PageProps) {
     entityFreqs = [...entMap.values()].sort((a, b) => b.count - a.count).slice(0, 30)
   }
 
-  // 유사 이슈 — 엔티티 공유도 기반
+  // ── 유사 이슈 ──────────────────────────────────────────────────────────────
   let similarIssues: SimilarIssue[] = []
   const topEntityIds = entityFreqs.slice(0, 20).map(e => e.id)
-
   if (topEntityIds.length > 0) {
-    // 이 엔티티들을 가진 콘텐츠 ID 집합
     const { data: sharedContentsData } = await supabase
       .from('content_entities')
       .select('content_id')
@@ -215,7 +299,6 @@ export default async function IssueDetailPage({ params }: PageProps) {
     )]
 
     if (sharedContentIds.length > 0) {
-      // 그 콘텐츠가 속한 다른 이슈들 → issue_id별 공유 점수
       const { data: sharedIssuesData } = await supabase
         .from('issue_contents')
         .select('issue_id')
@@ -251,6 +334,30 @@ export default async function IssueDetailPage({ params }: PageProps) {
     }
   }
 
+  // ── 근거 탐색 데이터 조립 ──────────────────────────────────────────────────
+  const evidenceItems: EvidenceItem[] = articles.map(a => {
+    const sourceName = Array.isArray(a.sources)
+      ? (a.sources as { name: string }[])[0]?.name
+      : a.sources?.name
+    return {
+      id:          a.id,
+      title:       a.title,
+      category:    a.category,
+      sentiment:   a.sentiment,
+      signal_type: signalByContent.get(a.id) ?? null,
+      published_at: a.published_at,
+      collected_at: a.collected_at,
+      source:      sourceName ?? null,
+      summary_ko:  a.summary_ko,
+    }
+  })
+
+  const explorerCategories = [...new Set(articles.map(a => a.category ?? '기타'))].slice(0, 8)
+  const explorerSignals    = [...signalTypeCount.keys()].slice(0, 6)
+
+  // ── brief citation 제목 맵 ──────────────────────────────────────────────────
+  const articleById = new Map(articles.map(a => ({ ...a, id: a.id })).map(a => [a.id, a]))
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
       {/* 뒤로가기 */}
@@ -270,7 +377,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
           <Radar className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
           <h1 className="text-xl font-bold text-foreground leading-snug">{issue.title}</h1>
         </div>
-        {issue.summary && (
+        {issue.summary && !issue.brief && (
           <p className="text-sm text-muted-foreground leading-relaxed mt-2 ml-7">
             {issue.summary}
           </p>
@@ -292,6 +399,87 @@ export default async function IssueDetailPage({ params }: PageProps) {
       </div>
 
       <div className="space-y-10">
+
+        {/* ── B-4. AI 브리핑 섹션 ── */}
+        <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-5">
+          <h2 className="mb-1 text-sm font-semibold text-foreground">AI 브리핑</h2>
+          {issue.brief ? (
+            <div className="space-y-4">
+              {issue.brief_generated_at && (
+                <p className="text-[11px] text-muted-foreground">
+                  생성: {new Date(issue.brief_generated_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}
+                </p>
+              )}
+              {/* 현황 */}
+              <div>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">현황</p>
+                <p className="text-sm text-foreground leading-relaxed">{issue.brief.situation}</p>
+              </div>
+              {/* 핵심 동인 */}
+              {issue.brief.drivers.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-muted-foreground">핵심 동인</p>
+                  <ul className="space-y-1">
+                    {issue.brief.drivers.map((d, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-600" />
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {/* 논조 해석 */}
+              {issue.brief.sentiment_read && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-muted-foreground">논조 해석</p>
+                  <p className="text-sm text-foreground leading-relaxed">{issue.brief.sentiment_read}</p>
+                </div>
+              )}
+              {/* 시사점 */}
+              {issue.brief.implications.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-muted-foreground">시사점</p>
+                  <ul className="space-y-1">
+                    {issue.brief.implications.map((imp, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                        {imp}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {/* citations */}
+              {issue.brief.citations.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-muted-foreground">근거 출처</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {issue.brief.citations.map(cid => {
+                      const art = articleById.get(cid)
+                      return art ? (
+                        <Link
+                          key={cid}
+                          href={`/dashboard/contents/${cid}`}
+                          className="inline-block rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 transition-colors hover:border-blue-400 max-w-[240px] truncate"
+                        >
+                          {art.title}
+                        </Link>
+                      ) : null
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {issue.summary
+                ? issue.summary
+                : '브리핑이 아직 생성되지 않았습니다. 관리자 페이지에서 "AI 브리핑 생성" 버튼을 눌러주세요.'}
+            </p>
+          )}
+        </section>
+
         {/* ── 카테고리별 콘텐츠 ── */}
         {Object.keys(categoryCountMap).length > 0 && (
           <section>
@@ -327,7 +515,33 @@ export default async function IssueDetailPage({ params }: PageProps) {
           </section>
         )}
 
-        {/* ── 논조 분포 ── */}
+        {/* ── A-1. 신호 구성 ── */}
+        {sortedSignals.length > 0 && (
+          <section>
+            <h2 className="mb-4 text-sm font-semibold text-foreground">신호 구성</h2>
+            <div className="space-y-2">
+              {sortedSignals.map(([sigType, count]) => (
+                <div key={sigType} className="flex items-center gap-3">
+                  <span className={cn(
+                    'shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                    signalBadgeClass()
+                  )}>
+                    {sigType}
+                  </span>
+                  <div className="flex-1 overflow-hidden rounded-full bg-muted" style={{ height: 6 }}>
+                    <div
+                      className="h-full rounded-full bg-blue-400"
+                      style={{ width: `${Math.round(count / Math.max(...sortedSignals.map(s => s[1])) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── 논조 분포 + A-2. 논조 시계열 추세 ── */}
         {sentimentTotal > 0 && (
           <section>
             <h2 className="mb-4 text-sm font-semibold text-foreground">논조 분포</h2>
@@ -363,7 +577,6 @@ export default async function IssueDetailPage({ params }: PageProps) {
                 </div>
               )}
             </div>
-            {/* 시각적 막대 */}
             <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
               {sentimentCount.긍정 > 0 && (
                 <div
@@ -384,6 +597,12 @@ export default async function IssueDetailPage({ params }: PageProps) {
                 />
               )}
             </div>
+            {/* 시계열 차트 */}
+            {sentimentTimeline.length > 1 && (
+              <div className="mt-6">
+                <IssueSentimentTrend data={sentimentTimeline} trend={trendDir} />
+              </div>
+            )}
           </section>
         )}
 
@@ -459,12 +678,13 @@ export default async function IssueDetailPage({ params }: PageProps) {
                       const dateStr = new Date(displayAt).toLocaleDateString('ko-KR', {
                         timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
                       })
+                      const sigType = signalByContent.get(article.id)
                       return (
                         <li
                           key={article.id}
                           className="rounded-xl border border-border bg-card p-4 space-y-1.5"
                         >
-                          <div className="flex items-start gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             {article.sentiment && (
                               <span className={cn(
                                 'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
@@ -473,6 +693,11 @@ export default async function IssueDetailPage({ params }: PageProps) {
                                 article.sentiment === '부정' && 'bg-red-100 text-red-700',
                               )}>
                                 {article.sentiment}
+                              </span>
+                            )}
+                            {sigType && (
+                              <span className="mt-0.5 shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-blue-700">
+                                {sigType}
                               </span>
                             )}
                             <Link
@@ -499,6 +724,17 @@ export default async function IssueDetailPage({ params }: PageProps) {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* ── A-3. 근거 탐색 ── */}
+        {evidenceItems.length > 0 && (
+          <section>
+            <IssueEvidenceExplorer
+              items={evidenceItems}
+              categories={explorerCategories}
+              signalTypes={explorerSignals}
+            />
           </section>
         )}
 

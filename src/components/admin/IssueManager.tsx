@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { BrainCircuit, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import type { IssueStatus } from '@/lib/types'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
@@ -139,6 +139,10 @@ export default function IssueManager() {
   // 재배정 상태
   const [rematchingId,  setRematchingId]  = useState<string | null>(null)
   const [rematchMsg,    setRematchMsg]    = useState<{ id: string; text: string; ok: boolean } | null>(null)
+
+  // AI 브리핑 생성 상태
+  const [briefingId,  setBriefingId]  = useState<string | null>(null)
+  const [briefMsg,    setBriefMsg]    = useState<{ id: string; text: string; ok: boolean } | null>(null)
 
   // ── 초기 로드 ─────────────────────────────────────────────────────────────
 
@@ -340,6 +344,31 @@ export default function IssueManager() {
     }
   }
 
+  // ── AI 브리핑 생성 ───────────────────────────────────────────────────────
+
+  const handleBrief = async (issue: IssueRow) => {
+    setBriefingId(issue.id)
+    setBriefMsg(null)
+
+    try {
+      const res = await fetch(`/api/admin/issues/${issue.id}/brief`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json() as { error?: string }
+        setBriefMsg({ id: issue.id, text: body.error ?? `오류 (${res.status})`, ok: false })
+        return
+      }
+      setBriefMsg({ id: issue.id, text: 'AI 브리핑 생성 완료', ok: true })
+    } catch (err) {
+      setBriefMsg({
+        id:   issue.id,
+        text: err instanceof Error ? err.message : '브리핑 생성 중 오류가 발생했습니다.',
+        ok:   false,
+      })
+    } finally {
+      setBriefingId(null)
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
@@ -535,6 +564,14 @@ export default function IssueManager() {
                         {rematchMsg.text}
                       </div>
                     )}
+                    {briefMsg?.id === issue.id && (
+                      <div className={cn(
+                        'mt-1 text-[11px] font-medium',
+                        briefMsg.ok ? 'text-blue-600' : 'text-red-500'
+                      )}>
+                        {briefMsg.text}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={cn(
@@ -575,6 +612,22 @@ export default function IssueManager() {
                         {rematchingId === issue.id
                           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           : <RefreshCw className="h-3.5 w-3.5" />
+                        }
+                      </button>
+                      <button
+                        onClick={() => { void handleBrief(issue) }}
+                        disabled={briefingId === issue.id}
+                        className={cn(
+                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
+                          briefingId === issue.id
+                            ? 'cursor-wait text-muted-foreground/40'
+                            : 'text-blue-500 hover:bg-blue-50 hover:text-blue-700'
+                        )}
+                        title="AI 브리핑 생성"
+                      >
+                        {briefingId === issue.id
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <BrainCircuit className="h-3.5 w-3.5" />
                         }
                       </button>
                       <button
