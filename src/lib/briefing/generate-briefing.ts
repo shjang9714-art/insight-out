@@ -37,6 +37,9 @@ const CATEGORY_WEIGHT: Record<string, number> = {
 const MAX_PER_TOPIC = 2
 const BODY_INPUT_MAXCHARS = 1200
 const SUMMARY_INPUT_MAXCHARS = 400
+// 알맹이 가드: 본문·요약이 이보다 짧으면 인사이트 있는 꼭지를 못 쓴다(한 줄짜리 기사 배제).
+// 요약/본문 중 긴 쪽의 정제 후 길이 기준. 과필터 방지 위해 보수적으로 설정.
+const MIN_SUBSTANCE_CHARS = 140
 
 // 노이즈로 분류된 콘텐츠는 후보에서 제외(keyword_groups._noise → name '노이즈 제외').
 const NOISE_LABEL = '노이즈 제외'
@@ -150,6 +153,19 @@ interface ContentCandidate {
   matched_groups: string[]
   published_at: string | null
   collected_at: string
+}
+
+// ─── 알맹이(콘텐츠 분량) 판정 ────────────────────────────────────────────────
+// 요약과 본문(번역본>원문) 중 긴 쪽의 정제 후 길이. 한 줄짜리 stub 기사를 후보에서 거른다.
+function effectiveBodyLen(c: ContentCandidate): number {
+  const bodyRaw = c.body_translated_ko || c.body_original || ''
+  const body = cleanBodyText(htmlToPlainText(bodyRaw))
+  const summary = (c.summary_ko ?? '').trim()
+  return Math.max(body.length, summary.length)
+}
+
+function hasSubstance(c: ContentCandidate): boolean {
+  return effectiveBodyLen(c) >= MIN_SUBSTANCE_CHARS
 }
 
 // ─── 산업 주제 판정 ──────────────────────────────────────────────────────────
@@ -340,13 +356,20 @@ export async function generateBriefing(
     return { ok: false, reason: '후보 기사 조회 실패' }
   }
 
-  const candidates = (rawCandidates ?? []).filter(
+  const relevant = (rawCandidates ?? []).filter(
     (c: ContentCandidate) =>
       !(c.matched_groups ?? []).includes(NOISE_LABEL) &&
       isBriefingRelevant(c.title, c.summary_ko)
   )
 
-  console.log(`[브리핑] 후보 ${rawCandidates?.length ?? 0}건 → B2B 필터 후 ${candidates.length}건`)
+  // 알맹이 가드: 본문·요약이 빈약한 stub 기사 제외(인사이트 꼭지 작성 불가).
+  // 단, 가드가 후보를 최소치 아래로 깎으면 짧은 기사도 살려 브리핑 자체는 성립시킨다.
+  const substantial = relevant.filter(hasSubstance)
+  const candidates = substantial.length >= MIN_ARTICLES ? substantial : relevant
+
+  console.log(
+    `[브리핑] 후보 ${rawCandidates?.length ?? 0}건 → 관련 ${relevant.length}건 → 알맹이 ${substantial.length}건 → 사용 ${candidates.length}건`
+  )
 
   if (candidates.length === 0) {
     console.log('[브리핑] 대상 기사 없음 — 스킵')
