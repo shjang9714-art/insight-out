@@ -60,7 +60,8 @@ export async function GET() {
 
     const admin = createAdminClient()
     const period = getKstPeriod()
-    const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 3_500_000)
+    // WaveNet 무료 한도 100만/월 → 보수적으로 90만. (synthesize-briefing.ts 기본값과 일치)
+    const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 900_000)
 
     const [briefingsResult, usageResult] = await Promise.all([
       admin
