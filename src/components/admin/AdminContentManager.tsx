@@ -168,6 +168,11 @@ export default function AdminContentManager() {
   const [backfillRange, setBackfillRange] = useState<'all' | '7d' | '30d'>('30d')
   const stopRef = useRef(false)
 
+  // 신호 분류
+  const [isSignalling,  setIsSignalling]  = useState(false)
+  const [signalResult,  setSignalResult]  = useState<string | null>(null)
+  const signalStopRef = useRef(false)
+
   // 본문 상태 필터 + body_len degrade 추적
   const [bodyFilter,      setBodyFilter]      = useState<'all' | 'full' | 'snippet' | 'none'>('all')
   const [bodyLenAvailable, setBodyLenAvailable] = useState(true)
@@ -576,6 +581,38 @@ export default function AdminContentManager() {
     }
   }
 
+  const handleSignalClassify = async () => {
+    signalStopRef.current = false
+    setIsSignalling(true)
+    setSignalResult(null)
+    setError(null)
+    const acc = { processed: 0, tagged: 0 }
+    try {
+      while (true) {
+        const res = await fetch('/api/admin/signals-backfill?limit=10', { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '신호 분류 실패')
+        const { processed, tagged, remaining } = await res.json() as { processed: number; tagged: number; remaining: number }
+        acc.processed += processed
+        acc.tagged += tagged
+        if (signalStopRef.current) {
+          setSignalResult(`중단됨 · 누적 처리 ${acc.processed} · 신호 ${acc.tagged} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setSignalResult(`완료 · 처리 ${acc.processed} · 신호 ${acc.tagged}`)
+          break
+        }
+        if (processed === 0) break
+        setSignalResult(`분류 중… 누적 처리 ${acc.processed} · 신호 ${acc.tagged} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '신호 분류 중 오류가 발생했습니다.')
+    } finally {
+      setIsSignalling(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
   // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
@@ -647,6 +684,11 @@ export default function AdminContentManager() {
               {isEnriching ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {enrichResult}
             </span>
           )}
+          {signalResult && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+              {isSignalling ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {signalResult}
+            </span>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-2">
@@ -696,6 +738,14 @@ export default function AdminContentManager() {
               onClick={isEnriching ? () => { stopRef.current = true } : handleEnrich}
             >
               {isEnriching ? '중단' : '기사 풀본문 채우기'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isSignalling ? () => { signalStopRef.current = true } : handleSignalClassify}
+            >
+              {isSignalling ? '중단' : '신호 분류'}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">

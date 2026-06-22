@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/body-backfill",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/signals-backfill",
+      "schedule": "0 18 * * *"
     }
   ]
 }
