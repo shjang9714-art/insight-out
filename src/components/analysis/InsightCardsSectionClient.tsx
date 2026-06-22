@@ -96,7 +96,7 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
       <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5">
         <button
           onClick={() => handleViewChange('cardnews')}
-          aria-label="카드뉴스 뷰"
+          aria-label="카드 뷰"
           className={cn(
             'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
             view === 'cardnews'
@@ -105,11 +105,11 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
           )}
         >
           <List className="h-3.5 w-3.5" />
-          카드뉴스
+          카드
         </button>
         <button
           onClick={() => handleViewChange('analysis')}
-          aria-label="분석 뷰"
+          aria-label="목록 뷰"
           className={cn(
             'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
             view === 'analysis'
@@ -118,7 +118,7 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
           )}
         >
           <LayoutGrid className="h-3.5 w-3.5" />
-          분석
+          목록
         </button>
       </div>
     </div>

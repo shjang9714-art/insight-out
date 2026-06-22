@@ -16,8 +16,14 @@ import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
+import NewsCardSlider, { type NewsSlide } from '@/components/analysis/NewsCardSlider'
 
 const WATCHLIST_LIMIT = 20
+
+function formatSlideDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`
+}
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -116,7 +122,7 @@ export default async function AiInsightsView() {
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [insightRes, trendRes, watchlistRes, competitorNamesRes, keywordGroupsRes, entityTeaserRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, competitorNamesRes, keywordGroupsRes, entityTeaserRes, newsSlideRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -154,6 +160,13 @@ export default async function AiInsightsView() {
       .select('id, canonical_name, entity_type, mention_count')
       .order('mention_count', { ascending: false })
       .limit(10),
+    supabase
+      .from('contents')
+      .select('id, title, summary_ko, collected_at, sources(name)')
+      .eq('status', 'published')
+      .not('summary_ko', 'is', null)
+      .order('collected_at', { ascending: false })
+      .limit(5),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
@@ -307,6 +320,57 @@ export default async function AiInsightsView() {
     contentMapRecord[id] = meta
   }
 
+  // ─── 카드뉴스 슬라이드 구성 ───────────────────────────────────────────────
+  type NewsContentRow = {
+    id: string
+    title: string
+    summary_ko: string | null
+    collected_at: string
+    sources: { name: string } | { name: string }[] | null
+  }
+  const newsContentRows = (newsSlideRes.data ?? []) as unknown as NewsContentRow[]
+
+  const insightSlides: NewsSlide[] = cards.slice(0, 5).map(card => ({
+    id: `insight-${card.id}`,
+    type: 'insight' as const,
+    badge: '인사이트',
+    topic: card.topic ?? null,
+    headline: card.headline,
+    summary: card.implication ?? null,
+    href: `/dashboard/reports/new?type=시장동향&topic=${encodeURIComponent(card.topic ?? '')}`,
+    source: null,
+    date: null,
+    matchNames: [card.topic, card.headline].filter((s): s is string => !!s),
+    isCompetitor: false,
+  }))
+
+  const newsContentSlides: NewsSlide[] = newsContentRows.map(r => {
+    const srcName = Array.isArray(r.sources)
+      ? (r.sources as { name: string }[])[0]?.name ?? null
+      : (r.sources as { name: string } | null)?.name ?? null
+    return {
+      id: `news-${r.id}`,
+      type: 'news' as const,
+      badge: '주요 뉴스',
+      topic: null,
+      headline: r.title,
+      summary: r.summary_ko ?? null,
+      href: `/dashboard/contents/${r.id}`,
+      source: srcName,
+      date: formatSlideDate(r.collected_at),
+      matchNames: [r.title, r.summary_ko].filter((s): s is string => !!s),
+      isCompetitor: false,
+    }
+  })
+
+  // 인사이트·뉴스 교차 배치
+  const newsSlides: NewsSlide[] = []
+  const maxLen = Math.max(insightSlides.length, newsContentSlides.length)
+  for (let i = 0; i < maxLen; i++) {
+    if (insightSlides[i])     newsSlides.push(insightSlides[i])
+    if (newsContentSlides[i]) newsSlides.push(newsContentSlides[i])
+  }
+
   // ─── 이슈 ──────────────────────────────────────────────────────────────────
   const issueCards = await fetchIssueActivity(supabase)
 
@@ -325,7 +389,19 @@ export default async function AiInsightsView() {
       {/* 렌즈 스위처 */}
       <LensSwitcher />
 
-      {/* ① AI 인사이트 — 최상단 */}
+      {/* ① 오늘의 카드뉴스 */}
+      {newsSlides.length > 0 && (
+        <section>
+          <SectionHeader
+            icon={<FileText className="h-4 w-4 text-brand-600" />}
+            title="오늘의 카드뉴스"
+            desc="인사이트와 주요 뉴스를 한 장씩 — 좌우로 넘겨 보세요"
+          />
+          <NewsCardSlider slides={newsSlides} />
+        </section>
+      )}
+
+      {/* ② AI 인사이트 */}
       <section>
         <SectionHeader
           icon={<FileText className="h-4 w-4 text-brand-600" />}
@@ -336,7 +412,7 @@ export default async function AiInsightsView() {
       </section>
 
 
-      {/* ② 이번 주 뜨는 토픽 + 키워드 한 줄 */}
+      {/* ③ 이번 주 뜨는 토픽 + 키워드 한 줄 */}
       <section>
         <SectionHeader
           icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
@@ -393,7 +469,7 @@ export default async function AiInsightsView() {
         )}
       </section>
 
-      {/* ③ 시장 주요 이슈 */}
+      {/* ④ 시장 주요 이슈 */}
       <section>
         <SectionHeader
           icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
@@ -403,7 +479,7 @@ export default async function AiInsightsView() {
         <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
       </section>
 
-      {/* ④ 경쟁사 동향 */}
+      {/* ⑤ 경쟁사 동향 */}
       <section>
         <SectionHeader
           icon={<Building2 className="h-4 w-4 text-red-500" />}
@@ -479,7 +555,7 @@ export default async function AiInsightsView() {
         )}
       </section>
 
-      {/* ⑤ 지식그래프 */}
+      {/* ⑥ 지식그래프 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <SectionHeader
           icon={<Network className="h-4 w-4 text-brand-600" />}
