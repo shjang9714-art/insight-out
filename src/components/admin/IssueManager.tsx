@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { BrainCircuit, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { BrainCircuit, CheckCircle, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle } from 'lucide-react'
 import type { IssueStatus } from '@/lib/types'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
@@ -25,8 +25,10 @@ interface IssueRow {
   summary: string | null
   status: IssueStatus
   match_keywords: string[]
+  source: string
   created_at: string
   content_count?: number
+  content_preview?: string[]  // AI 후보용 미리보기 제목
 }
 
 interface IssueForm {
@@ -144,12 +146,20 @@ export default function IssueManager() {
   const [briefingId,  setBriefingId]  = useState<string | null>(null)
   const [briefMsg,    setBriefMsg]    = useState<{ id: string; text: string; ok: boolean } | null>(null)
 
+  // AI 이슈 후보 생성 상태
+  const [aiDays,       setAiDays]       = useState<'7' | '14'>('7')
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateMsg,  setGenerateMsg]  = useState<string | null>(null)
+
+  // 후보 빠른 상태전이
+  const [transitioningId, setTransitioningId] = useState<string | null>(null)
+
   // ── 초기 로드 ─────────────────────────────────────────────────────────────
 
   async function loadIssues() {
     const { data, error: err } = await supabase
       .from('issues')
-      .select('id, title, summary, status, match_keywords, created_at')
+      .select('id, title, summary, status, match_keywords, source, created_at')
       .order('created_at', { ascending: false })
 
     if (err) {
@@ -172,6 +182,30 @@ export default function IssueManager() {
         countMap.set(row.issue_id, (countMap.get(row.issue_id) ?? 0) + 1)
       }
       rows.forEach(r => { r.content_count = countMap.get(r.id) ?? 0 })
+
+      // AI 후보(source='claude' && status='draft') 콘텐츠 미리보기 제목
+      const aiCandidateIds = rows
+        .filter(r => r.source === 'claude' && r.status === 'draft')
+        .map(r => r.id)
+
+      if (aiCandidateIds.length > 0) {
+        const { data: previewData } = await supabase
+          .from('issue_contents')
+          .select('issue_id, contents!inner(id, title)')
+          .in('issue_id', aiCandidateIds)
+          .limit(aiCandidateIds.length * 4)
+
+        type PreviewRow = { issue_id: string; contents: { title: string } }
+        const previewMap = new Map<string, string[]>()
+        for (const row of (previewData ?? []) as unknown as PreviewRow[]) {
+          if (!previewMap.has(row.issue_id)) previewMap.set(row.issue_id, [])
+          const titles = previewMap.get(row.issue_id)!
+          if (titles.length < 3) titles.push(row.contents.title)
+        }
+        rows.forEach(r => {
+          if (previewMap.has(r.id)) r.content_preview = previewMap.get(r.id)
+        })
+      }
     }
 
     setIssues(rows)
@@ -187,6 +221,8 @@ export default function IssueManager() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 파생 목록 ─────────────────────────────────────────────────────────────
+
+  const aiCandidates = issues.filter(i => i.source === 'claude' && i.status === 'draft')
 
   const visibleIssues = issues.filter(issue => {
     if (filterStatus !== 'all' && issue.status !== filterStatus) return false
@@ -369,6 +405,49 @@ export default function IssueManager() {
     }
   }
 
+  // ── AI 이슈 후보 생성 ───────────────────────────────────────────────────
+
+  const handleGenerateCandidates = async () => {
+    setIsGenerating(true)
+    setGenerateMsg(null)
+    try {
+      const res = await fetch('/api/admin/issues/candidates/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: Number(aiDays) }),
+      })
+      const body = await res.json() as { created?: number; skipped?: number; error?: string }
+      if (!res.ok) {
+        setGenerateMsg(`오류: ${body.error ?? res.statusText}`)
+      } else {
+        setGenerateMsg(`${body.created ?? 0}개 생성 · ${body.skipped ?? 0}개 중복 skip`)
+        await loadIssues()
+      }
+    } catch (err) {
+      setGenerateMsg(`요청 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  // ── AI 후보 빠른 상태전이 ────────────────────────────────────────────────
+
+  const handleCandidateTransition = async (issue: IssueRow, nextStatus: IssueStatus) => {
+    setTransitioningId(issue.id)
+    try {
+      const { error: err } = await supabase
+        .from('issues')
+        .update({ status: nextStatus })
+        .eq('id', issue.id)
+      if (err) throw new Error(err.message)
+      await loadIssues()
+    } catch (err) {
+      setError(`상태 변경 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`)
+    } finally {
+      setTransitioningId(null)
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
@@ -379,6 +458,136 @@ export default function IssueManager() {
         <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-4 shrink-0 text-red-400 underline hover:text-red-600">닫기</button>
+        </div>
+      )}
+
+      {/* ── AI 이슈 후보 생성 패널 ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Sparkles className="h-4 w-4 text-brand-600" />
+            AI 이슈 후보 생성
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">기간</span>
+              <Select value={aiDays} onValueChange={(v) => setAiDays(v as '7' | '14')}>
+                <SelectTrigger className="h-8 w-24 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7일</SelectItem>
+                  <SelectItem value="14">14일</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { void handleGenerateCandidates() }}
+              disabled={isGenerating}
+            >
+              {isGenerating
+                ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />생성 중…</>
+                : <><Sparkles className="mr-1.5 h-4 w-4" />후보 생성</>
+              }
+            </Button>
+            {generateMsg && (
+              <span className="text-xs text-muted-foreground">{generateMsg}</span>
+            )}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            최근 {aiDays}일 콘텐츠의 주제 그룹을 분석해 draft 이슈 후보를 생성합니다. 기존 이슈와 중복은 자동 skip.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ── AI 후보(draft) 섹션 ── */}
+      {aiCandidates.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Sparkles className="h-4 w-4 text-brand-600" />
+            AI 후보 검토
+            <span className="rounded-full bg-brand-600/10 px-2 py-0.5 text-[11px] font-medium text-brand-600">
+              {aiCandidates.length}개
+            </span>
+          </h3>
+          <div className="space-y-2">
+            {aiCandidates.map(issue => (
+              <div
+                key={issue.id}
+                className="rounded-xl border border-brand-600/20 bg-card px-4 py-3.5 space-y-2"
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground leading-snug">{issue.title}</p>
+                    {issue.summary && (
+                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{issue.summary}</p>
+                    )}
+                    {issue.match_keywords.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {issue.match_keywords.slice(0, 5).map(kw => (
+                          <span key={kw} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {issue.content_preview && issue.content_preview.length > 0 && (
+                      <ul className="mt-2 space-y-0.5">
+                        {issue.content_preview.map((title, i) => (
+                          <li key={i} className="text-[11px] text-muted-foreground truncate">
+                            · {title}
+                          </li>
+                        ))}
+                        {(issue.content_count ?? 0) > (issue.content_preview.length) && (
+                          <li className="text-[11px] text-muted-foreground/60">
+                            외 {(issue.content_count ?? 0) - issue.content_preview.length}건
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => { void handleCandidateTransition(issue, 'published') }}
+                      disabled={transitioningId === issue.id}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+                      title="승인(발행)"
+                    >
+                      {transitioningId === issue.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <CheckCircle className="h-3.5 w-3.5" />
+                      }
+                      승인
+                    </button>
+                    <button
+                      onClick={() => { void handleCandidateTransition(issue, 'archived') }}
+                      disabled={transitioningId === issue.id}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+                      title="거절(보관)"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      거절
+                    </button>
+                    <button
+                      onClick={() => openEdit(issue)}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      title="편집"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      편집
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            💡 승인 후 목록에서 &lsquo;재배정&rsquo; 버튼으로 키워드 매칭 콘텐츠를 추가 배정할 수 있습니다.
+          </p>
         </div>
       )}
 
