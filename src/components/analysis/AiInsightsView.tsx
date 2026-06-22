@@ -2,7 +2,7 @@ import type React from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Quote, TrendingUp, Building2, Network, FileText } from 'lucide-react'
+import { TrendingUp, Building2, Network, FileText } from 'lucide-react'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
@@ -10,6 +10,12 @@ import type { EntityType } from '@/lib/types'
 import { tagTypeToBucket } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { KeywordItem } from '@/components/dashboard/KeywordMap'
+import LensSwitcher from '@/components/lens/LensSwitcher'
+import IssueBoardClient from '@/components/issues/IssueBoardClient'
+import InsightCardsSectionClient, {
+  type InsightGroup,
+  type ContentMetaRecord,
+} from '@/components/analysis/InsightCardsSectionClient'
 
 const WATCHLIST_LIMIT = 20
 
@@ -84,13 +90,6 @@ function SectionHeader({ icon, title, desc }: { icon: React.ReactNode; title: st
   )
 }
 
-function formatPeriod(start: string, end: string): string {
-  const s = new Date(start)
-  const e = new Date(end)
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
-  return `${fmt(s)} ~ ${fmt(e)}`
-}
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
@@ -290,11 +289,22 @@ export default async function AiInsightsView() {
     }
   }
 
-  const groups = new Map<string, InsightCard[]>()
+  const groupsMap = new Map<string, InsightCard[]>()
   for (const card of cards) {
     const key = `${card.period_start}|${card.period_end}`
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(card)
+    if (!groupsMap.has(key)) groupsMap.set(key, [])
+    groupsMap.get(key)!.push(card)
+  }
+
+  // 직렬화 가능 형태로 변환 (InsightCardsSectionClient props)
+  const insightGroups: InsightGroup[] = [...groupsMap.entries()].map(([key, groupCards]) => {
+    const [start, end] = key.split('|')
+    return { key, start, end, cards: groupCards }
+  })
+
+  const contentMapRecord: Record<string, ContentMetaRecord> = {}
+  for (const [id, meta] of contentMap.entries()) {
+    contentMapRecord[id] = meta
   }
 
   // ─── 이슈 ──────────────────────────────────────────────────────────────────
@@ -312,6 +322,9 @@ export default async function AiInsightsView() {
   return (
     <div className="space-y-10">
 
+      {/* 렌즈 스위처 */}
+      <LensSwitcher />
+
       {/* ① AI 인사이트 — 최상단 */}
       <section>
         <SectionHeader
@@ -319,138 +332,9 @@ export default async function AiInsightsView() {
           title="AI 인사이트"
           desc="이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점"
         />
-        {cards.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-12 text-center">
-            <p className="text-sm font-medium text-muted-foreground">AI 인사이트 생성 대기 중</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              어드민에서 인사이트 카드를 생성하면 이곳에 표시됩니다.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {[...groups.entries()].map(([key, groupCards], idx) => {
-              const [start, end] = key.split('|')
-              const isLatest = idx === 0
-              return (
-                <div key={key} className={cn(!isLatest && 'opacity-70')}>
-                  <div className="mb-3 flex items-center gap-3">
-                    <span className={cn(
-                      'text-sm font-medium',
-                      isLatest ? 'text-foreground' : 'text-muted-foreground'
-                    )}>
-                      {formatPeriod(start, end)}
-                    </span>
-                    {isLatest && (
-                      <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">최신</span>
-                    )}
-                    {!isLatest && (
-                      <span className="text-[11px] text-muted-foreground/60">이전 인사이트</span>
-                    )}
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {groupCards.map((card) => {
-                      const citations = card.citations as InsightCardCitation[]
-                      return (
-                        <article
-                          key={card.id}
-                          className="rounded-xl border border-border bg-card p-5 space-y-3"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
-                              {card.topic}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <Link
-                                href={`/dashboard/reports/new?type=시장동향&topic=${encodeURIComponent(card.topic ?? '')}`}
-                                className="rounded px-2 py-0.5 text-[11px] font-medium bg-brand-600/10 text-brand-600 hover:bg-brand-600/20 transition-colors"
-                              >
-                                보고서로 만들기
-                              </Link>
-                            </div>
-                          </div>
-
-                          <p className="text-base font-semibold text-foreground leading-snug">
-                            {card.headline}
-                          </p>
-
-                          {card.implication && (
-                            <div className="space-y-0.5">
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                                시사점
-                              </span>
-                              <p className="text-sm text-muted-foreground leading-relaxed">
-                                {card.implication}
-                              </p>
-                            </div>
-                          )}
-
-                          {citations.length > 0 ? (
-                            <div className="space-y-2 pt-1 border-t border-border">
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                                근거
-                              </span>
-                              <ul className="space-y-2">
-                                {citations.map((c, i) => {
-                                  const meta = contentMap.get(c.content_id)
-                                  return (
-                                    <li key={i} className="flex gap-2">
-                                      <Quote className="h-3 w-3 mt-0.5 shrink-0 text-brand-600/40" />
-                                      <div className="min-w-0">
-                                        <p className="text-xs text-muted-foreground italic leading-snug">
-                                          &ldquo;{c.quote}&rdquo;
-                                        </p>
-                                        {meta ? (
-                                          <Link
-                                            href={`/dashboard/contents/${c.content_id}`}
-                                            className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
-                                          >
-                                            {meta.title}
-                                          </Link>
-                                        ) : (
-                                          <span className="mt-0.5 block text-[11px] text-muted-foreground/60 truncate">
-                                            출처 비공개
-                                          </span>
-                                        )}
-                                      </div>
-                                    </li>
-                                  )
-                                })}
-                              </ul>
-                            </div>
-                          ) : card.source_content_ids.length > 0 ? (
-                            <div className="space-y-1.5 pt-1 border-t border-border">
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                                근거
-                              </span>
-                              <ul className="space-y-1">
-                                {card.source_content_ids.slice(0, 5).map((id) => {
-                                  const meta = contentMap.get(id)
-                                  return meta ? (
-                                    <li key={id}>
-                                      <Link
-                                        href={`/dashboard/contents/${id}`}
-                                        className="block text-xs text-brand-600 hover:underline truncate"
-                                      >
-                                        {meta.title}
-                                      </Link>
-                                    </li>
-                                  ) : null
-                                })}
-                              </ul>
-                            </div>
-                          ) : null}
-                        </article>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <InsightCardsSectionClient groups={insightGroups} contentMap={contentMapRecord} />
       </section>
+
 
       {/* ② 이번 주 뜨는 토픽 + 키워드 한 줄 */}
       <section>
@@ -516,72 +400,7 @@ export default async function AiInsightsView() {
           title="시장 주요 이슈"
           desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
         />
-        {issueCards.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            아직 등록된 이슈가 없습니다.
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {issueCards.map(card => {
-              const total14Days = card.recentCount + card.prevCount
-              const sentimentTotal = card.sentimentPos + card.sentimentNeg
-              return (
-                <div
-                  key={card.id}
-                  className="group flex flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/30 hover:bg-accent/40"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <Link
-                      href={`/dashboard/issues/${card.id}`}
-                      className="min-w-0"
-                    >
-                      <h3 className="text-xs font-semibold text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-2">
-                        {card.title}
-                      </h3>
-                    </Link>
-                    {card.changeFlag === 'worsening' && (
-                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                        ⚠ 논조 악화
-                      </span>
-                    )}
-                    {card.changeFlag === 'surge' && (
-                      <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
-                        <TrendingUp className="h-2.5 w-2.5" />
-                        {card.changePct === null ? '신규' : `+${card.changePct}%`}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-auto flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>
-                      7일 <span className="font-medium text-foreground">{card.recentCount}건</span>
-                      {total14Days > card.recentCount && (
-                        <span className="ml-1 opacity-60">/ 14일 {total14Days}</span>
-                      )}
-                    </span>
-                    {sentimentTotal > 0 && (
-                      <div className="flex items-center gap-1">
-                        {card.sentimentPos > 0 && (
-                          <span className="rounded px-1 py-0.5 bg-emerald-50 text-emerald-700">긍{card.sentimentPos}</span>
-                        )}
-                        {card.sentimentNeg > 0 && (
-                          <span className="rounded px-1 py-0.5 bg-red-50 text-red-600">부{card.sentimentNeg}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-border">
-                    <Link
-                      href={`/dashboard/reports/new?issue=${card.id}`}
-                      className="text-[11px] font-medium text-brand-600 hover:underline"
-                    >
-                      보고서로 만들기 →
-                    </Link>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
       </section>
 
       {/* ④ 경쟁사 동향 */}
