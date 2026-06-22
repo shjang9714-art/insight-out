@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { Network, List } from 'lucide-react'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import EntityBrowse from '@/components/entities/EntityBrowse'
 import LensSwitcher from '@/components/lens/LensSwitcher'
@@ -11,6 +12,7 @@ import {
   useActiveLens,
   matchesLens,
   lensScore,
+  LENS_PRESETS,
   type LensTarget,
 } from '@/lib/lens'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
@@ -57,7 +59,12 @@ function EntityLensBadge({ label }: { label: string }) {
 export default function EntitiesPageClient({ initialCenter, entities, allEntities, totalByType }: Props) {
   const [view, setView] = useState<ViewMode>('graph')
   const ctx = useLensContext()
-  const [activeLens] = useActiveLens()
+  const [activeLens, setActiveLens] = useActiveLens()
+
+  // 미설정 여부 판단
+  const hasSetting =
+    activeLens === 'mine'  ? ctx.serviceIds.length > 0 :
+    activeLens === 'watch' ? ctx.watchlist.length > 0  : true
 
   // 렌즈 적용된 엔티티 목록 (list 뷰용)
   const lensedEntities = useMemo(() => {
@@ -124,26 +131,59 @@ export default function EntitiesPageClient({ initialCenter, entities, allEntitie
         </div>
       </div>
 
-      {/* 렌즈 스위처 */}
+      {/* 보기 스위처 */}
       <div className="mb-4">
         <LensSwitcher />
       </div>
 
-      {/* 렌즈 결과 요약 (list 뷰에서 필터 활성 시) */}
-      {view === 'list' && activeLens !== 'all' && (
+      {/* 보기 결과 요약 (list 뷰에서 필터 활성 시) */}
+      {view === 'list' && activeLens !== 'all' && lensedEntities.length > 0 && (
         <div className="mb-3 flex items-center gap-2">
           <EntityLensBadge
-            label={activeLens === 'mine' ? '내 담당' : '경쟁사 워치'}
+            label={`${LENS_PRESETS[activeLens].label} · ${lensedEntities.length}개`}
           />
-          <span className="text-xs text-muted-foreground">
-            {lensedEntities.length}개 엔티티
-          </span>
+          <button
+            type="button"
+            onClick={() => setActiveLens('all')}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            전체 보기 →
+          </button>
         </div>
       )}
 
       {/* 뷰 전환 */}
       {view === 'graph' ? (
         <KnowledgeGraph initialCenter={initialCenter} entities={entities} />
+      ) : lensedEntities.length === 0 && activeLens !== 'all' ? (
+        <div className="rounded-lg border border-dashed p-16 text-center">
+          {!hasSetting ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+              </p>
+              <Link
+                href="/dashboard/mypage"
+                className="inline-block text-xs text-brand-600 hover:underline"
+              >
+                마이페이지에서 설정하기 →
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                설정하신 담당/관심 기업 관련 엔티티가 아직 없어요.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveLens('all')}
+                className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              >
+                전체 보기로 전환
+              </button>
+            </div>
+          )}
+        </div>
       ) : (
         <EntityBrowse
           entities={activeLens === 'all' ? allEntities : lensedEntities}

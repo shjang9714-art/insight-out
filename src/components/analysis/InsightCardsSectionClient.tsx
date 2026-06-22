@@ -9,6 +9,7 @@ import {
   useActiveLens,
   matchesLens,
   lensScore,
+  LENS_PRESETS,
   type LensTarget,
 } from '@/lib/lens'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
@@ -49,7 +50,7 @@ interface Props {
 
 export default function InsightCardsSectionClient({ groups, contentMap }: Props) {
   const ctx = useLensContext()
-  const [activeLens] = useActiveLens()
+  const [activeLens, setActiveLens] = useActiveLens()
   const [view, setView] = useState<InsightView>(() => {
     if (typeof window === 'undefined') return 'cardnews'
     try {
@@ -63,6 +64,11 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
     setView(v)
     try { localStorage.setItem(VIEW_KEY, v) } catch { /* noop */ }
   }
+
+  // 미설정 여부 판단
+  const hasSetting =
+    activeLens === 'mine'  ? ctx.serviceIds.length > 0 :
+    activeLens === 'watch' ? ctx.watchlist.length > 0  : true
 
   // 렌즈 필터/정렬 — 두 뷰 공유
   const visibleGroups = groups.map((g, idx) => {
@@ -81,6 +87,8 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
 
     return { ...g, displayedCards: displayed, isLatest: idx === 0 }
   }).filter(g => g.displayedCards.length > 0)
+
+  const totalCount = visibleGroups.reduce((sum, g) => sum + g.displayedCards.length, 0)
 
   // ─── 뷰 토글 ───────────────────────────────────────────────────────────────
   const toggle = (
@@ -125,6 +133,9 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
           visibleGroups={visibleGroups}
           contentMap={contentMap}
           activeLens={activeLens}
+          hasSetting={hasSetting}
+          totalCount={totalCount}
+          onResetLens={() => setActiveLens('all')}
         />
       </div>
     )
@@ -143,8 +154,31 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                 어드민에서 인사이트 카드를 생성하면 이곳에 표시됩니다.
               </p>
             </>
+          ) : !hasSetting ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+              </p>
+              <Link
+                href="/dashboard/mypage"
+                className="inline-block text-xs text-brand-600 hover:underline"
+              >
+                마이페이지에서 설정하기 →
+              </Link>
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground">현재 렌즈 조건에 해당하는 인사이트가 없습니다.</p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                설정하신 담당/관심 기업 관련 인사이트가 아직 없어요.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveLens('all')}
+                className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              >
+                전체 보기로 전환
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -154,6 +188,23 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
   return (
     <div>
       {toggle}
+
+      {/* 보기 결과 요약 */}
+      {activeLens !== 'all' && (
+        <div className="mb-4 flex items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-medium text-brand-600">
+            {LENS_PRESETS[activeLens].label} · {totalCount}건
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveLens('all')}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            전체 보기 →
+          </button>
+        </div>
+      )}
+
       <div className="space-y-8">
         {visibleGroups.map(({ key, start, end, displayedCards, isLatest }) => (
           <div key={key} className={cn(!isLatest && 'opacity-70')}>
@@ -191,7 +242,7 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                       <div className="flex items-center gap-1.5">
                         {matched && (
                           <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-brand-600/10 text-brand-600">
-                            내 관련
+                            관심 표시
                           </span>
                         )}
                         <Link

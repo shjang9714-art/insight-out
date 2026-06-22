@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   useLensContext,
@@ -16,28 +17,25 @@ export default function LensSwitcher() {
   const hasMine  = ctx.serviceIds.length > 0
   const hasWatch = ctx.watchlist.length > 0
 
-  const chips: { key: LensKey; disabled: boolean; hint?: string }[] = [
-    {
-      key: 'mine',
-      disabled: !hasMine,
-      hint: hasMine ? undefined : '마이페이지에서 담당 서비스를 설정하세요',
-    },
-    {
-      key: 'watch',
-      disabled: !hasWatch,
-      hint: hasWatch ? undefined : '마이페이지에서 관심 기업을 등록하세요',
-    },
-    { key: 'all', disabled: false },
+  const chips: { key: LensKey; disabled: boolean }[] = [
+    { key: 'mine',  disabled: !hasMine  },
+    { key: 'watch', disabled: !hasWatch },
+    { key: 'all',   disabled: false     },
   ]
 
+  const bothDisabled = !hasMine && !hasWatch
+  const showMineHint  = !hasMine && !bothDisabled
+  const showWatchHint = !hasWatch && !bothDisabled
+
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="shrink-0 text-[11px] text-muted-foreground/70 mr-0.5">렌즈</span>
-      {chips.map(({ key, disabled, hint }) => {
-        const active = activeLens === key
-        return (
-          <div key={key} className="relative group">
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="shrink-0 text-[11px] text-muted-foreground/70 mr-0.5">보기</span>
+        {chips.map(({ key, disabled }) => {
+          const active = activeLens === key
+          return (
             <button
+              key={key}
               type="button"
               disabled={disabled}
               onClick={() => { if (!disabled) setActiveLens(key) }}
@@ -52,21 +50,47 @@ export default function LensSwitcher() {
             >
               {LENS_PRESETS[key].label}
             </button>
+          )
+        })}
 
-            {/* 비활성 툴팁 + 마이페이지 링크 */}
-            {disabled && hint && (
-              <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-2 text-[11px] text-muted-foreground shadow-md group-hover:block">
-                <Link
-                  href="/dashboard/mypage"
-                  className="pointer-events-auto text-brand-600 hover:underline"
-                >
-                  {hint}
-                </Link>
-              </div>
-            )}
-          </div>
-        )
-      })}
+        {/* 빠른 해제 — 전체로 ✕ */}
+        {activeLens !== 'all' && (
+          <button
+            type="button"
+            onClick={() => setActiveLens('all')}
+            className="inline-flex items-center gap-0.5 rounded-full border border-brand-600/40 bg-brand-600/5 px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-600/10 transition-colors"
+          >
+            전체로
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+
+      {/* 미설정 안내 */}
+      {bothDisabled && (
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">
+            마이페이지
+          </Link>
+          에서 담당 서비스·관심 기업을 설정하면 맞춤 보기를 사용할 수 있어요.
+        </p>
+      )}
+      {showMineHint && (
+        <p className="text-[11px] text-muted-foreground">
+          담당 서비스를 설정하면 내 담당만 모아볼 수 있어요.{' '}
+          <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">
+            마이페이지 →
+          </Link>
+        </p>
+      )}
+      {showWatchHint && (
+        <p className="text-[11px] text-muted-foreground">
+          관심 기업을 등록하면 해당 소식만 모아볼 수 있어요.{' '}
+          <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">
+            마이페이지 →
+          </Link>
+        </p>
+      )}
     </div>
   )
 }

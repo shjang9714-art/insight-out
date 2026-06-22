@@ -696,7 +696,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         {activeLens !== 'all' && (
           <span className="flex items-center gap-1.5 rounded-full border border-brand-600/30 bg-brand-600/10 px-3 py-1 text-xs font-medium text-brand-600">
             <span className="inline-block h-2 w-2 rounded-full border-2 border-brand-600" />
-            내 관점 하이라이트
+            관심 기업 표시
           </span>
         )}
       </div>

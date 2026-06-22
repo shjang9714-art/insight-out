@@ -8,6 +8,7 @@ import {
   useActiveLens,
   matchesLens,
   lensScore,
+  LENS_PRESETS,
   type LensTarget,
 } from '@/lib/lens'
 import LensSwitcher from '@/components/lens/LensSwitcher'
@@ -34,7 +35,7 @@ interface Props {
 
 export default function IssueBoardClient({ cards, showLensSwitcher = true }: Props) {
   const ctx = useLensContext()
-  const [activeLens] = useActiveLens()
+  const [activeLens, setActiveLens] = useActiveLens()
 
   const withLens = cards.map(card => {
     const target: LensTarget = { names: [card.title] }
@@ -53,6 +54,11 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
     ? displayed
     : [...withLens].sort((a, b) => b.score - a.score)
 
+  // 빈 결과 사유 판단
+  const isMisconfigured =
+    (activeLens === 'mine'  && ctx.serviceIds.length === 0) ||
+    (activeLens === 'watch' && ctx.watchlist.length === 0)
+
   return (
     <div>
       {showLensSwitcher && (
@@ -61,18 +67,59 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
         </div>
       )}
 
-      <div className="mb-6">
+      <div className="mb-4">
         <p className="text-sm text-muted-foreground">
           시장 주요 이슈를 추적합니다.
           {cards.length > 0 && ` ${cards.length}개 이슈 모니터링 중`}
         </p>
       </div>
 
+      {/* 보기 결과 요약 */}
+      {activeLens !== 'all' && sorted.length > 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-medium text-brand-600">
+            {LENS_PRESETS[activeLens].label} · {sorted.length}건
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveLens('all')}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            전체 보기 →
+          </button>
+        </div>
+      )}
+
       {sorted.length === 0 && (
-        <div className="rounded-lg border border-dashed p-16 text-center text-sm text-muted-foreground">
-          {activeLens === 'all'
-            ? '아직 등록된 이슈가 없습니다.'
-            : '현재 렌즈 조건에 해당하는 이슈가 없습니다.'}
+        <div className="rounded-lg border border-dashed p-16 text-center">
+          {activeLens === 'all' ? (
+            <p className="text-sm text-muted-foreground">아직 등록된 이슈가 없습니다.</p>
+          ) : isMisconfigured ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+              </p>
+              <Link
+                href="/dashboard/mypage"
+                className="inline-block text-xs text-brand-600 hover:underline"
+              >
+                마이페이지에서 설정하기 →
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                설정하신 담당/관심 기업 관련 이슈가 아직 없어요.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveLens('all')}
+                className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              >
+                전체 보기로 전환
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -82,8 +129,8 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
             const total14Days = card.recentCount + card.prevCount
             const sentimentTotal = card.sentimentPos + card.sentimentNeg
             const lensLabel =
-              activeLens === 'mine'  ? '내 관련' :
-              activeLens === 'watch' ? '관심'    : null
+              activeLens === 'mine'  ? '내 담당' :
+              activeLens === 'watch' ? '관심 기업' : null
 
             return (
               <Link

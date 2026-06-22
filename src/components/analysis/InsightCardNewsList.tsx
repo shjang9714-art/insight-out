@@ -48,7 +48,7 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
         </span>
         {matched && (
           <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-brand-600/10 text-brand-600">
-            내 관련
+            관심 표시
           </span>
         )}
       </div>
@@ -186,9 +186,19 @@ interface Props {
   visibleGroups: VisibleGroup[]
   contentMap: Record<string, ContentMetaRecord>
   activeLens: string
+  hasSetting: boolean
+  totalCount: number
+  onResetLens: () => void
 }
 
-export default function InsightCardNewsList({ visibleGroups, contentMap, activeLens }: Props) {
+export default function InsightCardNewsList({
+  visibleGroups,
+  contentMap,
+  activeLens,
+  hasSetting,
+  totalCount,
+  onResetLens,
+}: Props) {
   if (visibleGroups.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-12 text-center">
@@ -199,8 +209,31 @@ export default function InsightCardNewsList({ visibleGroups, contentMap, activeL
               어드민에서 인사이트 카드를 생성하면 이곳에 표시됩니다.
             </p>
           </>
+        ) : !hasSetting ? (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+            </p>
+            <Link
+              href="/dashboard/mypage"
+              className="inline-block text-xs text-brand-600 hover:underline"
+            >
+              마이페이지에서 설정하기 →
+            </Link>
+          </div>
         ) : (
-          <p className="text-sm text-muted-foreground">현재 렌즈 조건에 해당하는 인사이트가 없습니다.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              설정하신 담당/관심 기업 관련 인사이트가 아직 없어요.
+            </p>
+            <button
+              type="button"
+              onClick={onResetLens}
+              className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+            >
+              전체 보기로 전환
+            </button>
+          </div>
         )}
       </div>
     )
@@ -208,6 +241,22 @@ export default function InsightCardNewsList({ visibleGroups, contentMap, activeL
 
   return (
     <div className="space-y-8">
+      {/* 보기 결과 요약 */}
+      {activeLens !== 'all' && (
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-medium text-brand-600">
+            {activeLens === 'mine' ? '내 담당' : '관심 기업'} · {totalCount}건
+          </span>
+          <button
+            type="button"
+            onClick={onResetLens}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            전체 보기 →
+          </button>
+        </div>
+      )}
+
       {visibleGroups.map(({ key, start, end, displayedCards, isLatest }) => (
         <div key={key} className={cn(!isLatest && 'opacity-70')}>
           <div className="mb-4 flex items-center gap-3">
