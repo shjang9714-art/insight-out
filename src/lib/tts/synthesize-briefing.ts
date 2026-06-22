@@ -58,7 +58,9 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
 
   const script = briefing.script.trim()
   const period = getKstPeriod()
-  const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 3_500_000)
+  // 기본 보이스가 WaveNet(ko-KR-Wavenet-C)이라 무료 한도는 100만 자/월. 보수적으로 90만.
+  // (Vercel 에 TTS_MONTHLY_CHAR_CAP 미설정 시 이 값이 가드로 작동.)
+  const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 900_000)
 
   // 2. 캡 체크 (합성 전)
   const { data: usageRows, error: usageError } = await admin
