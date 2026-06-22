@@ -48,7 +48,25 @@ export const BRIEFING_BLOCKLIST: string[] = [
   ...TELECOM_B2C_KEYWORDS,
 ]
 
+/**
+ * 시황·주가 칼럼 마커 — 모닝브리핑은 산업 알맹이(기술·딜·전략·정책)만 다룬다.
+ * 주가·시총·증시 등락 중심 기사는 사실상 투자자用이라 브리핑 후보에서 제외.
+ * 제목 기준(시황 칼럼은 제목에 신호가 뚜렷). 본문/요약은 보지 않아 과필터를 막는다.
+ */
+const STOCK_COLUMN_MARKERS = [
+  '시총', '시가총액', '코스피', '코스닥', '증시', '시황',
+  '급등', '급락', '상한가', '하한가', '목표주가', '관련주', '테마주',
+  '특징주', '신고가', '신저가', '52주', '주가', "dd's톡",
+]
+
+/** 제목이 시황·주가 칼럼이면 true (브리핑 후보 제외용). */
+export function isStockMarketHeavy(title: string): boolean {
+  const t = (title ?? '').toLowerCase()
+  return STOCK_COLUMN_MARKERS.some((kw) => t.includes(kw))
+}
+
 export function isBriefingRelevant(title: string, summaryKo: string | null): boolean {
+  if (isStockMarketHeavy(title)) return false
   const text = (title + ' ' + (summaryKo ?? '')).toLowerCase()
   return !BRIEFING_BLOCKLIST.some((kw) => text.includes(kw.toLowerCase()))
 }
