@@ -3,10 +3,18 @@
 import { useCallback, useRef, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ChevronLeft, Search } from 'lucide-react'
+import { RotateCcw, Search, Undo2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
+import {
+  useLensContext,
+  useActiveLens,
+  matchesLens,
+  type LensTarget,
+  type LensKey,
+  type LensContext,
+} from '@/lib/lens'
 import type { ForceGraphMethods } from 'react-force-graph-2d'
 
 // canvas 기반 — SSR 금지
@@ -29,7 +37,7 @@ interface EgoNode {
   val: number
   isCompetitor: boolean
   mentionCount: number
-  isCenter: boolean
+  isCenter: boolean  // root 노드
 }
 
 interface EgoLink {
@@ -45,11 +53,18 @@ interface PairContent {
 }
 
 interface EdgeTooltip {
-  forCenterId: string   // 어느 중심일 때의 툴팁인지 (centerId 바뀌면 무효화)
-  neighborId: string
-  neighborName: string
+  forLoadedKey: string  // loadedKey 바뀌면 자동 무효화
+  pairKey: string
+  nameA: string
+  nameB: string
   contents: PairContent[]
   loading: boolean
+}
+
+interface ExpStackEntry {
+  nodeId: string
+  addedNodeIds: string[]
+  addedLinkKeys: string[]
 }
 
 interface Props {
@@ -57,8 +72,11 @@ interface Props {
   entities: EntitySummary[]
 }
 
-// ─── 색상 (canvas는 CSS 변수 불가 → hex) ──────────────────────────────────────
+// ─── 상수 ─────────────────────────────────────────────────────────────────────
 
+const MAX_NODES = 60
+
+// canvas 기반 — CSS 변수 불가 → hex 예외 (AGENTS.md §1-9 참고, 이 파일 canvas 한정)
 const TYPE_COLOR: Record<EntityType, string> = {
   company:  '#E6007E',
   tech:     '#3B82F6',
@@ -67,16 +85,18 @@ const TYPE_COLOR: Record<EntityType, string> = {
   policy:   '#F59E0B',
   industry: '#9CA3AF',
 }
-
 const COMPETITOR_COLOR = '#EF4444'
 const LINK_COLOR       = 'rgba(150,150,150,0.35)'
 const LINK_COLOR_HI    = 'rgba(99,102,241,0.7)'
+const LENS_RING_COLOR  = '#E6007E'  // canvas 렌즈 링 (canvas hex 예외)
 
 const TYPE_ENTRIES = (Object.keys(ENTITY_TYPE_LABEL) as EntityType[]).map((t) => ({
   type: t,
   label: ENTITY_TYPE_LABEL[t],
   color: TYPE_COLOR[t],
 }))
+
+// ─── 유틸 ─────────────────────────────────────────────────────────────────────
 
 function nodeColor(node: EgoNode): string {
   if (node.type === 'company' && node.isCompetitor) return COMPETITOR_COLOR
@@ -97,9 +117,19 @@ function entityToNode(e: EntitySummary, isCenter: boolean): EgoNode {
   }
 }
 
-// 최근성 가중치로 weight 범위가 커질 수 있어 로그 스케일로 두께 정규화
 function linkWidthFromWeight(weight: number): number {
   return Math.max(0.5, Math.min(5, Math.log2(weight + 1) * 0.9))
+}
+
+function mkLinkKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`
+}
+
+function getLinkEndId(end: unknown): string {
+  if (typeof end === 'object' && end !== null) {
+    return String((end as Record<string, unknown>).id ?? '')
+  }
+  return String(end ?? '')
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
@@ -110,18 +140,40 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 520 })
 
-  // ego 상태
-  const [centerId, setCenterId] = useState<string | null>(initialCenter?.id ?? null)
-  const [history, setHistory] = useState<string[]>([])
-  const [graphState, setGraphState] = useState<{
-    forId: string | null
-    nodes: EgoNode[]
-    links: EgoLink[]
-    noNeighbors: boolean
-    rpcError: boolean
-  }>({ forId: null, nodes: [], links: [], noNeighbors: false, rpcError: false })
+  // 렌즈 (canvas 콜백은 RAF 루프에서 실행 → ref로 최신값 전달)
+  const [activeLens] = useActiveLens()
+  const lensCtx = useLensContext()
+  const activeLensRef = useRef<LensKey>(activeLens)
+  const lensCtxRef = useRef<LensContext>(lensCtx)
+  useEffect(() => { activeLensRef.current = activeLens }, [activeLens])
+  useEffect(() => { lensCtxRef.current = lensCtx }, [lensCtx])
 
-  const isLoading = centerId !== null && centerId !== graphState.forId && !graphState.rpcError
+  // ego 루트
+  const [rootId, setRootId] = useState<string | null>(initialCenter?.id ?? null)
+  const [resetKey, setResetKey] = useState(0)
+  const resetKeyRef = useRef(0)
+
+  // 그래프 데이터 상태 (init effect에서 async callback 안에서만 set)
+  const [loadedKey, setLoadedKey] = useState<string>('')
+  type LoadStatus = 'loaded' | 'rpc-error' | 'no-neighbors'
+  const [loadStatus, setLoadStatus] = useState<LoadStatus>('loaded')
+  const [nodes, setNodes] = useState<EgoNode[]>([])
+  const [links, setLinks] = useState<EgoLink[]>([])
+  const [expandStack, setExpandStack] = useState<ExpStackEntry[]>([])
+
+  // 확장 로딩 / 상한 경고 (이벤트 핸들러·async에서만 set)
+  const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null)
+  const [maxNodesReachedKey, setMaxNodesReachedKey] = useState<string>('')
+
+  // async 콜백용 refs (stale closure 방지)
+  const nodesRef         = useRef<EgoNode[]>([])
+  const linksRef         = useRef<EgoLink[]>([])
+  const linkKeysRef      = useRef<Set<string>>(new Set())
+  const nodeIdsRef       = useRef<Set<string>>(new Set())
+  const expandedIdsRef   = useRef<Set<string>>(new Set())
+  const expandStackRef   = useRef<ExpStackEntry[]>([])
+  const loadingNodeIdRef = useRef<string | null>(null)
+  const loadedKeyRef     = useRef<string>('')
 
   // 타입 필터
   const [hiddenTypes, setHiddenTypes] = useState<Set<EntityType>>(new Set())
@@ -130,12 +182,19 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDrop, setShowSearchDrop] = useState(false)
 
-  // 엣지 호버 툴팁 (forCenterId !== centerId이면 무효 = 렌더에서 null 처리)
+  // 엣지 툴팁 (forLoadedKey !== loadedKey이면 자동 무효화)
   const [edgeTooltip, setEdgeTooltip] = useState<EdgeTooltip | null>(null)
-  const activeTooltip = edgeTooltip?.forCenterId === centerId ? edgeTooltip : null
-  const pairCacheRef = useRef<Map<string, PairContent[]>>(new Map())
+  const pairCacheRef     = useRef<Map<string, PairContent[]>>(new Map())
   const hoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hoveredLinkRef = useRef<string | null>(null)
+  const hoveredLinkRef   = useRef<string | null>(null)
+
+  // 파생값 (동기 setState 없이 도출)
+  const expectedKey   = rootId ? `${rootId}:${resetKey}` : ''
+  const isInitLoading = expectedKey !== '' && loadedKey !== expectedKey
+  const rpcError      = loadedKey === expectedKey && loadStatus === 'rpc-error'
+  const initNoNeighbors = loadedKey === expectedKey && loadStatus === 'no-neighbors'
+  const activeTooltip = edgeTooltip?.forLoadedKey === loadedKey ? edgeTooltip : null
+  const maxNodesReached = maxNodesReachedKey === loadedKey && loadedKey !== ''
 
   // ResizeObserver
   useEffect(() => {
@@ -149,43 +208,58 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     return () => ro.disconnect()
   }, [])
 
-  const centerEntity = centerId
-    ? (entities.find((e) => e.id === centerId) ?? null)
-    : null
+  // ── 초기/리셋 로드 (동기 setState 없음) ───────────────────────────────────
 
-  // 중심 바뀌면 캐시 초기화 (툴팁은 forCenterId 비교로 자동 무효화)
   useEffect(() => {
+    if (!rootId) return
+
+    // refs 초기화 (setState 없음 — loading overlay로 stale UI 가림)
+    nodesRef.current = []
+    linksRef.current = []
+    linkKeysRef.current = new Set()
+    nodeIdsRef.current = new Set()
+    expandedIdsRef.current = new Set()
+    expandStackRef.current = []
+    loadingNodeIdRef.current = null
     pairCacheRef.current.clear()
     hoveredLinkRef.current = null
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [centerId])
 
-  // 이웃 로드 (동기 setState 없음 — React Compiler 호환)
-  useEffect(() => {
-    if (!centerId) return
+    const thisKey = `${rootId}:${resetKey}`
     let cancelled = false
     const supabase = createClient()
-    const loadingFor = centerId
 
     supabase
-      .rpc('entity_neighbors', { p_entity_id: loadingFor, p_limit: 20, p_min_weight: 1 })
+      .rpc('entity_neighbors', { p_entity_id: rootId, p_limit: 20, p_min_weight: 1 })
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) {
-          setGraphState({ forId: loadingFor, nodes: [], links: [], noNeighbors: false, rpcError: true })
+          loadedKeyRef.current = thisKey
+          setNodes([])
+          setLinks([])
+          setExpandStack([])
+          setLoadStatus('rpc-error')
+          setLoadedKey(thisKey)
           return
         }
 
         const rows = (data ?? []) as { entity_id: string; weight: number }[]
+        const rootEnt = entities.find((e) => e.id === rootId)
+        const rootNode = rootEnt ? entityToNode(rootEnt, true) : null
+
         if (rows.length === 0) {
-          const center = entities.find((e) => e.id === loadingFor)
-          setGraphState({
-            forId: loadingFor,
-            nodes: center ? [entityToNode(center, true)] : [],
-            links: [],
-            noNeighbors: true,
-            rpcError: false,
-          })
+          if (rootNode) {
+            nodesRef.current = [rootNode]
+            nodeIdsRef.current = new Set([rootId])
+          }
+          const initEntry: ExpStackEntry = { nodeId: rootId, addedNodeIds: rootNode ? [rootId] : [], addedLinkKeys: [] }
+          expandedIdsRef.current = new Set([rootId])
+          expandStackRef.current = [initEntry]
+          loadedKeyRef.current = thisKey
+          setNodes(rootNode ? [rootNode] : [])
+          setLinks([])
+          setExpandStack([initEntry])
+          setLoadStatus('no-neighbors')
+          setLoadedKey(thisKey)
           return
         }
 
@@ -199,99 +273,266 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             const neighborMap = new Map(
               ((nData ?? []) as EntitySummary[]).map((e) => [e.id, e])
             )
-            const centerEnt = entities.find((e) => e.id === loadingFor)
-            const nodes: EgoNode[] = centerEnt ? [entityToNode(centerEnt, true)] : []
-            const links: EgoLink[] = []
+            const newNodes: EgoNode[] = rootNode ? [rootNode] : []
+            const newLinks: EgoLink[] = []
+            const newLinkKeys = new Set<string>()
+            const addedNodeIds: string[] = rootNode ? [rootId] : []
+            const addedLinkKeys: string[] = []
+
+            if (rootNode) nodeIdsRef.current.add(rootId)
+
             for (const row of rows) {
               const neighbor = neighborMap.get(row.entity_id)
               if (!neighbor) continue
-              nodes.push(entityToNode(neighbor, false))
-              links.push({ source: loadingFor, target: row.entity_id, weight: row.weight })
+              newNodes.push(entityToNode(neighbor, false))
+              nodeIdsRef.current.add(row.entity_id)
+              addedNodeIds.push(row.entity_id)
+              const lk = mkLinkKey(rootId, row.entity_id)
+              if (!newLinkKeys.has(lk)) {
+                newLinkKeys.add(lk)
+                newLinks.push({ source: rootId, target: row.entity_id, weight: row.weight })
+                addedLinkKeys.push(lk)
+              }
             }
-            setGraphState({ forId: loadingFor, nodes, links, noNeighbors: false, rpcError: false })
+
+            const initEntry: ExpStackEntry = { nodeId: rootId, addedNodeIds, addedLinkKeys }
+            nodesRef.current = newNodes
+            linksRef.current = newLinks
+            linkKeysRef.current = newLinkKeys
+            expandedIdsRef.current = new Set([rootId])
+            expandStackRef.current = [initEntry]
+            loadedKeyRef.current = thisKey
+
+            setNodes(newNodes)
+            setLinks(newLinks)
+            setExpandStack([initEntry])
+            setLoadStatus('loaded')
+            setLoadedKey(thisKey)
           })
       })
 
     return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [centerId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootId, resetKey])
 
-  // 필터 적용
-  const visibleNodes = graphState.nodes.filter((n) => !hiddenTypes.has(n.type) || n.isCenter)
-  const visibleIds = new Set(visibleNodes.map((n) => n.id))
-  const visibleLinks = graphState.links.filter(
-    (l) => visibleIds.has(String(l.source)) && visibleIds.has(String(l.target))
-  )
+  // ── 노드 확장 ──────────────────────────────────────────────────────────────
 
-  // 엣지 호버 핸들러 (디바운스 200ms + 캐시)
-  const handleLinkHover = useCallback((
-    link: { source?: unknown; target?: unknown } | null,
-    _prevLink: { source?: unknown; target?: unknown } | null,
-  ) => {
-    if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+  const expandNode = useCallback(async (nodeId: string) => {
+    if (expandedIdsRef.current.has(nodeId)) return
+    if (loadingNodeIdRef.current) return
 
-    if (!link || !centerId) {
-      hoveredLinkRef.current = null
-      hoverDebounceRef.current = setTimeout(() => {
-        setEdgeTooltip((prev) => prev && prev.forCenterId !== centerId ? null : prev?.neighborId === hoveredLinkRef.current ? prev : null)
-      }, 80)
+    if (nodesRef.current.length >= MAX_NODES) {
+      setMaxNodesReachedKey(loadedKeyRef.current)
       return
     }
 
-    const srcId = String(typeof link.source === 'object' && link.source !== null
-      ? (link.source as { id?: string }).id : link.source)
-    const tgtId = String(typeof link.target === 'object' && link.target !== null
-      ? (link.target as { id?: string }).id : link.target)
-    const neighborId = srcId === centerId ? tgtId : srcId
-    if (neighborId === centerId) return
-    if (hoveredLinkRef.current === neighborId) return
-    hoveredLinkRef.current = neighborId
+    const capturedResetKey = resetKeyRef.current
+    loadingNodeIdRef.current = nodeId
+    setLoadingNodeId(nodeId)
 
-    const neighbor = graphState.nodes.find((n) => n.id === neighborId)
-    const neighborName = neighbor?.label ?? ''
-    const currentCenterId = centerId
-
-    const cached = pairCacheRef.current.get(neighborId)
-    if (cached) {
-      setEdgeTooltip({ forCenterId: currentCenterId, neighborId, neighborName, contents: cached, loading: false })
-      return
-    }
-
-    setEdgeTooltip({ forCenterId: currentCenterId, neighborId, neighborName, contents: [], loading: true })
-
-    hoverDebounceRef.current = setTimeout(() => {
-      if (hoveredLinkRef.current !== neighborId) return
+    try {
       const supabase = createClient()
-      supabase
-        .rpc('entity_pair_contents', { p_a: currentCenterId, p_b: neighborId, p_limit: 5 })
-        .then(({ data }) => {
-          if (hoveredLinkRef.current !== neighborId) return
-          const rows = (data ?? []) as PairContent[]
-          pairCacheRef.current.set(neighborId, rows)
-          setEdgeTooltip({ forCenterId: currentCenterId, neighborId, neighborName, contents: rows, loading: false })
-        })
-    }, 200)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [centerId, graphState.nodes])
+      const { data, error } = await supabase.rpc('entity_neighbors', {
+        p_entity_id: nodeId,
+        p_limit: 12,
+        p_min_weight: 1,
+      })
 
-  // 노드 클릭 — 이웃 → 재중심
+      if (resetKeyRef.current !== capturedResetKey) return
+      if (error || !data) return
+
+      const rows = (data as { entity_id: string; weight: number }[])
+      const newNeighborIds = rows.map((r) => r.entity_id).filter((id) => !nodeIdsRef.current.has(id))
+
+      if (nodesRef.current.length + newNeighborIds.length > MAX_NODES) {
+        setMaxNodesReachedKey(loadedKeyRef.current)
+        return
+      }
+
+      const allNeighborIds = rows.map((r) => r.entity_id)
+      const { data: nData } = allNeighborIds.length > 0
+        ? await supabase
+            .from('entities')
+            .select('id, canonical_name, entity_type, is_competitor, mention_count')
+            .in('id', allNeighborIds)
+        : { data: [] as EntitySummary[] }
+
+      if (resetKeyRef.current !== capturedResetKey) return
+
+      const neighborMap = new Map(
+        ((nData ?? []) as EntitySummary[]).map((e) => [e.id, e])
+      )
+
+      const addedNodeIds: string[] = []
+      const addedLinkKeys: string[] = []
+      const newNodes = [...nodesRef.current]
+      const newLinks = [...linksRef.current]
+      const newLinkKeys = new Set(linkKeysRef.current)
+      const newNodeIds = new Set(nodeIdsRef.current)
+
+      for (const row of rows) {
+        const lk = mkLinkKey(nodeId, row.entity_id)
+        if (!newLinkKeys.has(lk)) {
+          newLinkKeys.add(lk)
+          newLinks.push({ source: nodeId, target: row.entity_id, weight: row.weight })
+          addedLinkKeys.push(lk)
+        } else {
+          const existIdx = newLinks.findIndex(
+            (l) => mkLinkKey(getLinkEndId(l.source), getLinkEndId(l.target)) === lk
+          )
+          if (existIdx >= 0 && row.weight > (newLinks[existIdx].weight ?? 0)) {
+            newLinks[existIdx] = { ...newLinks[existIdx], weight: row.weight }
+          }
+        }
+
+        if (!newNodeIds.has(row.entity_id)) {
+          const neighbor = neighborMap.get(row.entity_id)
+          if (neighbor) {
+            newNodes.push(entityToNode(neighbor, false))
+            newNodeIds.add(row.entity_id)
+            addedNodeIds.push(row.entity_id)
+          }
+        }
+      }
+
+      const newExpandedIds = new Set(expandedIdsRef.current)
+      newExpandedIds.add(nodeId)
+      const newEntry: ExpStackEntry = { nodeId, addedNodeIds, addedLinkKeys }
+      const newStack = [...expandStackRef.current, newEntry]
+
+      nodesRef.current = newNodes
+      linksRef.current = newLinks
+      linkKeysRef.current = newLinkKeys
+      nodeIdsRef.current = newNodeIds
+      expandedIdsRef.current = newExpandedIds
+      expandStackRef.current = newStack
+
+      setNodes(newNodes)
+      setLinks(newLinks)
+      setExpandStack(newStack)
+    } finally {
+      if (resetKeyRef.current === capturedResetKey) {
+        loadingNodeIdRef.current = null
+        setLoadingNodeId(null)
+      }
+    }
+  }, [])
+
+  // ── 한 단계 취소 ───────────────────────────────────────────────────────────
+
+  const handleUndo = () => {
+    if (expandStackRef.current.length <= 1) return
+
+    const last = expandStackRef.current[expandStackRef.current.length - 1]
+    const newStack = expandStackRef.current.slice(0, -1)
+
+    const removedNodeIds = new Set(last.addedNodeIds)
+    const removedLinkKeys = new Set(last.addedLinkKeys)
+
+    const newNodes = nodesRef.current.filter((n) => !removedNodeIds.has(n.id))
+    const newLinks = linksRef.current.filter(
+      (l) => !removedLinkKeys.has(mkLinkKey(getLinkEndId(l.source), getLinkEndId(l.target)))
+    )
+    const newLinkKeys = new Set([...linkKeysRef.current].filter((k) => !removedLinkKeys.has(k)))
+    const newNodeIds  = new Set([...nodeIdsRef.current].filter((id) => !removedNodeIds.has(id)))
+    const newExpandedIds = new Set(expandedIdsRef.current)
+    newExpandedIds.delete(last.nodeId)
+
+    nodesRef.current = newNodes
+    linksRef.current = newLinks
+    linkKeysRef.current = newLinkKeys
+    nodeIdsRef.current = newNodeIds
+    expandedIdsRef.current = newExpandedIds
+    expandStackRef.current = newStack
+
+    setNodes(newNodes)
+    setLinks(newLinks)
+    setExpandStack(newStack)
+    setMaxNodesReachedKey('')
+  }
+
+  // ── 초기화 / 새 중심 ───────────────────────────────────────────────────────
+
+  const handleReset = () => {
+    setResetKey((k) => {
+      const next = k + 1
+      resetKeyRef.current = next
+      return next
+    })
+  }
+
+  const selectCenter = (id: string) => {
+    setRootId(id)
+    setResetKey((k) => {
+      const next = k + 1
+      resetKeyRef.current = next
+      return next
+    })
+    setSearchQuery('')
+    setShowSearchDrop(false)
+  }
+
+  // ── 노드 클릭 ──────────────────────────────────────────────────────────────
+
   const handleNodeClick = useCallback((node: { id?: string | number }) => {
     const id = String(node.id)
-    if (id === centerId) return
-    setHistory((prev) => centerId ? [...prev, centerId] : prev)
-    setCenterId(id)
-  }, [centerId])
-
-  const handleBackClick = () => {
-    if (history.length === 0) return
-    const prev = history[history.length - 1]
-    setHistory((h) => h.slice(0, -1))
-    setCenterId(prev)
-  }
+    if (expandedIdsRef.current.has(id)) return
+    void expandNode(id)
+  }, [expandNode])
 
   const handleBackgroundClick = useCallback(() => {
     hoveredLinkRef.current = null
     setEdgeTooltip(null)
+  }, [])
+
+  // ── 엣지 호버 (디바운스 200ms + 캐시) ─────────────────────────────────────
+
+  const handleLinkHover = useCallback((
+    link: { source?: unknown; target?: unknown } | null,
+  ) => {
+    if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+
+    if (!link) {
+      hoveredLinkRef.current = null
+      hoverDebounceRef.current = setTimeout(() => {
+        setEdgeTooltip((prev) => prev?.pairKey === hoveredLinkRef.current ? prev : null)
+      }, 80)
+      return
+    }
+
+    const srcId = getLinkEndId(link.source)
+    const tgtId = getLinkEndId(link.target)
+    const pk = mkLinkKey(srcId, tgtId)
+
+    if (hoveredLinkRef.current === pk) return
+    hoveredLinkRef.current = pk
+
+    const currentLoadedKey = loadedKeyRef.current
+    const nodeA = nodesRef.current.find((n) => n.id === srcId)
+    const nodeB = nodesRef.current.find((n) => n.id === tgtId)
+    const nameA = nodeA?.label ?? ''
+    const nameB = nodeB?.label ?? ''
+
+    const cached = pairCacheRef.current.get(pk)
+    if (cached) {
+      setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false })
+      return
+    }
+
+    setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true })
+
+    hoverDebounceRef.current = setTimeout(() => {
+      if (hoveredLinkRef.current !== pk) return
+      const supabase = createClient()
+      supabase
+        .rpc('entity_pair_contents', { p_a: srcId, p_b: tgtId, p_limit: 5 })
+        .then(({ data }) => {
+          if (hoveredLinkRef.current !== pk) return
+          const rows = (data ?? []) as PairContent[]
+          pairCacheRef.current.set(pk, rows)
+          setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: rows, loading: false })
+        })
+    }, 200)
   }, [])
 
   const toggleType = (type: EntityType) => {
@@ -303,26 +544,35 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     })
   }
 
-  const selectCenter = (id: string) => {
-    if (centerId) setHistory((prev) => [...prev, centerId])
-    setCenterId(id)
-    setSearchQuery('')
-    setShowSearchDrop(false)
-  }
+  // ── 파생 값 ────────────────────────────────────────────────────────────────
 
-  // 검색 필터
+  const rootEnt = rootId ? (entities.find((e) => e.id === rootId) ?? null) : null
+
+  const visibleNodes = nodes.filter((n) => !hiddenTypes.has(n.type) || n.isCenter)
+  const visibleIds = new Set(visibleNodes.map((n) => n.id))
+  const visibleLinks = links.filter((l) => {
+    const src = getLinkEndId(l.source)
+    const tgt = getLinkEndId(l.target)
+    return visibleIds.has(src) && visibleIds.has(tgt)
+  })
+
   const searchResults = searchQuery.trim()
-    ? entities.filter((e) =>
-        e.canonical_name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-      ).slice(0, 8)
+    ? entities
+        .filter((e) => e.canonical_name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+        .slice(0, 8)
     : []
 
-  // 프리셋: 경쟁사 + mention 상위(비경쟁사) 합쳐 최대 8개
   const competitors = entities.filter((e) => e.is_competitor).slice(0, 5)
   const topNonCompetitors = entities.filter((e) => !e.is_competitor).slice(0, 3)
   const presets = [...competitors, ...topNonCompetitors]
 
-  if (!centerId && !initialCenter) {
+  const canUndo = expandStack.length > 1
+  const expandCount = Math.max(0, expandStack.length - 1)
+  const loadingNodeLabel = nodes.find((n) => n.id === loadingNodeId)?.label ?? '노드'
+
+  // ── 빈 상태 ────────────────────────────────────────────────────────────────
+
+  if (!rootId) {
     return (
       <div className="flex h-[520px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
         엔티티 데이터가 없습니다. 콘텐츠 수집 후 다시 확인해 주세요.
@@ -332,17 +582,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   return (
     <div className="relative">
-      {/* 검색 + 뒤로 가기 */}
+      {/* 검색 + 제어 버튼 */}
       <div className="mb-3 flex items-center gap-2">
-        {history.length > 0 && (
-          <button
-            onClick={handleBackClick}
-            className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            이전
-          </button>
-        )}
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
@@ -375,9 +616,26 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             </div>
           )}
         </div>
+        <button
+          onClick={handleUndo}
+          disabled={!canUndo}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="마지막 확장 취소"
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+          취소
+        </button>
+        <button
+          onClick={handleReset}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          title="1홉으로 초기화"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          초기화
+        </button>
       </div>
 
-      {/* 경쟁사·상위 프리셋 */}
+      {/* 빠른 중심 프리셋 */}
       {presets.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           <span className="self-center text-xs text-muted-foreground">빠른 중심:</span>
@@ -387,7 +645,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               onClick={() => selectCenter(e.id)}
               className={cn(
                 'flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
-                centerId === e.id
+                rootId === e.id
                   ? 'border-foreground bg-foreground text-background'
                   : 'hover:border-foreground/50 hover:bg-muted/50'
               )}
@@ -401,25 +659,22 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         </div>
       )}
 
-      {/* 현재 중심 표시 */}
-      {centerEntity && (
+      {/* 현재 중심 정보 */}
+      {rootEnt && (
         <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
           <span>중심:</span>
-          <span className="font-medium text-foreground">{centerEntity.canonical_name}</span>
+          <span className="font-medium text-foreground">{rootEnt.canonical_name}</span>
           <span>·</span>
-          <span>{ENTITY_TYPE_LABEL[centerEntity.entity_type]}</span>
-          {centerEntity.is_competitor && <span className="text-red-500">· 경쟁사</span>}
-          <span>· 언급 {centerEntity.mention_count.toLocaleString()}회</span>
-          <Link
-            href={`/dashboard/entities/${centerEntity.id}`}
-            className="ml-1 text-brand-600 hover:underline"
-          >
+          <span>{ENTITY_TYPE_LABEL[rootEnt.entity_type]}</span>
+          {rootEnt.is_competitor && <span className="text-red-500">· 경쟁사</span>}
+          <span>· 언급 {rootEnt.mention_count.toLocaleString()}회</span>
+          <Link href={`/dashboard/entities/${rootEnt.id}`} className="ml-1 text-brand-600 hover:underline">
             상세 보기 →
           </Link>
         </div>
       )}
 
-      {/* 타입 필터 범례 */}
+      {/* 타입 필터 범례 + 렌즈 안내 */}
       <div className="mb-3 flex flex-wrap gap-2">
         {TYPE_ENTRIES.map(({ type, label, color }) => (
           <button
@@ -438,52 +693,80 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
           경쟁사
         </button>
+        {activeLens !== 'all' && (
+          <span className="flex items-center gap-1.5 rounded-full border border-brand-600/30 bg-brand-600/10 px-3 py-1 text-xs font-medium text-brand-600">
+            <span className="inline-block h-2 w-2 rounded-full border-2 border-brand-600" />
+            내 관점 하이라이트
+          </span>
+        )}
       </div>
 
-      {/* 그래프 */}
+      {/* 그래프 캔버스 */}
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-xl border bg-muted/20"
         style={{ height: 520 }}
       >
-        {isLoading && (
+        {isInitLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 text-sm text-muted-foreground">
             이웃 엔티티 로딩 중…
           </div>
         )}
 
-        {graphState.rpcError && !isLoading && (
+        {loadingNodeId && !isInitLoading && (
+          <div className="absolute left-3 top-3 z-10 rounded-lg border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
+            {loadingNodeLabel} 확장 중…
+          </div>
+        )}
+
+        {maxNodesReached && (
+          <div className="absolute left-3 right-3 top-3 z-10 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+            상한({MAX_NODES}개) 도달 — 초기화 후 다른 경로 탐색
+          </div>
+        )}
+
+        {rpcError && !isInitLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
             <p>관계 데이터(RPC) 미적용 상태입니다.</p>
             <p className="text-xs">수희가 117-graph-enrich.sql을 적용한 후 표시됩니다.</p>
           </div>
         )}
 
-        {graphState.noNeighbors && !isLoading && !graphState.rpcError && (
+        {initNoNeighbors && !isInitLoading && !rpcError && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
             이 엔티티와 함께 등장한 다른 엔티티가 아직 없습니다 (콘텐츠 수집 누적 시 생성)
           </div>
         )}
 
-        {!isLoading && !graphState.rpcError && visibleNodes.length > 0 && (
+        {!isInitLoading && !rpcError && visibleNodes.length > 0 && (
           <ForceGraph2D
             ref={graphRef}
             graphData={{ nodes: visibleNodes as unknown as { id: string }[], links: visibleLinks }}
             width={dimensions.width}
             height={520}
             nodeId="id"
-            nodeLabel=""
+            nodeLabel={(node) => {
+              const n = node as unknown as EgoNode
+              return expandedIdsRef.current.has(n.id) ? '' : '클릭해 확장'
+            }}
             nodeVal={(node) => (node as unknown as EgoNode).val}
             nodeCanvasObject={(node, ctx, globalScale) => {
               const n = node as unknown as EgoNode & { x: number; y: number }
               const radius = Math.max(4, n.val * 2.5)
               const color = nodeColor(n)
+              const isExpanded = expandedIdsRef.current.has(n.id)
+
               ctx.save()
+
+              if (!isExpanded) ctx.globalAlpha = 0.6
+
               ctx.beginPath()
               ctx.arc(n.x, n.y, radius, 0, 2 * Math.PI)
               ctx.fillStyle = color
               ctx.fill()
+
               if (n.isCenter) {
+                ctx.globalAlpha = 1
                 ctx.lineWidth = 3
                 ctx.strokeStyle = '#ffffff'
                 ctx.stroke()
@@ -492,34 +775,52 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                 ctx.beginPath()
                 ctx.arc(n.x, n.y, radius + 4, 0, 2 * Math.PI)
                 ctx.stroke()
+              } else if (!isExpanded) {
+                ctx.setLineDash([3, 3])
+                ctx.lineWidth = 1
+                ctx.strokeStyle = color
+                ctx.beginPath()
+                ctx.arc(n.x, n.y, radius + 3, 0, 2 * Math.PI)
+                ctx.stroke()
+                ctx.setLineDash([])
               }
+
+              ctx.globalAlpha = 1
+
+              // 렌즈 링
+              const lt: LensTarget = { names: [n.label], isCompetitor: n.isCompetitor }
+              if (
+                activeLensRef.current !== 'all' &&
+                matchesLens(activeLensRef.current, lensCtxRef.current, lt)
+              ) {
+                ctx.lineWidth = 2
+                ctx.strokeStyle = LENS_RING_COLOR
+                ctx.beginPath()
+                ctx.arc(n.x, n.y, radius + (n.isCenter ? 9 : 6), 0, 2 * Math.PI)
+                ctx.stroke()
+              }
+
+              // 라벨
               const fontSize = Math.max(8, 12 / globalScale)
               ctx.font = `${n.isCenter ? 'bold ' : ''}${fontSize}px sans-serif`
               ctx.textAlign = 'center'
               ctx.textBaseline = 'top'
               ctx.fillStyle = '#374151'
               ctx.fillText(n.label, n.x, n.y + radius + 2)
+
               ctx.restore()
             }}
             nodeCanvasObjectMode={() => 'replace'}
             linkColor={(link) => {
               const raw = link as { source?: unknown; target?: unknown }
-              const tgtId = String(typeof raw.target === 'object' && raw.target !== null
-                ? (raw.target as { id?: string }).id : raw.target)
-              const srcId = String(typeof raw.source === 'object' && raw.source !== null
-                ? (raw.source as { id?: string }).id : raw.source)
-              const neighborId = srcId === centerId ? tgtId : srcId
-              return activeTooltip?.neighborId === neighborId ? LINK_COLOR_HI : LINK_COLOR
+              const pk = mkLinkKey(getLinkEndId(raw.source), getLinkEndId(raw.target))
+              return activeTooltip?.pairKey === pk ? LINK_COLOR_HI : LINK_COLOR
             }}
             linkWidth={(link) => {
               const raw = link as { weight?: number; source?: unknown; target?: unknown }
               const base = linkWidthFromWeight(raw.weight ?? 1)
-              const tgtId = String(typeof raw.target === 'object' && raw.target !== null
-                ? (raw.target as { id?: string }).id : raw.target)
-              const srcId = String(typeof raw.source === 'object' && raw.source !== null
-                ? (raw.source as { id?: string }).id : raw.source)
-              const neighborId = srcId === centerId ? tgtId : srcId
-              return activeTooltip?.neighborId === neighborId ? base + 1.5 : base
+              const pk = mkLinkKey(getLinkEndId(raw.source), getLinkEndId(raw.target))
+              return activeTooltip?.pairKey === pk ? base + 1.5 : base
             }}
             onNodeClick={handleNodeClick}
             onBackgroundClick={handleBackgroundClick}
@@ -531,9 +832,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         )}
 
         {/* 안내 힌트 */}
-        {!isLoading && !graphState.rpcError && visibleNodes.length > 0 && (
+        {!isInitLoading && !rpcError && visibleNodes.length > 0 && (
           <div className="absolute bottom-3 left-3 rounded-lg border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-            노드 클릭 → 재중심 · 엣지 호버 → 공동 기사
+            미확장 노드 클릭 → 확장 · 엣지 호버 → 공동 기사
           </div>
         )}
 
@@ -545,7 +846,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           >
             <div className="border-b px-3 py-2">
               <p className="text-xs font-semibold text-foreground">
-                {centerEntity?.canonical_name} · {activeTooltip.neighborName}
+                {activeTooltip.nameA} · {activeTooltip.nameB}
               </p>
               {!activeTooltip.loading && (
                 <p className="text-xs text-muted-foreground">
@@ -581,8 +882,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       </div>
 
       <p className="mt-2 text-right text-xs text-muted-foreground">
-        노드 {visibleNodes.length} · 엣지 {visibleLinks.length}
-        {history.length > 0 && ` · 히스토리 ${history.length}단계`}
+        중심: {rootEnt?.canonical_name ?? '없음'} · 노드 {visibleNodes.length} · 확장 {expandCount}단계
       </p>
     </div>
   )
