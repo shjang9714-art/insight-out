@@ -20,6 +20,9 @@ const W_EDITOR = 5
 const W_VIEW = 1.5
 const W_BOOKMARK = 3
 const W_INDUSTRY = 5
+// 전략 가점: 통신 B2B·경쟁사·AIDC·AICC·보안 등 LGU+ 핵심 관심 토픽을 표면에 더 잘 올린다.
+// 라이브 후보가 'AI 기술/IT 동향' 일색이라, 가점 없이 점수순으로만 뽑으면 비-AI 토픽이 묻힌다.
+const W_STRATEGIC = 6
 
 const CATEGORY_WEIGHT: Record<string, number> = {
   '뉴스': 3,
@@ -38,17 +41,31 @@ const SUMMARY_INPUT_MAXCHARS = 400
 // 노이즈로 분류된 콘텐츠는 후보에서 제외(keyword_groups._noise → name '노이즈 제외').
 const NOISE_LABEL = '노이즈 제외'
 
-// ─── 산업 주제 버킷 (라이브 keyword_groups.name 기준, 5개 시장 앵글) ─────────
+// ─── 산업 주제 버킷 (라이브 keyword_groups.name 기준, 세분화) ─────────────────
 // matched_groups 에는 keyword_groups.name(한글 라벨) 이 저장된다. 라이브 확인 라벨:
 // 통신 B2B·경쟁사·AI 기술·AIDC·피지컬 AI·AICC·빅테크·IT 동향·제조 DX·모빌리티·SME 솔루션·CCTV·영상보안·에너지·정부 사업·정부 규제·ESG
-// 키워드는 소문자 부분일치(아래 매칭 함수). 순서 = 우선순위(통신 산업각을 먼저 잡는다).
+// 키워드는 소문자 부분일치(아래 매칭 함수). 순서 = 우선순위.
+// ⚠️ 핵심: 거의 모든 기사가 'AI 기술/IT 동향' 태그를 함께 달고 있어, 이 제너릭 버킷(ai_core)을
+//    먼저 검사하면 AIDC·모빌리티·빅테크·피지컬AI 기사가 전부 AI로 흡수돼 '온통 AI' 가 된다.
+//    그래서 구체 토픽을 먼저 잡고, ai_core 를 맨 마지막 fallback 으로 둔다.
 const TOPIC_BUCKETS = {
-  telecom: ['통신 b2b', '경쟁사'],
-  ai_infra: ['ai 기술', 'aidc', '피지컬 ai', 'aicc'],
-  bigtech_it: ['빅테크', 'it 동향'],
-  industry_dx: ['제조 dx', '모빌리티', 'sme 솔루션', 'cctv', '영상보안', '에너지'],
+  telecom: ['통신 b2b'],
+  competitor: ['경쟁사'],
+  aidc: ['aidc'],
+  aicc: ['aicc'],
+  physical_ai: ['피지컬 ai'],
+  security: ['cctv', '영상보안', '보안'],
+  manufacturing_dx: ['제조 dx'],
+  mobility: ['모빌리티'],
+  sme: ['sme 솔루션'],
+  energy: ['에너지'],
   policy_esg: ['정부 사업', '정부 규제', 'esg'],
+  bigtech: ['빅테크'],
+  ai_core: ['ai 기술', 'it 동향'],
 } as const
+
+// 전략 가점 대상 버킷 — LGU+ B2B 전략 관점에서 우선 노출하고 싶은 토픽.
+const STRATEGIC_TOPICS = new Set(['telecom', 'competitor', 'aidc', 'aicc', 'security'])
 
 // ─── KST 날짜 헬퍼 ──────────────────────────────────────────────────────────
 
@@ -164,8 +181,10 @@ function computeScore(c: ContentCandidate, now: Date): number {
   const viewScore = Math.log1p(c.view_count) * W_VIEW
   const bookmarkScore = Math.log1p(c.bookmark_count) * W_BOOKMARK
   const industryBonus = isCoreIndustry(c.matched_groups) ? W_INDUSTRY : 0
+  const bucket = getTopicBucket(c.matched_groups)
+  const strategicBonus = bucket && STRATEGIC_TOPICS.has(bucket) ? W_STRATEGIC : 0
 
-  return c.importance_score + recencyBonus + catWeight + editorBonus + viewScore + bookmarkScore + industryBonus
+  return c.importance_score + recencyBonus + catWeight + editorBonus + viewScore + bookmarkScore + industryBonus + strategicBonus
 }
 
 // ─── 선정 로직 (중복 제거 + 토픽 다양성 우선 2패스) ──────────────────────────
@@ -224,11 +243,19 @@ function pickKoBody(c: ContentCandidate): string {
 }
 
 const TOPIC_LABEL: Record<string, string> = {
-  telecom: '통신·경쟁',
-  ai_infra: 'AI·인프라',
-  bigtech_it: '빅테크·IT',
-  industry_dx: '산업 DX',
+  telecom: '통신 B2B',
+  competitor: '경쟁사',
+  aidc: 'AIDC',
+  aicc: 'AICC',
+  physical_ai: '피지컬 AI',
+  security: '보안·영상',
+  manufacturing_dx: '제조 DX',
+  mobility: '모빌리티',
+  sme: 'SME 솔루션',
+  energy: '에너지',
   policy_esg: '정책·ESG',
+  bigtech: '빅테크',
+  ai_core: 'AI·IT 동향',
   other: '기타',
 }
 
