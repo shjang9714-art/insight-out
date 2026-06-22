@@ -116,7 +116,6 @@ interface ContentCandidate {
   title: string
   summary_ko: string | null
   body_translated_ko: string | null
-  body_md: string | null
   body_original: string | null
   category: string
   importance_score: number
@@ -212,9 +211,9 @@ function selectArticles(candidates: ContentCandidate[], now: Date): ContentCandi
 
 // ─── 유저 프롬프트 구성 ──────────────────────────────────────────────────────
 
-// 한국어 본문을 우선순위대로 골라 정제·절단. 번역본 > 마크다운 > 원문 > 요약 순.
+// 한국어 본문을 우선순위대로 골라 정제·절단. 번역본 > 원문 > 요약 순.
 function pickKoBody(c: ContentCandidate): string {
-  const raw = c.body_translated_ko || c.body_md || c.body_original || c.summary_ko || ''
+  const raw = c.body_translated_ko || c.body_original || c.summary_ko || ''
   const clean = cleanBodyText(htmlToPlainText(raw))
   return clean.slice(0, BODY_INPUT_MAXCHARS)
 }
@@ -295,7 +294,7 @@ export async function generateBriefing(
 
   const { data: rawCandidates, error: fetchError } = await admin
     .from('contents')
-    .select('id, title, summary_ko, body_translated_ko, body_md, body_original, category, importance_score, view_count, bookmark_count, is_editor_pick, cluster_id, matched_groups, published_at, collected_at')
+    .select('id, title, summary_ko, body_translated_ko, body_original, category, importance_score, view_count, bookmark_count, is_editor_pick, cluster_id, matched_groups, published_at, collected_at')
     .eq('status', 'published')
     .neq('category', '유튜브')
     .or(`published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`)
