@@ -9,6 +9,7 @@ import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage, type OpsSignalCounts } from '@/components/admin/AdminOpsSignals'
+import AiRefreshButton from '@/components/admin/AiRefreshButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -234,7 +235,10 @@ export default async function AdminPage() {
         sourcesToCheck={sourcesToCheck}
       />
 
-      {/* ② 운영 신호등 */}
+      {/* ② AI 수동 갱신 */}
+      <AiRefreshButton />
+
+      {/* ④ 운영 신호등 */}
       <AdminOpsSignals
         llmProviders={llmProviders}
         translationChars={translationChars}
