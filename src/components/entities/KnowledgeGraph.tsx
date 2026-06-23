@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { RotateCcw, Search, Undo2 } from 'lucide-react'
+import { RotateCcw, Search, Undo2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
@@ -85,10 +85,11 @@ const TYPE_COLOR: Record<EntityType, string> = {
   policy:   '#F59E0B',
   industry: '#9CA3AF',
 }
-const COMPETITOR_COLOR = '#EF4444'
-const LINK_COLOR       = 'rgba(150,150,150,0.35)'
-const LINK_COLOR_HI    = 'rgba(99,102,241,0.7)'
-const LENS_RING_COLOR  = '#E6007E'  // canvas 렌즈 링 (canvas hex 예외)
+const COMPETITOR_COLOR  = '#EF4444'
+const LINK_COLOR        = 'rgba(120,120,120,0.60)'
+const LINK_COLOR_HI     = 'rgba(99,102,241,0.85)'
+const LENS_RING_COLOR   = '#E6007E'   // canvas 렌즈 링 (canvas hex 예외)
+const SELECTED_RING_COLOR = '#6366F1' // canvas 선택 노드 링 (canvas hex 예외)
 
 const TYPE_ENTRIES = (Object.keys(ENTITY_TYPE_LABEL) as EntityType[]).map((t) => ({
   type: t,
@@ -118,7 +119,7 @@ function entityToNode(e: EntitySummary, isCenter: boolean): EgoNode {
 }
 
 function linkWidthFromWeight(weight: number): number {
-  return Math.max(0.5, Math.min(5, Math.log2(weight + 1) * 0.9))
+  return Math.max(1.0, Math.min(5, Math.log2(weight + 1) * 0.9))
 }
 
 function mkLinkKey(a: string, b: string): string {
@@ -188,13 +189,25 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const hoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hoveredLinkRef   = useRef<string | null>(null)
 
+  // 선택된 노드 (클릭 → 관련 기사 패널)
+  interface ContentItem { id: string; title: string; collected_at: string }
+  interface ContentsState { nodeId: string; items: ContentItem[] }
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const selectedNodeIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedNodeIdRef.current = selectedNodeId }, [selectedNodeId])
+  const [contentsState, setContentsState] = useState<ContentsState | null>(null)
+
+  // 엣지 클릭 잠금 패널
+  const [lockedEdge, setLockedEdge] = useState<EdgeTooltip | null>(null)
+
   // 파생값 (동기 setState 없이 도출)
-  const expectedKey   = rootId ? `${rootId}:${resetKey}` : ''
-  const isInitLoading = expectedKey !== '' && loadedKey !== expectedKey
-  const rpcError      = loadedKey === expectedKey && loadStatus === 'rpc-error'
-  const initNoNeighbors = loadedKey === expectedKey && loadStatus === 'no-neighbors'
-  const activeTooltip = edgeTooltip?.forLoadedKey === loadedKey ? edgeTooltip : null
-  const maxNodesReached = maxNodesReachedKey === loadedKey && loadedKey !== ''
+  const expectedKey      = rootId ? `${rootId}:${resetKey}` : ''
+  const isInitLoading    = expectedKey !== '' && loadedKey !== expectedKey
+  const rpcError         = loadedKey === expectedKey && loadStatus === 'rpc-error'
+  const initNoNeighbors  = loadedKey === expectedKey && loadStatus === 'no-neighbors'
+  const activeTooltip    = edgeTooltip?.forLoadedKey === loadedKey ? edgeTooltip : null
+  const activeLockedEdge = lockedEdge?.forLoadedKey === loadedKey ? lockedEdge : null
+  const maxNodesReached  = maxNodesReachedKey === loadedKey && loadedKey !== ''
 
   // ResizeObserver
   useEffect(() => {
@@ -314,6 +327,24 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootId, resetKey])
+
+  // ── force 파라미터 조정 ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const fg = graphRef.current
+      if (!fg) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const charge = (fg as any).d3Force?.('charge')
+      if (charge?.strength) charge.strength(-280)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const link = (fg as any).d3Force?.('link')
+      if (link?.distance) link.distance(80)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(fg as any).d3ReheatSimulation?.()
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [loadedKey])
 
   // ── 노드 확장 ──────────────────────────────────────────────────────────────
 
@@ -476,13 +507,15 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   const handleNodeClick = useCallback((node: { id?: string | number }) => {
     const id = String(node.id)
-    if (expandedIdsRef.current.has(id)) return
-    void expandNode(id)
-  }, [expandNode])
+    setSelectedNodeId((prev) => (prev === id ? null : id))
+    setLockedEdge(null)
+  }, [])
 
   const handleBackgroundClick = useCallback(() => {
     hoveredLinkRef.current = null
     setEdgeTooltip(null)
+    setLockedEdge(null)
+    setSelectedNodeId(null)
   }, [])
 
   // ── 엣지 호버 (디바운스 200ms + 캐시) ─────────────────────────────────────
@@ -535,6 +568,60 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     }, 200)
   }, [])
 
+  // ── 엣지 클릭 → 잠금 패널 ────────────────────────────────────────────────
+
+  const handleLinkClick = useCallback((link: { source?: unknown; target?: unknown }) => {
+    const srcId = getLinkEndId(link.source)
+    const tgtId = getLinkEndId(link.target)
+    const pk = mkLinkKey(srcId, tgtId)
+    const currentLoadedKey = loadedKeyRef.current
+    const nodeA = nodesRef.current.find((n) => n.id === srcId)
+    const nodeB = nodesRef.current.find((n) => n.id === tgtId)
+    const nameA = nodeA?.label ?? ''
+    const nameB = nodeB?.label ?? ''
+
+    setSelectedNodeId(null)
+
+    const cached = pairCacheRef.current.get(pk)
+    if (cached) {
+      setLockedEdge({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false })
+      return
+    }
+    setLockedEdge({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true })
+    const supabase = createClient()
+    supabase
+      .rpc('entity_pair_contents', { p_a: srcId, p_b: tgtId, p_limit: 8 })
+      .then(({ data }) => {
+        const rows = (data ?? []) as PairContent[]
+        pairCacheRef.current.set(pk, rows)
+        setLockedEdge((prev) => prev?.pairKey === pk ? { ...prev, contents: rows, loading: false } : prev)
+      })
+  }, [])
+
+  // ── 선택 노드 관련 기사 조회 ───────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!selectedNodeId) return
+
+    let cancelled = false
+    const supabase = createClient()
+    supabase
+      .from('content_entities')
+      .select('content_id, contents(id, title, collected_at)')
+      .eq('entity_id', selectedNodeId)
+      .limit(8)
+      .then(({ data }) => {
+        if (cancelled) return
+        type Row = { content_id: string; contents: ContentItem | null }
+        const items = ((data ?? []) as unknown as Row[])
+          .map((r) => r.contents)
+          .filter((c): c is ContentItem => c !== null)
+          .sort((a, b) => b.collected_at.localeCompare(a.collected_at))
+        setContentsState({ nodeId: selectedNodeId, items })
+      })
+    return () => { cancelled = true }
+  }, [selectedNodeId])
+
   const toggleType = (type: EntityType) => {
     setHiddenTypes((prev) => {
       const next = new Set(prev)
@@ -569,6 +656,22 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const canUndo = expandStack.length > 1
   const expandCount = Math.max(0, expandStack.length - 1)
   const loadingNodeLabel = nodes.find((n) => n.id === loadingNodeId)?.label ?? '노드'
+
+  // 선택 노드 파생값
+  const selectedContents = contentsState?.nodeId === selectedNodeId ? contentsState.items : []
+  const selectedContentsLoading = selectedNodeId !== null && (contentsState === null || contentsState.nodeId !== selectedNodeId)
+  const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null
+  const selectedNeighbors = selectedNodeId
+    ? nodes.filter((n) => {
+        if (n.id === selectedNodeId) return false
+        return links.some((l) => {
+          const s = getLinkEndId(l.source)
+          const t = getLinkEndId(l.target)
+          return (s === selectedNodeId && t === n.id) || (t === selectedNodeId && s === n.id)
+        })
+      })
+    : []
+  const isSelectedExpanded = selectedNodeId ? expandStack.some((e) => e.nodeId === selectedNodeId) : false
 
   // ── 빈 상태 ────────────────────────────────────────────────────────────────
 
@@ -675,30 +778,35 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       )}
 
       {/* 타입 필터 범례 + 렌즈 안내 */}
-      <div className="mb-3 flex flex-wrap gap-2">
-        {TYPE_ENTRIES.map(({ type, label, color }) => (
-          <button
-            key={type}
-            onClick={() => toggleType(type)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-opacity',
-              hiddenTypes.has(type) ? 'opacity-30' : 'opacity-100'
-            )}
-          >
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-            {label}
+      <div className="mb-3">
+        <p className="mb-3 text-xs text-muted-foreground">
+          점=기업·기술·인물, 선=함께 뉴스에 등장한 관계. 점을 누르면 관련 기사가 보여요.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {TYPE_ENTRIES.map(({ type, label, color }) => (
+            <button
+              key={type}
+              onClick={() => toggleType(type)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-opacity',
+                hiddenTypes.has(type) ? 'opacity-30' : 'opacity-100'
+              )}
+            >
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+              {label}
+            </button>
+          ))}
+          <button className="flex cursor-default items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-70">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
+            경쟁사
           </button>
-        ))}
-        <button className="flex cursor-default items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-70">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
-          경쟁사
-        </button>
-        {activeLens !== 'all' && (
-          <span className="flex items-center gap-1.5 rounded-full border border-brand-600/30 bg-brand-600/10 px-3 py-1 text-xs font-medium text-brand-600">
-            <span className="inline-block h-2 w-2 rounded-full border-2 border-brand-600" />
-            관심 기업 표시
-          </span>
-        )}
+          {activeLens !== 'all' && (
+            <span className="flex items-center gap-1.5 rounded-full border border-brand-600/30 bg-brand-600/10 px-3 py-1 text-xs font-medium text-brand-600">
+              <span className="inline-block h-2 w-2 rounded-full border-2 border-brand-600" />
+              관심 기업 표시
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 그래프 캔버스 */}
@@ -745,10 +853,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             width={dimensions.width}
             height={520}
             nodeId="id"
-            nodeLabel={(node) => {
-              const n = node as unknown as EgoNode
-              return expandedIdsRef.current.has(n.id) ? '' : '클릭해 확장'
-            }}
+            nodeLabel={() => '클릭 → 관련 기사 보기'}
             nodeVal={(node) => (node as unknown as EgoNode).val}
             nodeCanvasObject={(node, ctx, globalScale) => {
               const n = node as unknown as EgoNode & { x: number; y: number }
@@ -800,6 +905,17 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                 ctx.stroke()
               }
 
+              // 선택 노드 링
+              if (n.id === selectedNodeIdRef.current) {
+                ctx.globalAlpha = 1
+                ctx.lineWidth = 2.5
+                ctx.strokeStyle = SELECTED_RING_COLOR
+                ctx.setLineDash([])
+                ctx.beginPath()
+                ctx.arc(n.x, n.y, radius + (n.isCenter ? 13 : 10), 0, 2 * Math.PI)
+                ctx.stroke()
+              }
+
               // 라벨
               const fontSize = Math.max(8, 12 / globalScale)
               ctx.font = `${n.isCenter ? 'bold ' : ''}${fontSize}px sans-serif`
@@ -825,7 +941,11 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             onNodeClick={handleNodeClick}
             onBackgroundClick={handleBackgroundClick}
             onLinkHover={handleLinkHover}
+            onLinkClick={handleLinkClick}
             cooldownTicks={80}
+            d3AlphaDecay={0.015}
+            d3VelocityDecay={0.25}
+            warmupTicks={40}
             enableZoomInteraction
             enablePanInteraction
           />
@@ -834,7 +954,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         {/* 안내 힌트 */}
         {!isInitLoading && !rpcError && visibleNodes.length > 0 && (
           <div className="absolute bottom-3 left-3 rounded-lg border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-            미확장 노드 클릭 → 확장 · 엣지 호버 → 공동 기사
+            점 클릭 → 관련 기사 · 이웃 펼치기 버튼 → 확장 · 선 클릭 → 연결 이유
           </div>
         )}
 
@@ -880,6 +1000,133 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           </div>
         )}
       </div>
+
+      {/* 선택 노드 패널 */}
+      {selectedNode && (
+        <div className="mt-3 rounded-xl border bg-card p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">{selectedNode.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {ENTITY_TYPE_LABEL[selectedNode.type]}
+                {selectedNode.isCompetitor && ' · 경쟁사'}
+                {' · 언급 '}{selectedNode.mentionCount.toLocaleString()}회
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => void expandNode(selectedNode.id)}
+                disabled={isSelectedExpanded || !!loadingNodeId}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {loadingNodeId === selectedNode.id ? '확장 중…' : isSelectedExpanded ? '이미 펼쳐짐' : '이웃 펼치기'}
+              </button>
+              <Link
+                href={`/dashboard/entities/${selectedNode.id}`}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors"
+              >
+                상세 보기 →
+              </Link>
+              <button
+                onClick={() => setSelectedNodeId(null)}
+                className="rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="닫기"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {selectedNeighbors.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-[11px] text-muted-foreground/70">함께 등장하는 주제</p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedNeighbors.slice(0, 10).map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => setSelectedNodeId(n.id)}
+                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: nodeColor(n) }} />
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-1.5 text-[11px] text-muted-foreground/70">관련 기사</p>
+            {selectedContentsLoading ? (
+              <p className="text-xs text-muted-foreground">기사 로딩 중…</p>
+            ) : selectedContents.length === 0 ? (
+              <p className="text-xs text-muted-foreground">관련 기사가 없습니다.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {selectedContents.map((c) => (
+                  <li key={c.id} className="flex items-start gap-1.5">
+                    <span className="mt-0.5 shrink-0 text-[10px] text-muted-foreground/60">
+                      {new Date(c.collected_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                    </span>
+                    <Link
+                      href={`/dashboard/contents/${c.id}`}
+                      className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
+                    >
+                      {c.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 엣지 클릭 잠금 패널 */}
+      {activeLockedEdge && !selectedNode && (
+        <div className="mt-3 rounded-xl border bg-card p-4 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                {activeLockedEdge.nameA} · {activeLockedEdge.nameB}
+              </p>
+              {!activeLockedEdge.loading && (
+                <p className="text-xs text-muted-foreground">
+                  기사 {activeLockedEdge.contents.length}건에서 함께 등장
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setLockedEdge(null)}
+              className="rounded-full p-1 text-muted-foreground hover:text-foreground"
+              aria-label="닫기"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {activeLockedEdge.loading ? (
+            <p className="text-xs text-muted-foreground">기사 로딩 중…</p>
+          ) : activeLockedEdge.contents.length === 0 ? (
+            <p className="text-xs text-muted-foreground">공동 기사 없음 (RPC 미적용 또는 데이터 없음)</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {activeLockedEdge.contents.map((c) => (
+                <li key={c.content_id} className="flex items-start gap-1.5">
+                  <span className="mt-0.5 shrink-0 text-[10px] text-muted-foreground/60">
+                    {new Date(c.collected_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                  </span>
+                  <Link
+                    href={`/dashboard/contents/${c.content_id}`}
+                    className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
+                  >
+                    {c.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <p className="mt-2 text-right text-xs text-muted-foreground">
         중심: {rootEnt?.canonical_name ?? '없음'} · 노드 {visibleNodes.length} · 확장 {expandCount}단계
