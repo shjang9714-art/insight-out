@@ -3,11 +3,15 @@ import FeedSlot from '@/components/feed/FeedSlot'
 import CompetitorTrends from '@/components/dashboard/CompetitorTrends'
 import KATrends from '@/components/dashboard/KATrends'
 import IssueSignals from '@/components/dashboard/IssueSignals'
+import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 export default function DashboardPage() {
   return (
     <div className="px-4 py-6 sm:px-5">
       <div className="space-y-8">
+        {/* 추천 질문 칩 — 콜드스타트 진입점 */}
+        <SuggestedQuestions />
+
         {/* 1블록: 추천 피드 (신규/스킵/기존 분기 — FeedSlot) */}
         <section>
           <Suspense fallback={<div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">로딩 중...</div>}>

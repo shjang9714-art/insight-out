@@ -12,6 +12,7 @@ import ContentListCard from '@/components/dashboard/ContentListCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
 import { CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
+import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -425,6 +426,9 @@ function SearchContent() {
           </div>
         )}
       </div>
+
+      {/* 추천 질문 칩 — q 없을 때만 */}
+      {!q && <SuggestedQuestions className="mb-6" />}
 
       {/* 패싯 필터바 — 검색어 있을 때만 */}
       {q && (
