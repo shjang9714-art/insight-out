@@ -320,61 +320,35 @@ export default function IssueManager() {
     }
   }
 
-  // ── 키워드로 재배정 ───────────────────────────────────────────────────────
+  // ── 키워드로 재배정 (서버 라우트 + LLM 의미 검증) ──────────────────────
 
   const handleRematch = async (issue: IssueRow) => {
     if (issue.match_keywords.length === 0) {
       setRematchMsg({ id: issue.id, text: 'match_keywords 가 없습니다. 수정에서 키워드를 등록하세요.', ok: false })
       return
     }
-
     setRematchingId(issue.id)
     setRematchMsg(null)
-
     try {
-      const perKeyword = await Promise.all(
-        issue.match_keywords.map(kw =>
-          supabase
-            .from('contents')
-            .select('id')
-            .eq('status', 'published')
-            .or(`title.ilike.%${kw}%,summary_ko.ilike.%${kw}%`)
-            .limit(300)
-        )
-      )
-
-      const idSet = new Set<string>()
-      for (const res of perKeyword) {
-        for (const row of (res.data ?? []) as { id: string }[]) {
-          idSet.add(row.id)
-        }
+      const res = await fetch(`/api/admin/issues/${issue.id}/rematch`, { method: 'POST' })
+      const json = await res.json() as { candidateCount?: number; matchedCount?: number; mode?: string; error?: string }
+      if (!res.ok) {
+        setRematchMsg({ id: issue.id, text: json.error ?? '재배정 실패', ok: false })
+        return
       }
-
-      if (idSet.size === 0) {
+      if (json.candidateCount === 0) {
         setRematchMsg({ id: issue.id, text: '키워드에 매칭되는 콘텐츠가 없습니다.', ok: false })
         return
       }
-
-      const rows = [...idSet].slice(0, 300).map(contentId => ({
-        issue_id:   issue.id,
-        content_id: contentId,
-        source:     'rule' as const,
-      }))
-
-      const { error: err } = await supabase
-        .from('issue_contents')
-        .upsert(rows, { onConflict: 'issue_id,content_id', ignoreDuplicates: true })
-
-      if (err) throw new Error(`재배정 실패: ${err.message}`)
-
-      setRematchMsg({ id: issue.id, text: `${rows.length}건 배정 완료`, ok: true })
-      await loadIssues()
-    } catch (err) {
+      const modeLabel = json.mode === 'llm' ? '의미 검증' : '키워드'
       setRematchMsg({
-        id:   issue.id,
-        text: err instanceof Error ? err.message : '재배정 중 오류가 발생했습니다.',
-        ok:   false,
+        id: issue.id,
+        text: `후보 ${json.candidateCount}건 중 ${json.matchedCount}건 배정 (${modeLabel})`,
+        ok: true,
       })
+      await loadIssues()
+    } catch (e) {
+      setRematchMsg({ id: issue.id, text: e instanceof Error ? e.message : '재배정 실패', ok: false })
     } finally {
       setRematchingId(null)
     }
