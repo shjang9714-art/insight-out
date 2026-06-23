@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
+import { createMergeJob, getMergeJob, updateMergeJob } from '@/lib/admin/merge-progress'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 
 async function verifyAdmin() {
   const cookieStore = await cookies()
@@ -27,7 +28,7 @@ async function verifyAdmin() {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
+    return { supabase: null, accessToken: null, error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
   }
 
   const { data: profile } = await supabase
@@ -37,73 +38,151 @@ async function verifyAdmin() {
     .single()
 
   if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
+    return { supabase: null, accessToken: null, error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
   }
 
-  return { error: null }
+  // Get access token for background job usage
+  const { data: { session } } = await supabase.auth.getSession()
+  const accessToken = session?.access_token ?? null
+
+  return { supabase, accessToken, error: null }
 }
 
-/**
- * POST /api/admin/entities/apply-normalization
- * 제안된 그룹 1개를 실제로 적용: merge_entities(기존 RPC) + entity_aliases insert
- */
-export async function POST(request: NextRequest) {
-  const { error: authError } = await verifyAdmin()
-  if (authError) return authError
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function applyGroup(bgClient: SupabaseClient<any>, group: NormalizationGroup, jobId: string) {
+  const groupErrors: string[] = []
+  let groupMerged = 0
+  let groupAliasAdded = 0
 
-  let group: NormalizationGroup
-  try {
-    group = await request.json() as NormalizationGroup
-  } catch {
-    return NextResponse.json({ error: '잘못된 요청 바디' }, { status: 400 })
-  }
-
-  if (!group.canonicalId || !Array.isArray(group.mergeIds) || group.mergeIds.length === 0) {
-    return NextResponse.json({ error: 'canonicalId와 mergeIds가 필요합니다.' }, { status: 400 })
-  }
-
-  const admin = createAdminClient()
-  const errors: string[] = []
-  let mergedCount = 0
-
-  // 1. 각 merge_id → canonical_id 로 merge_entities RPC 순차 실행
+  // 1. merge_entities RPC for each source
   for (const sourceId of group.mergeIds) {
-    if (sourceId === group.canonicalId) continue  // 자기참조 안전망
-    const { error: mergeErr } = await admin.rpc('merge_entities', {
+    if (sourceId === group.canonicalId) continue
+    const { error: mergeErr } = await bgClient.rpc('merge_entities', {
       p_source: sourceId,
       p_target: group.canonicalId,
     })
     if (mergeErr) {
-      errors.push(`merge ${sourceId}: ${mergeErr.message}`)
+      groupErrors.push(`merge ${sourceId}: ${mergeErr.message}`)
     } else {
-      mergedCount++
+      groupMerged++
     }
   }
 
-  // 2. new_aliases insert (멱등 — unique 충돌 무시)
-  let aliasCount = 0
-  if (group.newAliases && group.newAliases.length > 0) {
-    const aliasRows = group.newAliases.map(alias => ({
-      entity_id: group.canonicalId,
-      alias,
-    }))
-    const { error: aliasErr } = await admin
+  // 2. alias insert — pre-select to avoid functional-index ON CONFLICT issue
+  const cands = (group.newAliases ?? []).map(a => a.trim()).filter(Boolean)
+  if (cands.length > 0) {
+    // Build OR filter using ilike (case-insensitive) to match lower(alias) index semantics
+    const orParts = cands.map(a => `alias.ilike.${a.replace(/[%_]/g, '\\$&')}`)
+    const { data: existingRows } = await bgClient
       .from('entity_aliases')
-      .upsert(aliasRows, { onConflict: 'alias', ignoreDuplicates: true })
-    if (aliasErr && aliasErr.code !== '23505') {
-      errors.push(`alias insert: ${aliasErr.message}`)
-    } else {
-      aliasCount = group.newAliases.length
+      .select('alias')
+      .or(orParts.join(','))
+
+    const existingLowerSet = new Set(
+      ((existingRows ?? []) as { alias: string }[]).map(r => r.alias.toLowerCase())
+    )
+    const fresh = cands.filter(a => !existingLowerSet.has(a.toLowerCase()))
+
+    if (fresh.length > 0) {
+      const { error: aliasErr } = await bgClient
+        .from('entity_aliases')
+        .insert(fresh.map(alias => ({ entity_id: group.canonicalId, alias })))
+      if (aliasErr) {
+        groupErrors.push(`alias insert: ${aliasErr.message}`)
+      } else {
+        groupAliasAdded = fresh.length
+      }
     }
   }
 
-  if (errors.length > 0 && mergedCount === 0) {
-    return NextResponse.json({ error: errors.join('; ') }, { status: 500 })
+  // Update job progress
+  const job = getMergeJob(jobId)
+  if (job) {
+    updateMergeJob(jobId, {
+      done: job.done + 1,
+      merged: job.merged + groupMerged,
+      aliasAdded: job.aliasAdded + groupAliasAdded,
+      errors: [...job.errors, ...groupErrors],
+    })
+  }
+}
+
+/**
+ * POST /api/admin/entities/apply-normalization
+ * { groups: NormalizationGroup[] } — 단일 그룹도 배열로 감싸기
+ * 백그라운드로 실행 후 jobId 즉시 반환 (202)
+ */
+export async function POST(request: NextRequest) {
+  const { accessToken, error: authError } = await verifyAdmin()
+  if (authError) return authError
+
+  let groups: NormalizationGroup[]
+  try {
+    const body = await request.json() as { groups?: NormalizationGroup[] }
+    groups = Array.isArray(body.groups) ? body.groups : []
+  } catch {
+    return NextResponse.json({ error: '잘못된 요청 바디' }, { status: 400 })
   }
 
-  return NextResponse.json({
-    mergedCount,
-    aliasCount,
-    errors: errors.length > 0 ? errors : undefined,
+  if (groups.length === 0) {
+    return NextResponse.json({ error: 'groups 배열이 비어있습니다.' }, { status: 400 })
+  }
+
+  const jobId = createMergeJob(groups.length)
+
+  // Background execution using access token for auth.uid() context in merge_entities RPC
+  const token = accessToken
+  after(async () => {
+    if (!token) {
+      updateMergeJob(jobId, {
+        errors: ['인증 토큰 없음 — 백그라운드 실행 불가'],
+        status: 'done',
+      })
+      return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bgClient: SupabaseClient<any> = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      }
+    )
+
+    for (const group of groups) {
+      if (!group.canonicalId || !Array.isArray(group.mergeIds) || group.mergeIds.length === 0) {
+        const job = getMergeJob(jobId)
+        if (job) updateMergeJob(jobId, { done: job.done + 1, errors: [...job.errors, `잘못된 그룹: ${group.canonicalName}`] })
+        continue
+      }
+      await applyGroup(bgClient, group, jobId)
+    }
+
+    updateMergeJob(jobId, { status: 'done' })
   })
+
+  return NextResponse.json({ jobId }, { status: 202 })
+}
+
+/**
+ * GET /api/admin/entities/apply-normalization?jobId=
+ * 진행 상태 폴링
+ */
+export async function GET(request: NextRequest) {
+  const { error: authError } = await verifyAdmin()
+  if (authError) return authError
+
+  const jobId = request.nextUrl.searchParams.get('jobId')
+  if (!jobId) {
+    return NextResponse.json({ error: 'jobId가 필요합니다.' }, { status: 400 })
+  }
+
+  const job = getMergeJob(jobId)
+  if (!job) {
+    return NextResponse.json({ error: '작업을 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  return NextResponse.json(job)
 }

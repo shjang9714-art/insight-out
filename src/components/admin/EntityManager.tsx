@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils'
 import { GitMerge, Loader2, Pencil, Plus, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import { type EntityType, ENTITY_TYPE_LABEL } from '@/lib/types'
 import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
+import type { MergeJob } from '@/lib/admin/merge-progress'
+import { Progress } from '@/components/ui/progress'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -175,8 +177,11 @@ export default function EntityManager() {
   const [normGroups,         setNormGroups]         = useState<NormalizationGroup[]>([])
   const [normError,          setNormError]          = useState<string | null>(null)
   const [dismissedNormIds,   setDismissedNormIds]   = useState<Set<string>>(new Set())
-  const [applyingNormId,     setApplyingNormId]     = useState<string | null>(null)
   const [applyNormError,     setApplyNormError]     = useState<string | null>(null)
+  // 백그라운드 병합 작업 상태
+  const [normJobId,          setNormJobId]          = useState<string | null>(null)
+  const [normJob,            setNormJob]            = useState<MergeJob | null>(null)
+  const normPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── 초기 로드 ─────────────────────────────────────────────────────────────
 
@@ -493,6 +498,28 @@ export default function EntityManager() {
     }
   }
 
+  // 폴링 시작 헬퍼
+  function startNormPolling(jobId: string, appliedIds: string[]) {
+    setNormJobId(jobId)
+    setNormJob(null)
+    if (normPollRef.current) clearInterval(normPollRef.current)
+
+    normPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/admin/entities/apply-normalization?jobId=${jobId}`)
+        if (!res.ok) return
+        const job = await res.json() as MergeJob
+        setNormJob(job)
+        if (job.status === 'done') {
+          if (normPollRef.current) clearInterval(normPollRef.current)
+          normPollRef.current = null
+          setDismissedNormIds(prev => new Set([...prev, ...appliedIds]))
+          await loadEntities()
+        }
+      } catch { /* 폴링 일시 실패 무시 */ }
+    }, 1500)
+  }
+
   const handleApplyNorm = async (group: NormalizationGroup) => {
     const confirmed = window.confirm(
       `"${group.canonicalName}"으로 ${group.mergeIds.length}개 엔티티를 병합합니다.\n\n` +
@@ -500,27 +527,55 @@ export default function EntityManager() {
     )
     if (!confirmed) return
 
-    setApplyingNormId(group.canonicalId)
     setApplyNormError(null)
     try {
       const res = await fetch('/api/admin/entities/apply-normalization', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(group),
+        body: JSON.stringify({ groups: [group] }),
       })
-      const json = await res.json() as { mergedCount?: number; error?: string }
-      if (!res.ok) {
+      const json = await res.json() as { jobId?: string; error?: string }
+      if (!res.ok || !json.jobId) {
         setApplyNormError(`병합 실패: ${json.error ?? '알 수 없는 오류'}`)
-      } else {
-        setDismissedNormIds(prev => new Set([...prev, group.canonicalId]))
-        await loadEntities()
+        return
       }
+      startNormPolling(json.jobId, [group.canonicalId])
     } catch {
       setApplyNormError('네트워크 오류가 발생했습니다.')
-    } finally {
-      setApplyingNormId(null)
     }
   }
+
+  const handleApplyAllNorm = async () => {
+    const pending = normGroups.filter(g => !dismissedNormIds.has(g.canonicalId))
+    if (pending.length === 0) return
+    const confirmed = window.confirm(
+      `제안된 ${pending.length}개 그룹을 모두 병합합니다.\n\n` +
+      `⚠️ 되돌릴 수 없습니다. 계속하시겠습니까?`
+    )
+    if (!confirmed) return
+
+    setApplyNormError(null)
+    try {
+      const res = await fetch('/api/admin/entities/apply-normalization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups: pending }),
+      })
+      const json = await res.json() as { jobId?: string; error?: string }
+      if (!res.ok || !json.jobId) {
+        setApplyNormError(`전체 병합 실패: ${json.error ?? '알 수 없는 오류'}`)
+        return
+      }
+      startNormPolling(json.jobId, pending.map(g => g.canonicalId))
+    } catch {
+      setApplyNormError('네트워크 오류가 발생했습니다.')
+    }
+  }
+
+  // 컴포넌트 언마운트 시 폴링 정리
+  useEffect(() => {
+    return () => { if (normPollRef.current) clearInterval(normPollRef.current) }
+  }, [])
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -596,13 +651,24 @@ export default function EntityManager() {
               <Button
                 size="sm"
                 onClick={() => { void handleSuggestNorm() }}
-                disabled={isLoadingNorm}
+                disabled={isLoadingNorm || normJobId !== null && normJob?.status !== 'done'}
               >
                 {isLoadingNorm
                   ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />분석 중…</>
                   : <><Sparkles className="mr-1.5 h-3.5 w-3.5" />제안 생성</>
                 }
               </Button>
+              {normGroups.filter(g => !dismissedNormIds.has(g.canonicalId)).length > 1 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => { void handleApplyAllNorm() }}
+                  disabled={normJobId !== null && normJob?.status !== 'done'}
+                >
+                  <GitMerge className="mr-1.5 h-3.5 w-3.5" />
+                  전체 병합 적용
+                </Button>
+              )}
             </div>
 
             {normError && (
@@ -617,6 +683,36 @@ export default function EntityManager() {
               </div>
             )}
 
+            {normJob && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {normJob.status === 'done'
+                      ? `완료 — ${normJob.merged}건 병합 · ${normJob.aliasAdded}개 동의어 · 실패 ${normJob.errors.length}`
+                      : `병합 중… ${normJob.done} / ${normJob.total}`
+                    }
+                  </span>
+                  {normJob.status === 'done' && (
+                    <button
+                      onClick={() => { setNormJobId(null); setNormJob(null) }}
+                      className="text-muted-foreground/60 underline hover:text-foreground"
+                    >
+                      닫기
+                    </button>
+                  )}
+                </div>
+                <Progress
+                  value={normJob.total > 0 ? (normJob.done / normJob.total) * 100 : 0}
+                  className="h-1.5"
+                />
+                {normJob.errors.length > 0 && (
+                  <div className="rounded border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700 space-y-0.5">
+                    {normJob.errors.map((e, i) => <div key={i}>{e}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+
             {normGroups.length > 0 && (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
@@ -625,7 +721,7 @@ export default function EntityManager() {
                 {normGroups
                   .filter(g => !dismissedNormIds.has(g.canonicalId))
                   .map(group => {
-                    const isApplying = applyingNormId === group.canonicalId
+                    const isRunning = normJobId !== null && normJob?.status !== 'done'
                     const confidencePct = Math.round(group.confidence * 100)
                     return (
                       <div key={group.canonicalId} className="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -682,17 +778,17 @@ export default function EntityManager() {
                             variant="outline"
                             size="sm"
                             onClick={() => setDismissedNormIds(prev => new Set([...prev, group.canonicalId]))}
-                            disabled={isApplying}
+                            disabled={isRunning}
                           >
                             무시
                           </Button>
                           <Button
                             variant="destructive"
                             size="sm"
-                            disabled={isApplying}
+                            disabled={isRunning}
                             onClick={() => { void handleApplyNorm(group) }}
                           >
-                            {isApplying
+                            {isRunning
                               ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />병합 중…</>
                               : '병합 적용'
                             }
