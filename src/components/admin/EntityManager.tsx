@@ -14,8 +14,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { GitMerge, Loader2, Pencil, Plus, Tag, Trash2, X } from 'lucide-react'
+import { GitMerge, Loader2, Pencil, Plus, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import { type EntityType, ENTITY_TYPE_LABEL } from '@/lib/types'
+import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,16 @@ export default function EntityManager() {
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [isMerging,     setIsMerging]     = useState(false)
   const [mergeError,    setMergeError]    = useState<string | null>(null)
+
+  // 정규화 제안 패널 상태
+  const [showNormPanel,      setShowNormPanel]      = useState(false)
+  const [normType,           setNormType]           = useState<EntityType | 'all'>('company')
+  const [isLoadingNorm,      setIsLoadingNorm]      = useState(false)
+  const [normGroups,         setNormGroups]         = useState<NormalizationGroup[]>([])
+  const [normError,          setNormError]          = useState<string | null>(null)
+  const [dismissedNormIds,   setDismissedNormIds]   = useState<Set<string>>(new Set())
+  const [applyingNormId,     setApplyingNormId]     = useState<string | null>(null)
+  const [applyNormError,     setApplyNormError]     = useState<string | null>(null)
 
   // ── 초기 로드 ─────────────────────────────────────────────────────────────
 
@@ -452,6 +463,65 @@ export default function EntityManager() {
     }
   }
 
+  // ── 정규화 제안 ───────────────────────────────────────────────────────────
+
+  const handleSuggestNorm = async () => {
+    setIsLoadingNorm(true)
+    setNormError(null)
+    setNormGroups([])
+    setDismissedNormIds(new Set())
+    setApplyNormError(null)
+    try {
+      const res = await fetch('/api/admin/entities/suggest-normalization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entityType: normType === 'all' ? undefined : normType }),
+      })
+      const json = await res.json() as { groups?: NormalizationGroup[]; error?: string }
+      if (!res.ok) {
+        setNormError(json.error ?? '제안 생성 실패')
+      } else {
+        setNormGroups(json.groups ?? [])
+        if ((json.groups ?? []).length === 0) {
+          setNormError('중복 제안이 없습니다. (데이터가 적거나 이미 정규화됨)')
+        }
+      }
+    } catch {
+      setNormError('네트워크 오류가 발생했습니다.')
+    } finally {
+      setIsLoadingNorm(false)
+    }
+  }
+
+  const handleApplyNorm = async (group: NormalizationGroup) => {
+    const confirmed = window.confirm(
+      `"${group.canonicalName}"으로 ${group.mergeIds.length}개 엔티티를 병합합니다.\n\n` +
+      `⚠️ 같은 회사가 여러 이름으로 쪼개진 걸 합칩니다. 적용하면 되돌릴 수 없어요.`
+    )
+    if (!confirmed) return
+
+    setApplyingNormId(group.canonicalId)
+    setApplyNormError(null)
+    try {
+      const res = await fetch('/api/admin/entities/apply-normalization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(group),
+      })
+      const json = await res.json() as { mergedCount?: number; error?: string }
+      if (!res.ok) {
+        setApplyNormError(`병합 실패: ${json.error ?? '알 수 없는 오류'}`)
+      } else {
+        setDismissedNormIds(prev => new Set([...prev, group.canonicalId]))
+        await loadEntities()
+      }
+    } catch {
+      setApplyNormError('네트워크 오류가 발생했습니다.')
+    } finally {
+      setApplyingNormId(null)
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   const aliasEntity       = aliasEntityId  ? entities.find(e => e.id === aliasEntityId)  : null
@@ -468,6 +538,173 @@ export default function EntityManager() {
             닫기
           </button>
         </div>
+      )}
+
+      {/* ── 정규화 제안 패널 토글 버튼 ── */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => { setShowNormPanel(p => !p); setNormError(null) }}
+          className={cn(
+            'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+            showNormPanel
+              ? 'border-foreground bg-foreground text-background'
+              : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
+          )}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          정규화 제안
+        </button>
+      </div>
+
+      {/* ── 정규화 제안 패널 ── */}
+      {showNormPanel && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold text-foreground">
+                  LLM 정규화 제안
+                </CardTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  같은 회사가 여러 이름으로 쪼개진 걸 합칩니다. 적용하면 되돌릴 수 없어요.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowNormPanel(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-foreground">엔티티 유형</span>
+                <Select
+                  value={normType}
+                  onValueChange={(v) => setNormType(v as EntityType | 'all')}
+                >
+                  <SelectTrigger className="h-8 w-36 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체</SelectItem>
+                    {ENTITY_TYPES.map(t => (
+                      <SelectItem key={t} value={t}>{ENTITY_TYPE_LABEL[t]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => { void handleSuggestNorm() }}
+                disabled={isLoadingNorm}
+              >
+                {isLoadingNorm
+                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />분석 중…</>
+                  : <><Sparkles className="mr-1.5 h-3.5 w-3.5" />제안 생성</>
+                }
+              </Button>
+            </div>
+
+            {normError && (
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                {normError}
+              </div>
+            )}
+
+            {applyNormError && (
+              <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-xs text-red-600">
+                {applyNormError}
+              </div>
+            )}
+
+            {normGroups.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  {normGroups.filter(g => !dismissedNormIds.has(g.canonicalId)).length}개 제안
+                </p>
+                {normGroups
+                  .filter(g => !dismissedNormIds.has(g.canonicalId))
+                  .map(group => {
+                    const isApplying = applyingNormId === group.canonicalId
+                    const confidencePct = Math.round(group.confidence * 100)
+                    return (
+                      <div key={group.canonicalId} className="rounded-lg border border-border bg-card p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{group.canonicalName}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">{group.reason}</p>
+                          </div>
+                          <span className={cn(
+                            'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums',
+                            group.confidence >= 0.9
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-amber-50 text-amber-700'
+                          )}>
+                            신뢰도 {confidencePct}%
+                          </span>
+                        </div>
+
+                        <div>
+                          <p className="mb-1.5 text-[11px] text-muted-foreground/70">병합될 엔티티</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {group.mergeIds.map(id => {
+                              const ent = entities.find(e => e.id === id)
+                              return (
+                                <span
+                                  key={id}
+                                  className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs text-red-700"
+                                >
+                                  {ent?.canonical_name ?? id}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {group.newAliases.length > 0 && (
+                          <div>
+                            <p className="mb-1.5 text-[11px] text-muted-foreground/70">추가 동의어</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {group.newAliases.map(alias => (
+                                <span
+                                  key={alias}
+                                  className="inline-flex items-center rounded-full border bg-accent px-2.5 py-0.5 text-xs text-foreground"
+                                >
+                                  {alias}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDismissedNormIds(prev => new Set([...prev, group.canonicalId]))}
+                            disabled={isApplying}
+                          >
+                            무시
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={isApplying}
+                            onClick={() => { void handleApplyNorm(group) }}
+                          >
+                            {isApplying
+                              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />병합 중…</>
+                              : '병합 적용'
+                            }
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* ── 생성/수정 폼 ── */}
