@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { Search, X, LayoutGrid, List } from 'lucide-react'
+import { Loader2, Search, Sparkles, X, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
@@ -34,6 +34,14 @@ interface SearchResult {
 
 interface ServiceOption { id: string; name: string; icon?: string | null }
 interface SourceOption  { id: string; name: string; group_name: string | null }
+
+interface RagSource { content_id: string; title: string; published_at: string | null; source: string | null }
+interface RagAnswerData { answer: string; citations: string[]; sources: RagSource[] }
+type RagState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'done'; data: RagAnswerData }
+  | { status: 'none' }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -149,6 +157,9 @@ function SearchContent() {
   const [contentView, setContentView] = useState<ContentView>('list')
   // null = 카테고리 미선택(전체 출처 노출)
   const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
+
+  // AI 답변
+  const [ragState, setRagState] = useState<RagState>({ status: 'idle' })
 
   useEffect(() => {
     startTransition(() => setContentView(getSavedView()))
@@ -280,6 +291,39 @@ function SearchContent() {
     fetchResults()
     return () => { cancelled = true }
   }, [q, category, date, svcIds, srcIds])
+
+  // RAG AI 답변 (검색어 변경 시)
+  useEffect(() => {
+    if (!q) { startTransition(() => setRagState({ status: 'idle' })); return }
+
+    let cancelled = false
+
+    fetch('/api/search/rag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q }),
+    })
+      .then(r => r.json())
+      .then((data: unknown) => {
+        if (cancelled) return
+        const d = data as Record<string, unknown>
+        if (typeof d.answer === 'string' && d.answer) {
+          setRagState({
+            status: 'done',
+            data: {
+              answer: d.answer,
+              citations: Array.isArray(d.citations) ? d.citations as string[] : [],
+              sources: Array.isArray(d.sources) ? d.sources as RagSource[] : [],
+            },
+          })
+        } else {
+          setRagState({ status: 'none' })
+        }
+      })
+      .catch(() => { if (!cancelled) setRagState({ status: 'none' }) })
+
+    return () => { cancelled = true }
+  }, [q])
 
   // 활성 필터 칩
   const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
@@ -541,6 +585,37 @@ function SearchContent() {
             <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
           </p>
           <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
+        </div>
+      )}
+
+      {/* AI 답변 카드 */}
+      {q && ragState.status === 'loading' && (
+        <div className="mb-5 flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          AI가 수집된 기사를 바탕으로 답변을 정리하고 있어요…
+        </div>
+      )}
+      {q && ragState.status === 'done' && (
+        <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 shrink-0 text-brand-600" />
+            <span className="text-sm font-semibold text-foreground">AI 답변</span>
+            <span className="text-xs text-muted-foreground">수집된 기사들을 근거로 정리했어요. 아래 출처를 확인하세요.</span>
+          </div>
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{ragState.data.answer}</p>
+          {ragState.data.sources.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {ragState.data.sources.map(s => (
+                <Link
+                  key={s.content_id}
+                  href={`/dashboard/contents/${s.content_id}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 transition-colors line-clamp-1 max-w-[240px]"
+                >
+                  {s.title}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
