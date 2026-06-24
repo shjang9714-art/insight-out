@@ -122,7 +122,7 @@ export default async function AiInsightsView() {
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [insightRes, trendRes, watchlistRes, competitorNamesRes, keywordGroupsRes, entityTeaserRes, newsSlideRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, competitorNamesRes, keywordGroupsRes, entityTeaserRes, newsSlideRes, companyCardsRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -167,6 +167,14 @@ export default async function AiInsightsView() {
       .not('summary_ko', 'is', null)
       .order('collected_at', { ascending: false })
       .limit(5),
+    supabase
+      .from('insight_cards')
+      .select('id, period_start, period_end, scope, topic, headline, implication, source_content_ids, citations, generated_at, status')
+      .eq('status', 'published')
+      .eq('scope', 'company')
+      .order('period_start', { ascending: false })
+      .order('generated_at', { ascending: false })
+      .limit(60),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
@@ -205,12 +213,17 @@ export default async function AiInsightsView() {
     .slice(0, TOP_KEYWORDS_N)
     .map(([name, count]) => ({ name, count }))
 
-  // ─── 관심업체 (키워드 분류용, 섹션 렌더 없음) ────────────────────────────
+  // ─── 관심업체 ─────────────────────────────────────────────────────────────
   const watchlistLower = watchlist.map(w => w.company.toLowerCase())
   const isWatched = (name: string): boolean => {
     const lower = name.toLowerCase()
     return watchlistLower.some(e => lower === e || lower.includes(e) || e.includes(lower))
   }
+
+  const rawCompanyCards = (companyCardsRes.data ?? []) as InsightCard[]
+  const companyCards = watchlist.length > 0
+    ? rawCompanyCards.filter(c => c.topic && isWatched(c.topic)).slice(0, 12)
+    : []
 
   // ─── 경쟁사 ────────────────────────────────────────────────────────────────
   type CompArticle = { id: string; title: string; collected_at: string; sentiment: '긍정' | '중립' | '부정' | null; matched_keywords: string[]; sources: { name: string } | null }
@@ -280,9 +293,9 @@ export default async function AiInsightsView() {
 
   // ─── 인사이트 카드 그룹 ────────────────────────────────────────────────────
   const contentMap = new Map<string, ContentMeta>()
-  if (cards.length > 0) {
+  if (cards.length > 0 || companyCards.length > 0) {
     const allIds = new Set<string>()
-    for (const card of cards) {
+    for (const card of [...cards, ...companyCards]) {
       for (const id of card.source_content_ids) allIds.add(id)
       for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
     }
@@ -319,6 +332,17 @@ export default async function AiInsightsView() {
   for (const [id, meta] of contentMap.entries()) {
     contentMapRecord[id] = meta
   }
+
+  const companyGroupsMap = new Map<string, InsightCard[]>()
+  for (const card of companyCards) {
+    const key = `${card.period_start}|${card.period_end}`
+    if (!companyGroupsMap.has(key)) companyGroupsMap.set(key, [])
+    companyGroupsMap.get(key)!.push(card)
+  }
+  const companyInsightGroups: InsightGroup[] = [...companyGroupsMap.entries()].map(([key, gc]) => {
+    const [start, end] = key.split('|')
+    return { key, start, end, cards: gc }
+  })
 
   // ─── 카드뉴스 슬라이드 구성 ───────────────────────────────────────────────
   type NewsContentRow = {
@@ -412,7 +436,26 @@ export default async function AiInsightsView() {
       </section>
 
 
-      {/* ③ 이번 주 뜨는 토픽 + 키워드 한 줄 */}
+      {/* ③ 관심 기업 인사이트 */}
+      <section>
+        <SectionHeader
+          icon={<Building2 className="h-4 w-4 text-brand-600" />}
+          title="관심 기업 인사이트"
+          desc="워치리스트 기업별 AI 분석 — 헤드라인과 시사점"
+        />
+        {watchlist.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
+            에서 관심 기업을 설정하면 기업별 AI 인사이트가 여기 표시됩니다.
+          </p>
+        ) : companyInsightGroups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">관심 기업 인사이트가 아직 없습니다. (생성·승인 후 표시)</p>
+        ) : (
+          <InsightCardsSectionClient groups={companyInsightGroups} contentMap={contentMapRecord} />
+        )}
+      </section>
+
+      {/* ④ 이번 주 뜨는 토픽 + 키워드 한 줄 */}
       <section>
         <SectionHeader
           icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
@@ -469,7 +512,7 @@ export default async function AiInsightsView() {
         )}
       </section>
 
-      {/* ④ 시장 주요 이슈 */}
+      {/* ⑤ 시장 주요 이슈 */}
       <section>
         <SectionHeader
           icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
@@ -479,7 +522,7 @@ export default async function AiInsightsView() {
         <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
       </section>
 
-      {/* ⑤ 경쟁사 동향 */}
+      {/* ⑥ 경쟁사 동향 */}
       <section>
         <SectionHeader
           icon={<Building2 className="h-4 w-4 text-red-500" />}
@@ -555,7 +598,7 @@ export default async function AiInsightsView() {
         )}
       </section>
 
-      {/* ⑥ 지식그래프 */}
+      {/* ⑦ 지식그래프 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <SectionHeader
           icon={<Network className="h-4 w-4 text-brand-600" />}

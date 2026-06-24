@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { LLM_PROVIDERS } from '@/lib/llm'
-import { generateIndustryInsightCards } from '@/lib/insight/generate'
+import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib/insight/generate'
 import { generateIssueCandidates } from '@/lib/issues/generate-candidates'
 import { generateEntityEvents } from '@/lib/entities/generate-events'
 import { generateIssueBrief } from '@/lib/issues/brief'
@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
   const result = {
     ok: true,
     insights: 0,
+    companyInsights: 0,
     candidates: 0,
     timelines: 0,
     briefs: 0,
@@ -48,6 +49,19 @@ export async function GET(request: NextRequest) {
 
   if (Date.now() >= deadline) {
     console.log('[ai-refresh] 데드라인 초과 — insights 이후 중단')
+    return Response.json(result)
+  }
+
+  // ── ①b 관심 기업 카드 생성 ───────────────────────────────────────────────
+  try {
+    const { created } = await generateCompanyInsightCards(admin)
+    result.companyInsights = created
+  } catch (err) {
+    result.errors.push(`companyInsights: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  if (Date.now() >= deadline) {
+    console.log('[ai-refresh] 데드라인 초과 — companyInsights 이후 중단')
     return Response.json(result)
   }
 
