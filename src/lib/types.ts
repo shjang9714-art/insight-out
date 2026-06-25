@@ -289,6 +289,7 @@ export interface InsightCard {
   scope: string
   topic: string
   headline: string
+  card_headline?: string | null
   implication: string | null
   source_content_ids: string[]
   citations: InsightCardCitation[]

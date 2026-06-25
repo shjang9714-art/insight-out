@@ -55,7 +55,7 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
 
       {/* 헤드라인 */}
       <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
-        {card.headline}
+        {card.card_headline ?? card.headline}
       </h3>
 
       {/* 데크 (시사점) */}

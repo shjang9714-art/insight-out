@@ -225,6 +225,24 @@ export default async function AiInsightsView() {
     ? rawCompanyCards.filter(c => c.topic && isWatched(c.topic)).slice(0, 12)
     : []
 
+  // card_headline 보강 (148, SQL 미적용 시 graceful skip)
+  const allInsightIds = [...cards, ...companyCards].map(c => c.id)
+  if (allInsightIds.length > 0) {
+    const { data: chData, error: chErr } = await supabase
+      .from('insight_cards')
+      .select('id, card_headline')
+      .in('id', allInsightIds)
+    if (!chErr && chData) {
+      const chMap = new Map(
+        (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
+      )
+      for (const c of [...cards, ...companyCards]) {
+        const ch = chMap.get(c.id)
+        if (ch) c.card_headline = ch
+      }
+    }
+  }
+
   // ─── 경쟁사 ────────────────────────────────────────────────────────────────
   type CompArticle = { id: string; title: string; collected_at: string; sentiment: '긍정' | '중립' | '부정' | null; matched_keywords: string[]; sources: { name: string } | null }
   type CompResult = { name: string; articles: CompArticle[]; dist: { 긍정: number; 중립: number; 부정: number } }
@@ -359,12 +377,12 @@ export default async function AiInsightsView() {
     type: 'insight' as const,
     badge: '인사이트',
     topic: card.topic ?? null,
-    headline: card.headline,
+    headline: card.card_headline ?? card.headline,
     summary: card.implication ?? null,
     href: `/dashboard/reports/new?type=시장동향&topic=${encodeURIComponent(card.topic ?? '')}`,
     source: null,
     date: null,
-    matchNames: [card.topic, card.headline].filter((s): s is string => !!s),
+    matchNames: [card.topic, card.card_headline ?? card.headline].filter((s): s is string => !!s),
     isCompetitor: false,
   }))
 

@@ -18,6 +18,7 @@ interface ContentRow {
 
 interface LlmOutput {
   headline: string
+  card_headline: string
   implication: string
   citations: { content_id: string; quote: string }[]
 }
@@ -47,9 +48,10 @@ function kstDateToUtcIso(dateStr: string): string {
 // ─── LLM 프롬프트 ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
-주어진 기사들로 이 주제의 핵심 동향 1줄(headline)과 LG U+ B2B(엔터프라이즈/공공/AICC·AIDC 등)에의 시사점 1~2줄(implication)을 쓰라.
+주어진 기사들로 이 주제의 핵심 동향 1줄(headline, 분석가 톤)과 LG U+ B2B(엔터프라이즈/공공/AICC·AIDC 등)에의 시사점 1~2줄(implication)을 쓰라.
+추가로 card_headline: 카드뉴스 큰 글자용 에디토리얼 헤드라인. 짧고 강렬하게(공백 포함 20자 내외), 단 사실 기반 — 과장·낚시·물음표 금지, 핵심 주체와 동향은 유지.
 근거 없는 주장 금지 — 각 핵심 주장은 입력 기사에서 15단어 이내 인용과 그 content_id를 citations로 제시.
-JSON만 출력: {"headline":"","implication":"","citations":[{"content_id":"","quote":""}]}`
+JSON만 출력: {"headline":"","card_headline":"","implication":"","citations":[{"content_id":"","quote":""}]}`
 
 function buildUserPrompt(topic: string, articles: ContentRow[]): string {
   const lines = articles
@@ -80,14 +82,39 @@ function parseLlmOutput(raw: string): LlmOutput | null {
               typeof (c as Record<string, unknown>).quote === 'string'
           )
       : []
+    const card_headline =
+      typeof obj.card_headline === 'string' && obj.card_headline.trim()
+        ? (obj.card_headline as string).trim()
+        : (obj.headline as string)
     return {
       headline: obj.headline as string,
+      card_headline,
       implication: typeof obj.implication === 'string' ? obj.implication : '',
       citations,
     }
   } catch {
     return null
   }
+}
+
+// ─── upsert 헬퍼 (card_headline 컬럼 미적용 시 graceful 폴백) ─────────────────
+
+async function upsertInsightCard(
+  adminClient: SupabaseClient,
+  payload: Record<string, unknown>,
+): Promise<{ error: { message: string; code?: string } | null }> {
+  const first = await adminClient
+    .from('insight_cards')
+    .upsert(payload, { onConflict: 'period_start,scope,topic' })
+  if (first.error && (first.error as { code?: string }).code === '42703' && 'card_headline' in payload) {
+    const rest = { ...payload }
+    delete rest.card_headline
+    const retry = await adminClient
+      .from('insight_cards')
+      .upsert(rest, { onConflict: 'period_start,scope,topic' })
+    return { error: retry.error }
+  }
+  return { error: first.error }
 }
 
 // ─── 메인 엔진 ────────────────────────────────────────────────────────────────
@@ -180,23 +207,19 @@ export async function generateIndustryInsightCards(
       const sourceIds = articles.map((a) => a.id)
 
       // 5. 멱등 upsert
-      const { error: upsertError } = await adminClient
-        .from('insight_cards')
-        .upsert(
-          {
-            period_start: periodStart,
-            period_end: periodEnd,
-            scope: 'industry',
-            topic: group,
-            headline: parsed.headline,
-            implication: parsed.implication || null,
-            source_content_ids: sourceIds,
-            citations: validCitations,
-            status: 'draft',
-            generated_at: new Date().toISOString(),
-          },
-          { onConflict: 'period_start,scope,topic' }
-        )
+      const { error: upsertError } = await upsertInsightCard(adminClient, {
+        period_start: periodStart,
+        period_end: periodEnd,
+        scope: 'industry',
+        topic: group,
+        headline: parsed.headline,
+        card_headline: parsed.card_headline,
+        implication: parsed.implication || null,
+        source_content_ids: sourceIds,
+        citations: validCitations,
+        status: 'draft',
+        generated_at: new Date().toISOString(),
+      })
 
       if (upsertError) {
         console.error(`[InsightGen] topic="${group}" upsert 실패:`, upsertError.message)
@@ -234,9 +257,10 @@ interface CompanyOptions {
 }
 
 const COMPANY_SYSTEM_PROMPT =
-  '당신은 LG U+ B2B 시장 인텔리전스 분석가다. 주어진 한 기업 관련 기사들로 그 기업의 **최근 핵심 동향 1줄(headline)** 과 **LG U+ B2B 관점 시사점 1~2줄(implication, 경쟁/협력/위협)** 을 쓰라. ' +
+  '당신은 LG U+ B2B 시장 인텔리전스 분석가다. 주어진 한 기업 관련 기사들로 그 기업의 **최근 핵심 동향 1줄(headline, 분석가 톤)** 과 **LG U+ B2B 관점 시사점 1~2줄(implication, 경쟁/협력/위협)** 을 쓰라. ' +
+  '추가로 card_headline: 카드뉴스 큰 글자용 에디토리얼 헤드라인. 짧고 강렬하게(공백 포함 20자 내외), 단 사실 기반 — 과장·낚시·물음표 금지, 핵심 주체와 동향은 유지. ' +
   '근거 없는 주장 금지 — 각 핵심 주장은 입력 기사의 15단어 이내 인용과 content_id 를 citations 로. ' +
-  'JSON만 출력: {"headline":"","implication":"","citations":[{"content_id":"","quote":""}]}'
+  'JSON만 출력: {"headline":"","card_headline":"","implication":"","citations":[{"content_id":"","quote":""}]}'
 
 function buildCompanyUserPrompt(company: string, articles: CompanyArticleRow[]): string {
   const lines = articles
@@ -336,23 +360,19 @@ export async function generateCompanyInsightCards(
       const validCitations = parsed.citations.filter((c) => articleIdSet.has(c.content_id))
       const sourceIds = picked.map((a) => a.id)
 
-      const { error: upsertError } = await adminClient
-        .from('insight_cards')
-        .upsert(
-          {
-            period_start: periodStart,
-            period_end: periodEnd,
-            scope: 'company',
-            topic: company,
-            headline: parsed.headline,
-            implication: parsed.implication || null,
-            source_content_ids: sourceIds,
-            citations: validCitations,
-            status: 'draft',
-            generated_at: new Date().toISOString(),
-          },
-          { onConflict: 'period_start,scope,topic' }
-        )
+      const { error: upsertError } = await upsertInsightCard(adminClient, {
+        period_start: periodStart,
+        period_end: periodEnd,
+        scope: 'company',
+        topic: company,
+        headline: parsed.headline,
+        card_headline: parsed.card_headline,
+        implication: parsed.implication || null,
+        source_content_ids: sourceIds,
+        citations: validCitations,
+        status: 'draft',
+        generated_at: new Date().toISOString(),
+      })
 
       if (upsertError) {
         console.error(`[CompanyInsightGen] company="${company}" upsert 실패:`, upsertError.message)
