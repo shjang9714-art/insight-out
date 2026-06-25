@@ -5,6 +5,7 @@ import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib
 import { generateIssueCandidates } from '@/lib/issues/generate-candidates'
 import { generateEntityEvents } from '@/lib/entities/generate-events'
 import { generateIssueBrief } from '@/lib/issues/brief'
+import { backfillSentiment } from '@/lib/insight/sentiment-backfill'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
     candidates: 0,
     timelines: 0,
     briefs: 0,
+    sentiments: 0,
     errors: [] as string[],
   }
 
@@ -218,6 +220,14 @@ export async function GET(request: NextRequest) {
     result.briefs = briefCount
   } catch (err) {
     result.errors.push(`briefs: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // ── ⑤ 논조 백필 (추적 엔티티 기사, deadline 인지) ──────────────────────────
+  try {
+    const { analyzed } = await backfillSentiment(admin, { deadline })
+    result.sentiments = analyzed
+  } catch (err) {
+    result.errors.push(`sentiments: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   console.log('[ai-refresh] 완료:', JSON.stringify(result))

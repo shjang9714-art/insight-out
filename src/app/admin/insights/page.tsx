@@ -100,7 +100,7 @@ export default function InsightsAdminPage() {
   }
 
   const handleSentiment = async () => {
-    if (!window.confirm('최근 14일 경쟁사 기사(최대 40건)의 논조를 LLM으로 분석하시겠습니까?')) return
+    if (!window.confirm('최근 14일 추적 기업·이슈 기사(최대 40건)의 논조를 LLM으로 분석하시겠습니까?')) return
     setIsSentiment(true)
     setSentimentResult(null)
     setError(null)
@@ -262,9 +262,9 @@ export default function InsightsAdminPage() {
         )}
       </div>
 
-      {/* 경쟁사 논조 분석 패널 */}
+      {/* 논조 분석 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">경쟁사 논조 분석</h2>
+        <h2 className="text-sm font-semibold text-foreground">논조 분석 (이슈·기업 기사)</h2>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
             onClick={() => void handleSentiment()}
