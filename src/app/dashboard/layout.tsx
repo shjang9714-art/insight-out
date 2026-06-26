@@ -50,13 +50,14 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                     key={tab.href}
                     href={tab.href}
                     onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                       active
                         ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30'
                         : 'text-foreground/80 hover:bg-accent'
                     }`}
                   >
-                    {tab.label}
+                    <span className="text-lg leading-none">{tab.emoji}</span>
+                    <span>{tab.label}</span>
                   </Link>
                 )
               })}

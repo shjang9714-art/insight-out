@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { X, Loader2, LayoutGrid, List } from 'lucide-react'
+import { X, Loader2, LayoutGrid, List, Newspaper, Play, Globe, BarChart2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import ArchiveButton from '@/components/archive/ArchiveButton'
@@ -74,6 +74,14 @@ const VIEW_KEY = 'io:content-view'
 
 
 const PAGE_SIZE = 20
+
+// 콘텐츠 소스타입 선택 바 (4개 고정)
+const CONTENT_SOURCE_TABS = [
+  { label: '뉴스',    value: '뉴스'      as ContentCategory, Icon: Newspaper, color: 'text-blue-600',   activeBg: 'bg-blue-50 border-blue-600 text-blue-700 dark:bg-blue-950/30 dark:border-blue-400 dark:text-blue-300',   hoverBg: 'hover:border-blue-200 hover:text-blue-700' },
+  { label: '유튜브',  value: '유튜브'    as ContentCategory, Icon: Play,      color: 'text-red-600',    activeBg: 'bg-red-50 border-red-600 text-red-700 dark:bg-red-950/30 dark:border-red-400 dark:text-red-300',         hoverBg: 'hover:border-red-200 hover:text-red-700'   },
+  { label: '웹인사이트', value: '웹인사이트' as ContentCategory, Icon: Globe,   color: 'text-emerald-600', activeBg: 'bg-emerald-50 border-emerald-600 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-400 dark:text-emerald-300', hoverBg: 'hover:border-emerald-200 hover:text-emerald-700' },
+  { label: '리서치',  value: '리서치'    as ContentCategory, Icon: BarChart2, color: 'text-indigo-600', activeBg: 'bg-indigo-50 border-indigo-600 text-indigo-700 dark:bg-indigo-950/30 dark:border-indigo-400 dark:text-indigo-300', hoverBg: 'hover:border-indigo-200 hover:text-indigo-700' },
+] as const
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -216,10 +224,43 @@ function ContentsContent() {
   const [groupByDay, setGroupByDay]   = useState(false)
   // null = 카테고리 미선택(전체 출처 노출)
   const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
+  const [catCounts, setCatCounts] = useState<Record<string, number>>({})
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
   useEffect(() => {
     startTransition(() => setContentView(getSavedView()))
+  }, [])
+
+  // 진입 시 카테고리 미지정이면 '뉴스'로 기본 설정 (URL 반영)
+  useEffect(() => {
+    if (!searchParams.get('category')) {
+      router.replace(`${pathname}?category=뉴스`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 소스타입별 총 건수 집계 (1회)
+  useEffect(() => {
+    const supabase = createClient()
+    supabase
+      .from('contents')
+      .select('category')
+      .eq('status', 'published')
+      .then(({ data }) => {
+        if (!data) return
+        const counts: Record<string, number> = {}
+        for (const row of data) {
+          const cat = row.category as string
+          counts[cat] = (counts[cat] ?? 0) + 1
+        }
+        // 표시 카테고리별로 합산
+        const display: Record<string, number> = {}
+        display['뉴스']      = counts['뉴스'] ?? 0
+        display['유튜브']    = counts['유튜브'] ?? 0
+        display['웹인사이트'] = (counts['웹인사이트'] ?? 0) + (counts['오피니언'] ?? 0)
+        display['리서치']    = (counts['리포트'] ?? 0) + (counts['가트너'] ?? 0) + (counts['KRG'] ?? 0)
+        setCatCounts(display)
+      })
   }, [])
 
   const handleViewChange = (v: ContentView) => {
@@ -433,8 +474,43 @@ function ContentsContent() {
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠'
 
+  // 소스타입 선택 (기본 뉴스)
+  const activeSourceTab = (category || '뉴스') as ContentCategory
+
   return (
     <div className="px-4 py-6 sm:px-6">
+
+      {/* ── 소스타입 선택 바 ─────────────────────────────────────────────────── */}
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {CONTENT_SOURCE_TABS.map((tab) => {
+          const isActive = activeSourceTab === tab.value
+          const count = catCounts[tab.value]
+          return (
+            <button
+              key={tab.value}
+              onClick={() => updateParam('category', tab.value)}
+              className={cn(
+                'relative flex min-w-[4.5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-3 py-3 transition-colors',
+                isActive
+                  ? tab.activeBg
+                  : `border-border text-muted-foreground ${tab.hoverBg}`,
+              )}
+            >
+              {count !== undefined && count > 0 && (
+                <span className="absolute left-1.5 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-brand-600 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+                  {count >= 1000 ? `${Math.floor(count / 1000)}k` : count}
+                </span>
+              )}
+              <tab.Icon className={`h-5 w-5 ${isActive ? '' : tab.color}`} />
+              <span className="text-xs font-medium leading-tight">{tab.label}</span>
+              {count === 0 && (
+                <span className="text-[9px] text-muted-foreground/60">데이터 없음</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       {/* 제목 + 건수 + 뷰 토글 */}
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
