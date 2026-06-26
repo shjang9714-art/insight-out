@@ -5,6 +5,19 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Menu, Search, Home, ChevronRight } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
+
+const NAV_TABS = [
+  { label: '홈', href: '/dashboard', exact: true },
+  { label: 'AI 인사이트', href: '/dashboard/issues', exact: false },
+  { label: '기업동향', href: '/dashboard/entities', exact: false },
+  { label: '콘텐츠', href: '/dashboard/contents', exact: false },
+  { label: '전략보고서', href: '/dashboard/reports', exact: false },
+]
+
+function isTabActive(href: string, exact: boolean, pathname: string): boolean {
+  if (exact) return pathname === href
+  return pathname === href || pathname.startsWith(href + '/')
+}
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { getKstTodayStartIso } from '@/lib/date'
@@ -168,7 +181,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={onMenuClick}
-            className="rounded-lg p-2 transition-colors hover:bg-accent lg:hidden"
+            className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
             aria-label="메뉴 열기"
           >
             <Menu className="h-5 w-5 text-muted-foreground" />
@@ -319,6 +332,28 @@ export default function DashboardHeader({ onMenuClick }: Props) {
           </Link>
         </div>
       </div>
+
+      {/* 5탭 가로 네비게이션 (md+ 헤더 표시, 모바일은 드로어) */}
+      <nav className="hidden md:flex items-center gap-0 border-t border-border px-4 sm:px-5" aria-label="주 메뉴">
+        {NAV_TABS.map((tab) => {
+          const active = isTabActive(tab.href, tab.exact, pathname)
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={`relative flex h-9 items-center px-3 text-sm font-medium transition-colors ${
+                active
+                  ? 'text-brand-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-brand-600'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          )
+        })}
+      </nav>
     </header>
   )
 }
+
+export { NAV_TABS, isTabActive }

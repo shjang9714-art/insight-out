@@ -4,12 +4,14 @@ import { createServerClient } from '@supabase/ssr'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
+import CompetitorTrends from '@/components/dashboard/CompetitorTrends'
+import KATrends from '@/components/dashboard/KATrends'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '지식그래프 | Insight Out',
-  description: '엔티티 관계 탐색 — 기업·기술·이슈의 연결망을 시각적으로 확인합니다.',
+  title: '기업동향 | Insight Out',
+  description: '경쟁사 동향 및 엔티티 관계 탐색 — 기업·기술·이슈를 한눈에 확인합니다.',
 }
 
 export default async function EntitiesPage() {
@@ -63,11 +65,26 @@ export default async function EntitiesPage() {
   }
 
   return (
-    <EntitiesPageClient
-      initialCenter={initialCenter}
-      entities={entities}
-      allEntities={allEntities}
-      totalByType={totalByType}
-    />
+    <div className="px-4 py-6 sm:px-5 space-y-8">
+      {/* 경쟁사 동향 */}
+      <section>
+        <CompetitorTrends />
+      </section>
+
+      {/* KA 동향 */}
+      <section>
+        <KATrends />
+      </section>
+
+      {/* 지식그래프 */}
+      <section>
+        <EntitiesPageClient
+          initialCenter={initialCenter}
+          entities={entities}
+          allEntities={allEntities}
+          totalByType={totalByType}
+        />
+      </section>
+    </div>
   )
 }

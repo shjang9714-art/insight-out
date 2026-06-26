@@ -1,9 +1,9 @@
 import { Suspense } from 'react'
+import Link from 'next/link'
 import FeedSlot from '@/components/feed/FeedSlot'
-import CompetitorTrends from '@/components/dashboard/CompetitorTrends'
-import KATrends from '@/components/dashboard/KATrends'
 import IssueSignals from '@/components/dashboard/IssueSignals'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
+import { ChevronRight, Building2 } from 'lucide-react'
 
 export default function DashboardPage() {
   return (
@@ -24,14 +24,23 @@ export default function DashboardPage() {
           <IssueSignals />
         </Suspense>
 
-        {/* 3블록: 경쟁사 동향 */}
+        {/* 3블록: 기업동향 요약 링크 */}
         <section>
-          <CompetitorTrends />
-        </section>
-
-        {/* 4블록: KA 동향 */}
-        <section>
-          <KATrends />
+          <Link
+            href="/dashboard/entities"
+            className="group flex items-center justify-between rounded-2xl border border-border bg-card p-5 transition-colors hover:border-brand-600/40 hover:bg-brand-50/40 dark:hover:bg-brand-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-950/30">
+                <Building2 className="h-5 w-5 text-brand-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">기업동향</p>
+                <p className="text-xs text-muted-foreground">경쟁사·KA 동향 및 엔티티 관계 탐색</p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </Link>
         </section>
       </div>
     </div>
