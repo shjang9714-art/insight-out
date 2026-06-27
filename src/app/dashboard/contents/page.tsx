@@ -12,6 +12,7 @@ import ArchiveButton from '@/components/archive/ArchiveButton'
 import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
+import YoutubeVideoCard from '@/components/dashboard/YoutubeVideoCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 
@@ -746,7 +747,19 @@ function ContentsContent() {
                   <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
                     {seg.label}
                   </p>
-                  {contentView === 'card' ? (
+                  {category === '유튜브' ? (
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {seg.items.map(({ item }) => (
+                        <YoutubeVideoCard
+                          key={item.id}
+                          title={item.title}
+                          originalUrl={item.original_url}
+                          sourceName={item.sources?.name ?? item.author ?? null}
+                          publishedAt={displayDate(item, sortByCollected)}
+                        />
+                      ))}
+                    </div>
+                  ) : contentView === 'card' ? (
                     <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
                       {seg.items.map(({ item, members }) => (
                         <ContentListCard
@@ -789,6 +802,19 @@ function ContentsContent() {
                     </div>
                   )}
                 </div>
+              ))}
+            </div>
+          ) : category === '유튜브' ? (
+            /* ── 유튜브 전용 그리드 ── */
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {clusteredItems.map(({ item }) => (
+                <YoutubeVideoCard
+                  key={item.id}
+                  title={item.title}
+                  originalUrl={item.original_url}
+                  sourceName={item.sources?.name ?? item.author ?? null}
+                  publishedAt={displayDate(item, sortByCollected)}
+                />
               ))}
             </div>
           ) : contentView === 'card' ? (
