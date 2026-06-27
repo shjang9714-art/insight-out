@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateIssueCandidates } from '@/lib/issues/generate-candidates'
+import { issueAutoPublish } from '@/lib/insight/auto-publish'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
           .insert({
             title: candidate.title,
             summary: candidate.summary,
-            status: 'draft',
+            status: issueAutoPublish(candidate.content_ids.length) ? 'published' : 'draft',
             match_keywords: candidate.match_keywords,
             source: 'claude',
           })

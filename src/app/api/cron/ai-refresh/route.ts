@@ -6,6 +6,7 @@ import { generateIssueCandidates } from '@/lib/issues/generate-candidates'
 import { generateEntityEvents } from '@/lib/entities/generate-events'
 import { generateIssueBrief } from '@/lib/issues/brief'
 import { backfillSentiment } from '@/lib/insight/sentiment-backfill'
+import { issueAutoPublish } from '@/lib/insight/auto-publish'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
           .insert({
             title: candidate.title,
             summary: candidate.summary,
-            status: 'draft',
+            status: issueAutoPublish(candidate.content_ids.length) ? 'published' : 'draft',
             match_keywords: candidate.match_keywords,
             source: 'claude',
           })

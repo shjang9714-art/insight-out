@@ -52,6 +52,7 @@ export default function InsightsAdminPage() {
   const [sentimentResult, setSentimentResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
   const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
+  const [filterStatus, setFilterStatus] = useState<InsightCardStatus | 'all'>('all')
 
   async function fetchCards() {
     try {
@@ -296,6 +297,54 @@ export default function InsightsAdminPage() {
       )}
 
       {/* 카드 목록 */}
+      {!isLoading && cards.length > 0 && (() => {
+        const draftCount = cards.filter(c => c.status === 'draft').length
+        const statusCounts: Record<string, number> = {}
+        for (const c of cards) statusCounts[c.status] = (statusCounts[c.status] ?? 0) + 1
+        return (
+          <div className="space-y-3">
+            {draftCount > 0 && (
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-2.5 flex items-center justify-between">
+                <p className="text-sm font-medium text-yellow-800">
+                  검토 대기 <span className="tabular-nums">{draftCount}</span>건
+                </p>
+                <button
+                  onClick={() => setFilterStatus(filterStatus === 'draft' ? 'all' : 'draft')}
+                  className={cn(
+                    'text-xs font-medium px-2.5 py-1 rounded-full border transition-colors',
+                    filterStatus === 'draft'
+                      ? 'border-yellow-600 bg-yellow-600 text-white'
+                      : 'border-yellow-400 text-yellow-700 hover:bg-yellow-100'
+                  )}
+                >
+                  {filterStatus === 'draft' ? '전체 보기' : '초안만 보기'}
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'draft', 'published', 'archived'] as const).map(s => {
+                const count = s === 'all' ? cards.length : (statusCounts[s] ?? 0)
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setFilterStatus(s)}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      filterStatus === s
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
+                    )}
+                  >
+                    {s === 'all' ? '전체' : STATUS_LABEL[s]}
+                    <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -305,9 +354,11 @@ export default function InsightsAdminPage() {
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           아직 생성된 인사이트 카드가 없습니다.
         </div>
-      ) : (
+      ) : (() => {
+        const visibleCards = filterStatus === 'all' ? cards : cards.filter(c => c.status === filterStatus)
+        return (
         <div className="space-y-3">
-          {cards.map((card) => (
+          {visibleCards.map((card) => (
             <div
               key={card.id}
               className="rounded-xl border border-border bg-card p-5 space-y-3"
@@ -417,7 +468,8 @@ export default function InsightsAdminPage() {
             </div>
           ))}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

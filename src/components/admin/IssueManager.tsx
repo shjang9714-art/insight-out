@@ -656,6 +656,26 @@ export default function IssueManager() {
         </Card>
       )}
 
+      {/* ── 검토 대기 배너 ── */}
+      {!isLoading && (statusCounts['draft'] ?? 0) > 0 && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-2.5 flex items-center justify-between">
+          <p className="text-sm font-medium text-yellow-800">
+            검토 대기 <span className="tabular-nums">{statusCounts['draft']}</span>건
+          </p>
+          <button
+            onClick={() => setFilterStatus(filterStatus === 'draft' ? 'all' : 'draft')}
+            className={cn(
+              'text-xs font-medium px-2.5 py-1 rounded-full border transition-colors',
+              filterStatus === 'draft'
+                ? 'border-yellow-600 bg-yellow-600 text-white'
+                : 'border-yellow-400 text-yellow-700 hover:bg-yellow-100'
+            )}
+          >
+            {filterStatus === 'draft' ? '전체 보기' : '초안만 보기'}
+          </button>
+        </div>
+      )}
+
       {/* ── 상태 필터 + 검색 + 추가 버튼 ── */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">

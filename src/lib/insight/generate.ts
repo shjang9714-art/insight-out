@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { llmComplete } from '@/lib/llm'
+import { insightAutoPublish } from '@/lib/insight/auto-publish'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -205,6 +206,7 @@ export async function generateIndustryInsightCards(
       )
 
       const sourceIds = articles.map((a) => a.id)
+      const autoPub = insightAutoPublish(validCitations.length, sourceIds.length)
 
       // 5. 멱등 upsert
       const { error: upsertError } = await upsertInsightCard(adminClient, {
@@ -217,7 +219,7 @@ export async function generateIndustryInsightCards(
         implication: parsed.implication || null,
         source_content_ids: sourceIds,
         citations: validCitations,
-        status: 'draft',
+        status: autoPub ? 'published' : 'draft',
         generated_at: new Date().toISOString(),
       })
 
@@ -359,6 +361,7 @@ export async function generateCompanyInsightCards(
       const articleIdSet = new Set(picked.map((a) => a.id))
       const validCitations = parsed.citations.filter((c) => articleIdSet.has(c.content_id))
       const sourceIds = picked.map((a) => a.id)
+      const autoPub = insightAutoPublish(validCitations.length, sourceIds.length)
 
       const { error: upsertError } = await upsertInsightCard(adminClient, {
         period_start: periodStart,
@@ -370,7 +373,7 @@ export async function generateCompanyInsightCards(
         implication: parsed.implication || null,
         source_content_ids: sourceIds,
         citations: validCitations,
-        status: 'draft',
+        status: autoPub ? 'published' : 'draft',
         generated_at: new Date().toISOString(),
       })
 
