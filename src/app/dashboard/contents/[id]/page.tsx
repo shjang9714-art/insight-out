@@ -248,7 +248,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <ArchiveButton contentId={content.id} />
                 {content.original_url && (
                   <a
-                    href={content.original_url}
+                    href={`/api/contents/${content.id}/source`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
@@ -303,7 +303,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <ArchiveButton contentId={content.id} />
                 {!isReport && content.original_url && (
                   <a
-                    href={content.original_url}
+                    href={`/api/contents/${content.id}/source`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
@@ -419,7 +419,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
             {/* 뉴스에만 원문 보기 링크 표시 */}
             {!isReport && content.original_url && (
               <a
-                href={content.original_url}
+                href={`/api/contents/${content.id}/source`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"

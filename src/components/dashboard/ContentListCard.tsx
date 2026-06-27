@@ -96,7 +96,7 @@ export default function ContentListCard({
         </p>
         {originalUrl && (
           <a
-            href={originalUrl}
+            href={`/api/contents/${id}/source`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

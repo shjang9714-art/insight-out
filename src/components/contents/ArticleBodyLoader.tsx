@@ -94,7 +94,7 @@ export default function ArticleBodyLoader({ contentId, contentTitle, snippet, or
         </p>
         {originalUrl && (
           <a
-            href={originalUrl}
+            href={`/api/contents/${contentId}/source`}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-brand-600 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-600 transition-colors hover:bg-brand-100 dark:bg-brand-950/30 dark:hover:bg-brand-950/50"
@@ -120,7 +120,7 @@ export default function ArticleBodyLoader({ contentId, contentTitle, snippet, or
         </p>
         {originalUrl && (
           <a
-            href={originalUrl}
+            href={`/api/contents/${contentId}/source`}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"

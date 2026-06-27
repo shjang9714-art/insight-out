@@ -129,7 +129,7 @@ export default function ContentRow({
         <div className="shrink-0">
           {originalUrl ? (
             <a
-              href={originalUrl}
+              href={`/api/contents/${id}/source`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
