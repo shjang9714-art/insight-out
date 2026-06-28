@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Quote, ChevronDown, ChevronUp } from 'lucide-react'
+import { Quote, ChevronDown, ChevronUp, Clock, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import type { ContentMetaRecord, InsightGroup } from './InsightCardsSectionClient'
@@ -13,6 +13,14 @@ function formatPeriod(start: string, end: string): string {
   const fmt = (d: Date) =>
     `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
   return `${fmt(new Date(start))} ~ ${fmt(new Date(end))}`
+}
+
+function freshnessLabel(generatedAt: string | null): { label: string; stale: boolean } | null {
+  if (!generatedAt) return null
+  const days = Math.floor((Date.now() - new Date(generatedAt).getTime()) / (1000 * 60 * 60 * 24))
+  if (days === 0) return { label: '오늘', stale: false }
+  if (days === 1) return { label: '어제', stale: false }
+  return { label: `${days}일 전`, stale: days >= 14 }
 }
 
 // ─── 카드뉴스 단일 카드 ────────────────────────────────────────────────────────
@@ -31,6 +39,9 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
   const hasExtra = restCitations.length > 0 || card.source_content_ids.length > 0
   const extraCount = restCitations.length > 0 ? restCitations.length : card.source_content_ids.length
   const expandId = `citations-${card.id}`
+
+  const freshness = freshnessLabel(card.generated_at)
+  const evidenceCount = citations.length || card.source_content_ids.length
 
   return (
     <article
@@ -52,6 +63,29 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
           </span>
         )}
       </div>
+
+      {/* 신선도·근거 배지 */}
+      {(freshness || evidenceCount > 0) && (
+        <div className="flex items-center gap-2">
+          {freshness && (
+            <span className={cn(
+              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+              freshness.stale
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-border bg-muted text-muted-foreground'
+            )}>
+              <Clock className="h-2.5 w-2.5" />
+              {freshness.label}
+            </span>
+          )}
+          {evidenceCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <FileText className="h-2.5 w-2.5" />
+              근거 {evidenceCount}건
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 헤드라인 */}
       <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
