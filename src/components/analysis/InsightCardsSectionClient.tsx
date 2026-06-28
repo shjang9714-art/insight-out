@@ -239,19 +239,13 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                       <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
                         {card.topic}
                       </span>
-                      <div className="flex items-center gap-1.5">
-                        {matched && (
+                      {matched && (
+                        <div className="flex items-center gap-1.5">
                           <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-brand-600/10 text-brand-600">
                             관심 표시
                           </span>
-                        )}
-                        <Link
-                          href={`/dashboard/reports/new?type=시장동향&topic=${encodeURIComponent(card.topic ?? '')}`}
-                          className="rounded px-2 py-0.5 text-[11px] font-medium bg-brand-600/10 text-brand-600 hover:bg-brand-600/20 transition-colors"
-                        >
-                          보고서로 만들기
-                        </Link>
-                      </div>
+                        </div>
+                      )}
                     </div>
 
                     <p className="text-base font-semibold text-foreground leading-snug">

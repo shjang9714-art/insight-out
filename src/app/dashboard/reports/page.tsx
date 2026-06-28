@@ -87,7 +87,7 @@ export default async function ReportsPage() {
           <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
           <p className="text-sm font-medium text-muted-foreground">아직 보고서가 없습니다</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            AI 인사이트에서 &lsquo;보고서로 만들기&rsquo;로 시작하세요.
+            관심 토픽·이슈를 골라 전략보고서를 시작하세요.
           </p>
           <Link
             href="/dashboard/ai-analysis"

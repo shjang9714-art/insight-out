@@ -132,9 +132,9 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
           </Link>
         ) : null}
 
-        {/* 근거 펼치기 + 보고서 링크 */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {hasExtra && (
+        {/* 근거 펼치기 */}
+        {hasExtra && (
+          <div className="flex items-center">
             <button
               onClick={() => setExpanded(prev => !prev)}
               aria-expanded={expanded}
@@ -153,14 +153,8 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
                 </>
               )}
             </button>
-          )}
-          <Link
-            href={`/dashboard/reports/new?type=시장동향&topic=${encodeURIComponent(card.topic ?? '')}`}
-            className="text-[11px] text-muted-foreground hover:text-brand-600 transition-colors"
-          >
-            보고서로 만들기
-          </Link>
-        </div>
+          </div>
+        )}
 
         {/* 펼쳐진 나머지 근거 */}
         {expanded && (
