@@ -4,13 +4,18 @@ import {
   getUserPreferenceKeywordIds,
   getUserPrimaryServiceId,
 } from '@/lib/preferences'
+import { isB2BRelevant } from '@/lib/feed-blocklist'
+import { dedupSimilarItems } from '@/lib/feed-dedup'
 import OnboardingKeywordPicker from './OnboardingKeywordPicker'
-import RecommendedFeed from './RecommendedFeed'
+import RecommendedFeed, { type FeedItem } from './RecommendedFeed'
 
 interface ServiceRow {
   id: string
   name: string
 }
+
+const FALLBACK_SELECT =
+  'id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords'
 
 /** 홈 "최근 피드" 슬롯 — 신규/스킵/기존 상태에 따라 분기 렌더링하는 서버 컴포넌트. */
 export default async function FeedSlot() {
@@ -46,6 +51,20 @@ export default async function FeedSlot() {
     )
   }
 
+  // 폴백 페치: 피드가 비었을 때 사용할 최신 고importance 콘텐츠
+  const { data: fbRaw } = await supabase
+    .from('contents')
+    .select(FALLBACK_SELECT)
+    .eq('status', 'published')
+    .neq('category', '유튜브')
+    .order('importance_score', { ascending: false })
+    .order('collected_at', { ascending: false })
+    .limit(18)
+
+  const fbFiltered = ((fbRaw ?? []) as unknown as FeedItem[])
+    .filter((c) => isB2BRelevant(c.title, c.summary_ko))
+  const fallbackItems = dedupSimilarItems(fbFiltered).slice(0, 6)
+
   return (
     <RecommendedFeed
       services={services}
@@ -53,6 +72,7 @@ export default async function FeedSlot() {
       initialServiceId={primaryServiceId}
       initialKeywordIds={keywordIds}
       initialKeywordMap={keywordNameById}
+      fallbackItems={fallbackItems}
     />
   )
 }

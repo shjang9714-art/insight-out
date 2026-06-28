@@ -14,7 +14,7 @@ interface ServiceOption {
   name: string
 }
 
-interface FeedItem {
+export interface FeedItem {
   id: string
   title: string
   summary_ko: string | null
@@ -40,6 +40,7 @@ interface RecommendedFeedProps {
   initialServiceId: string | null
   initialKeywordIds: string[]
   initialKeywordMap: Record<string, string>
+  fallbackItems?: FeedItem[]
 }
 
 function CardSkeleton() {
@@ -78,6 +79,7 @@ export default function RecommendedFeed({
   initialServiceId,
   initialKeywordIds,
   initialKeywordMap,
+  fallbackItems = [],
 }: RecommendedFeedProps) {
   const router = useRouter()
   const [mode, setMode] = useState<'feed' | 'edit'>('feed')
@@ -175,9 +177,34 @@ export default function RecommendedFeed({
           {[1, 2, 3, 4, 5, 6].map((i) => <CardSkeleton key={i} />)}
         </div>
       ) : sections.length === 0 ? (
-        <p className="py-8 text-center text-xs text-muted-foreground">
-          추천할 콘텐츠가 아직 없습니다
-        </p>
+        fallbackItems.length > 0 ? (
+          <div>
+            <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {fallbackItems.map((item) => (
+                <ContentCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+                  category={item.category}
+                  sourceName={item.sources?.name ?? null}
+                  publishedAt={item.published_at}
+                  thumbnailUrl={null}
+                  href={item.category === '유튜브' ? null : undefined}
+                  keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                />
+              ))}
+            </div>
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              관심사를 설정하면 더 잘 맞는 추천을 받을 수 있어요.
+            </p>
+          </div>
+        ) : (
+          <p className="py-8 text-center text-xs text-muted-foreground">
+            추천할 콘텐츠가 아직 없습니다
+          </p>
+        )
       ) : (
         <div className="space-y-6">
           {sections.map((section) => (
