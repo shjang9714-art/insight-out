@@ -2,11 +2,10 @@ import type React from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { TrendingUp, Building2, Network, FileText } from 'lucide-react'
+import { TrendingUp, FileText } from 'lucide-react'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
-import type { EntityType } from '@/lib/types'
 import { tagTypeToBucket } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { KeywordItem } from '@/components/dashboard/KeywordMap'
@@ -93,7 +92,7 @@ function SectionHeader({ icon, title, desc }: { icon: React.ReactNode; title: st
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
-export default async function AiInsightsView() {
+export default async function AiInsightsView({ view = 'briefing' }: { view?: 'briefing' | 'issues' | 'mine' }) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -116,7 +115,7 @@ export default async function AiInsightsView() {
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [insightRes, trendRes, watchlistRes, competitorNamesRes, keywordGroupsRes, entityTeaserRes, companyCardsRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -140,33 +139,14 @@ export default async function AiInsightsView() {
           .limit(WATCHLIST_LIMIT)
       : Promise.resolve({ data: [], error: null }),
     supabase
-      .from('entities')
-      .select('canonical_name')
-      .eq('is_competitor', true)
-      .limit(50),
-    supabase
       .from('keyword_groups')
       .select('name, tag_type, include_patterns')
       .eq('is_active', true)
       .limit(200),
-    supabase
-      .from('entities')
-      .select('id, canonical_name, entity_type, mention_count')
-      .order('mention_count', { ascending: false })
-      .limit(10),
-    supabase
-      .from('insight_cards')
-      .select('id, period_start, period_end, scope, topic, headline, implication, source_content_ids, citations, generated_at, status')
-      .eq('status', 'published')
-      .eq('scope', 'company')
-      .order('period_start', { ascending: false })
-      .order('generated_at', { ascending: false })
-      .limit(60),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
   const watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
-  const competitorNames = (competitorNamesRes.data ?? []).map((k: { canonical_name: string }) => k.canonical_name).filter(Boolean)
 
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
   const trendingTopics = computeTrendingTopics(
@@ -207,67 +187,7 @@ export default async function AiInsightsView() {
     return watchlistLower.some(e => lower === e || lower.includes(e) || e.includes(lower))
   }
 
-  const rawCompanyCards = (companyCardsRes.data ?? []) as InsightCard[]
-  const companyCards = watchlist.length > 0
-    ? rawCompanyCards.filter(c => c.topic && isWatched(c.topic)).slice(0, 12)
-    : []
-
-  // card_headline 보강 (148, SQL 미적용 시 graceful skip)
-  const allInsightIds = [...cards, ...companyCards].map(c => c.id)
-  if (allInsightIds.length > 0) {
-    const { data: chData, error: chErr } = await supabase
-      .from('insight_cards')
-      .select('id, card_headline')
-      .in('id', allInsightIds)
-    if (!chErr && chData) {
-      const chMap = new Map(
-        (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
-      )
-      for (const c of [...cards, ...companyCards]) {
-        const ch = chMap.get(c.id)
-        if (ch) c.card_headline = ch
-      }
-    }
-  }
-
-  // ─── 경쟁사 ────────────────────────────────────────────────────────────────
-  type CompArticle = { id: string; title: string; collected_at: string; sentiment: '긍정' | '중립' | '부정' | null; matched_keywords: string[]; sources: { name: string } | null }
-  type CompResult = { name: string; articles: CompArticle[]; dist: { 긍정: number; 중립: number; 부정: number } }
-
-  const competitorResults: CompResult[] = []
-  if (competitorNames.length > 0) {
-    const { data: compArticleData } = await supabase
-      .from('contents')
-      .select('id, title, collected_at, sentiment, matched_keywords, sources(name)')
-      .eq('status', 'published')
-      .gte('collected_at', fourteenDaysStart)
-      .overlaps('matched_keywords', competitorNames)
-      .order('collected_at', { ascending: false })
-      .limit(80)
-
-    const allCompArticles = (compArticleData ?? []) as unknown as CompArticle[]
-
-    for (const compName of competitorNames) {
-      const nameLower = compName.toLowerCase()
-      const matched = allCompArticles.filter(a =>
-        (a.matched_keywords ?? []).some(k => k.toLowerCase() === nameLower)
-      )
-      if (matched.length === 0) continue
-
-      const dist = { 긍정: 0, 중립: 0, 부정: 0 }
-      for (const a of matched) {
-        if (a.sentiment === '긍정')      dist['긍정']++
-        else if (a.sentiment === '중립') dist['중립']++
-        else if (a.sentiment === '부정') dist['부정']++
-      }
-
-      competitorResults.push({ name: compName, articles: matched.slice(0, 5), dist })
-    }
-  }
-
-  // ─── 키워드 분류 (경쟁사 Set = entities.is_competitor 기준, 별도 쿼리 불필요) ─
-  const competitorSet = new Set<string>(competitorNames)
-
+  // ─── 키워드 분류 ──────────────────────────────────────────────────────────
   type KgRow = { name: string; tag_type: string; include_patterns: string[] }
   const patternTagMap = new Map<string, string>()
   for (const g of (keywordGroupsRes.data ?? []) as KgRow[]) {
@@ -287,20 +207,19 @@ export default async function AiInsightsView() {
 
   const classifiedKeywords: KeywordItem[] = topKeywords.map(({ name, count }) => {
     const watched = isWatched(name)
-    const isCompetitor = !watched && competitorSet.has(name)
     const tagType = patternTagMap.get(name.toLowerCase())
     const bucket = tagTypeToBucket(tagType)
     const cur  = kwCurFreq[name]  ?? 0
     const prev = kwPrevFreq[name] ?? 0
     const direction: '▲' | '▽' | null = cur > prev ? '▲' : cur < prev ? '▽' : null
-    return { name, count, size: 14, bucket, watched, isCompetitor, direction }
+    return { name, count, size: 14, bucket, watched, isCompetitor: false, direction }
   })
 
   // ─── 인사이트 카드 그룹 ────────────────────────────────────────────────────
   const contentMap = new Map<string, ContentMeta>()
-  if (cards.length > 0 || companyCards.length > 0) {
+  if (cards.length > 0) {
     const allIds = new Set<string>()
-    for (const card of [...cards, ...companyCards]) {
+    for (const card of cards) {
       for (const id of card.source_content_ids) allIds.add(id)
       for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
     }
@@ -320,6 +239,23 @@ export default async function AiInsightsView() {
     }
   }
 
+  // card_headline 보강
+  if (cards.length > 0) {
+    const { data: chData, error: chErr } = await supabase
+      .from('insight_cards')
+      .select('id, card_headline')
+      .in('id', cards.map(c => c.id))
+    if (!chErr && chData) {
+      const chMap = new Map(
+        (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
+      )
+      for (const c of cards) {
+        const ch = chMap.get(c.id)
+        if (ch) c.card_headline = ch
+      }
+    }
+  }
+
   const groupsMap = new Map<string, InsightCard[]>()
   for (const card of cards) {
     const key = `${card.period_start}|${card.period_end}`
@@ -327,7 +263,6 @@ export default async function AiInsightsView() {
     groupsMap.get(key)!.push(card)
   }
 
-  // 직렬화 가능 형태로 변환 (InsightCardsSectionClient props)
   const insightGroups: InsightGroup[] = [...groupsMap.entries()].map(([key, groupCards]) => {
     const [start, end] = key.split('|')
     return { key, start, end, cards: groupCards }
@@ -338,239 +273,170 @@ export default async function AiInsightsView() {
     contentMapRecord[id] = meta
   }
 
-  const companyGroupsMap = new Map<string, InsightCard[]>()
-  for (const card of companyCards) {
-    const key = `${card.period_start}|${card.period_end}`
-    if (!companyGroupsMap.has(key)) companyGroupsMap.set(key, [])
-    companyGroupsMap.get(key)!.push(card)
-  }
-  const companyInsightGroups: InsightGroup[] = [...companyGroupsMap.entries()].map(([key, gc]) => {
-    const [start, end] = key.split('|')
-    return { key, start, end, cards: gc }
-  })
-
-  // ─── 이슈 ──────────────────────────────────────────────────────────────────
-  const issueCards = await fetchIssueActivity(supabase)
-
-  // ─── 지식그래프 티저 ───────────────────────────────────────────────────────
-  type EntityTeaser = { id: string; canonical_name: string; entity_type: EntityType; mention_count: number }
-  const entityTeasers = (entityTeaserRes.data ?? []) as EntityTeaser[]
-
   // ─── 키워드 트렌드 한 줄 (상승 4 + 하락 2) ───────────────────────────────
   const risingKws  = classifiedKeywords.filter(k => k.direction === '▲').slice(0, 4)
   const fallingKws = classifiedKeywords.filter(k => k.direction === '▽').slice(0, 2)
   const kwStrip    = [...risingKws, ...fallingKws]
 
+  // ─── 이슈 (이슈 탭 전용) ─────────────────────────────────────────────────
+  const issueCards = view === 'issues' ? await fetchIssueActivity(supabase) : []
+
+  // ─── 내 관점 데이터 ───────────────────────────────────────────────────────
+  const watchedKwStrip = classifiedKeywords.filter(k => k.watched && k.direction !== null).slice(0, 8)
+  const mineInsightGroups = insightGroups.map(g => ({
+    ...g,
+    cards: g.cards.filter(c => c.topic && isWatched(c.topic)),
+  })).filter(g => g.cards.length > 0)
+
+  // ─── 렌더 ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-10">
 
-      {/* 렌즈 스위처 */}
-      <LensSwitcher />
+      {/* 브리핑 탭 */}
+      {view === 'briefing' && (
+        <>
+          {/* ① AI 인사이트 */}
+          <section>
+            <SectionHeader
+              icon={<FileText className="h-4 w-4 text-brand-600" />}
+              title="AI 인사이트"
+              desc="이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점"
+            />
+            <InsightCardsSectionClient groups={insightGroups} contentMap={contentMapRecord} />
+          </section>
 
-      {/* ① AI 인사이트 */}
-      <section>
-        <SectionHeader
-          icon={<FileText className="h-4 w-4 text-brand-600" />}
-          title="AI 인사이트"
-          desc="이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점"
-        />
-        <InsightCardsSectionClient groups={insightGroups} contentMap={contentMapRecord} />
-      </section>
-
-
-      {/* ③ 관심 기업 인사이트 */}
-      <section>
-        <SectionHeader
-          icon={<Building2 className="h-4 w-4 text-brand-600" />}
-          title="관심 기업 인사이트"
-          desc="워치리스트 기업별 AI 분석 — 헤드라인과 시사점"
-        />
-        {watchlist.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
-            에서 관심 기업을 설정하면 기업별 AI 인사이트가 여기 표시됩니다.
-          </p>
-        ) : companyInsightGroups.length === 0 ? (
-          <p className="text-sm text-muted-foreground">관심 기업 인사이트가 아직 없습니다. (생성·승인 후 표시)</p>
-        ) : (
-          <InsightCardsSectionClient groups={companyInsightGroups} contentMap={contentMapRecord} />
-        )}
-      </section>
-
-      {/* ④ 이번 주 뜨는 토픽 + 키워드 한 줄 */}
-      <section>
-        <SectionHeader
-          icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
-          title="이번 주 뜨는 토픽"
-          desc="이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비"
-        />
-        {trendingTopics.length === 0 ? (
-          <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
-        ) : (
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {trendingTopics.map((t) => (
-              <Link
-                key={t.group}
-                href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
-                className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
-              >
-                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
-                <div className="flex items-center gap-2">
-                  {t.changePct === null ? (
-                    <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
-                      NEW
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-emerald-600">
-                      ▲{t.changePct}%
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground">{t.cur}건</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* 키워드 트렌드 한 줄 */}
-        {kwStrip.length > 0 && (
-          <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            <span className="shrink-0 text-[11px] text-muted-foreground/60">키워드</span>
-            {kwStrip.map((kw) => (
-              <Link
-                key={kw.name}
-                href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
-                className={cn(
-                  'shrink-0 inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
-                  kw.direction === '▲'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    : 'border-red-100 bg-red-50 text-red-600 hover:bg-red-100'
-                )}
-              >
-                {kw.direction} {kw.name}
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ⑤ 시장 주요 이슈 */}
-      <section>
-        <SectionHeader
-          icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
-          title="시장 주요 이슈"
-          desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
-        />
-        <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
-      </section>
-
-      {/* ⑥ 경쟁사 동향 */}
-      <section>
-        <SectionHeader
-          icon={<Building2 className="h-4 w-4 text-red-500" />}
-          title="경쟁사 동향"
-          desc="경쟁사가 뭘 했고 시장이 어떻게 봤나 — 최근 14일 논조"
-        />
-        {competitorNames.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
-          </div>
-        ) : competitorResults.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            최근 14일 경쟁사 관련 기사가 없습니다.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {competitorResults.map(({ name, articles, dist }) => {
-              const hasDistData = dist['긍정'] + dist['중립'] + dist['부정'] > 0
-              const topArticle = articles[0]
-              const topSourceName = topArticle
-                ? (Array.isArray(topArticle.sources)
-                  ? (topArticle.sources as { name: string }[])[0]?.name
-                  : topArticle.sources?.name)
-                : null
-              return (
-                <div key={name} className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
-                    <span className="text-sm font-semibold text-foreground">{name}</span>
+          {/* ④ 이번 주 뜨는 토픽 + 키워드 한 줄 */}
+          <section>
+            <SectionHeader
+              icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
+              title="이번 주 뜨는 토픽"
+              desc="이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비"
+            />
+            {trendingTopics.length === 0 ? (
+              <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                {trendingTopics.map((t) => (
+                  <Link
+                    key={t.group}
+                    href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
+                    className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
+                  >
+                    <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
                     <div className="flex items-center gap-2">
-                      {hasDistData && (
-                        <div className="flex items-center gap-1 text-[11px]">
-                          {dist['긍정'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
-                              긍 {dist['긍정']}
-                            </span>
-                          )}
-                          {dist['중립'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">
-                              중 {dist['중립']}
-                            </span>
-                          )}
-                          {dist['부정'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
-                              부 {dist['부정']}
-                            </span>
-                          )}
-                        </div>
+                      {t.changePct === null ? (
+                        <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
+                          NEW
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-emerald-600">
+                          ▲{t.changePct}%
+                        </span>
                       )}
-                      <button
-                        disabled
-                        title="전략보고서 기능 준비 중"
-                        className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground/50 cursor-not-allowed"
-                      >
-                        배틀카드
-                      </button>
+                      <span className="text-xs text-muted-foreground">{t.cur}건</span>
                     </div>
-                  </div>
-                  {topArticle && (
-                    <Link
-                      href={`/dashboard/contents/${topArticle.id}`}
-                      className="text-xs text-foreground/80 hover:text-brand-600 line-clamp-1"
-                    >
-                      {topArticle.title}
-                      {topSourceName && (
-                        <span className="ml-1 text-muted-foreground/60">· {topSourceName}</span>
-                      )}
-                    </Link>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+                  </Link>
+                ))}
+              </div>
+            )}
 
-      {/* ⑦ 지식그래프 */}
-      <section className="rounded-xl border border-border bg-card p-5">
-        <SectionHeader
-          icon={<Network className="h-4 w-4 text-brand-600" />}
-          title="지식그래프"
-          desc="엔티티 관계를 직접 탐색 — 기업·기술·인물·정책"
-        />
-        {entityTeasers.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {entityTeasers.slice(0, 8).map((e) => (
-              <Link
-                key={e.id}
-                href={`/dashboard/entities/${e.id}`}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              >
-                {e.canonical_name}
-                {e.mention_count > 0 && (
-                  <span className="opacity-60">{e.mention_count}</span>
+            {/* 키워드 트렌드 한 줄 */}
+            {kwStrip.length > 0 && (
+              <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                <span className="shrink-0 text-[11px] text-muted-foreground/60">키워드</span>
+                {kwStrip.map((kw) => (
+                  <Link
+                    key={kw.name}
+                    href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
+                    className={cn(
+                      'shrink-0 inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                      kw.direction === '▲'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'border-red-100 bg-red-50 text-red-600 hover:bg-red-100'
+                    )}
+                  >
+                    {kw.direction} {kw.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {/* 이슈 탭 */}
+      {view === 'issues' && (
+        <section>
+          <SectionHeader
+            icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
+            title="시장 주요 이슈"
+            desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
+          />
+          <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
+        </section>
+      )}
+
+      {/* 내 관점 탭 */}
+      {view === 'mine' && (
+        <>
+          <LensSwitcher />
+
+          {watchlist.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
+              <p className="text-sm font-medium text-foreground">아직 관심 기업이 없습니다</p>
+              <p className="text-xs text-muted-foreground">
+                <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
+                에서 관심 기업을 설정하면 맞춤 인사이트를 여기서 확인할 수 있어요.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* 내 관심 키워드 트렌드 */}
+              {watchedKwStrip.length > 0 && (
+                <section>
+                  <SectionHeader
+                    icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
+                    title="내 관심사 키워드 동향"
+                    desc="관심 기업·토픽 키워드의 이번 주 방향"
+                  />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {watchedKwStrip.map((kw) => (
+                      <Link
+                        key={kw.name}
+                        href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
+                        className={cn(
+                          'inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                          kw.direction === '▲'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-red-100 bg-red-50 text-red-600 hover:bg-red-100'
+                        )}
+                      >
+                        {kw.direction} {kw.name}
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* 내 관심사 매칭 인사이트 */}
+              <section>
+                <SectionHeader
+                  icon={<FileText className="h-4 w-4 text-brand-600" />}
+                  title="내 관심사 인사이트"
+                  desc="관심 기업·토픽과 겹치는 AI 인사이트"
+                />
+                {mineInsightGroups.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    관심 기업과 연관된 인사이트가 아직 없습니다. (AI 생성·승인 후 표시)
+                  </p>
+                ) : (
+                  <InsightCardsSectionClient groups={mineInsightGroups} contentMap={contentMapRecord} />
                 )}
-              </Link>
-            ))}
-          </div>
-        )}
-        <Link
-          href="/dashboard/entities"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
-        >
-          <Network className="h-3.5 w-3.5" />
-          관계 탐색 →
-        </Link>
-      </section>
+              </section>
+            </>
+          )}
+        </>
+      )}
 
     </div>
   )
