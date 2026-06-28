@@ -131,7 +131,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const name = data?.canonical_name ?? '엔티티 상세'
   return {
-    title: `${name} | 지식그래프 | Insight Out`,
+    title: `${name} | 관계지도 | Insight Out`,
     description: `${name} 관련 콘텐츠, 이슈, 연관 엔티티`,
   }
 }
@@ -349,7 +349,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         >
           <ArrowLeft className="h-4 w-4" />
-          지식그래프
+          관계지도
         </Link>
       </div>
 

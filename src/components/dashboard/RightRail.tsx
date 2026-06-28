@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import CompetitorTrends from './CompetitorTrends'
 import MorningBriefingPlayer from './MorningBriefingPlayer'
 import { SAVED_KEYWORDS } from './mock-data/taxonomy'
 
@@ -38,7 +37,6 @@ export default function RightRail() {
           </Link>
         </div>
       </div>
-      <CompetitorTrends />
       <TrendingKeywords />
     </div>
   )

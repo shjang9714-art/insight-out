@@ -1,28 +1,28 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 const TABS = [
-  { id: 'insights', label: 'AI 인사이트' },
-  { id: 'issues',   label: '이슈' },
-  { id: 'entities', label: '관계지도' },
+  { id: 'watchlist',  label: '관심기업' },
+  { id: 'competitor', label: '경쟁사' },
+  { id: 'graph',      label: '관계지도' },
 ]
 
-interface Props {
-  activeTab: string
-}
+export default function EntityTabs() {
+  const searchParams = useSearchParams()
+  const view = searchParams.get('view') ?? 'watchlist'
 
-export default function AnalysisTabs({ activeTab }: Props) {
   return (
     <div className="mb-6 inline-flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
       {TABS.map(t => (
         <Link
           key={t.id}
-          href={`/dashboard/ai-analysis?tab=${t.id}`}
+          href={`/dashboard/entities?view=${t.id}`}
           className={cn(
             'rounded-md px-3 py-1 text-[13px] font-medium transition-colors',
-            activeTab === t.id
+            view === t.id
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground'
           )}
