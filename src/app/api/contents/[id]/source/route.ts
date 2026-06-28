@@ -34,6 +34,16 @@ export async function GET(
     return NextResponse.redirect(detailUrl, 302)
   }
 
+  // dead 백스톱: link_ok=false 확정 링크는 상세로(42703 graceful — 컬럼 없으면 null→통과)
+  const { data: lh } = await supabase
+    .from('contents')
+    .select('link_ok')
+    .eq('id', id)
+    .single()
+  if ((lh as { link_ok: boolean | null } | null)?.link_ok === false) {
+    return NextResponse.redirect(detailUrl, 302)
+  }
+
   // 해소 (google 리다이렉트만 실제 fetch, 그 외 즉시 반환)
   const resolved = await resolveArticleUrl(originalUrl)
 

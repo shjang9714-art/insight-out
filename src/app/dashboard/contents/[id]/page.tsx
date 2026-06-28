@@ -137,6 +137,10 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
   const content = data as unknown as ContentDetail
 
+  // 별도 가드 쿼리: link_ok(컬럼 없으면 null→정상 링크 표시, 42703 graceful)
+  const { data: lh } = await supabase.from('contents').select('link_ok').eq('id', id).single()
+  const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
+
   // ── 리포트(file_path) vs 뉴스(original_url) 분기 ─────────────────────────
   const isReport = Boolean(content.file_path)
   const hasKoreanTranslation =
@@ -247,15 +251,25 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <BookmarkButton contentId={content.id} />
                 <ArchiveButton contentId={content.id} />
                 {content.original_url && (
-                  <a
-                    href={`/api/contents/${content.id}/source`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    원문 보기
-                  </a>
+                  linkDead ? (
+                    <span
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
+                      title="원문을 찾을 수 없습니다"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      원문 없음
+                    </span>
+                  ) : (
+                    <a
+                      href={`/api/contents/${content.id}/source`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      원문 보기
+                    </a>
+                  )
                 )}
               </div>
             </div>
@@ -302,15 +316,25 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <BookmarkButton contentId={content.id} />
                 <ArchiveButton contentId={content.id} />
                 {!isReport && content.original_url && (
-                  <a
-                    href={`/api/contents/${content.id}/source`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    원문 보기
-                  </a>
+                  linkDead ? (
+                    <span
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
+                      title="원문을 찾을 수 없습니다"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      원문 없음
+                    </span>
+                  ) : (
+                    <a
+                      href={`/api/contents/${content.id}/source`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      원문 보기
+                    </a>
+                  )
                 )}
               </div>
             </div>
@@ -418,15 +442,25 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
             {/* 뉴스에만 원문 보기 링크 표시 */}
             {!isReport && content.original_url && (
-              <a
-                href={`/api/contents/${content.id}/source`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-              >
-                <ExternalLink className="h-4 w-4" />
-                원문 보기
-              </a>
+              linkDead ? (
+                <span
+                  className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
+                  title="원문을 찾을 수 없습니다"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  원문 없음
+                </span>
+              ) : (
+                <a
+                  href={`/api/contents/${content.id}/source`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  원문 보기
+                </a>
+              )
             )}
           </div>
         </div>

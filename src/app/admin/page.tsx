@@ -9,6 +9,7 @@ import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage, type OpsSignalCounts } from '@/components/admin/AdminOpsSignals'
+import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
 import AiRefreshButton from '@/components/admin/AiRefreshButton'
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +63,8 @@ export default async function AdminPage() {
     llmUsageRes, llmSettingsRes, transUsageRes, ttsUsageRes,
     // 신규 — 데이터 점등
     issuesCountRes, entitiesCountRes, insightCardsCountRes, aiReportsCountRes, contentSignalsRes,
+    // 콘텐츠 건강
+    bodyFullRes, bodySnippetRes, bodyNoneRes, sentMissingRes, untaggedRes, brokenLinkRes, deadLinksRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }),
@@ -107,6 +110,14 @@ export default async function AdminPage() {
     supabase.from('ai_reports').select('*', { count: 'exact', head: true }),
     // content_signals — graceful(테이블 없으면 0)
     supabase.from('content_signals').select('*', { count: 'exact', head: true }).limit(0),
+    // 콘텐츠 건강 집계 (8개)
+    supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).gte('body_len', 400),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).lt('body_len', 400),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).is('body_fetched_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').is('sentiment', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).is('matched_groups', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').ilike('original_url', '%news.google.com%'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').eq('link_ok', false),
   ])
 
   // ── 카테고리 집계 ──────────────────────────────────────────────────────────
@@ -202,6 +213,20 @@ export default async function AdminPage() {
     contentSignals: contentSignalsRes.count  ?? 0,
   }
 
+  // ── 콘텐츠 건강 집계 ──────────────────────────────────────────────────────
+  const contentHealth: ContentHealth = {
+    total:             totalRes.count     ?? 0,
+    published:         publishedRes.count ?? 0,
+    bodyFull:          bodyFullRes.count  ?? 0,
+    bodySnippet:       bodySnippetRes.count ?? 0,
+    bodyNone:          bodyNoneRes.count  ?? 0,
+    bodyLenAvailable:  !bodyFullRes.error,
+    sentimentMissing:  sentMissingRes.count ?? 0,
+    untagged:          untaggedRes.count  ?? 0,
+    brokenLinks:       brokenLinkRes.count ?? 0,
+    deadLinks:         deadLinksRes.error ? 0 : (deadLinksRes.count ?? 0),
+  }
+
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
   const chartData: ChartData = {
@@ -246,6 +271,9 @@ export default async function AdminPage() {
         ttsMonthlyCap={ttsMonthlyCap}
         signalCounts={signalCounts}
       />
+
+      {/* ⑤ 콘텐츠 건강 */}
+      <AdminContentHealth health={contentHealth} />
 
       {/* ③ KPI 카드 */}
       <section aria-labelledby="kpi-heading">
