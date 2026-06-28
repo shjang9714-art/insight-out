@@ -311,7 +311,7 @@ function cleanScript(raw: string): string {
 // ─── 메인 함수 ───────────────────────────────────────────────────────────────
 
 export async function generateBriefing(
-  opts?: { force?: boolean; date?: string }
+  opts?: { force?: boolean; date?: string; autoPublish?: boolean }
 ): Promise<GenerateResult> {
   const admin = createAdminClient()
   const now = new Date()
@@ -409,6 +409,7 @@ export async function generateBriefing(
   const title = `${dateParts.month}월 ${dateParts.day}일 모닝브리핑`
 
   // 6. upsert
+  const publish = (opts?.autoPublish ?? false) && selected.length >= MIN_ARTICLES
   const { data: upserted, error: upsertError } = await admin
     .from('briefings')
     .upsert({
@@ -416,7 +417,8 @@ export async function generateBriefing(
       title,
       script,
       source_content_ids: sourceContentIds,
-      status: 'draft',
+      status: publish ? 'published' : 'draft',
+      ...(publish ? { published_at: new Date().toISOString() } : {}),
       generated_at: new Date().toISOString(),
     }, { onConflict: 'briefing_date' })
     .select('id')

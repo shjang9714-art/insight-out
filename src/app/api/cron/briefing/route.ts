@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const force = request.nextUrl.searchParams.get('force') === '1'
     const date = request.nextUrl.searchParams.get('date') ?? undefined
 
-    const result = await generateBriefing({ force, date })
+    const result = await generateBriefing({ force, date, autoPublish: true })
     return Response.json(result)
   } catch (err) {
     console.error('[크론/briefing] 브리핑 생성 오류:', err)
