@@ -3,12 +3,18 @@ import Link from 'next/link'
 import FeedSlot from '@/components/feed/FeedSlot'
 import IssueSignals from '@/components/dashboard/IssueSignals'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
+import VisitDelta from '@/components/dashboard/VisitDelta'
 import { ChevronRight, Building2 } from 'lucide-react'
 
 export default function DashboardPage() {
   return (
     <div className="px-4 py-6 sm:px-5">
       <div className="space-y-8">
+        {/* 방문 델타 배지 — 지난 방문 이후 새 항목 */}
+        <Suspense fallback={null}>
+          <VisitDelta />
+        </Suspense>
+
         {/* 추천 질문 칩 — 콜드스타트 진입점 */}
         <SuggestedQuestions />
 
