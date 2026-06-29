@@ -13,6 +13,15 @@ import {
   type LensTarget,
 } from '@/lib/lens'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
+import {
+  computeImportance,
+  computeRelevance,
+  buildSelectionReason,
+  IMPORTANCE_LABEL,
+  IMPORTANCE_CLS,
+  RELEVANCE_LABEL,
+  RELEVANCE_CLS,
+} from '@/lib/insight/card-meta'
 import InsightCardNewsList from './InsightCardNewsList'
 
 // ─── 직렬화 가능 타입 ──────────────────────────────────────────────────────────
@@ -69,6 +78,9 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
   const hasSetting =
     activeLens === 'mine'  ? ctx.serviceIds.length > 0 :
     activeLens === 'watch' ? ctx.watchlist.length > 0  : true
+
+  // 개인화 설정 여부 (렌즈 무관) — 내 관련도 배지 표시 조건
+  const hasPersonalization = ctx.serviceIds.length > 0 || ctx.watchlist.length > 0
 
   // 렌즈 필터/정렬 — 두 뷰 공유
   const visibleGroups = groups.map((g, idx) => {
@@ -134,6 +146,7 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
           contentMap={contentMap}
           activeLens={activeLens}
           hasSetting={hasSetting}
+          hasPersonalization={hasPersonalization}
           totalCount={totalCount}
           onResetLens={() => setActiveLens('all')}
         />
@@ -227,6 +240,25 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
             <div className="grid gap-4 sm:grid-cols-2">
               {displayedCards.map(({ card, matched }) => {
                 const citations = card.citations as InsightCardCitation[]
+                const evidenceCount = citations.length || card.source_content_ids.length
+
+                // 중요도 / 내 관련도 / 선정 이유 (렌즈 무관, 양쪽 lens 검사)
+                const relevanceTarget: LensTarget = { names: [card.topic, card.headline] }
+                const relevanceMatched =
+                  matchesLens('mine', ctx, relevanceTarget) ||
+                  matchesLens('watch', ctx, relevanceTarget)
+                const relevanceScore = Math.max(
+                  lensScore('mine', ctx, relevanceTarget),
+                  lensScore('watch', ctx, relevanceTarget),
+                )
+                const importance = computeImportance(card)
+                const relevance  = computeRelevance(relevanceScore, relevanceMatched, hasPersonalization)
+                const selectionReason = buildSelectionReason({
+                  evidenceCount,
+                  matched: relevanceMatched,
+                  generatedAt: card.generated_at,
+                })
+
                 return (
                   <article
                     key={card.id}
@@ -235,23 +267,39 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                       matched ? 'border-brand-600/20' : 'border-border'
                     )}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
+                    {/* 1. 상단 배지 행: [카테고리][중요도][내 관련도] */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="rounded px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
                         {card.topic}
                       </span>
-                      {matched && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-brand-600/10 text-brand-600">
-                            관심 표시
-                          </span>
-                        </div>
+                      <span className={cn('rounded px-2 py-0.5 text-xs font-medium', IMPORTANCE_CLS[importance])}>
+                        {IMPORTANCE_LABEL[importance]}
+                      </span>
+                      {(relevance === 'high' || relevance === 'mid') && (
+                        <span className={cn('rounded px-2 py-0.5 text-xs font-medium', RELEVANCE_CLS[relevance])}>
+                          {RELEVANCE_LABEL[relevance]}
+                        </span>
                       )}
                     </div>
 
+                    {/* 2. 제목 */}
                     <p className="text-base font-semibold text-foreground leading-snug">
-                      {card.headline}
+                      {card.card_headline ?? card.headline}
                     </p>
 
+                    {/* 3. AI 요약 — card_headline이 있고 headline과 다를 때만 */}
+                    {card.card_headline && card.card_headline !== card.headline && (
+                      <div className="space-y-0.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                          AI 요약
+                        </span>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {card.headline}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 4. 시사점 */}
                     {card.implication && (
                       <div className="space-y-0.5">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
@@ -263,6 +311,37 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                       </div>
                     )}
 
+                    {/* 5. 선정 이유 */}
+                    {selectionReason && (
+                      <div className="space-y-0.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                          선정 이유
+                        </span>
+                        <p className="text-xs text-muted-foreground/60">
+                          {selectionReason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 6. 관련 키워드 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] text-muted-foreground/60">관련:</span>
+                      <span className="rounded px-2 py-0.5 text-[11px] bg-muted text-muted-foreground">
+                        {card.topic}
+                      </span>
+                    </div>
+
+                    {/* 7. 액션 */}
+                    <div>
+                      <Link
+                        href={`/dashboard/topics/${encodeURIComponent(card.topic)}`}
+                        className="text-xs font-medium text-brand-600 hover:underline"
+                      >
+                        자세히 보기 →
+                      </Link>
+                    </div>
+
+                    {/* 근거 (기존 유지) */}
                     {citations.length > 0 ? (
                       <div className="space-y-2 pt-1 border-t border-border">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">

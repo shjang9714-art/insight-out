@@ -6,6 +6,13 @@ import { Quote, ChevronDown, ChevronUp, Clock, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import type { ContentMetaRecord, InsightGroup } from './InsightCardsSectionClient'
+import {
+  computeImportance,
+  IMPORTANCE_LABEL,
+  IMPORTANCE_CLS,
+  RELEVANCE_LABEL,
+  RELEVANCE_CLS,
+} from '@/lib/insight/card-meta'
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
@@ -28,10 +35,11 @@ function freshnessLabel(generatedAt: string | null): { label: string; stale: boo
 interface CardNewsItemProps {
   card: InsightCard
   matched: boolean
+  hasPersonalization: boolean
   contentMap: Record<string, ContentMetaRecord>
 }
 
-function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
+function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNewsItemProps) {
   const [expanded, setExpanded] = useState(false)
   const citations = card.citations as InsightCardCitation[]
   const firstCitation = citations[0]
@@ -42,6 +50,9 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
 
   const freshness = freshnessLabel(card.generated_at)
   const evidenceCount = citations.length || card.source_content_ids.length
+  const importance = computeImportance(card)
+  // matched=true → high, hasPersonalization 없으면 null(미표시)
+  const relevance = hasPersonalization ? (matched ? 'high' as const : null) : null
 
   return (
     <article
@@ -57,16 +68,19 @@ function CardNewsItem({ card, matched, contentMap }: CardNewsItemProps) {
             .filter(Boolean)
             .join(' · ')}
         </span>
-        {matched && (
-          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-brand-600/10 text-brand-600">
-            관심 표시
+        {relevance === 'high' && (
+          <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium', RELEVANCE_CLS.high)}>
+            {RELEVANCE_LABEL.high}
           </span>
         )}
       </div>
 
-      {/* 신선도·근거 배지 */}
+      {/* 중요도·신선도·근거 배지 */}
       {(freshness || evidenceCount > 0) && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={cn('inline-flex items-center rounded-full border border-border/0 px-2 py-0.5 text-[10px] font-medium', IMPORTANCE_CLS[importance])}>
+            {IMPORTANCE_LABEL[importance]}
+          </span>
           {freshness && (
             <span className={cn(
               'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
@@ -215,6 +229,7 @@ interface Props {
   contentMap: Record<string, ContentMetaRecord>
   activeLens: string
   hasSetting: boolean
+  hasPersonalization: boolean
   totalCount: number
   onResetLens: () => void
 }
@@ -224,6 +239,7 @@ export default function InsightCardNewsList({
   contentMap,
   activeLens,
   hasSetting,
+  hasPersonalization,
   totalCount,
   onResetLens,
 }: Props) {
@@ -309,6 +325,7 @@ export default function InsightCardNewsList({
                 key={card.id}
                 card={card}
                 matched={matched}
+                hasPersonalization={hasPersonalization}
                 contentMap={contentMap}
               />
             ))}
