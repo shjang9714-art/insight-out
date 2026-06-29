@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 const TABS = [
   { id: 'briefing', label: '브리핑' },
   { id: 'issues',   label: '이슈' },
-  { id: 'mine',     label: '내 관점' },
 ]
 
 export default function AiInsightTabs() {

@@ -22,8 +22,8 @@ export interface LensTarget {
 // ─── 프리셋 상수 ───────────────────────────────────────────────────────────────
 
 export const LENS_PRESETS: Record<LensKey, { label: string; desc: string }> = {
-  mine:  { label: '내 담당',   desc: '담당 서비스 관련 콘텐츠만' },
-  watch: { label: '관심 기업', desc: '관심 기업·경쟁사 소식만' },
+  mine:  { label: '내 업무',   desc: '담당 서비스 관련만' },
+  watch: { label: '내 관심사', desc: '관심 기업·토픽만' },
   all:   { label: '전체',      desc: '모든 콘텐츠 보기' },
 }
 

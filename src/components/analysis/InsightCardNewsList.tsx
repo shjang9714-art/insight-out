@@ -289,7 +289,7 @@ export default function InsightCardNewsList({
       {activeLens !== 'all' && (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-medium text-brand-600">
-            {activeLens === 'mine' ? '내 담당' : '관심 기업'} · {totalCount}건
+            {activeLens === 'mine' ? '내 업무' : '내 관심사'} · {totalCount}건
           </span>
           <button
             type="button"

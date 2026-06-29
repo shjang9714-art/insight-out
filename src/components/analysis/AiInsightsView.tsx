@@ -9,7 +9,6 @@ import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/type
 import { tagTypeToBucket } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { KeywordItem } from '@/components/dashboard/KeywordMap'
-import LensSwitcher from '@/components/lens/LensSwitcher'
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import InsightCardsSectionClient, {
   type InsightGroup,
@@ -99,7 +98,7 @@ function SectionHeader({ icon, title, desc }: { icon: React.ReactNode; title: st
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
-export default async function AiInsightsView({ view = 'briefing' }: { view?: 'briefing' | 'issues' | 'mine' }) {
+export default async function AiInsightsView({ view = 'briefing' }: { view?: 'briefing' | 'issues' }) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -307,13 +306,6 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
   // ─── 이슈 (이슈 탭 전용) ─────────────────────────────────────────────────
   const issueCards = view === 'issues' ? await fetchIssueActivity(supabase) : []
 
-  // ─── 내 관점 데이터 ───────────────────────────────────────────────────────
-  const watchedKwStrip = classifiedKeywords.filter(k => k.watched && k.direction !== null).slice(0, 8)
-  const mineInsightGroups = insightGroups.map(g => ({
-    ...g,
-    cards: g.cards.filter(c => c.topic && isWatched(c.topic)),
-  })).filter(g => g.cards.length > 0)
-
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-10">
@@ -403,75 +395,6 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
           />
           <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
         </section>
-      )}
-
-      {/* 내 관점 탭 */}
-      {view === 'mine' && (
-        <>
-          {brief.myImplication && watchlist.length > 0 && (
-            <div className="rounded-lg border-l-2 border-brand-600/60 bg-brand-600/5 px-4 py-3">
-              <p className="text-[11px] font-semibold text-brand-600 mb-0.5">내 업무 시사점</p>
-              <p className="text-sm text-foreground leading-snug">{brief.myImplication}</p>
-            </div>
-          )}
-
-          <LensSwitcher />
-
-          {watchlist.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-              <p className="text-sm font-medium text-foreground">아직 관심 기업이 없습니다</p>
-              <p className="text-xs text-muted-foreground">
-                <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
-                에서 관심 기업을 설정하면 맞춤 인사이트를 여기서 확인할 수 있어요.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* 내 관심 키워드 트렌드 */}
-              {watchedKwStrip.length > 0 && (
-                <section>
-                  <SectionHeader
-                    icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
-                    title="내 관심사 키워드 동향"
-                    desc="관심 기업·토픽 키워드의 이번 주 방향"
-                  />
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {watchedKwStrip.map((kw) => (
-                      <Link
-                        key={kw.name}
-                        href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
-                        className={cn(
-                          'inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
-                          kw.direction === '▲'
-                            ? 'border-positive/30 bg-positive-soft text-positive hover:bg-positive-soft/80'
-                            : 'border-negative/30 bg-negative-soft text-negative hover:bg-negative-soft/80'
-                        )}
-                      >
-                        {kw.direction} {kw.name}
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* 내 관심사 매칭 인사이트 */}
-              <section>
-                <SectionHeader
-                  icon={<FileText className="h-4 w-4 text-brand-600" />}
-                  title="내 관심사 인사이트"
-                  desc="관심 기업·토픽과 겹치는 AI 인사이트"
-                />
-                {mineInsightGroups.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    관심 기업과 연관된 인사이트가 아직 없습니다. (AI 생성·승인 후 표시)
-                  </p>
-                ) : (
-                  <InsightCardsSectionClient groups={mineInsightGroups} contentMap={contentMapRecord} />
-                )}
-              </section>
-            </>
-          )}
-        </>
       )}
 
     </div>

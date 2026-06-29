@@ -129,8 +129,8 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
             const total14Days = card.recentCount + card.prevCount
             const sentimentTotal = card.sentimentPos + card.sentimentNeg
             const lensLabel =
-              activeLens === 'mine'  ? '내 담당' :
-              activeLens === 'watch' ? '관심 기업' : null
+              activeLens === 'mine'  ? '내 업무' :
+              activeLens === 'watch' ? '내 관심사' : null
 
             return (
               <Link

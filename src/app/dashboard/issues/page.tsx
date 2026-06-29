@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import AiInsightsView from '@/components/analysis/AiInsightsView'
 import AiInsightTabs from '@/components/analysis/AiInsightTabs'
+import ScopeFilter from '@/components/analysis/ScopeFilter'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ view?: string }>
 
-const VALID_VIEWS = ['briefing', 'issues', 'mine'] as const
+const VALID_VIEWS = ['briefing', 'issues'] as const
 type ViewId = typeof VALID_VIEWS[number]
 
 export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {
@@ -26,9 +27,14 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
         <h1 className="text-xl font-bold text-foreground">AI 인사이트</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">AI가 분석한 시장 신호·이슈·인사이트를 한눈에.</p>
       </div>
-      <Suspense fallback={null}>
-        <AiInsightTabs />
-      </Suspense>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Suspense fallback={null}>
+          <ScopeFilter />
+        </Suspense>
+        <Suspense fallback={null}>
+          <AiInsightTabs />
+        </Suspense>
+      </div>
       <Suspense fallback={
         <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
           로딩 중...
