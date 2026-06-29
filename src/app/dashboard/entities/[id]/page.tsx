@@ -450,9 +450,9 @@ export default async function EntityDetailPage({ params }: PageProps) {
                 <div key={s} className="flex items-center gap-1.5">
                   <span className={cn(
                     'rounded px-1.5 py-0.5 text-[11px] font-medium',
-                    s === '긍정' && 'bg-emerald-100 text-emerald-700',
+                    s === '긍정' && 'bg-positive-soft text-positive',
                     s === '중립' && 'bg-muted text-muted-foreground',
-                    s === '부정' && 'bg-red-100 text-red-700',
+                    s === '부정' && 'bg-negative-soft text-negative',
                   )}>
                     {s}
                   </span>
@@ -542,9 +542,9 @@ export default async function EntityDetailPage({ params }: PageProps) {
                           {c.sentiment && (
                             <span className={cn(
                               'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
-                              c.sentiment === '긍정' && 'bg-emerald-100 text-emerald-700',
+                              c.sentiment === '긍정' && 'bg-positive-soft text-positive',
                               c.sentiment === '중립' && 'bg-muted text-muted-foreground',
-                              c.sentiment === '부정' && 'bg-red-100 text-red-700',
+                              c.sentiment === '부정' && 'bg-negative-soft text-negative',
                             )}>
                               {c.sentiment}
                             </span>

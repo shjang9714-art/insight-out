@@ -23,9 +23,9 @@ interface Props {
 }
 
 const SENTIMENT_STYLE: Record<string, string> = {
-  긍정: 'bg-emerald-50 text-emerald-700',
+  긍정: 'bg-positive-soft text-positive',
   중립: 'bg-muted text-muted-foreground',
-  부정: 'bg-red-50 text-red-600',
+  부정: 'bg-negative-soft text-negative',
 }
 
 export default function IssueEvidenceExplorer({ items, categories, signalTypes }: Props) {

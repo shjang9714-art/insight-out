@@ -286,7 +286,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
                       {hasDistData && (
                         <div className="flex items-center gap-1 text-[11px]">
                           {dist['긍정'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 font-medium">
+                            <span className="rounded px-1.5 py-0.5 bg-positive-soft text-positive font-medium">
                               긍 {dist['긍정']}
                             </span>
                           )}
@@ -296,7 +296,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
                             </span>
                           )}
                           {dist['부정'] > 0 && (
-                            <span className="rounded px-1.5 py-0.5 bg-red-100 text-red-700 font-medium">
+                            <span className="rounded px-1.5 py-0.5 bg-negative-soft text-negative font-medium">
                               부 {dist['부정']}
                             </span>
                           )}

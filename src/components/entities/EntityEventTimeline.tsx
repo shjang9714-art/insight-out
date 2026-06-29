@@ -35,9 +35,9 @@ const DEFAULT_SIGNAL_STYLE = 'border-border bg-muted text-muted-foreground'
 // ─── 논조 점/라벨 ──────────────────────────────────────────────────────────────
 
 const SENTIMENT_STYLE: Record<string, string> = {
-  '긍정': 'bg-emerald-100 text-emerald-700',
+  '긍정': 'bg-positive-soft text-positive',
   '중립': 'bg-muted text-muted-foreground',
-  '부정': 'bg-red-100 text-red-700',
+  '부정': 'bg-negative-soft text-negative',
 }
 
 // ─── 관리자 생성 버튼 (클라이언트) ───────────────────────────────────────────

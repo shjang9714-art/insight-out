@@ -113,7 +113,7 @@ export default function EntityBrowse({ entities, totalByType }: Props) {
                 {e.is_competitor && e.entity_type === 'company' && ' · 경쟁'}
               </span>
 
-              <span className="flex-1 truncate text-sm font-medium text-foreground group-hover:text-brand-600">
+              <span className="flex-1 truncate text-sm font-medium text-foreground group-hover:text-foreground/70">
                 {e.canonical_name}
               </span>
 

@@ -148,12 +148,12 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {matched && lensLabel && <LensBadge label={lensLabel} />}
                     {card.changeFlag === 'worsening' && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-risk-soft px-2 py-0.5 text-[10px] font-medium text-risk">
                         ⚠ 논조 악화
                       </span>
                     )}
                     {card.changeFlag === 'surge' && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-risk-soft px-2 py-0.5 text-[10px] font-medium text-risk">
                         <TrendingUp className="h-3 w-3" />
                         {card.changePct === null ? '신규' : `+${card.changePct}%`}
                       </span>
@@ -178,12 +178,12 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
                   {sentimentTotal > 0 && (
                     <div className="flex items-center gap-1">
                       {card.sentimentPos > 0 && (
-                        <span className="rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700">
+                        <span className="rounded px-1.5 py-0.5 bg-positive-soft text-positive">
                           긍{card.sentimentPos}
                         </span>
                       )}
                       {card.sentimentNeg > 0 && (
-                        <span className="rounded px-1.5 py-0.5 bg-red-50 text-red-600">
+                        <span className="rounded px-1.5 py-0.5 bg-negative-soft text-negative">
                           부{card.sentimentNeg}
                         </span>
                       )}

@@ -53,6 +53,19 @@
   --color-brand-200: #ffaad9;
   --color-brand-600: #E6007E;
   --color-brand-700: #c5006b;
+
+  /* 레이어 토큰 */
+  --color-surface: var(--surface);
+  --color-text-body: var(--text-body);
+  --color-text-disabled: var(--text-disabled);
+
+  /* 상태색 시맨틱 토큰 */
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-risk: var(--risk);
+  --color-risk-soft: var(--risk-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
 }
 
 :root {
@@ -88,40 +101,67 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* 신규 레이어 토큰 (라이트) */
+  --surface: oklch(0.985 0 0);
+  --text-body: oklch(0.40 0 0);
+  --text-disabled: oklch(0.67 0 0);
+  /* 상태색 (라이트) */
+  --positive: oklch(0.50 0.13 155);
+  --positive-soft: oklch(0.96 0.03 155);
+  --risk: oklch(0.62 0.14 50);
+  --risk-soft: oklch(0.97 0.03 50);
+  --negative: oklch(0.56 0.20 25);
+  --negative-soft: oklch(0.97 0.04 25);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  /* 배경 레이어 3단 계층 */
+  --background: #08090C;
+  --surface: #0D0F14;
+  --card: #151820;
+  --card-foreground: #F2F3F5;
+  --popover: #151820;
+  --popover-foreground: #F2F3F5;
+  /* 텍스트 계층 */
+  --foreground: #F2F3F5;
+  --muted-foreground: #8A909A;
+  --text-body: #B8BBC2;
+  --text-disabled: #5F6670;
+  /* UI 레이어 */
+  --muted: #151820;
+  --accent: #1B1F28;
+  --accent-foreground: #F2F3F5;
+  --secondary: #151820;
+  --secondary-foreground: #F2F3F5;
+  /* 경계 */
+  --border: #2A2F3A;
+  --input: #2A2F3A;
+  /* 기존 유지 */
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  /* 사이드바 */
+  --sidebar: #151820;
+  --sidebar-foreground: #F2F3F5;
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-accent: #1B1F28;
+  --sidebar-accent-foreground: #F2F3F5;
+  --sidebar-border: #2A2F3A;
   --sidebar-ring: oklch(0.556 0 0);
+  /* 상태색 (다크 — 대비 확보) */
+  --positive: oklch(0.70 0.14 155);
+  --positive-soft: oklch(0.18 0.05 155);
+  --risk: oklch(0.74 0.13 50);
+  --risk-soft: oklch(0.18 0.05 50);
+  --negative: oklch(0.72 0.18 25);
+  --negative-soft: oklch(0.18 0.05 25);
 }
 
 @utility scrollbar-hide {

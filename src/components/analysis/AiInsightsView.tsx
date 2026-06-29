@@ -358,7 +358,7 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
                           NEW
                         </span>
                       ) : (
-                        <span className="text-[11px] font-semibold text-emerald-600">
+                        <span className="text-[11px] font-semibold text-positive">
                           ▲{t.changePct}%
                         </span>
                       )}
@@ -380,8 +380,8 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
                     className={cn(
                       'shrink-0 inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
                       kw.direction === '▲'
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'border-red-100 bg-red-50 text-red-600 hover:bg-red-100'
+                        ? 'border-positive/30 bg-positive-soft text-positive hover:bg-positive-soft/80'
+                        : 'border-negative/30 bg-negative-soft text-negative hover:bg-negative-soft/80'
                     )}
                   >
                     {kw.direction} {kw.name}
@@ -397,7 +397,7 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
       {view === 'issues' && (
         <section>
           <SectionHeader
-            icon={<TrendingUp className="h-4 w-4 text-orange-500" />}
+            icon={<TrendingUp className="h-4 w-4 text-risk" />}
             title="시장 주요 이슈"
             desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
           />
@@ -443,8 +443,8 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
                         className={cn(
                           'inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
                           kw.direction === '▲'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : 'border-red-100 bg-red-50 text-red-600 hover:bg-red-100'
+                            ? 'border-positive/30 bg-positive-soft text-positive hover:bg-positive-soft/80'
+                            : 'border-negative/30 bg-negative-soft text-negative hover:bg-negative-soft/80'
                         )}
                       >
                         {kw.direction} {kw.name}

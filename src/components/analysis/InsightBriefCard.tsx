@@ -45,7 +45,7 @@ export default function InsightBriefCard({ brief }: Props) {
               </p>
               <ul className="space-y-1">
                 {brief.risks.map((risk, i) => (
-                  <li key={i} className="text-sm text-foreground leading-snug">
+                  <li key={i} className="text-sm text-risk leading-snug">
                     {risk}
                   </li>
                 ))}
@@ -63,7 +63,7 @@ export default function InsightBriefCard({ brief }: Props) {
                 {brief.keywords.map((kw) => (
                   <span
                     key={kw}
-                    className="rounded-full border border-brand-600/20 bg-brand-600/5 px-2.5 py-0.5 text-[11px] font-medium text-brand-600"
+                    className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground"
                   >
                     {kw}
                   </span>
