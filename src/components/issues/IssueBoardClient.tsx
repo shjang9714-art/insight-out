@@ -13,6 +13,7 @@ import {
 } from '@/lib/lens'
 import LensSwitcher from '@/components/lens/LensSwitcher'
 import type { IssueCard } from '@/lib/issues/activity'
+import { buildIssueInsight, buildIssueRelevance } from '@/lib/issues/interpret'
 
 // ─── 렌즈 배지 라벨 ────────────────────────────────────────────────────────────
 
@@ -166,6 +167,28 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
                     {card.summary}
                   </p>
                 )}
+
+                {(() => {
+                  const insight = buildIssueInsight(card)
+                  const relevance = buildIssueRelevance(matched, activeLens)
+                  return (
+                    <div className="mb-3 space-y-1">
+                      <p className={cn(
+                        'text-[11px] leading-snug line-clamp-2',
+                        insight.tone === 'risk'     ? 'text-risk' :
+                        insight.tone === 'positive' ? 'text-positive' :
+                        'text-muted-foreground'
+                      )}>
+                        {insight.why}
+                      </p>
+                      {relevance && (
+                        <p className="text-[11px] text-brand-600 leading-snug">
+                          {relevance}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 <div className="mt-auto flex items-center justify-between text-[11px] text-muted-foreground">
                   <span>
