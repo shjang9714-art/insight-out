@@ -22,6 +22,7 @@ import {
   RELEVANCE_LABEL,
   RELEVANCE_CLS,
 } from '@/lib/insight/card-meta'
+import { BUCKET_CHIP_CLS, type TagBucket } from '@/lib/tag-buckets'
 import InsightCardNewsList from './InsightCardNewsList'
 
 // ─── 직렬화 가능 타입 ──────────────────────────────────────────────────────────
@@ -55,9 +56,10 @@ const VIEW_KEY = 'io:insight-view'
 interface Props {
   groups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
+  bucketByTopic?: Record<string, TagBucket>
 }
 
-export default function InsightCardsSectionClient({ groups, contentMap }: Props) {
+export default function InsightCardsSectionClient({ groups, contentMap, bucketByTopic }: Props) {
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
   const [view, setView] = useState<InsightView>(() => {
@@ -269,7 +271,7 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                   >
                     {/* 1. 상단 배지 행: [카테고리][중요도][내 관련도] */}
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="rounded px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                      <span className={cn('rounded px-2 py-0.5 text-xs font-medium', BUCKET_CHIP_CLS[bucketByTopic?.[card.topic] ?? '일반'])}>
                         {card.topic}
                       </span>
                       <span className={cn('rounded px-2 py-0.5 text-xs font-medium', IMPORTANCE_CLS[importance])}>
@@ -326,7 +328,7 @@ export default function InsightCardsSectionClient({ groups, contentMap }: Props)
                     {/* 6. 관련 키워드 */}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[11px] text-muted-foreground/60">관련:</span>
-                      <span className="rounded px-2 py-0.5 text-[11px] bg-muted text-muted-foreground">
+                      <span className={cn('rounded px-2 py-0.5 text-[11px] font-medium', BUCKET_CHIP_CLS[bucketByTopic?.[card.topic] ?? '일반'])}>
                         {card.topic}
                       </span>
                     </div>

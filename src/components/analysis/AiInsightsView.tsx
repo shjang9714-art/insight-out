@@ -6,9 +6,8 @@ import { TrendingUp, FileText } from 'lucide-react'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
-import { tagTypeToBucket } from '@/lib/tag-buckets'
+import { tagTypeToBucket, BUCKET_CHIP_CLS, type KeywordItem } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
-import type { KeywordItem } from '@/components/dashboard/KeywordMap'
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import InsightCardsSectionClient, {
   type InsightGroup,
@@ -211,6 +210,13 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
     }
   }
 
+  // ─── 토픽→버킷 매핑 (카드 카테고리 칩용) ────────────────────────────────────
+  const bucketByTopic: Record<string, import('@/lib/tag-buckets').TagBucket> = {}
+  for (const card of cards) {
+    const tagType = patternTagMap.get(card.topic.toLowerCase())
+    bucketByTopic[card.topic] = tagTypeToBucket(tagType)
+  }
+
   const classifiedKeywords: KeywordItem[] = topKeywords.map(({ name, count }) => {
     const watched = isWatched(name)
     const tagType = patternTagMap.get(name.toLowerCase())
@@ -323,7 +329,7 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
               title="AI 인사이트"
               desc="이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점"
             />
-            <InsightCardsSectionClient groups={insightGroups} contentMap={contentMapRecord} />
+            <InsightCardsSectionClient groups={insightGroups} contentMap={contentMapRecord} bucketByTopic={bucketByTopic} />
           </section>
 
           {/* ④ 이번 주 뜨는 토픽 + 키워드 한 줄 */}
@@ -370,13 +376,19 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
                     key={kw.name}
                     href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
                     className={cn(
-                      'shrink-0 inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
-                      kw.direction === '▲'
-                        ? 'border-positive/30 bg-positive-soft text-positive hover:bg-positive-soft/80'
-                        : 'border-negative/30 bg-negative-soft text-negative hover:bg-negative-soft/80'
+                      'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium transition-colors hover:opacity-80',
+                      BUCKET_CHIP_CLS[kw.bucket]
                     )}
                   >
-                    {kw.direction} {kw.name}
+                    {kw.direction && (
+                      <span className={cn(
+                        'font-semibold leading-none',
+                        kw.direction === '▲' ? 'text-positive' : 'text-negative'
+                      )}>
+                        {kw.direction}
+                      </span>
+                    )}
+                    {kw.name}
                   </Link>
                 ))}
               </div>
