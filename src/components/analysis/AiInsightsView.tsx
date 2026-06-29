@@ -15,6 +15,13 @@ import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
+import InsightBriefCard from '@/components/analysis/InsightBriefCard'
+import {
+  buildRuleBrief,
+  enhanceBriefWithLlm,
+  RISK_VOCAB,
+  type BriefInput,
+} from '@/lib/briefing/insight-brief'
 
 const WATCHLIST_LIMIT = 20
 
@@ -278,6 +285,25 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
   const fallingKws = classifiedKeywords.filter(k => k.direction === '▽').slice(0, 2)
   const kwStrip    = [...risingKws, ...fallingKws]
 
+  // ─── 브리핑 입력 구성 ─────────────────────────────────────────────────────
+  const risingKwNames = classifiedKeywords.filter(k => k.direction === '▲').map(k => k.name)
+  const watchlistHits = watchlist
+    .filter(w => risingKwNames.some(kw => {
+      const kl = kw.toLowerCase(); const wl = w.company.toLowerCase()
+      return kl === wl || kl.includes(wl) || wl.includes(kl)
+    }))
+    .map(w => {
+      const matchedKw = risingKwNames.find(kw => {
+        const kl = kw.toLowerCase(); const wl = w.company.toLowerCase()
+        return kl === wl || kl.includes(wl) || wl.includes(kl)
+      })
+      return { company: w.company, count: kwCurFreq[matchedKw ?? ''] ?? 1 }
+    })
+  const riskKeywords = risingKwNames.filter(kw => RISK_VOCAB.some(r => kw.includes(r)))
+  const briefInput: BriefInput = { trendingTopics, risingKeywords: risingKwNames, watchlistHits, riskKeywords }
+  const ruleBrief = buildRuleBrief(briefInput)
+  const brief = view === 'briefing' ? await enhanceBriefWithLlm(ruleBrief, briefInput) : ruleBrief
+
   // ─── 이슈 (이슈 탭 전용) ─────────────────────────────────────────────────
   const issueCards = view === 'issues' ? await fetchIssueActivity(supabase) : []
 
@@ -295,6 +321,9 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
       {/* 브리핑 탭 */}
       {view === 'briefing' && (
         <>
+          {/* 이번 주 AI 브리핑 요약 카드 */}
+          <InsightBriefCard brief={brief} />
+
           {/* ① AI 인사이트 */}
           <section>
             <SectionHeader
@@ -379,6 +408,13 @@ export default async function AiInsightsView({ view = 'briefing' }: { view?: 'br
       {/* 내 관점 탭 */}
       {view === 'mine' && (
         <>
+          {brief.myImplication && watchlist.length > 0 && (
+            <div className="rounded-lg border-l-2 border-brand-600/60 bg-brand-600/5 px-4 py-3">
+              <p className="text-[11px] font-semibold text-brand-600 mb-0.5">내 업무 시사점</p>
+              <p className="text-sm text-foreground leading-snug">{brief.myImplication}</p>
+            </div>
+          )}
+
           <LensSwitcher />
 
           {watchlist.length === 0 ? (
