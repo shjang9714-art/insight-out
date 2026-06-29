@@ -17,6 +17,14 @@ export const BUCKET_CHIP_CLS: Record<TagBucket, string> = {
   '일반':      'bg-muted text-muted-foreground',
 }
 
+// 버킷별 액센트 바 보더 클래스 (헤드라인 좌측 bar · 맥락 섹션 보더)
+export const BUCKET_ACCENT_CLS: Record<TagBucket, string> = {
+  '기술':      'border-blue-500/50',
+  '시장·정책': 'border-amber-500/50',
+  '업체':      'border-slate-500/50',
+  '일반':      'border-brand-600/20',
+}
+
 // KeywordMap에서 이동한 타입 (AiInsightsView 등에서 사용)
 export interface KeywordItem {
   name: string

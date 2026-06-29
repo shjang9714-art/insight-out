@@ -151,6 +151,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
           hasPersonalization={hasPersonalization}
           totalCount={totalCount}
           onResetLens={() => setActiveLens('all')}
+          bucketByTopic={bucketByTopic}
         />
       </div>
     )
@@ -289,13 +290,13 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                       {card.card_headline ?? card.headline}
                     </p>
 
-                    {/* 3. AI 요약 — card_headline이 있고 headline과 다를 때만 */}
+                    {/* 3. 핵심 — card_headline이 있고 headline과 다를 때만 */}
                     {card.card_headline && card.card_headline !== card.headline && (
                       <div className="space-y-0.5">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                          AI 요약
+                          핵심
                         </span>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
+                        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
                           {card.headline}
                         </p>
                       </div>
@@ -307,17 +308,17 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
                           시사점
                         </span>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
+                        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
                           {card.implication}
                         </p>
                       </div>
                     )}
 
-                    {/* 5. 선정 이유 */}
+                    {/* 5. 왜 주목하나 */}
                     {selectionReason && (
                       <div className="space-y-0.5">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                          선정 이유
+                          왜 주목하나
                         </span>
                         <p className="text-xs text-muted-foreground/60">
                           {selectionReason}

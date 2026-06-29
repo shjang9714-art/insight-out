@@ -8,11 +8,17 @@ import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import type { ContentMetaRecord, InsightGroup } from './InsightCardsSectionClient'
 import {
   computeImportance,
+  buildSelectionReason,
   IMPORTANCE_LABEL,
   IMPORTANCE_CLS,
   RELEVANCE_LABEL,
   RELEVANCE_CLS,
 } from '@/lib/insight/card-meta'
+import {
+  BUCKET_CHIP_CLS,
+  BUCKET_ACCENT_CLS,
+  type TagBucket,
+} from '@/lib/tag-buckets'
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
@@ -37,9 +43,10 @@ interface CardNewsItemProps {
   matched: boolean
   hasPersonalization: boolean
   contentMap: Record<string, ContentMetaRecord>
+  bucketByTopic?: Record<string, TagBucket>
 }
 
-function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNewsItemProps) {
+function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByTopic }: CardNewsItemProps) {
   const [expanded, setExpanded] = useState(false)
   const citations = card.citations as InsightCardCitation[]
   const firstCitation = citations[0]
@@ -51,23 +58,37 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNew
   const freshness = freshnessLabel(card.generated_at)
   const evidenceCount = citations.length || card.source_content_ids.length
   const importance = computeImportance(card)
-  // matched=true → high, hasPersonalization 없으면 null(미표시)
   const relevance = hasPersonalization ? (matched ? 'high' as const : null) : null
+  const selectionReason = buildSelectionReason({
+    evidenceCount,
+    matched,
+    generatedAt: card.generated_at,
+  })
+
+  const bucket = bucketByTopic?.[card.topic] ?? '일반'
+  const accentCls = BUCKET_ACCENT_CLS[bucket]
+  const chipCls = BUCKET_CHIP_CLS[bucket]
+
+  // 헤드라인과 분석 한 줄이 다를 때만 핵심 요약 표시
+  const showLead = card.card_headline && card.card_headline !== card.headline
 
   return (
     <article
       className={cn(
-        'rounded-2xl border bg-card p-6 sm:p-8 space-y-3',
+        'rounded-2xl border bg-card p-6 sm:p-8 space-y-4',
         matched ? 'border-brand-600/20' : 'border-border'
       )}
     >
-      {/* 키커 */}
+      {/* 1. 상단 메타: 버킷 칩 · 기간 / 우측 내 관련도 */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          {[card.topic, formatPeriod(card.period_start, card.period_end)]
-            .filter(Boolean)
-            .join(' · ')}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className={cn('shrink-0 rounded px-2 py-0.5 text-[11px] font-medium', chipCls)}>
+            {card.topic}
+          </span>
+          <span className="text-[11px] text-muted-foreground/70 truncate">
+            {formatPeriod(card.period_start, card.period_end)}
+          </span>
+        </div>
         {relevance === 'high' && (
           <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium', RELEVANCE_CLS.high)}>
             {RELEVANCE_LABEL.high}
@@ -75,47 +96,51 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNew
         )}
       </div>
 
-      {/* 중요도·신선도·근거 배지 */}
-      {(freshness || evidenceCount > 0) && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={cn('inline-flex items-center rounded-full border border-border/0 px-2 py-0.5 text-[10px] font-medium', IMPORTANCE_CLS[importance])}>
-            {IMPORTANCE_LABEL[importance]}
+      {/* 2. 헤드라인 — 어그로 앵커, 좌측 버킷색 액센트 바 */}
+      <div className={cn('border-l-[3px] pl-4', accentCls)}>
+        <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
+          {card.card_headline ?? card.headline}
+        </h3>
+      </div>
+
+      {/* 3. 핵심 요약 (headline): card_headline과 다를 때만 */}
+      {showLead && (
+        <div className="space-y-0.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+            핵심
           </span>
-          {freshness && (
-            <span className={cn(
-              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
-              freshness.stale
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-border bg-muted text-muted-foreground'
-            )}>
-              <Clock className="h-2.5 w-2.5" />
-              {freshness.label}
-            </span>
-          )}
-          {evidenceCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              <FileText className="h-2.5 w-2.5" />
-              근거 {evidenceCount}건
-            </span>
-          )}
+          <p className="text-[15px] text-secondary-foreground leading-relaxed line-clamp-3">
+            {card.headline}
+          </p>
         </div>
       )}
 
-      {/* 헤드라인 */}
-      <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
-        {card.card_headline ?? card.headline}
-      </h3>
-
-      {/* 데크 (시사점) */}
+      {/* 4. 시사점 — clamp 해제, 충분히 */}
       {card.implication && (
-        <p className="text-base text-muted-foreground leading-relaxed line-clamp-2">
-          {card.implication}
-        </p>
+        <div className="space-y-0.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+            시사점
+          </span>
+          <p className="text-base text-muted-foreground leading-relaxed line-clamp-4">
+            {card.implication}
+          </p>
+        </div>
       )}
 
-      {/* 푸터 */}
+      {/* 5. 왜 주목하나 — 맥락 문장, 은은한 좌측 보더 */}
+      {selectionReason && (
+        <div className={cn('border-l-2 pl-3 py-1 bg-muted/50 rounded-r', accentCls)}>
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">
+            왜 주목하나
+          </span>
+          <p className="text-[13px] text-muted-foreground leading-relaxed">
+            {selectionReason}
+          </p>
+        </div>
+      )}
+
+      {/* 6. 근거 (유지) */}
       <div className="pt-3 border-t border-border space-y-2">
-        {/* 대표 근거 1건 */}
         {firstCitation ? (
           <div className="flex gap-2 items-start">
             <Quote className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/40" />
@@ -146,7 +171,6 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNew
           </Link>
         ) : null}
 
-        {/* 근거 펼치기 */}
         {hasExtra && (
           <div className="flex items-center">
             <button
@@ -156,21 +180,14 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNew
               className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
             >
               {expanded ? (
-                <>
-                  <ChevronUp className="h-3 w-3" />
-                  접기
-                </>
+                <><ChevronUp className="h-3 w-3" />접기</>
               ) : (
-                <>
-                  <ChevronDown className="h-3 w-3" />
-                  근거 {extraCount}
-                </>
+                <><ChevronDown className="h-3 w-3" />근거 {extraCount}건 더 보기</>
               )}
             </button>
           </div>
         )}
 
-        {/* 펼쳐진 나머지 근거 */}
         {expanded && (
           <div id={expandId} className="space-y-2 pt-1">
             {restCitations.map((c, i) => {
@@ -213,6 +230,30 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap }: CardNew
           </div>
         )}
       </div>
+
+      {/* 7. 푸터 메타 — 중요도·신선도·근거 한 줄 */}
+      <div className="flex items-center gap-2 flex-wrap pt-1">
+        <span className={cn('inline-flex items-center rounded-full border border-border/0 px-2 py-0.5 text-[10px] font-medium', IMPORTANCE_CLS[importance])}>
+          {IMPORTANCE_LABEL[importance]}
+        </span>
+        {freshness && (
+          <span className={cn(
+            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+            freshness.stale
+              ? 'border-amber-200 bg-amber-50 text-amber-700'
+              : 'border-border bg-muted text-muted-foreground'
+          )}>
+            <Clock className="h-2.5 w-2.5" />
+            {freshness.label}
+          </span>
+        )}
+        {evidenceCount > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <FileText className="h-2.5 w-2.5" />
+            근거 {evidenceCount}건
+          </span>
+        )}
+      </div>
     </article>
   )
 }
@@ -232,6 +273,7 @@ interface Props {
   hasPersonalization: boolean
   totalCount: number
   onResetLens: () => void
+  bucketByTopic?: Record<string, TagBucket>
 }
 
 export default function InsightCardNewsList({
@@ -242,6 +284,7 @@ export default function InsightCardNewsList({
   hasPersonalization,
   totalCount,
   onResetLens,
+  bucketByTopic,
 }: Props) {
   if (visibleGroups.length === 0) {
     return (
@@ -285,7 +328,6 @@ export default function InsightCardNewsList({
 
   return (
     <div className="space-y-8">
-      {/* 보기 결과 요약 */}
       {activeLens !== 'all' && (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-medium text-brand-600">
@@ -327,6 +369,7 @@ export default function InsightCardNewsList({
                 matched={matched}
                 hasPersonalization={hasPersonalization}
                 contentMap={contentMap}
+                bucketByTopic={bucketByTopic}
               />
             ))}
           </div>
