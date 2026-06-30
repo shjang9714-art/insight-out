@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
 import IssueEvidenceExplorer, { type EvidenceItem } from '@/components/issues/IssueEvidenceExplorer'
+import IssueEvidenceSection, { type EvidenceRow } from '@/components/issues/IssueEvidenceSection'
 import type { IssueBrief } from '@/lib/issues/brief'
 
 interface PageProps {
@@ -354,6 +355,19 @@ export default async function IssueDetailPage({ params }: PageProps) {
 
   const explorerCategories = [...new Set(articles.map(a => a.category ?? '기타'))].slice(0, 8)
   const explorerSignals    = [...signalTypeCount.keys()].slice(0, 6)
+
+  // ── 근거 콘텐츠 (issue_evidence 뷰) ───────────────────────────────────────
+  let evidenceRows: EvidenceRow[] = []
+  const { data: evData, error: evErr } = await supabase
+    .from('issue_evidence')
+    .select('content_id, title, summary_ko, original_url, thumbnail_url, category, published_at, source_name, signal_types, max_signal_score, signal_count')
+    .eq('issue_id', id)
+    .order('max_signal_score', { ascending: false })
+    .order('published_at', { ascending: false })
+  if (!evErr) {
+    evidenceRows = (evData ?? []) as unknown as EvidenceRow[]
+  }
+  // evErr 시 뷰 미생성 상태 — 빈 배열로 graceful degrade
 
   // ── brief citation 제목 맵 ──────────────────────────────────────────────────
   const articleById = new Map(articles.map(a => ({ ...a, id: a.id })).map(a => [a.id, a]))
@@ -726,6 +740,9 @@ export default async function IssueDetailPage({ params }: PageProps) {
             </div>
           </section>
         )}
+
+        {/* ── 근거 콘텐츠 (issue_evidence 뷰) ── */}
+        <IssueEvidenceSection items={evidenceRows} />
 
         {/* ── A-3. 근거 탐색 ── */}
         {evidenceItems.length > 0 && (
