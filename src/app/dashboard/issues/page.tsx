@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import AiInsightsView from '@/components/analysis/AiInsightsView'
-import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import ScopeFilter from '@/components/analysis/ScopeFilter'
 
 export const dynamic = 'force-dynamic'
@@ -27,12 +26,9 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
         <h1 className="text-xl font-bold text-foreground">AI 인사이트</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">AI가 분석한 시장 신호·이슈·인사이트를 한눈에.</p>
       </div>
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6">
         <Suspense fallback={null}>
           <ScopeFilter />
-        </Suspense>
-        <Suspense fallback={null}>
-          <AiInsightTabs />
         </Suspense>
       </div>
       <Suspense fallback={

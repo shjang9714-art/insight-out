@@ -1,3 +1,5 @@
+'use client'
+
 import { Sparkles } from 'lucide-react'
 import type { InsightBrief } from '@/lib/briefing/insight-brief'
 
