@@ -13,6 +13,7 @@ import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
+import { tagTypeToBucket, type TagBucket } from '@/lib/tag-buckets'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,10 +55,11 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
   // ─── 관심기업 탭 ─────────────────────────────────────────────────────────
   const companyInsightGroups: InsightGroup[] = []
   const companyContentMap: Record<string, ContentMetaRecord> = {}
+  const bucketByTopic: Record<string, TagBucket> = {}
   let watchlist: WatchlistItem[] = []
 
   if (view === 'watchlist') {
-    const [watchlistRes, companyCardsRes] = await Promise.all([
+    const [watchlistRes, companyCardsRes, keywordGroupsRes] = await Promise.all([
       user
         ? supabase
             .from('user_watchlist')
@@ -74,10 +76,33 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         .order('period_start', { ascending: false })
         .order('generated_at', { ascending: false })
         .limit(60),
+      supabase
+        .from('keyword_groups')
+        .select('name, tag_type, include_patterns')
+        .eq('is_active', true)
+        .limit(200),
     ])
 
     watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
     const rawCompanyCards = (companyCardsRes.data ?? []) as InsightCard[]
+
+    // ─── 토픽→버킷 매핑 (167 규칙 재사용) ────────────────────────────────────
+    type KgRow = { name: string; tag_type: string; include_patterns: string[] }
+    const patternTagMap = new Map<string, string>()
+    for (const g of (keywordGroupsRes.data ?? []) as KgRow[]) {
+      const tagType = g.tag_type
+      const gNameLower = g.name.toLowerCase()
+      if (!patternTagMap.has(gNameLower) || patternTagMap.get(gNameLower) === 'industry') {
+        patternTagMap.set(gNameLower, tagType)
+      }
+      for (const pat of (g.include_patterns ?? [])) {
+        const lower = pat.toLowerCase()
+        const existing = patternTagMap.get(lower)
+        if (!existing || existing === 'industry') {
+          patternTagMap.set(lower, tagType)
+        }
+      }
+    }
 
     if (watchlist.length > 0) {
       const watchlistLower = watchlist.map(w => w.company.toLowerCase())
@@ -87,6 +112,11 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
       }
 
       const companyCards = rawCompanyCards.filter(c => c.topic && isWatched(c.topic)).slice(0, 12)
+
+      for (const card of companyCards) {
+        const tagType = patternTagMap.get(card.topic.toLowerCase())
+        bucketByTopic[card.topic] = tagTypeToBucket(tagType)
+      }
 
       // card_headline 보강
       if (companyCards.length > 0) {
@@ -253,7 +283,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
           ) : companyInsightGroups.length === 0 ? (
             <p className="text-sm text-muted-foreground">관심 기업 인사이트가 아직 없습니다. (AI 생성·승인 후 표시)</p>
           ) : (
-            <InsightCardsSectionClient groups={companyInsightGroups} contentMap={companyContentMap} />
+            <InsightCardsSectionClient groups={companyInsightGroups} contentMap={companyContentMap} bucketByTopic={bucketByTopic} />
           )}
         </div>
       )}
