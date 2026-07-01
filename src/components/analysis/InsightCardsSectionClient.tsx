@@ -17,6 +17,7 @@ import {
   computeImportance,
   computeRelevance,
   buildSelectionReason,
+  computeRelatedKeywords,
   IMPORTANCE_LABEL,
   IMPORTANCE_CLS,
   RELEVANCE_LABEL,
@@ -31,6 +32,7 @@ export interface ContentMetaRecord {
   title: string
   category: string | null
   sourceName: string | null
+  matchedKeywords?: string[] | null
 }
 
 export interface InsightGroup {
@@ -326,13 +328,25 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                       </div>
                     )}
 
-                    {/* 6. 관련 키워드 */}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[11px] text-muted-foreground/60">관련:</span>
-                      <span className={cn('rounded px-2 py-0.5 text-[11px] font-medium', BUCKET_CHIP_CLS[bucketByTopic?.[card.topic] ?? '일반'])}>
-                        {card.topic}
-                      </span>
-                    </div>
+                    {/* 6. 관련 키워드 (근거 콘텐츠 기반, 토픽 제외) */}
+                    {(() => {
+                      const relatedKeywords = computeRelatedKeywords(card, contentMap)
+                      if (relatedKeywords.length === 0) return null
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] text-muted-foreground/60">관련 키워드:</span>
+                          {relatedKeywords.map((kw) => (
+                            <Link
+                              key={kw}
+                              href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+                              className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground hover:text-foreground"
+                            >
+                              {kw}
+                            </Link>
+                          ))}
+                        </div>
+                      )
+                    })()}
 
                     {/* 7. 액션 */}
                     <div>

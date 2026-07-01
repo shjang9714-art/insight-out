@@ -65,3 +65,28 @@ export const RELEVANCE_CLS: Record<'high' | 'mid', string> = {
   high: 'bg-brand-600/10 text-brand-600',
   mid:  'bg-brand-600/5 text-brand-600/60',
 }
+
+// ─── 관련 키워드 (근거 콘텐츠 matched_keywords 합집합·빈도순) ─────────────────
+
+export function computeRelatedKeywords(
+  card: { topic: string; citations: unknown[]; source_content_ids: string[] },
+  contentMap: Record<string, { matchedKeywords?: string[] | null }>,
+  limit = 5,
+): string[] {
+  const ids = new Set<string>()
+  for (const c of card.citations as { content_id: string }[]) ids.add(c.content_id)
+  for (const id of card.source_content_ids) ids.add(id)
+
+  const topicLower = card.topic.toLowerCase()
+  const freq = new Map<string, number>()
+  for (const id of ids) {
+    for (const kw of contentMap[id]?.matchedKeywords ?? []) {
+      if (kw.toLowerCase() === topicLower) continue
+      freq.set(kw, (freq.get(kw) ?? 0) + 1)
+    }
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([kw]) => kw)
+}

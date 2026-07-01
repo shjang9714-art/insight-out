@@ -13,6 +13,7 @@ export interface ActivityRow {
   contents: {
     collected_at: string
     sentiment: '긍정' | '중립' | '부정' | null
+    matched_keywords: string[] | null
   } | null
 }
 
@@ -30,6 +31,8 @@ export interface IssueCard {
   prevNeg: number
   sentimentWorsening: boolean
   changeFlag: 'surge' | 'worsening' | null
+  // 172 추가 — 근거 콘텐츠 matched_keywords 빈도 상위 4
+  topKeywords: string[]
 }
 
 // ─── KST 헬퍼 ──────────────────────────────────────────────────────────────
@@ -57,6 +60,7 @@ export function computeIssueActivity(
   const totalMap:   Record<string, number> = {}
   const curNegMap:  Record<string, number> = {}  // 이번 주 부정
   const prevNegMap: Record<string, number> = {}  // 직전 주 부정
+  const kwFreqMap:  Record<string, Map<string, number>> = {}  // 172 추가 — 이슈별 키워드 빈도
 
   for (const row of activityRows) {
     if (!row.contents) continue
@@ -72,6 +76,14 @@ export function computeIssueActivity(
     if (row.contents.sentiment === '부정') negMap[id] = (negMap[id] ?? 0) + 1
     if (isThisWeek && row.contents.sentiment === '부정') curNegMap[id]  = (curNegMap[id]  ?? 0) + 1
     if (isPrevWeek && row.contents.sentiment === '부정') prevNegMap[id] = (prevNegMap[id] ?? 0) + 1
+
+    if (row.contents.matched_keywords?.length) {
+      if (!kwFreqMap[id]) kwFreqMap[id] = new Map()
+      const freq = kwFreqMap[id]
+      for (const kw of row.contents.matched_keywords) {
+        freq.set(kw, (freq.get(kw) ?? 0) + 1)
+      }
+    }
   }
 
   const cards: IssueCard[] = issues.map(issue => {
@@ -89,6 +101,11 @@ export function computeIssueActivity(
     const changeFlag: IssueCard['changeFlag'] =
       sentimentWorsening ? 'worsening' : isSurge ? 'surge' : null
 
+    const topKeywords = [...(kwFreqMap[issue.id]?.entries() ?? [])]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([kw]) => kw)
+
     return {
       id: issue.id,
       title: issue.title,
@@ -102,6 +119,7 @@ export function computeIssueActivity(
       prevNeg,
       sentimentWorsening,
       changeFlag,
+      topKeywords,
     }
   })
 
@@ -129,7 +147,7 @@ export async function fetchIssueActivity(supabase: SupabaseClient): Promise<Issu
   if (issueIds.length > 0) {
     const { data: actData } = await supabase
       .from('issue_contents')
-      .select('issue_id, contents!inner(collected_at, sentiment)')
+      .select('issue_id, contents!inner(collected_at, sentiment, matched_keywords)')
       .in('issue_id', issueIds)
       .limit(5000)
     activityRows = (actData ?? []) as unknown as ActivityRow[]

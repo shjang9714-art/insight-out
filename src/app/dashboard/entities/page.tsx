@@ -146,14 +146,15 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         if (allIds.size > 0) {
           const { data: contents } = await supabase
             .from('contents')
-            .select('id, title, category, sources(name)')
+            .select('id, title, category, matched_keywords, sources(name)')
             .in('id', [...allIds])
           for (const row of contents ?? []) {
-            const r = row as unknown as { id: string; title: string; category: string | null; sources: { name: string } | null }
+            const r = row as unknown as { id: string; title: string; category: string | null; matched_keywords: string[] | null; sources: { name: string } | null }
             companyContentMap[r.id] = {
               title: r.title,
               category: r.category,
               sourceName: r.sources?.name ?? null,
+              matchedKeywords: r.matched_keywords,
             }
           }
         }

@@ -9,6 +9,7 @@ import type { ContentMetaRecord, InsightGroup } from './InsightCardsSectionClien
 import {
   computeImportance,
   buildSelectionReason,
+  computeRelatedKeywords,
   IMPORTANCE_LABEL,
   IMPORTANCE_CLS,
   RELEVANCE_LABEL,
@@ -64,6 +65,7 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
     matched,
     generatedAt: card.generated_at,
   })
+  const relatedKeywords = computeRelatedKeywords(card, contentMap)
 
   const bucket = bucketByTopic?.[card.topic] ?? '일반'
   const accentCls = BUCKET_ACCENT_CLS[bucket]
@@ -254,6 +256,22 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
           </span>
         )}
       </div>
+
+      {/* 8. 관련 키워드 (근거 콘텐츠 기반, 토픽 제외) */}
+      {relatedKeywords.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+          <span className="text-[11px] text-muted-foreground/60">관련 키워드:</span>
+          {relatedKeywords.map((kw) => (
+            <Link
+              key={kw}
+              href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+              className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground hover:text-foreground"
+            >
+              {kw}
+            </Link>
+          ))}
+        </div>
+      )}
     </article>
   )
 }

@@ -190,6 +190,21 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
                   )
                 })()}
 
+                {card.topKeywords.length > 0 && (
+                  <div className="mb-3 flex items-center gap-1.5 flex-wrap">
+                    {card.topKeywords.map((kw) => (
+                      <Link
+                        key={kw}
+                        href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground"
+                      >
+                        {kw}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-auto flex items-center justify-between text-[11px] text-muted-foreground">
                   <span>
                     최근 7일 <span className="font-medium text-foreground">{card.recentCount}건</span>
