@@ -33,6 +33,8 @@ export interface IssueCard {
   changeFlag: 'surge' | 'worsening' | null
   // 172 추가 — 근거 콘텐츠 matched_keywords 빈도 상위 4
   topKeywords: string[]
+  // 173 추가 — 근거 콘텐츠 collected_at 최댓값(최신 정렬용)
+  lastActivityAt: string | null
 }
 
 // ─── KST 헬퍼 ──────────────────────────────────────────────────────────────
@@ -61,15 +63,22 @@ export function computeIssueActivity(
   const curNegMap:  Record<string, number> = {}  // 이번 주 부정
   const prevNegMap: Record<string, number> = {}  // 직전 주 부정
   const kwFreqMap:  Record<string, Map<string, number>> = {}  // 172 추가 — 이슈별 키워드 빈도
+  const lastActivityMap: Record<string, string> = {}  // 173 추가 — 이슈별 collected_at 최댓값
+  const lastActivityMsMap: Record<string, number> = {}
 
   for (const row of activityRows) {
     if (!row.contents) continue
-    const kstMs = new Date(row.contents.collected_at).getTime() + 9 * 60 * 60 * 1000
+    const collectedMs = new Date(row.contents.collected_at).getTime()
+    const kstMs = collectedMs + 9 * 60 * 60 * 1000
     const isThisWeek = kstMs >= thisWeekStart + 9 * 60 * 60 * 1000
     const isPrevWeek = !isThisWeek && kstMs >= prevWeekStart + 9 * 60 * 60 * 1000
     const id = row.issue_id
 
     totalMap[id] = (totalMap[id] ?? 0) + 1
+    if (!(id in lastActivityMsMap) || collectedMs > lastActivityMsMap[id]) {
+      lastActivityMsMap[id] = collectedMs
+      lastActivityMap[id] = row.contents.collected_at
+    }
     if (isThisWeek) curMap[id]  = (curMap[id]  ?? 0) + 1
     if (isPrevWeek) prevMap[id] = (prevMap[id] ?? 0) + 1
     if (row.contents.sentiment === '긍정') posMap[id] = (posMap[id] ?? 0) + 1
@@ -120,6 +129,7 @@ export function computeIssueActivity(
       sentimentWorsening,
       changeFlag,
       topKeywords,
+      lastActivityAt: lastActivityMap[issue.id] ?? null,
     }
   })
 

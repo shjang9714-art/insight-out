@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -25,6 +26,23 @@ function LensBadge({ label }: { label: string }) {
   )
 }
 
+// ─── 정렬 옵션 ─────────────────────────────────────────────────────────────────
+
+type SortKey = 'surge' | 'activity' | 'recent' | 'relevance' | 'attention'
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'surge',     label: '증가율' },
+  { key: 'activity',  label: '활동량' },
+  { key: 'recent',    label: '최신' },
+  { key: 'relevance', label: '내 관련도' },
+  { key: 'attention', label: '주의' },
+]
+const SORT_STORAGE_KEY = 'io:issue-sort'
+
+const ATTENTION_RANK: Record<string, number> = { worsening: 2, surge: 1 }
+function attentionRank(card: IssueCard): number {
+  return card.changeFlag ? (ATTENTION_RANK[card.changeFlag] ?? 0) : 0
+}
+
 // ─── Props ──────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -37,12 +55,30 @@ interface Props {
 export default function IssueBoardClient({ cards, showLensSwitcher = true }: Props) {
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
+  const [sortBy, setSortBy] = useState<SortKey>(() => {
+    if (typeof window === 'undefined') return 'surge'
+    try {
+      const saved = localStorage.getItem(SORT_STORAGE_KEY) as SortKey | null
+      if (saved && SORT_OPTIONS.some(o => o.key === saved)) return saved
+    } catch { /* noop */ }
+    return 'surge'
+  })
+
+  function handleSortChange(key: SortKey) {
+    setSortBy(key)
+    try { localStorage.setItem(SORT_STORAGE_KEY, key) } catch { /* noop */ }
+  }
 
   const withLens = cards.map(card => {
     const target: LensTarget = { names: [card.title] }
     const score   = lensScore(activeLens, ctx, target)
     const matched = activeLens !== 'all' && matchesLens(activeLens, ctx, target)
-    return { card, score, matched }
+    // 범위(activeLens) 무관하게 항상 계산되는 개인 관련도 — "내 관련도" 정렬 전용
+    const relevanceScore = Math.max(
+      lensScore('mine', ctx, target),
+      lensScore('watch', ctx, target),
+    )
+    return { card, score, matched, relevanceScore }
   })
 
   const displayed =
@@ -50,10 +86,30 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
       ? withLens
       : withLens.filter(({ matched }) => matched)
 
-  // 렌즈 활성 시 매칭 항목 상단 정렬, 그 외 원래 순서 유지
-  const sorted = activeLens !== 'all'
-    ? displayed
-    : [...withLens].sort((a, b) => b.score - a.score)
+  // 범위 필터(activeLens) 적용 결과 안에서 사용자가 고른 정렬 기준 적용
+  const sorted = [...displayed].sort((a, b) => {
+    switch (sortBy) {
+      case 'activity':
+        return b.card.recentCount - a.card.recentCount
+      case 'recent': {
+        const aMs = a.card.lastActivityAt ? new Date(a.card.lastActivityAt).getTime() : -Infinity
+        const bMs = b.card.lastActivityAt ? new Date(b.card.lastActivityAt).getTime() : -Infinity
+        return bMs - aMs
+      }
+      case 'relevance':
+        return b.relevanceScore - a.relevanceScore
+      case 'attention': {
+        const diff = attentionRank(b.card) - attentionRank(a.card)
+        return diff !== 0 ? diff : b.card.recentCount - a.card.recentCount
+      }
+      case 'surge':
+      default: {
+        const aVal = a.card.changePct === null ? Infinity : a.card.changePct
+        const bVal = b.card.changePct === null ? Infinity : b.card.changePct
+        return bVal - aVal
+      }
+    }
+  })
 
   // 빈 결과 사유 판단
   const isMisconfigured =
@@ -88,6 +144,28 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
           >
             전체 보기 →
           </button>
+        </div>
+      )}
+
+      {/* 정렬 컨트롤 */}
+      {sorted.length > 0 && (
+        <div className="mb-4 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] text-muted-foreground/60">정렬:</span>
+          {SORT_OPTIONS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => handleSortChange(key)}
+              className={cn(
+                'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                sortBy === key
+                  ? 'bg-secondary text-secondary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
 
