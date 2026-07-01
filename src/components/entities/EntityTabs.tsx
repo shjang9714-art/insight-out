@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 const TABS = [
   { id: 'watchlist',  label: '관심기업' },
   { id: 'competitor', label: '경쟁사' },
+  { id: 'briefing',   label: '브리핑' },
   { id: 'graph',      label: '관계지도' },
 ]
 

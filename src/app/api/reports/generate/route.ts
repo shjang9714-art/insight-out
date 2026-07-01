@@ -327,5 +327,15 @@ export async function POST(req: NextRequest) {
     if (srcErr) console.error('[generate] ai_report_sources insert error:', srcErr)
   }
 
+  // ── 이슈 ID 저장 (issue_id 컬럼, 2026-06-29 신설) ────────────────────────
+  if (issueIds.length > 0) {
+    const issueRows = issueIds.map((iid) => ({
+      ai_report_id: reportId,
+      issue_id: iid,
+    }))
+    const { error: issueErr } = await supabase.from('ai_report_sources').insert(issueRows)
+    if (issueErr) console.error('[generate] ai_report_sources issue insert error:', issueErr)
+  }
+
   return NextResponse.json({ id: reportId })
 }

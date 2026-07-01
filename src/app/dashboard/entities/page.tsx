@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import { getKstTodayStartIso } from '@/lib/date'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ view?: string }>
 
-const VALID_VIEWS = ['watchlist', 'competitor', 'graph'] as const
+const VALID_VIEWS = ['watchlist', 'competitor', 'briefing', 'graph'] as const
 type ViewId = typeof VALID_VIEWS[number]
 
 const WATCHLIST_LIMIT = 20
@@ -222,6 +223,46 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
     }
   }
 
+  // ─── 브리핑 탭 ───────────────────────────────────────────────────────────
+  interface BriefingRow {
+    entity_id: string
+    signal_count: number
+    content_count: number
+    signal_types: string[] | null
+    last_seen: string | null
+  }
+  interface BriefingEntityMeta {
+    id: string
+    canonical_name: string
+    entity_type: EntityType
+    is_competitor: boolean
+  }
+
+  const briefingRows: BriefingRow[] = []
+  const briefingEntityMap = new Map<string, BriefingEntityMeta>()
+
+  if (view === 'briefing') {
+    const { data: summaryData } = await supabase
+      .from('entity_signal_summary')
+      .select('entity_id, signal_count, content_count, signal_types, last_seen')
+      .order('signal_count', { ascending: false })
+      .limit(30)
+
+    if (summaryData && summaryData.length > 0) {
+      briefingRows.push(...(summaryData as unknown as BriefingRow[]))
+
+      const eids = briefingRows.map(r => r.entity_id)
+      const { data: entData } = await supabase
+        .from('entities')
+        .select('id, canonical_name, entity_type, is_competitor')
+        .in('id', eids)
+
+      for (const e of (entData ?? []) as BriefingEntityMeta[]) {
+        briefingEntityMap.set(e.id, e)
+      }
+    }
+  }
+
   // ─── 관계지도 탭 ─────────────────────────────────────────────────────────
   let entities: EntitySummary[] = []
   let allEntities: {
@@ -345,6 +386,71 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
                       </Link>
                     )}
                   </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 브리핑 탭 */}
+      {view === 'briefing' && (
+        <div>
+          {briefingRows.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              시그널 데이터가 있는 엔티티가 없습니다.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {briefingRows.map(row => {
+                const ent = briefingEntityMap.get(row.entity_id)
+                if (!ent) return null
+                const typeLabel = ENTITY_TYPE_LABEL[ent.entity_type]
+                const displayDate = row.last_seen
+                  ? new Date(row.last_seen).toLocaleDateString('ko-KR', {
+                      timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
+                    })
+                  : null
+                const topSignals = (row.signal_types ?? []).slice(0, 3)
+                return (
+                  <Link
+                    key={row.entity_id}
+                    href={`/dashboard/entities/${row.entity_id}`}
+                    className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-sm font-semibold text-foreground leading-snug line-clamp-1">
+                        {ent.canonical_name}
+                      </span>
+                      <span className={cn(
+                        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                        ent.is_competitor && ent.entity_type === 'company'
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : 'border-border bg-muted text-muted-foreground'
+                      )}>
+                        {typeLabel}
+                      </span>
+                    </div>
+
+                    {topSignals.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {topSignals.map(sig => (
+                          <span
+                            key={sig}
+                            className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+                          >
+                            {sig}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <span>시그널 {row.signal_count.toLocaleString()}건</span>
+                      <span>콘텐츠 {row.content_count.toLocaleString()}건</span>
+                      {displayDate && <span className="ml-auto">{displayDate}</span>}
+                    </div>
+                  </Link>
                 )
               })}
             </div>

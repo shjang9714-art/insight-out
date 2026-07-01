@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, ExternalLink, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
 import ReportEditor from '@/components/reports/ReportEditor'
@@ -81,17 +81,33 @@ export default async function ReportDetailPage({ params }: PageProps) {
   // ─── 근거 출처 ──────────────────────────────────────────────────────────────
   const { data: sourcesData } = await supabase
     .from('ai_report_sources')
-    .select('content_id, contents(id, title)')
+    .select('content_id, issue_id, contents(id, title, original_url, published_at, sources(name)), issues(id, title)')
     .eq('ai_report_id', id)
 
+  interface SourceContentDetail {
+    id: string
+    title: string
+    original_url: string | null
+    published_at: string | null
+    sources: { name: string } | null
+  }
+  interface SourceIssueDetail {
+    id: string
+    title: string
+  }
   interface SourceRow {
     content_id: string | null
-    contents: { id: string; title: string } | null
+    issue_id: string | null
+    contents: SourceContentDetail | null
+    issues: SourceIssueDetail | null
   }
   const sources = (sourcesData ?? []) as unknown as SourceRow[]
   const linkedContents = sources
-    .map((s) => s.contents)
-    .filter((c): c is { id: string; title: string } => c !== null)
+    .filter(s => s.contents !== null)
+    .map(s => s.contents!)
+  const linkedIssues = sources
+    .filter(s => s.issues !== null && s.contents === null)
+    .map(s => s.issues!)
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 print:px-0 print:py-0 print:max-w-none">
@@ -143,23 +159,84 @@ export default async function ReportDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* 근거 콘텐츠 */}
-      {linkedContents.length > 0 && (
-        <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">근거 콘텐츠</h2>
-          <ul className="space-y-2">
-            {linkedContents.map((c) => (
-              <li key={c.id} className="flex items-start gap-2">
-                <span className="mt-0.5 shrink-0 text-brand-600/50">↗</span>
-                <Link
-                  href={`/dashboard/contents/${c.id}`}
-                  className="text-sm text-brand-600 hover:underline leading-snug"
-                >
-                  {c.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
+      {/* 근거 */}
+      {(linkedContents.length > 0 || linkedIssues.length > 0) && (
+        <div className="mt-8 print:mt-6">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">근거</h2>
+
+          {/* 관련 이슈 */}
+          {linkedIssues.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">이슈</p>
+              <div className="flex flex-wrap gap-2">
+                {linkedIssues.map((issue) => (
+                  <Link
+                    key={issue.id}
+                    href={`/dashboard/issues/${issue.id}`}
+                    className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-brand-600/40 hover:text-brand-600"
+                  >
+                    {issue.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 콘텐츠 카드 */}
+          {linkedContents.length > 0 && (
+            <ul className="space-y-2">
+              {linkedContents.map((c) => {
+                const sourceName = Array.isArray(c.sources)
+                  ? (c.sources as { name: string }[])[0]?.name
+                  : c.sources?.name
+                const displayDate = c.published_at
+                  ? new Date(c.published_at).toLocaleDateString('ko-KR', {
+                      timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
+                    })
+                  : null
+                return (
+                  <li key={c.id}>
+                    {c.original_url ? (
+                      <a
+                        href={c.original_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-start gap-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-brand-600/30"
+                      >
+                        <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50 print:hidden" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-foreground group-hover:text-brand-600 leading-snug line-clamp-1">
+                            {c.title}
+                          </span>
+                          {(sourceName || displayDate) && (
+                            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              {sourceName && <span>{sourceName}</span>}
+                              {sourceName && displayDate && <span>·</span>}
+                              {displayDate && <span>{displayDate}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </a>
+                    ) : (
+                      <div className="flex items-start gap-2 rounded-lg border border-border bg-card px-3 py-2">
+                        <span className="mt-0.5 shrink-0 text-brand-600/50">↗</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-foreground leading-snug line-clamp-1">{c.title}</span>
+                          {(sourceName || displayDate) && (
+                            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              {sourceName && <span>{sourceName}</span>}
+                              {sourceName && displayDate && <span>·</span>}
+                              {displayDate && <span>{displayDate}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </div>
       )}
     </div>

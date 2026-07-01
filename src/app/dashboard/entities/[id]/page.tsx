@@ -300,7 +300,26 @@ export default async function EntityDetailPage({ params }: PageProps) {
 
   const sentimentTrend = computeTrend(sentimentTrendData)
 
-  // 12. 사건 타임라인 (entity_events) — 테이블 없어도 graceful
+  // 12. 시그널 요약 (entity_signal_summary) — graceful
+  interface SignalSummaryRow {
+    signal_count: number
+    content_count: number
+    signal_types: string[] | null
+    last_seen: string | null
+  }
+  let signalSummary: SignalSummaryRow | null = null
+  try {
+    const { data: smData } = await supabase
+      .from('entity_signal_summary')
+      .select('signal_count, content_count, signal_types, last_seen')
+      .eq('entity_id', id)
+      .maybeSingle()
+    if (smData) signalSummary = smData as unknown as SignalSummaryRow
+  } catch {
+    // view 미존재 시 graceful
+  }
+
+  // 13. 사건 타임라인 (entity_events) — 테이블 없어도 graceful
   let entityEvents: EntityEventItem[] = []
   try {
     const { data: evData, error: evError } = await supabase
@@ -407,6 +426,32 @@ export default async function EntityDetailPage({ params }: PageProps) {
           </div>
         )}
       </section>
+
+      {/* 시그널 요약 */}
+      {signalSummary && (signalSummary.signal_types ?? []).length > 0 && (
+        <section className="mb-8 rounded-xl border border-border bg-card p-5">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">시그널 요약</h2>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {(signalSummary.signal_types ?? []).map(sig => (
+              <span
+                key={sig}
+                className="rounded bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700"
+              >
+                {sig}
+              </span>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span>시그널 {signalSummary.signal_count.toLocaleString()}건</span>
+            <span>콘텐츠 {signalSummary.content_count.toLocaleString()}건</span>
+            {signalSummary.last_seen && (
+              <span>최근 {new Date(signalSummary.last_seen).toLocaleDateString('ko-KR', {
+                timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
+              })}</span>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* 논조 추세 차트 (IssueSentimentTrend 재사용) */}
       {sentimentTrendData.length > 1 && (
