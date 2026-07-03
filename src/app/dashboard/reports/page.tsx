@@ -5,6 +5,7 @@ import { createServerClient } from '@supabase/ssr'
 import { FileText, PlusCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
+import PageContainer from '@/components/PageContainer'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,7 +66,7 @@ export default async function ReportsPage() {
   const reports = (data ?? []) as Pick<AiReport, 'id' | 'title' | 'type' | 'status' | 'created_at'>[]
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <PageContainer>
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-foreground">전략보고서</h1>
@@ -90,10 +91,10 @@ export default async function ReportsPage() {
             관심 토픽·이슈를 골라 전략보고서를 시작하세요.
           </p>
           <Link
-            href="/dashboard/ai-analysis"
+            href="/dashboard/issues"
             className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
           >
-            AI 분석으로 이동 →
+            AI 인사이트로 이동 →
           </Link>
         </div>
       ) : (
@@ -124,6 +125,6 @@ export default async function ReportsPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

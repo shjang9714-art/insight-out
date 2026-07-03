@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import AiInsightsView from '@/components/analysis/AiInsightsView'
 import ScopeFilter from '@/components/analysis/ScopeFilter'
+import PageContainer from '@/components/PageContainer'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   const view: ViewId = (VALID_VIEWS.includes(raw as ViewId) ? raw : 'briefing') as ViewId
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground">AI 인사이트</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">AI가 분석한 시장 신호·이슈·인사이트를 한눈에.</p>
@@ -38,6 +39,6 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
       }>
         <AiInsightsView view={view} />
       </Suspense>
-    </div>
+    </PageContainer>
   )
 }

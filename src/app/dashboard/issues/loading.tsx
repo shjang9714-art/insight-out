@@ -1,6 +1,8 @@
+import PageContainer from '@/components/PageContainer'
+
 export default function Loading() {
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer>
       {/* 페이지 제목 */}
       <div className="mb-6 space-y-1.5">
         <div className="h-6 w-32 rounded bg-muted animate-pulse" />
@@ -42,6 +44,6 @@ export default function Loading() {
           </div>
         ))}
       </div>
-    </div>
+    </PageContainer>
   )
 }

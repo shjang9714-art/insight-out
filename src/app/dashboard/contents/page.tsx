@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
+import PageContainer from '@/components/PageContainer'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import YoutubeVideoCard from '@/components/dashboard/YoutubeVideoCard'
@@ -479,7 +480,7 @@ function ContentsContent() {
   const activeSourceTab = (category || '뉴스') as ContentCategory
 
   return (
-    <div className="px-4 py-6 sm:px-6">
+    <PageContainer>
 
       {/* ── 소스타입 선택 바 ─────────────────────────────────────────────────── */}
       <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -881,7 +882,7 @@ function ContentsContent() {
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }
 

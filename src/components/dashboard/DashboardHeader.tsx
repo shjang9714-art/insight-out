@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu, Search, Home, ChevronRight } from 'lucide-react'
+import { Menu, Search } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
@@ -199,24 +199,13 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             />
             <span className="font-semibold text-foreground">Insight Out</span>
           </Link>
-          <div className="hidden items-center gap-0.5 lg:flex">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="홈으로"
-            >
-              <Home className="h-3.5 w-3.5" />
-              <span>홈</span>
-            </Link>
-            {pageLabel && (
-              <>
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-border" />
-                <span className="rounded-lg px-2 py-1.5 text-xs font-semibold text-brand-600">
-                  {pageLabel}
-                </span>
-              </>
-            )}
-          </div>
+          {pageLabel && (
+            <div className="hidden items-center gap-0.5 lg:flex">
+              <span className="rounded-lg px-2 py-1.5 text-xs font-semibold text-brand-600">
+                {pageLabel}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 중앙: 검색 (md+) */}

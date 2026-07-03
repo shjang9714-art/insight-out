@@ -377,7 +377,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
       {/* 뒤로가기 */}
       <div className="mb-6">
         <Link
-          href="/dashboard/ai-analysis"
+          href="/dashboard/issues"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         >
           <ArrowLeft className="h-4 w-4" />
