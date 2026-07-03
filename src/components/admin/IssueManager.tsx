@@ -16,6 +16,8 @@ import {
 import { cn } from '@/lib/utils'
 import { BrainCircuit, CheckCircle, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle } from 'lucide-react'
 import type { IssueStatus } from '@/lib/types'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
+import { ISSUE_STATUS_TONE } from '@/lib/admin/status-style'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -49,12 +51,6 @@ const STATUS_LABEL: Record<IssueStatus, string> = {
   draft:     '초안',
   published: '발행',
   archived:  '보관',
-}
-
-const STATUS_STYLE: Record<IssueStatus, string> = {
-  draft:     'bg-muted text-muted-foreground',
-  published: 'bg-emerald-50 text-emerald-700',
-  archived:  'bg-amber-50 text-amber-700',
 }
 
 // ─── 키워드 칩 입력 ────────────────────────────────────────────────────────
@@ -777,12 +773,7 @@ export default function IssueManager() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={cn(
-                      'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                      STATUS_STYLE[issue.status]
-                    )}>
-                      {STATUS_LABEL[issue.status]}
-                    </span>
+                    <StatusBadge tone={ISSUE_STATUS_TONE[issue.status]} label={STATUS_LABEL[issue.status]} />
                   </td>
                   <td className="px-4 py-3 text-center text-xs font-medium tabular-nums">
                     {issue.content_count ?? 0}

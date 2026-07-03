@@ -19,19 +19,11 @@ import { type EntityType, ENTITY_TYPE_LABEL } from '@/lib/types'
 import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
 import type { MergeJob } from '@/lib/admin/merge-progress'
 import { Progress } from '@/components/ui/progress'
+import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
 const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'policy', 'industry']
-
-const ENTITY_TYPE_COLOR: Record<EntityType, string> = {
-  company:  'bg-brand-100 text-brand-700',
-  tech:     'bg-blue-50 text-blue-700',
-  product:  'bg-violet-50 text-violet-700',
-  person:   'bg-emerald-50 text-emerald-700',
-  policy:   'bg-amber-50 text-amber-700',
-  industry: 'bg-muted text-muted-foreground',
-}
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -993,7 +985,7 @@ export default function EntityManager() {
                   >
                     <span className={cn(
                       'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium',
-                      ENTITY_TYPE_COLOR[e.entity_type]
+                      ENTITY_TYPE_CLS[e.entity_type]
                     )}>
                       {ENTITY_TYPE_LABEL[e.entity_type]}
                     </span>
@@ -1125,7 +1117,7 @@ export default function EntityManager() {
                   <td className="px-4 py-3">
                     <span className={cn(
                       'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                      ENTITY_TYPE_COLOR[entity.entity_type]
+                      ENTITY_TYPE_CLS[entity.entity_type]
                     )}>
                       {ENTITY_TYPE_LABEL[entity.entity_type]}
                     </span>

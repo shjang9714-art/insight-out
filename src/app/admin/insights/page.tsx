@@ -15,6 +15,8 @@ import {
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardStatus } from '@/lib/types'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
+import { INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
 
@@ -22,12 +24,6 @@ const STATUS_LABEL: Record<InsightCardStatus, string> = {
   draft: '초안',
   published: '발행됨',
   archived: '보관',
-}
-
-const STATUS_CLASS: Record<InsightCardStatus, string> = {
-  draft: 'bg-yellow-100 text-yellow-800',
-  published: 'bg-green-100 text-green-800',
-  archived: 'bg-muted text-muted-foreground',
 }
 
 // ─── 날짜 포맷 ────────────────────────────────────────────────────────────────
@@ -218,7 +214,7 @@ export default function InsightsAdminPage() {
             onClick={() => void handleGenerate()}
             disabled={isGenerating}
             size="sm"
-            className="bg-brand-600 text-white hover:bg-brand-700"
+            variant="brand"
           >
             {isGenerating ? (
               <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
@@ -377,12 +373,7 @@ export default function InsightsAdminPage() {
                     )}>
                       {card.scope === 'company' ? '관심업체' : '산업'}
                     </span>
-                    <span className={cn(
-                      'text-xs rounded px-1.5 py-0.5 font-medium',
-                      STATUS_CLASS[card.status]
-                    )}>
-                      {STATUS_LABEL[card.status]}
-                    </span>
+                    <StatusBadge tone={INSIGHT_STATUS_TONE[card.status]} label={STATUS_LABEL[card.status]} className="rounded" />
                     <span className="text-xs text-muted-foreground">
                       {card.period_start} ~ {card.period_end}
                     </span>

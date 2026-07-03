@@ -15,6 +15,7 @@ import {
   Legend,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CHART_CATEGORY, CHART_STATUS, CHART_MUTED } from '@/lib/admin/palette'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -33,22 +34,6 @@ export interface ChartData {
   statusDist: { name: string; value: number }[]
   dayTrend: DayTrend[]
   sourceTop: { sourceId: string; name: string; count: number }[]
-}
-
-// ─── 팔레트 ───────────────────────────────────────────────────────────────────
-
-const CAT_COLORS: Record<string, string> = {
-  뉴스:     '#4f86c6',
-  리포트:   '#f4a261',
-  웹인사이트: '#57cc99',
-  유튜브:   '#e76f51',
-  'AI보고서': '#9b5de5',
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  게시됨:    '#57cc99',
-  '검토 대기': '#f4a261',
-  반려됨:    '#e76f51',
 }
 
 const CATEGORIES = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서'] as const
@@ -83,7 +68,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                 }}
               >
                 {categoryDist.map((entry) => (
-                  <Cell key={entry.name} fill={CAT_COLORS[entry.name] ?? '#94a3b8'} />
+                  <Cell key={entry.name} fill={CHART_CATEGORY[entry.name] ?? CHART_MUTED} />
                 ))}
               </Pie>
               <Tooltip formatter={(v) => (v as number).toLocaleString()} />
@@ -121,7 +106,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                 }}
               >
                 {statusDist.map((entry) => (
-                  <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? '#94a3b8'} />
+                  <Cell key={entry.name} fill={CHART_STATUS[entry.name] ?? CHART_MUTED} />
                 ))}
               </Pie>
               <Tooltip formatter={(v) => (v as number).toLocaleString()} />
@@ -149,7 +134,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                   key={cat}
                   dataKey={cat}
                   stackId="a"
-                  fill={CAT_COLORS[cat]}
+                  fill={CHART_CATEGORY[cat]}
                   cursor="pointer"
                   onClick={() =>
                     router.push(`/admin/contents?category=${encodeURIComponent(cat)}`)
@@ -188,7 +173,7 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                 <Bar
                   dataKey="count"
                   name="수집 건수"
-                  fill={CAT_COLORS['뉴스']}
+                  fill={CHART_CATEGORY['뉴스']}
                   cursor="pointer"
                   onClick={(d: unknown) => {
                     const entry = d as { sourceId?: string }

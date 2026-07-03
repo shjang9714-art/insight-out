@@ -12,7 +12,8 @@ import {
 import { Loader2, ExternalLink } from 'lucide-react'
 import type { SourceType, ContentStatus } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
-import { cn } from '@/lib/utils'
+import { CONTENT_STATUS_TONE, CRAWL_STATUS_TONE } from '@/lib/admin/status-style'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -44,16 +45,16 @@ interface ContentRow {
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────────
 
-const STATUS_BADGE: Record<CrawlStatus, { label: string; cls: string }> = {
-  success: { label: '성공', cls: 'bg-green-50 text-green-700 border border-green-100' },
-  partial: { label: '부분', cls: 'bg-yellow-50 text-yellow-700 border border-yellow-100' },
-  failed:  { label: '실패', cls: 'bg-red-50 text-red-700 border border-red-100' },
+const STATUS_BADGE: Record<CrawlStatus, { label: string }> = {
+  success: { label: '성공' },
+  partial: { label: '부분' },
+  failed:  { label: '실패' },
 }
 
-const CONTENT_STATUS_CONFIG: Record<ContentStatus, { label: string; cls: string }> = {
-  published: { label: '노출',      cls: 'bg-green-50 text-green-700' },
-  pending:   { label: '검토대기',  cls: 'bg-yellow-50 text-yellow-700' },
-  rejected:  { label: '숨김',      cls: 'bg-red-50 text-red-600' },
+const CONTENT_STATUS_CONFIG: Record<ContentStatus, { label: string }> = {
+  published: { label: '노출' },
+  pending:   { label: '검토대기' },
+  rejected:  { label: '숨김' },
 }
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
@@ -174,7 +175,7 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
           )}
 
           {fetchError && (
-            <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="rounded-lg border border-negative/20 bg-negative-soft px-4 py-3 text-sm text-negative">
               {fetchError}
             </div>
           )}
@@ -222,14 +223,11 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
 
                     {/* 상태 배지 + 변경 */}
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <span
-                        className={cn(
-                          'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-                          statusCfg.cls
-                        )}
-                      >
-                        {statusCfg.label}
-                      </span>
+                      <StatusBadge
+                        tone={CONTENT_STATUS_TONE[c.status]}
+                        label={statusCfg.label}
+                        className="text-[11px]"
+                      />
                       <div className="flex gap-0.5">
                         {CONTENT_STATUSES.filter(s => s !== c.status).map(s => (
                           <button
@@ -322,14 +320,11 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
 
                     {/* 상태 배지 */}
                     <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-                          badge.cls
-                        )}
-                      >
-                        {badge.label}
-                      </span>
+                      <StatusBadge
+                        tone={CRAWL_STATUS_TONE[log.status]}
+                        label={badge.label}
+                        className="text-[11px]"
+                      />
                     </td>
 
                     {/* 가져옴 */}

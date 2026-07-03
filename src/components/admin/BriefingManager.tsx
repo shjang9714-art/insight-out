@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, ChevronDown, ChevronUp, Loader2, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { cn } from '@/lib/utils'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
+import { BRIEFING_STATUS_TONE } from '@/lib/admin/status-style'
 
 type BriefingStatus = 'draft' | 'published' | 'archived' | 'failed'
 
@@ -46,15 +46,6 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
   day: 'numeric',
   weekday: 'short',
 })
-
-function statusBadgeClass(status: BriefingStatus) {
-  switch (status) {
-    case 'published': return 'bg-brand-600 text-white hover:bg-brand-600'
-    case 'draft':     return 'bg-secondary text-secondary-foreground hover:bg-secondary'
-    case 'archived':  return 'bg-muted text-muted-foreground hover:bg-muted'
-    case 'failed':    return 'bg-destructive/10 text-destructive hover:bg-destructive/10'
-  }
-}
 
 export default function BriefingManager() {
   const [period, setPeriod] = useState('')
@@ -254,9 +245,7 @@ export default function BriefingManager() {
                       <span className="text-sm font-medium text-muted-foreground">
                         {DATE_FORMATTER.format(new Date(briefing.briefing_date))}
                       </span>
-                      <Badge className={cn('text-xs font-medium', statusBadgeClass(briefing.status))}>
-                        {STATUS_LABELS[briefing.status]}
-                      </Badge>
+                      <StatusBadge tone={BRIEFING_STATUS_TONE[briefing.status]} label={STATUS_LABELS[briefing.status]} />
                     </div>
                     <p className="mt-1 font-semibold text-foreground line-clamp-1">
                       {briefing.title ?? '제목 없음'}

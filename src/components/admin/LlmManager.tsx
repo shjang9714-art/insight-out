@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { Loader2, CheckCircle2, XCircle, FlaskConical } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { CHART_BRAND, CHART_MUTED } from '@/lib/admin/palette'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -257,8 +258,8 @@ export default function LlmManager() {
                   formatter={(value) => [(value as number).toLocaleString()]}
                   contentStyle={{ fontSize: 12 }}
                 />
-                <Bar dataKey="토큰" fill="#E6007E" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="호출" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="토큰" fill={CHART_BRAND} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="호출" fill={CHART_MUTED} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

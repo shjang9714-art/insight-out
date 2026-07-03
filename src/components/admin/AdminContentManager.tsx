@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
+import { CONTENT_STATUS_TONE } from '@/lib/admin/status-style'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -64,10 +66,10 @@ interface EditState {
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
-const STATUS_STYLE: Record<ContentStatus, { label: string; className: string }> = {
-  published: { label: '노출',      className: 'text-green-700' },
-  pending:   { label: '검토 대기', className: 'text-yellow-700' },
-  rejected:  { label: '숨김',      className: 'text-red-600' },
+const STATUS_STYLE: Record<ContentStatus, { label: string }> = {
+  published: { label: '노출' },
+  pending:   { label: '검토 대기' },
+  rejected:  { label: '숨김' },
 }
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
@@ -986,9 +988,7 @@ export default function AdminContentManager() {
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span className={cn('whitespace-nowrap text-xs font-medium', statusStyle.className)}>
-                        {statusStyle.label}
-                      </span>
+                      <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={statusStyle.label} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {(() => {
