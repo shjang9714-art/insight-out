@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardStatus } from '@/lib/types'
+import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export default function InsightsAdminPage() {
   }
 
   const handleGenerate = async () => {
-    if (!window.confirm(`최근 ${generateDays}일 콘텐츠로 AI 인사이트 카드를 생성하시겠습니까?`)) return
+    if (!window.confirm(`최근 ${generateDays}일 콘텐츠로 AI 인사이트를 생성하시겠습니까?`)) return
     setIsGenerating(true)
     setGenerateResult(null)
     setError(null)
@@ -183,21 +184,19 @@ export default function InsightsAdminPage() {
   return (
     <div className="space-y-6">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-brand-600" />
-          <h1 className="text-xl font-semibold text-foreground">AI 인사이트 카드</h1>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          disabled={isLoading}
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', isLoading && 'animate-spin')} />
-          새로고침
-        </Button>
-      </div>
+      <AdminPageHeader
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', isLoading && 'animate-spin')} />
+            새로고침
+          </Button>
+        }
+      />
 
       {/* 생성 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">

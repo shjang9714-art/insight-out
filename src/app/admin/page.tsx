@@ -11,11 +11,12 @@ import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage, type OpsSignalCounts } from '@/components/admin/AdminOpsSignals'
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
 import AiRefreshButton from '@/components/admin/AiRefreshButton'
+import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '어드민 홈 | Insight Out',
+  title: '대시보드 | Insight Out',
   description: 'Insight Out 운영 현황과 관리자 기능을 확인합니다.',
 }
 
@@ -245,12 +246,7 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-10">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">어드민 홈</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          콘텐츠 수집 현황과 운영 기능을 한곳에서 관리합니다.
-        </p>
-      </div>
+      <AdminPageHeader />
 
       {/* ① 오늘 할 일 */}
       <AdminTodoBlock

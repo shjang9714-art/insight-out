@@ -44,12 +44,15 @@ export function AdminSidebar() {
   return (
     <aside className="sticky top-0 h-screen w-[232px] shrink-0 overflow-y-auto border-r border-border bg-card flex flex-col">
       {/* 로고 */}
-      <div className="flex items-center gap-2 px-4 py-4 border-b border-border">
+      <Link
+        href="/admin"
+        className="flex items-center gap-2 px-4 py-4 border-b border-border transition-colors hover:bg-accent/50"
+      >
         <span className="font-bold text-foreground">Insight Out</span>
         <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-brand-600 text-white">
           어드민
         </span>
-      </div>
+      </Link>
 
       {/* 메뉴 검색 */}
       <div className="px-3 py-2 border-b border-border">

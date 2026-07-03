@@ -38,7 +38,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       {
         href: '/admin',
         label: '대시보드',
-        description: '수집·검토·참여 현황 한눈에',
+        description: '콘텐츠 수집 현황과 운영 기능을 한곳에서 관리합니다.',
         icon: LayoutDashboard,
       },
     ],
@@ -163,4 +163,14 @@ export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
       icon: Users,
     },
   ],
+}
+
+/** pathname → nav 항목 조회. 정확 일치 우선, 없으면 최장 startsWith 매칭 */
+export function findAdminNavItem(pathname: string): AdminNavItem | null {
+  const all = [...ADMIN_NAV_GROUPS.flatMap(g => g.items), ...ADMIN_NAV_BOTTOM.items]
+  const exact = all.find(i => i.href === pathname)
+  if (exact) return exact
+  return all
+    .filter(i => i.href !== '/admin' && pathname.startsWith(i.href))
+    .sort((a, b) => b.href.length - a.href.length)[0] ?? null
 }

@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import NewsletterManager from '@/components/admin/NewsletterManager'
+import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 export const metadata: Metadata = {
-  title: '뉴스레터 관리 | Insight Out 어드민',
+  title: '뉴스레터 | Insight Out 어드민',
 }
 
 export const dynamic = 'force-dynamic'
@@ -34,10 +35,7 @@ export default async function AdminNewsletterPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">뉴스레터 관리</h1>
-        <p className="mt-1 text-sm text-muted-foreground">발송 설정, 미리보기, 수동 발송, 발송 이력을 관리합니다.</p>
-      </div>
+      <AdminPageHeader />
 
       <NewsletterManager
         initialSettings={settings ?? defaultSettings}

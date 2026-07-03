@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import CrawlLogsTable, { type CrawlLogRow } from '@/components/admin/CrawlLogsTable'
+import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,12 +82,7 @@ export default async function CrawlLogsPage() {
   return (
     <>
       {/* 헤더 */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">크롤링 현황</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          소스별 자동 수집 실행 로그입니다. 최근 100건, 마지막 24시간 기준 요약.
-        </p>
-      </div>
+      <AdminPageHeader />
 
       {/* 요약 카드 */}
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
