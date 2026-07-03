@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Upload, X, FileText, Loader2, CheckCircle } from 'lucide-react'
 import type { Service } from '@/lib/types'
+import { renderPdfCover } from '@/lib/contents/pdf-cover'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ export default function ReportUploadForm() {
     reason?: string
     message?: string
   } | null>(null)
+  const [coverGenerated, setCoverGenerated] = useState(false)
 
   // DB 메타데이터 로드
   useEffect(() => {
@@ -290,6 +292,44 @@ export default function ReportUploadForm() {
           console.error('[upload] 추출 호출 실패:', extractErr)
           setExtractResult({ ok: false, reason: 'fetch_error', message: '추출 요청 실패' })
         }
+
+        // ⑥ 표지(1페이지) 생성 — 전부 graceful, 실패해도 업로드는 이미 성공
+        try {
+          const coverBlob = await renderPdfCover(file!)
+          if (coverBlob) {
+            const coverTokenRes = await fetch('/api/admin/upload', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ filename: 'cover.webp', kind: 'cover', contentId }),
+            })
+            const coverTokenData: { token?: string; storagePath?: string; error?: string } =
+              await coverTokenRes.json()
+
+            if (coverTokenRes.ok && coverTokenData.token && coverTokenData.storagePath) {
+              const { error: coverUploadErr } = await supabase.storage
+                .from('report-covers')
+                .uploadToSignedUrl(coverTokenData.storagePath, coverTokenData.token, coverBlob)
+
+              if (!coverUploadErr) {
+                const { data: pub } = supabase.storage
+                  .from('report-covers')
+                  .getPublicUrl(coverTokenData.storagePath)
+                const { error: thumbErr } = await supabase
+                  .from('contents')
+                  .update({ thumbnail_url: pub.publicUrl })
+                  .eq('id', contentId)
+                if (!thumbErr) setCoverGenerated(true)
+                else console.error('[upload] thumbnail_url 업데이트 실패:', thumbErr)
+              } else {
+                console.error('[upload] 표지 업로드 실패:', coverUploadErr)
+              }
+            } else {
+              console.error('[upload] 표지 업로드 URL 발급 실패:', coverTokenData.error)
+            }
+          }
+        } catch (coverErr) {
+          console.error('[upload] 표지 생성 실패:', coverErr)
+        }
       }
 
       // 성공 → 폼 초기화
@@ -347,10 +387,13 @@ export default function ReportUploadForm() {
             ) : (
               <p>본문 추출을 건너뜀 ({extractResult.reason ?? '비 PDF'})</p>
             )}
+            {coverGenerated && (
+              <p className="mt-1.5 text-xs opacity-80">표지 이미지 생성 완료</p>
+            )}
           </div>
         )}
 
-        <Button onClick={() => { setSuccess(false); setExtractResult(null) }}>다른 파일 업로드</Button>
+        <Button onClick={() => { setSuccess(false); setExtractResult(null); setCoverGenerated(false) }}>다른 파일 업로드</Button>
       </Card>
     )
   }

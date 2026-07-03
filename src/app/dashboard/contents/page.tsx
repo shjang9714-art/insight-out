@@ -36,6 +36,7 @@ interface ContentItem {
   cluster_id: string | null
   importance_score: number
   collected_at: string
+  thumbnail_url: string | null
 }
 
 interface ClusterMember {
@@ -356,7 +357,7 @@ function ContentsContent() {
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at',
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url',
           { count: 'exact' }
         )
         .eq('status', 'published')
@@ -777,6 +778,7 @@ function ContentsContent() {
                           sourceName={item.sources?.name ?? null}
                           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                           clusterMembers={members.length > 0 ? members : undefined}
+                          thumbnailUrl={item.thumbnail_url}
                         />
                       ))}
                     </div>
@@ -835,6 +837,7 @@ function ContentsContent() {
                   sourceName={item.sources?.name ?? null}
                   tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   clusterMembers={members.length > 0 ? members : undefined}
+                  thumbnailUrl={item.thumbnail_url}
                 />
               ))}
             </div>

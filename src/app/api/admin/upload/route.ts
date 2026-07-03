@@ -71,17 +71,19 @@ export async function POST(request: NextRequest) {
 
   // ─── 2. 요청 파싱 ─────────────────────────────────────────────────────────
 
-  let body: { filename?: string; category?: string }
+  let body: { filename?: string; category?: string; kind?: string; contentId?: string }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 })
   }
 
-  const { filename, category } = body
-  if (!filename || !category) {
+  const { filename, category, kind, contentId } = body
+  const isCover = kind === 'cover'
+
+  if (!filename || (!isCover && !category) || (isCover && !contentId)) {
     return NextResponse.json(
-      { error: '필수 파라미터(filename, category)가 없습니다.' },
+      { error: '필수 파라미터가 없습니다.' },
       { status: 400 }
     )
   }
@@ -102,15 +104,18 @@ export async function POST(request: NextRequest) {
     serviceRoleKey
   )
 
-  const ext =
-    filename.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
-  const safeCategory = safeSegment(category)
-  const year        = new Date().getFullYear()
-  const storagePath = `${safeCategory}/${year}/${crypto.randomUUID()}.${ext}`
+  const ext = filename.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
+
+  // 표지 이미지: report-covers 공개 버킷, 파일명 {contentId}.{ext}
+  // 리포트 원본: reports 비공개 버킷, 파일명 {safeCategory}/{year}/{uuid}.{ext}
+  const bucket = isCover ? 'report-covers' : 'reports'
+  const storagePath = isCover
+    ? `${contentId}.${ext}`
+    : `${safeSegment(category!)}/${new Date().getFullYear()}/${crypto.randomUUID()}.${ext}`
 
   const { data: signedData, error: signedErr } = await adminClient.storage
-    .from('reports')
-    .createSignedUploadUrl(storagePath)
+    .from(bucket)
+    .createSignedUploadUrl(storagePath, isCover ? { upsert: true } : undefined)
 
   if (signedErr) {
     console.error('[api/admin/upload] createSignedUploadUrl 실패:', signedErr)
@@ -122,9 +127,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            '스토리지 버킷 "reports" 가 없습니다. ' +
-            'Supabase 대시보드 > Storage > New bucket 에서 이름 "reports", ' +
-            '공개 설정 OFF 로 버킷을 생성해주세요.',
+            `스토리지 버킷 "${bucket}" 가 없습니다. ` +
+            `Supabase 대시보드 > Storage > New bucket 에서 이름 "${bucket}", ` +
+            `공개 설정 ${isCover ? 'ON' : 'OFF'} 로 버킷을 생성해주세요.`,
         },
         { status: 500 }
       )
