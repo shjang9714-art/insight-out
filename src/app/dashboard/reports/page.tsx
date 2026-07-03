@@ -76,7 +76,7 @@ export default async function ReportsPage() {
         </div>
         <Link
           href="/dashboard/reports/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-solid px-4 py-2 text-sm font-medium text-white hover:bg-brand-solid-hover transition-colors"
         >
           <PlusCircle className="h-4 w-4" />
           새 보고서

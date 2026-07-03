@@ -103,7 +103,7 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
       >
         출처
         {selectedGroupCount > 0 && (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-solid text-[10px] font-bold text-white">
             {selectedGroupCount}
           </span>
         )}
@@ -163,7 +163,7 @@ export default function SourcePopover({ sources, value, onChange }: SourcePopove
                     <span className={cn(
                       'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
                       selected
-                        ? 'border-brand-600 bg-brand-600 text-white'
+                        ? 'border-brand-600 bg-brand-solid text-white'
                         : 'border-border bg-background'
                     )}>
                       {selected && <Check className="h-2.5 w-2.5" />}

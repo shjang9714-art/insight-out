@@ -124,8 +124,8 @@ export default function AIReportModal({ mode, report, onGenerated, onClose }: Pr
             {['주제 · 서비스 · 기간', '콘텐츠 선택', 'LLM 선택'].map((label, i) => (
               <div key={i} className="flex items-center gap-2">
                 <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
-                  i + 1 < formStep ? 'bg-brand-600 text-white' :
-                  i + 1 === formStep ? 'bg-brand-600 text-white' :
+                  i + 1 < formStep ? 'bg-brand-solid text-white' :
+                  i + 1 === formStep ? 'bg-brand-solid text-white' :
                   'bg-muted text-muted-foreground'
                 }`}>
                   {i + 1 < formStep ? '✓' : i + 1}
@@ -247,7 +247,7 @@ export default function AIReportModal({ mode, report, onGenerated, onClose }: Pr
                       <p className="text-xs text-muted-foreground">{llm.desc}</p>
                     </div>
                     {selected && (
-                      <span className="ml-auto rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-medium text-white">선택됨</span>
+                      <span className="ml-auto rounded-full bg-brand-solid px-2.5 py-0.5 text-[11px] font-medium text-white">선택됨</span>
                     )}
                   </label>
                 )
@@ -348,14 +348,14 @@ export default function AIReportModal({ mode, report, onGenerated, onClose }: Pr
                 <button
                   onClick={() => setFormStep((s) => s + 1)}
                   disabled={formStep === 1 && !topic.trim()}
-                  className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-brand-solid px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-solid-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   다음
                 </button>
               ) : (
                 <button
                   onClick={handleGenerate}
-                  className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
+                  className="rounded-lg bg-brand-solid px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-solid-hover"
                 >
                   보고서 생성
                 </button>

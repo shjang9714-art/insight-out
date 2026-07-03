@@ -72,7 +72,7 @@ export default function BriefingArchive({ briefings }: Props) {
                     'text-[10px] font-medium',
                     isArchived
                       ? 'bg-muted text-muted-foreground hover:bg-muted'
-                      : 'bg-brand-600 text-white hover:bg-brand-600'
+                      : 'bg-brand-solid text-white hover:bg-brand-solid'
                   )}
                 >
                   {isArchived ? '보관' : '공개'}

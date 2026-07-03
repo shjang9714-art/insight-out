@@ -67,7 +67,7 @@ export default function EntityBrowse({ entities, totalByType }: Props) {
               className={cn(
                 'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                 isActive
-                  ? 'border-brand-600 bg-brand-600 text-white'
+                  ? 'border-brand-600 bg-brand-solid text-white'
                   : 'border-border bg-card text-muted-foreground hover:border-brand-600/40 hover:text-foreground',
               )}
             >

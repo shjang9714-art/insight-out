@@ -57,6 +57,10 @@
   --color-brand-700: var(--brand-700);
   --color-brand-800: var(--brand-800);
   --color-brand-950: var(--brand-950);
+  /* 버튼 전용(흰 라벨 위 배경) — text-brand-600 과 분리: 다크에서 brand-600 이
+     텍스트 대비용으로 밝아진 만큼 흰 라벨 버튼엔 별도 어두운 값 필요 */
+  --color-brand-solid: var(--brand-solid);
+  --color-brand-solid-hover: var(--brand-solid-hover);
 
   /* 레이어 토큰 */
   --color-surface: var(--surface);
@@ -131,6 +135,8 @@
   --brand-700: #c5006b;
   --brand-800: #8f0055;
   --brand-950: #2e0a1e;
+  --brand-solid: #E6007E;
+  --brand-solid-hover: #c5006b;
 }
 
 .dark {
@@ -177,6 +183,10 @@
   /* LGU+ brand (다크) — 600/700 을 밝혀 카드 위 텍스트 대비 확보(3.94→5.6:1대) */
   --brand-600: #FF4FA8;
   --brand-700: #FF2D92;
+  /* 버튼 전용(흰 라벨) — 600 을 그대로 버튼에 쓰면 흰 텍스트 대비 3.03:1(AA 미달),
+     14px 라벨은 large-text 예외 미충족이라 별도 어두운 값으로 4.5:1 이상 확보 */
+  --brand-solid: #D40074;
+  --brand-solid-hover: #B8005F;
   /* 상태색 (다크 — 대비 확보) */
   --positive: oklch(0.72 0.13 253);
   --positive-soft: oklch(0.18 0.06 255);

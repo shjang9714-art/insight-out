@@ -405,7 +405,7 @@ function SearchContent() {
               onClick={() => handleViewChange('card')}
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                contentView === 'card' ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:text-foreground'
+                contentView === 'card' ? 'bg-brand-solid text-white' : 'text-muted-foreground hover:text-foreground'
               )}
               aria-label="카드 뷰"
             >
@@ -416,7 +416,7 @@ function SearchContent() {
               onClick={() => handleViewChange('list')}
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                contentView === 'list' ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:text-foreground'
+                contentView === 'list' ? 'bg-brand-solid text-white' : 'text-muted-foreground hover:text-foreground'
               )}
               aria-label="목록 뷰"
             >
@@ -446,7 +446,7 @@ function SearchContent() {
                     className={cn(
                       'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
                       date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
-                        ? 'bg-brand-600 text-white'
+                        ? 'bg-brand-solid text-white'
                         : 'bg-muted text-muted-foreground hover:bg-accent'
                     )}
                   >
@@ -473,7 +473,7 @@ function SearchContent() {
                 onClick={() => updateParam('category', '')}
                 className={cn(
                   'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                  !category ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                  !category ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
                 )}
               >
                 전체
@@ -485,7 +485,7 @@ function SearchContent() {
                   onClick={() => updateParam('category', category === def.category ? '' : def.category)}
                   className={cn(
                     'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    category === def.category ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                    category === def.category ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
                   )}
                 >
                   {def.label}
@@ -503,7 +503,7 @@ function SearchContent() {
                   onClick={() => updateParam('svc', '')}
                   className={cn(
                     'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    svcIds.length === 0 ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                    svcIds.length === 0 ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
                   )}
                 >
                   전체
@@ -518,7 +518,7 @@ function SearchContent() {
                     }}
                     className={cn(
                       'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      svcIds.includes(s.id) ? 'bg-brand-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+                      svcIds.includes(s.id) ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
                     )}
                   >
                     {s.icon ? `${s.icon} ${s.name}` : s.name}

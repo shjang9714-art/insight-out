@@ -500,7 +500,7 @@ function ContentsContent() {
               )}
             >
               {count !== undefined && count > 0 && (
-                <span className="absolute left-1.5 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-brand-600 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+                <span className="absolute left-1.5 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-brand-solid px-1 py-0.5 text-[9px] font-bold leading-none text-white">
                   {count >= 1000 ? `${Math.floor(count / 1000)}k` : count}
                 </span>
               )}
@@ -535,7 +535,7 @@ function ContentsContent() {
                 className={cn(
                   'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
                   sort === 'published' || !searchParams.get('sort')
-                    ? 'bg-brand-600 text-white'
+                    ? 'bg-brand-solid text-white'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
@@ -546,7 +546,7 @@ function ContentsContent() {
                 className={cn(
                   'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
                   sort === 'collected'
-                    ? 'bg-brand-600 text-white'
+                    ? 'bg-brand-solid text-white'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
@@ -575,7 +575,7 @@ function ContentsContent() {
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
                 contentView === 'card'
-                  ? 'bg-brand-600 text-white'
+                  ? 'bg-brand-solid text-white'
                   : 'text-muted-foreground hover:text-foreground'
               )}
               aria-label="카드 뷰"
@@ -588,7 +588,7 @@ function ContentsContent() {
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
                 contentView === 'list'
-                  ? 'bg-brand-600 text-white'
+                  ? 'bg-brand-solid text-white'
                   : 'text-muted-foreground hover:text-foreground'
               )}
               aria-label="목록 뷰"

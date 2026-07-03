@@ -71,7 +71,7 @@ export default function CategoryGrid() {
           >
             {/* 오늘 건수 — 좌측 상단 뱃지 */}
             {count > 0 && (
-              <span className="absolute left-1 top-1 flex min-w-[16px] items-center justify-center rounded-full bg-brand-600 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+              <span className="absolute left-1 top-1 flex min-w-[16px] items-center justify-center rounded-full bg-brand-solid px-1 py-0.5 text-[9px] font-bold leading-none text-white">
                 {count}
               </span>
             )}

@@ -136,7 +136,7 @@ export default function EmailArchiveWidget() {
                     setError(null)
                   }
                 }}
-                className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+                className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-brand-solid px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-solid-hover"
               >
                 <Mail className="h-3.5 w-3.5" />
                 이메일로 받기
@@ -159,7 +159,7 @@ export default function EmailArchiveWidget() {
                   <button
                     onClick={() => handleSend(a.id, emailInputValue)}
                     disabled={sendingId === a.id || !emailInputValue.trim()}
-                    className="h-7 shrink-0 rounded bg-brand-600 px-2 text-[11px] font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                    className="h-7 shrink-0 rounded bg-brand-solid px-2 text-[11px] font-medium text-white hover:bg-brand-solid-hover disabled:opacity-60"
                   >
                     {sendingId === a.id ? '...' : '발송'}
                   </button>

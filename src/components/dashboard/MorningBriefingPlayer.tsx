@@ -239,7 +239,7 @@ export default function MorningBriefingPlayer({ briefing: briefingProp }: Mornin
             className={cn(
               'absolute left-1/2 top-1/2 z-10 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full transition-transform',
               hasAudio
-                ? 'bg-brand-600 text-white shadow-lg hover:bg-brand-700 active:scale-95'
+                ? 'bg-brand-solid text-white shadow-lg hover:bg-brand-solid-hover active:scale-95'
                 : 'cursor-not-allowed bg-gray-300 text-gray-400 dark:bg-gray-600 dark:text-gray-500'
             )}
           >

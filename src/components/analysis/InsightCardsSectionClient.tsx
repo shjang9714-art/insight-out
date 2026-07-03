@@ -116,7 +116,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
           className={cn(
             'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
             view === 'cardnews'
-              ? 'bg-brand-600 text-white'
+              ? 'bg-brand-solid text-white'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -129,7 +129,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
           className={cn(
             'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
             view === 'analysis'
-              ? 'bg-brand-600 text-white'
+              ? 'bg-brand-solid text-white'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >

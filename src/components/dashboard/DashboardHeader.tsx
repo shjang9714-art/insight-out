@@ -302,7 +302,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             {userName === null ? (
               <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
             ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-solid text-xs font-bold text-white">
                 {userName ? userName[0] : '?'}
               </div>
             )}

@@ -188,7 +188,7 @@ function WorkbenchForm() {
           <div className="pt-4 flex justify-end">
             <button
               onClick={() => setStep(2)}
-              className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+              className="rounded-lg bg-brand-solid px-5 py-2 text-sm font-medium text-white hover:bg-brand-solid-hover transition-colors"
             >
               다음 →
             </button>
@@ -304,7 +304,7 @@ function WorkbenchForm() {
               className={cn(
                 'rounded-lg px-5 py-2 text-sm font-medium transition-colors',
                 totalSelected > 0
-                  ? 'bg-brand-600 text-white hover:bg-brand-700'
+                  ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
                   : 'bg-muted text-muted-foreground cursor-not-allowed',
               )}
             >
@@ -360,7 +360,7 @@ function WorkbenchForm() {
               className={cn(
                 'inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-colors',
                 totalSelected > 0 && !isGenerating
-                  ? 'bg-brand-600 text-white hover:bg-brand-700'
+                  ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
                   : 'bg-muted text-muted-foreground cursor-not-allowed',
               )}
             >

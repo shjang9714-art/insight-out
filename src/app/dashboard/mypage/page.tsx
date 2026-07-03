@@ -916,7 +916,7 @@ export default function MyPage() {
                         size="sm"
                         onClick={() => handleSendEmail(archive.id, emailInputValue)}
                         disabled={sendingArchiveId === archive.id || !emailInputValue.trim()}
-                        className="h-8 bg-brand-600 px-3 text-xs text-white hover:bg-brand-700"
+                        className="h-8 bg-brand-solid px-3 text-xs text-white hover:bg-brand-solid-hover"
                       >
                         {sendingArchiveId === archive.id ? '발송 중...' : '발송'}
                       </Button>

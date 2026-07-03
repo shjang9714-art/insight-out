@@ -167,7 +167,7 @@ export default function ReportEditor({ reportId, initialTitle, initialBodyMd, in
               'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
               isSaving
                 ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                : 'bg-brand-600 text-white hover:bg-brand-700',
+                : 'bg-brand-solid text-white hover:bg-brand-solid-hover',
             )}
           >
             {isSaving
