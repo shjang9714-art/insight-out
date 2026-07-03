@@ -601,29 +601,9 @@ function ContentsContent() {
       </div>
 
       {/* ─── 필터 바 ─────────────────────────────────────────────────────────── */}
+      {/* 날짜/사업/관련성 선택 UI 숨김(Lv.3 컨트롤 제거, 기본 정렬은 유지) — 출처 필터만 노출 */}
       <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
         <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
-
-          {/* 날짜 */}
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">날짜</span>
-            <div className="flex gap-1">
-              {DATE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => updateParam('date', opt.value === 'all' ? '' : opt.value)}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* 출처 팝오버 — 우측 끝 (카테고리 있으면 해당 카테고리 출처만) */}
           <div className="ml-auto">
@@ -634,71 +614,6 @@ function ContentsContent() {
             />
           </div>
 
-
-        </div>
-
-        {/* 사업키워드(서비스) 멀티셀렉트 pill 행 */}
-        {services.length > 0 && (
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">사업</span>
-              <button
-                onClick={() => updateParam('svc', '')}
-                className={cn(
-                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                  svcIds.length === 0
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-muted text-muted-foreground hover:bg-accent'
-                )}
-              >
-                전체
-              </button>
-              {services.map((s) => {
-                const isActive = svcIds.includes(s.id)
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      const cur = new URLSearchParams(window.location.search).get('svc') ?? ''
-                      const curIds = cur ? cur.split(',').filter(Boolean) : []
-                      const next = curIds.includes(s.id)
-                        ? curIds.filter((x) => x !== s.id)
-                        : [...curIds, s.id]
-                      updateParam('svc', next.join(','))
-                    }}
-                    className={cn(
-                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      isActive
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-muted text-muted-foreground hover:bg-accent'
-                    )}
-                  >
-                    {s.icon ? `${s.icon} ${s.name}` : s.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 관련 콘텐츠 토글 */}
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">관련성</span>
-            <button
-              onClick={() => updateParam('relevant', relevant === '1' ? '0' : '1')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                relevant === '1'
-                  ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300 dark:hover:bg-brand-950/50'
-                  : 'border-border bg-muted text-muted-foreground hover:bg-accent'
-              )}
-              title={relevant === '1' ? '전체 콘텐츠 보기' : '관련 콘텐츠만 보기'}
-            >
-              {relevant === '1' ? '관련 콘텐츠만' : '전체 콘텐츠'}
-            </button>
-          </div>
         </div>
 
         {/* 활성 필터 chips */}
