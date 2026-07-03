@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, matchIssues, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef } from './quality'
+import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason } from './quality'
 import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
@@ -361,6 +361,8 @@ async function processCrawlItem(
     let contentStatus: 'pending' | 'published' =
       (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
         ? 'pending' : 'published'
+    let reviewReason: ReviewReason | null =
+      contentStatus === 'pending' ? 'low_relevance' : null
 
     // LLM 재판정: 애매 밴드(THRESHOLD ± MARGIN)의 기사만, 면제 소스 제외
     let llmTags: string[] = []
@@ -381,9 +383,19 @@ async function processCrawlItem(
       )
       if (verdict !== null) {
         contentStatus = verdict.relevant ? 'published' : 'pending'
+        reviewReason = verdict.relevant ? null : 'llm_irrelevant'
         llmTags = verdict.tags
       }
     }
+
+    // 본문 품질 게이트(178) — 누락/추출실패/잘림 의심이면 pending.
+    // 단순 짧음(body_short)은 신뢰 소스(exempt)는 스니펫 홍수 방지를 위해 면제.
+    const bodyReason = assessBodyQuality(item.body, { minLen: SUMMARY_MIN_BODY_LEN })
+    if (bodyReason && !(exempt && bodyReason === 'body_short')) {
+      contentStatus = 'pending'
+      reviewReason = reviewReason ?? bodyReason
+    }
+    if (contentStatus === 'published') reviewReason = null
 
     const translatedContent =
       item.language === 'en' && item.body
@@ -417,14 +429,25 @@ async function processCrawlItem(
       cluster_id: clusterId,
       importance_score: importance,
       status: contentStatus,
+      review_reason: reviewReason,
     }
 
     // 적재: contents_original_url_key 가 부분 유니크 인덱스(where original_url is not null)라
     // upsert ON CONFLICT 와 호환되지 않음 → insert 사용. URL 중복(23505)은 멱등 스킵.
-    const { data: insertedRows, error: insertError } = await admin
+    let insertRes = await admin
       .from('contents')
       .insert(row)
       .select('id')
+    // review_reason 컬럼 미적용(42703) — 컬럼 제외 후 재시도 (148/155 graceful 패턴)
+    if (insertRes.error?.code === '42703') {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { review_reason: _reviewReason, ...rowWithoutReason } = row
+      insertRes = await admin
+        .from('contents')
+        .insert(rowWithoutReason)
+        .select('id')
+    }
+    const { data: insertedRows, error: insertError } = insertRes
     if (insertError) {
       if (insertError.code === '23505') {
         counts.duplicate++   // 같은 original_url 이미 존재 → 멱등 스킵

@@ -129,6 +129,34 @@ export function relatednessScore(
   return Math.min(total / RELATEDNESS_CAP, 1)
 }
 
+/**
+ * 검토 대기 사유 (178 — 본문 품질 게이트 + 기존 관련도 게이트 통합 라벨).
+ */
+export type ReviewReason =
+  | 'body_missing'    // 본문 없음/못 불러옴
+  | 'body_short'      // 본문 과소(잘림 의심)
+  | 'extract_failed'  // 풀본문 추출 실패
+  | 'body_truncated'  // 말줄임·더보기 등 잘림 마커
+  | 'low_relevance'   // 관련도 낮음(기존 게이트)
+  | 'llm_irrelevant'  // LLM 재판정 무관
+
+/**
+ * 본문 품질 판정. 문제 없으면 null.
+ * 잘림 마커(…/더보기/read more 등) → body_truncated, 빈 본문 → body_missing,
+ * 최소 길이 미달 → body_short. 보수적으로 명백한 누락/잘림만 잡는다.
+ */
+export function assessBodyQuality(
+  body: string | null | undefined,
+  opts?: { minLen?: number }
+): ReviewReason | null {
+  const text = (body ?? '').trim()
+  if (!text) return 'body_missing'
+  const min = opts?.minLen ?? 200
+  if (/(…|\.\.\.|\[…\]|더보기|read more)\s*$/i.test(text)) return 'body_truncated'
+  if (text.length < min) return 'body_short'
+  return null
+}
+
 /** 이슈 자동배정 경량 표현 (DB 로드 후 processCrawlItem 에 전달). */
 export interface IssueMatchDef {
   id: string

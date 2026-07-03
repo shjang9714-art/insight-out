@@ -44,6 +44,7 @@ interface AdminContentRow {
   bookmark_count: number | null
   body_fetched_at: string | null
   body_len: number | null
+  review_reason: string | null
   sources: { name: string } | null
 }
 
@@ -70,6 +71,16 @@ const STATUS_STYLE: Record<ContentStatus, { label: string }> = {
   published: { label: '노출' },
   pending:   { label: '검토 대기' },
   rejected:  { label: '숨김' },
+}
+
+// 검토 대기 사유 라벨 (178)
+const REVIEW_REASON_LABEL: Record<string, string> = {
+  body_missing:   '본문 없음',
+  body_short:     '본문 짧음(잘림 의심)',
+  extract_failed: '본문 추출 실패',
+  body_truncated: '본문 잘림',
+  low_relevance:  '관련도 낮음',
+  llm_irrelevant: 'AI 무관 판정',
 }
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
@@ -180,6 +191,9 @@ export default function AdminContentManager() {
   const [bodyLenAvailable, setBodyLenAvailable] = useState(true)
   const bodyLenRef = useRef(true)  // 쿼리 빌드용 (렌더 트리거 없이 최신값 유지)
 
+  // review_reason 컬럼 가용 여부 (178, body_len 과 동일한 degrade 패턴)
+  const reviewReasonRef = useRef(true)
+
   // 선택 풀본문 채우기
   const [isEnrichingSel, setIsEnrichingSel] = useState(false)
 
@@ -221,6 +235,8 @@ export default function AdminContentManager() {
       setError(null)
 
       const withLen = bodyLenRef.current
+      const withReason = reviewReasonRef.current
+      const BASE_COLS = 'id, title, category, status, collected_at, bookmark_count, body_fetched_at'
 
       const buildBase = (sel: string) => {
         let q = supabase
@@ -242,49 +258,46 @@ export default function AdminContentManager() {
         return q
       }
 
-      // 기본 쿼리 (body_len 포함 여부에 따라 분기)
-      let q = buildBase(
-        withLen
-          ? 'id, title, category, status, collected_at, bookmark_count, body_fetched_at, body_len, sources(name)'
-          : 'id, title, category, status, collected_at, bookmark_count, body_fetched_at, sources(name)'
-      )
-      if (bodyFilter === 'none')         q = q.is('body_fetched_at', null)
-      else if (withLen) {
-        if (bodyFilter === 'full')        q = q.not('body_fetched_at', 'is', null).gte('body_len', 400)
-        else if (bodyFilter === 'snippet') q = q.not('body_fetched_at', 'is', null).lt('body_len', 400)
+      const selectCols = (len: boolean, reason: boolean) =>
+        [BASE_COLS, len ? 'body_len' : null, reason ? 'review_reason' : null, 'sources(name)']
+          .filter(Boolean)
+          .join(', ')
+
+      const applyBodyFilter = (query: ReturnType<typeof buildBase>, len: boolean) => {
+        if (bodyFilter === 'none')         return query.is('body_fetched_at', null)
+        if (len && bodyFilter === 'full')    return query.not('body_fetched_at', 'is', null).gte('body_len', 400)
+        if (len && bodyFilter === 'snippet') return query.not('body_fetched_at', 'is', null).lt('body_len', 400)
+        return query
       }
-      q = q.range((page - 1) * pageSize, page * pageSize - 1)
 
-      const r1 = await q
+      const runQuery = async (len: boolean, reason: boolean) => {
+        let q = applyBodyFilter(buildBase(selectCols(len, reason)), len)
+        q = q.range((page - 1) * pageSize, page * pageSize - 1)
+        return q
+      }
 
-      // Graceful fallback: body_len 컬럼 미적용(42703) → degrade 모드
-      if (r1.error?.code === '42703') {
+      let r = await runQuery(withLen, withReason)
+
+      // Graceful fallback: review_reason 컬럼 미적용(42703) → 우선 review_reason 만 제외 후 재시도
+      if (r.error?.code === '42703' && withReason) {
+        reviewReasonRef.current = false
+        r = await runQuery(withLen, false)
+      }
+      // 여전히 42703 → body_len 도 컬럼 미적용 → 함께 제외
+      if (r.error?.code === '42703' && withLen) {
         bodyLenRef.current = false
         setBodyLenAvailable(false)
-
-        let qf = buildBase('id, title, category, status, collected_at, bookmark_count, body_fetched_at, sources(name)')
-        if (bodyFilter === 'none') qf = qf.is('body_fetched_at', null)
-        qf = qf.range((page - 1) * pageSize, page * pageSize - 1)
-        const r2 = await qf
-
-        if (r2.error) {
-          setError(`콘텐츠 목록을 불러오지 못했습니다: ${r2.error.message}`)
-        } else {
-          setContents((r2.data ?? []) as unknown as AdminContentRow[])
-          setTotalCount(r2.count ?? 0)
-        }
-        setIsLoading(false)
-        return
+        r = await runQuery(false, reviewReasonRef.current)
       }
 
-      if (r1.error) {
-        setError(`콘텐츠 목록을 불러오지 못했습니다: ${r1.error.message}`)
+      if (r.error) {
+        setError(`콘텐츠 목록을 불러오지 못했습니다: ${r.error.message}`)
       } else {
-        const rows = (r1.data ?? []) as unknown as AdminContentRow[]
+        const rows = (r.data ?? []) as unknown as AdminContentRow[]
         setContents(rows)
-        setTotalCount(r1.count ?? 0)
+        setTotalCount(r.count ?? 0)
         // body_len 컬럼 실제 존재 감지
-        if (!bodyLenRef.current && rows.some((r) => r.body_len != null)) {
+        if (!bodyLenRef.current && rows.some((row) => row.body_len != null)) {
           bodyLenRef.current = true
           setBodyLenAvailable(true)
         }
@@ -988,7 +1001,17 @@ export default function AdminContentManager() {
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={statusStyle.label} />
+                      <div className="flex items-center gap-1.5">
+                        <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={statusStyle.label} />
+                        {content.status === 'pending' && content.review_reason && (
+                          <span
+                            title={`검토 대기 사유: ${REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}`}
+                            className="rounded bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
+                          >
+                            {REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {(() => {
