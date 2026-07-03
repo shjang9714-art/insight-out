@@ -256,7 +256,7 @@
  * 어드민은 전역 next-themes(html.dark)와 독립적으로 data-admin-theme 속성만 따른다.
  */
 .admin-scope {
-  --background: #F7F8FA;
+  --background: #EEF1F5;
   --card: #FFFFFF;
   --popover: #FFFFFF;
   --surface-elevated: #FFFFFF;
@@ -307,6 +307,20 @@
   --info: #94A3B8;
   --info-soft: rgba(148, 163, 184, .14);
   --sidebar-accent: rgba(230, 0, 126, .12);
+}
+
+/*
+ * 카드 옅은 그림자 (183, 라이트 전용) — 배경(#EEF1F5)과 흰 카드 사이 대비 보강.
+ * shadcn Card(data-slot="card")와 bg-card 유틸을 직접 쓰는 카드 모두 커버.
+ * 다크는 보더로 충분 — 그림자 명시적으로 제거.
+ */
+.admin-scope:not([data-admin-theme="dark"]) [data-slot="card"],
+.admin-scope:not([data-admin-theme="dark"]) [class*="bg-card"] {
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+.admin-scope[data-admin-theme="dark"] [data-slot="card"],
+.admin-scope[data-admin-theme="dark"] [class*="bg-card"] {
+  box-shadow: none;
 }
 
 @utility scrollbar-hide {
