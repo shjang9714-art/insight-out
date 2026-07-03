@@ -11,7 +11,8 @@ export default function InsightBriefCard({ brief }: Props) {
   const isEmpty = brief.keyChanges.length === 0 && brief.risks.length === 0 && brief.keywords.length === 0
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+    // 보고서형 패널 — 카드 그리드(border-border)와 실루엣을 다르게: 테두리 제거 + 좌측 강조 바 + 배경 톤차·그림자로만 구분
+    <div className="rounded-3xl border-0 border-l-4 border-l-brand-600 bg-surface p-6 shadow-sm space-y-4">
       {/* 헤더 */}
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-brand-600 shrink-0" />

@@ -47,12 +47,16 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  /* LGU+ brand */
-  --color-brand-50: #fff0f9;
-  --color-brand-100: #ffd6ef;
-  --color-brand-200: #ffaad9;
-  --color-brand-600: #E6007E;
-  --color-brand-700: #c5006b;
+  /* LGU+ brand (라이트/다크 값은 :root/.dark 에서 지정 — 다크는 텍스트 대비 확보를 위해 더 밝게) */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-950: var(--brand-950);
 
   /* 레이어 토큰 */
   --color-surface: var(--surface);
@@ -84,8 +88,9 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  /* 카드/구분선 경계 강화(기존 0.922 는 배경과 거의 구분 안 됨, 1.26:1 → 1.8:1) */
+  --border: oklch(0.80 0 0);
+  --input: oklch(0.80 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -112,30 +117,40 @@
   --risk-soft: oklch(0.97 0.03 50);
   --negative: oklch(0.56 0.20 25);
   --negative-soft: oklch(0.97 0.04 25);
+  /* LGU+ brand (라이트) — 600/700 은 흰 텍스트 버튼 대비 4.5:1 확보된 값 */
+  --brand-50: #fff0f9;
+  --brand-100: #ffd6ef;
+  --brand-200: #ffaad9;
+  --brand-300: #ff8cc9;
+  --brand-400: #ff5fb0;
+  --brand-600: #E6007E;
+  --brand-700: #c5006b;
+  --brand-800: #8f0055;
+  --brand-950: #2e0a1e;
 }
 
 .dark {
-  /* 배경 레이어 3단 계층 */
+  /* 배경 레이어 4단 계층 — 지시서 §9-A: 인접 레이어 명도차 확대 */
   --background: #08090C;
-  --surface: #0D0F14;
-  --card: #151820;
-  --card-foreground: #F2F3F5;
-  --popover: #151820;
-  --popover-foreground: #F2F3F5;
-  /* 텍스트 계층 */
-  --foreground: #F2F3F5;
-  --muted-foreground: #8A909A;
-  --text-body: #B8BBC2;
-  --text-disabled: #5F6670;
+  --surface: #10131A;
+  --card: #171C26;
+  --card-foreground: #F5F6F8;
+  --popover: #171C26;
+  --popover-foreground: #F5F6F8;
+  /* 텍스트 계층 — 본문 더 밝게, 보조 텍스트 하한 상향(#9CA3AF 이상) */
+  --foreground: #F5F6F8;
+  --muted-foreground: #9CA3AF;
+  --text-body: #C3C6CE;
+  --text-disabled: #6B7280;
   /* UI 레이어 */
-  --muted: #151820;
-  --accent: #1B1F28;
-  --accent-foreground: #F2F3F5;
-  --secondary: #151820;
-  --secondary-foreground: #F2F3F5;
-  /* 경계 */
-  --border: #2A2F3A;
-  --input: #2A2F3A;
+  --muted: #171C26;
+  --accent: #222B39;
+  --accent-foreground: #F5F6F8;
+  --secondary: #171C26;
+  --secondary-foreground: #F5F6F8;
+  /* 경계 — 카드/배경 사이 경계 강화(기존 #2A2F3A 는 카드와 거의 안 섞여 보임) */
+  --border: #48566D;
+  --input: #48566D;
   /* 기존 유지 */
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
@@ -147,14 +162,17 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   /* 사이드바 */
-  --sidebar: #151820;
-  --sidebar-foreground: #F2F3F5;
+  --sidebar: #171C26;
+  --sidebar-foreground: #F5F6F8;
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: #1B1F28;
-  --sidebar-accent-foreground: #F2F3F5;
-  --sidebar-border: #2A2F3A;
+  --sidebar-accent: #222B39;
+  --sidebar-accent-foreground: #F5F6F8;
+  --sidebar-border: #48566D;
   --sidebar-ring: oklch(0.556 0 0);
+  /* LGU+ brand (다크) — 600/700 을 밝혀 카드 위 텍스트 대비 확보(3.94→5.6:1대) */
+  --brand-600: #FF4FA8;
+  --brand-700: #FF2D92;
   /* 상태색 (다크 — 대비 확보) */
   --positive: oklch(0.72 0.13 253);
   --positive-soft: oklch(0.18 0.06 255);
