@@ -16,13 +16,13 @@ export default function AdminPageHeader({ actions, titleOverride, descriptionOve
   const description = descriptionOverride ?? item?.description
 
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="mb-7 flex items-start justify-between gap-4">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {Icon && <Icon className="h-5 w-5 shrink-0 text-brand-600" />}
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+          <h1 className="admin-page-title text-foreground">{title}</h1>
         </div>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        {description && <p className="admin-page-desc mt-1 text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="shrink-0">{actions}</div>}
     </div>

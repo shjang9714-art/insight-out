@@ -12,12 +12,12 @@ export default function ContentAddTabs() {
 
   return (
     <div>
-      <div className="mb-6 inline-flex rounded-lg border border-border bg-muted p-1 gap-1">
+      <div className="mb-6 inline-flex h-11 items-stretch rounded-lg border border-border bg-muted p-1 gap-1">
         <button
           type="button"
           onClick={() => setTab('file')}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            'admin-btn-text rounded-md px-4 transition-colors',
             tab === 'file'
               ? 'bg-brand-600 text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground'
@@ -29,7 +29,7 @@ export default function ContentAddTabs() {
           type="button"
           onClick={() => setTab('paste')}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            'admin-btn-text rounded-md px-4 transition-colors',
             tab === 'paste'
               ? 'bg-brand-600 text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground'

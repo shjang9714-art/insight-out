@@ -42,14 +42,14 @@ export function AdminSidebar() {
   }
 
   return (
-    <aside className="sticky top-0 h-screen w-[232px] shrink-0 overflow-y-auto border-r border-border bg-card flex flex-col">
+    <aside className="sticky top-0 h-screen w-[288px] shrink-0 overflow-y-auto border-r border-border bg-card flex flex-col">
       {/* 로고 */}
       <Link
         href="/admin"
         className="flex items-center gap-2 px-4 py-4 border-b border-border transition-colors hover:bg-accent/50"
       >
-        <span className="font-bold text-foreground">Insight Out</span>
-        <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-brand-600 text-white">
+        <span className="text-xl font-bold text-foreground">Insight Out</span>
+        <span className="admin-badge rounded px-1.5 py-0.5 bg-brand-600 text-white">
           어드민
         </span>
       </Link>
@@ -65,7 +65,7 @@ export function AdminSidebar() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
-            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-600/30"
+            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-600/30"
           />
         </div>
       </div>
@@ -85,15 +85,15 @@ export function AdminSidebar() {
                       href={item.href}
                       onClick={() => setQuery('')}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                        'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
                         active
                           ? 'bg-accent text-brand-600 font-medium'
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       )}
                     >
-                      <Icon className="h-[18px] w-[18px] shrink-0" />
+                      <Icon className="h-5 w-5 shrink-0" />
                       <span className="flex-1">{item.label}</span>
-                      <span className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground bg-muted">
+                      <span className="admin-caption rounded px-1.5 py-0.5 text-muted-foreground bg-muted">
                         {item.group}
                       </span>
                     </Link>
@@ -111,7 +111,7 @@ export function AdminSidebar() {
           /* 기본 그룹 네비 */
           ADMIN_NAV_GROUPS.map((group) => (
             <div key={group.group}>
-              <p className="mb-1 px-2 text-xs text-muted-foreground/60">
+              <p className="admin-sidebar-group mb-1 px-2 text-muted-foreground/80">
                 {group.group}
               </p>
               <ul className="space-y-0.5">
@@ -120,11 +120,11 @@ export function AdminSidebar() {
                   if (item.disabled) {
                     return (
                       <li key={item.href}>
-                        <span className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm opacity-60 cursor-default text-muted-foreground">
-                          <Icon className="h-[18px] w-[18px] shrink-0" />
+                        <span className="admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 opacity-70 cursor-default text-muted-foreground">
+                          <Icon className="h-5 w-5 shrink-0" />
                           <span className="flex-1">{item.label}</span>
                           {item.badge && (
-                            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+                            <span className="admin-caption rounded px-1.5 py-0.5 font-medium bg-muted text-muted-foreground">
                               {item.badge}
                             </span>
                           )}
@@ -138,13 +138,13 @@ export function AdminSidebar() {
                       <Link
                         href={item.href}
                         className={cn(
-                          'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                          'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
                           active
                             ? 'bg-accent text-brand-600 font-medium'
                             : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                         )}
                       >
-                        <Icon className="h-[18px] w-[18px] shrink-0" />
+                        <Icon className="h-5 w-5 shrink-0" />
                         {item.label}
                       </Link>
                     </li>
@@ -158,7 +158,7 @@ export function AdminSidebar() {
 
       {/* 하단 시스템 그룹 */}
       <div className="px-2 pb-3 border-t border-border pt-3">
-        <p className="mb-1 px-2 text-xs text-muted-foreground/60">
+        <p className="admin-sidebar-group mb-1 px-2 text-muted-foreground/80">
           {ADMIN_NAV_BOTTOM.group}
         </p>
         <ul className="space-y-0.5">
@@ -170,13 +170,13 @@ export function AdminSidebar() {
                 <Link
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                    'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
                     active
                       ? 'bg-accent text-brand-600 font-medium'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
-                  <Icon className="h-[18px] w-[18px] shrink-0" />
+                  <Icon className="h-5 w-5 shrink-0" />
                   {item.label}
                 </Link>
               </li>
