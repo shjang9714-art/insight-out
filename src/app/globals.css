@@ -60,7 +60,9 @@
 
   /* 레이어 토큰 */
   --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
   --color-text-body: var(--text-body);
+  --color-text-tertiary: var(--text-tertiary);
   --color-text-disabled: var(--text-disabled);
 
   /* 상태색 시맨틱 토큰 */
@@ -70,6 +72,8 @@
   --color-risk-soft: var(--risk-soft);
   --color-negative: var(--negative);
   --color-negative-soft: var(--negative-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
 }
 
 :root {
@@ -235,6 +239,64 @@
   font-size: 15px;
   line-height: 22px;
   font-weight: 600;
+}
+
+/* ─── 어드민 v2 색 토큰 (180, .admin-scope 한정) ────────────────────────────
+ * 전역 :root/.dark 는 건드리지 않는다 — 사용자 화면은 무영향.
+ * 어드민은 전역 next-themes(html.dark)와 독립적으로 data-admin-theme 속성만 따른다.
+ */
+.admin-scope {
+  --background: #F7F8FA;
+  --card: #FFFFFF;
+  --popover: #FFFFFF;
+  --surface-elevated: #FFFFFF;
+  --sidebar: #FFFFFF;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --accent: #F1F5F9;
+  --muted: #F1F5F9;
+  --foreground: #111827;
+  --muted-foreground: #4B5563;
+  --text-tertiary: #6B7280;
+  --text-disabled: #9CA3AF;
+  --color-brand-600: #DB0078;
+  --color-brand-700: #C00068;
+  --positive: #2563EB;
+  --positive-soft: #EFF6FF;
+  --risk: #D97706;
+  --risk-soft: #FFF7ED;
+  --negative: #DC2626;
+  --negative-soft: #FEF2F2;
+  --info: #64748B;
+  --info-soft: #F1F5F9;
+  --sidebar-accent: #FDF2F8;
+}
+
+.admin-scope[data-admin-theme="dark"] {
+  --background: #0B0F14;
+  --card: #121821;
+  --popover: #121821;
+  --surface-elevated: #18202B;
+  --sidebar: #111827;
+  --border: #273142;
+  --input: #273142;
+  --accent: #18202B;
+  --muted: #18202B;
+  --foreground: #F9FAFB;
+  --muted-foreground: #D1D5DB;
+  --text-tertiary: #9CA3AF;
+  --text-disabled: #6B7280;
+  --color-brand-600: #E6007E;
+  --color-brand-700: #FF2C9C;
+  --positive: #60A5FA;
+  --positive-soft: rgba(96, 165, 250, .14);
+  --risk: #F59E0B;
+  --risk-soft: rgba(245, 158, 11, .14);
+  --negative: #EF4444;
+  --negative-soft: rgba(239, 68, 68, .14);
+  --info: #94A3B8;
+  --info-soft: rgba(148, 163, 184, .14);
+  --sidebar-accent: rgba(230, 0, 126, .12);
 }
 
 @utility scrollbar-hide {

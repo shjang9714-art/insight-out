@@ -7,6 +7,7 @@ import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_BOTTOM } from '@/lib/admin/nav'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import { AdminThemeToggle } from '@/components/admin/AdminThemeToggle'
 
 export function AdminSidebar() {
   const pathname = usePathname()
@@ -183,6 +184,9 @@ export function AdminSidebar() {
             )
           })}
         </ul>
+        <div className="mt-1 border-t border-border pt-1">
+          <AdminThemeToggle />
+        </div>
       </div>
     </aside>
   )
