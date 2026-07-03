@@ -279,7 +279,7 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
         {sendResult && (
           <p className={cn(
             'mt-3 rounded-lg px-3 py-2 text-sm',
-            sendResult.startsWith('오류') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
+            sendResult.startsWith('오류') ? 'bg-negative-soft text-negative' : 'bg-positive-soft text-positive'
           )}>
             {sendResult}
           </p>
@@ -333,9 +333,9 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
                       <td className="py-3 text-center">
                         <span className={cn(
                           'rounded-full px-2 py-0.5 text-xs font-medium',
-                          issue.status === 'sent' ? 'bg-green-100 text-green-700' :
-                          issue.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
-                          issue.status === 'failed' ? 'bg-red-100 text-red-700' :
+                          issue.status === 'sent' ? 'bg-positive-soft text-positive' :
+                          issue.status === 'partial' ? 'bg-risk-soft text-risk' :
+                          issue.status === 'failed' ? 'bg-negative-soft text-negative' :
                           'bg-muted text-muted-foreground'
                         )}>
                           {issue.status}

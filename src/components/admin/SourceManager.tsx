@@ -891,7 +891,7 @@ export default function SourceManager() {
                       className={cn(
                         'whitespace-nowrap text-xs font-medium transition-colors',
                         src.is_active
-                          ? 'text-green-700 hover:text-green-800'
+                          ? 'text-positive hover:opacity-80'
                           : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
@@ -992,7 +992,7 @@ export default function SourceManager() {
               {crawlProgress.status === 'running' ? (
                 <Loader2 className="size-5 animate-spin text-brand-600" />
               ) : crawlProgress.status === 'completed' ? (
-                <CheckCircle2 className="size-5 text-green-600" />
+                <CheckCircle2 className="size-5 text-positive" />
               ) : (
                 <XCircle className="size-5 text-red-600" />
               )}
@@ -1040,9 +1040,9 @@ export default function SourceManager() {
                 {crawlProgress.fetched}
               </p>
             </div>
-            <div className="rounded-lg bg-green-50 px-2 py-2">
-              <p className="text-[10px] text-green-600">신규</p>
-              <p className="text-xs font-semibold text-green-700">
+            <div className="rounded-lg bg-positive-soft px-2 py-2">
+              <p className="text-[10px] text-positive">신규</p>
+              <p className="text-xs font-semibold text-positive">
                 {crawlProgress.inserted}
               </p>
             </div>

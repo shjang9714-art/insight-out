@@ -932,7 +932,7 @@ export default function MyPage() {
 
                   {/* 발송 완료 메시지 */}
                   {sendResult?.archiveId === archive.id && (
-                    <p className="bg-green-50 px-4 py-2 text-xs text-green-600">
+                    <p className="bg-positive-soft px-4 py-2 text-xs text-positive">
                       {sendResult.to} 으로 발송되었습니다.
                     </p>
                   )}

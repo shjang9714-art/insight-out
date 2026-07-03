@@ -399,7 +399,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
         <div className="flex items-center gap-2 mt-3 ml-7">
           <span className={cn(
             'rounded-full px-2.5 py-0.5 text-xs font-medium',
-            issue.status === 'published' ? 'bg-emerald-50 text-emerald-700' :
+            issue.status === 'published' ? 'bg-positive-soft text-positive' :
             issue.status === 'archived'  ? 'bg-muted text-muted-foreground' :
             'bg-amber-50 text-amber-700'
           )}>
@@ -562,7 +562,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
             <div className="flex items-center gap-4">
               {sentimentCount.긍정 > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                  <span className="rounded-full bg-positive-soft px-3 py-1 text-sm font-medium text-positive">
                     긍정 {sentimentCount.긍정}
                   </span>
                   <span className="text-xs text-muted-foreground">
@@ -594,7 +594,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
             <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
               {sentimentCount.긍정 > 0 && (
                 <div
-                  className="bg-emerald-400"
+                  className="bg-positive"
                   style={{ width: `${sentimentCount.긍정 / sentimentTotal * 100}%` }}
                 />
               )}
@@ -702,7 +702,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
                             {article.sentiment && (
                               <span className={cn(
                                 'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
-                                article.sentiment === '긍정' && 'bg-emerald-100 text-emerald-700',
+                                article.sentiment === '긍정' && 'bg-positive-soft text-positive',
                                 article.sentiment === '중립' && 'bg-muted text-muted-foreground',
                                 article.sentiment === '부정' && 'bg-red-100 text-red-700',
                               )}>

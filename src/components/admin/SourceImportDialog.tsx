@@ -178,7 +178,7 @@ export function SourceImportDialog({
             <div className="mt-6 space-y-4">
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">전체 {result.rows.length}건</Badge>
-                <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                <Badge className="bg-positive text-white hover:opacity-90">
                   정상 {result.summary.success}건
                 </Badge>
                 <Badge variant="destructive">오류 {result.summary.error}건</Badge>
@@ -214,7 +214,7 @@ export function SourceImportDialog({
                         <td className="px-3 py-2">{row.crawl_interval_minutes}</td>
                         <td className="px-3 py-2">
                           {row.status === 'success' ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700">
+                            <span className="inline-flex items-center gap-1 text-positive">
                               <CheckCircle2 className="size-4" />
                               정상
                             </span>

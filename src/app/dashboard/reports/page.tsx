@@ -32,7 +32,7 @@ const STATUS_LABEL: Record<AiReportStatus, string> = {
 const STATUS_STYLE: Record<AiReportStatus, string> = {
   draft:      'text-muted-foreground',
   generating: 'text-amber-600',
-  completed:  'text-emerald-600',
+  completed:  'text-positive',
   failed:     'text-red-500',
 }
 

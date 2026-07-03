@@ -578,7 +578,7 @@ export default function KeywordGroupManager() {
                     <span className={cn(
                       'rounded-full px-2 py-0.5 text-xs font-medium',
                       group.include_patterns?.length > 0
-                        ? 'bg-green-50 text-green-700'
+                        ? 'bg-positive-soft text-positive'
                         : 'text-muted-foreground'
                     )}>
                       {group.include_patterns?.length ?? 0}개
@@ -619,7 +619,7 @@ export default function KeywordGroupManager() {
                       className={cn(
                         'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                         group.is_active
-                          ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                          ? 'bg-positive-soft text-positive hover:opacity-80'
                           : 'bg-muted text-muted-foreground hover:bg-accent'
                       )}
                     >

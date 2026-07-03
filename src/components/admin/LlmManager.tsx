@@ -187,7 +187,7 @@ export default function LlmManager() {
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-foreground capitalize">{p.name}</p>
                     {p.configured ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-positive">
                         <CheckCircle2 className="h-3 w-3" />키 등록됨
                       </span>
                     ) : (
@@ -306,7 +306,7 @@ export default function LlmManager() {
                         <td className="px-4 py-2 text-muted-foreground font-mono text-[11px]">{row.model_id}</td>
                         <td className="px-4 py-2">
                           {row.is_active ? (
-                            <span className="text-emerald-600">활성</span>
+                            <span className="text-positive">활성</span>
                           ) : (
                             <span className="text-muted-foreground">비활성</span>
                           )}
@@ -343,7 +343,7 @@ export default function LlmManager() {
             <div className={cn(
               'rounded-lg border px-4 py-3 text-sm space-y-1',
               testResult.ok && testResult.test?.ok
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                ? 'border-positive/20 bg-positive-soft text-positive'
                 : 'border-red-200 bg-red-50 text-red-700'
             )}>
               {testResult.error ? (

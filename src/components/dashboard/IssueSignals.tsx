@@ -80,12 +80,12 @@ export default async function IssueSignals() {
                 {sentimentTotal > 0 && (
                   <div className="flex items-center gap-1">
                     {card.sentimentPos > 0 && (
-                      <span className="rounded px-1 py-0.5 bg-emerald-50 text-emerald-700">
+                      <span className="rounded px-1 py-0.5 bg-positive-soft text-positive">
                         긍{card.sentimentPos}
                       </span>
                     )}
                     {card.sentimentNeg > 0 && (
-                      <span className="rounded px-1 py-0.5 bg-red-50 text-red-600">
+                      <span className="rounded px-1 py-0.5 bg-negative-soft text-negative">
                         부{card.sentimentNeg}
                       </span>
                     )}

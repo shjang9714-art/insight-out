@@ -388,7 +388,7 @@ export default function InsightsAdminPage() {
                     <button
                       onClick={() => void handleStatusChange(card.id, 'published')}
                       disabled={updatingId === card.id}
-                      className="rounded p-1.5 text-muted-foreground hover:bg-green-50 hover:text-green-700 transition-colors disabled:opacity-40"
+                      className="rounded p-1.5 text-muted-foreground hover:bg-positive-soft hover:text-positive transition-colors disabled:opacity-40"
                       title="발행"
                     >
                       {updatingId === card.id

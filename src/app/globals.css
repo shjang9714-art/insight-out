@@ -106,8 +106,8 @@
   --text-body: oklch(0.40 0 0);
   --text-disabled: oklch(0.67 0 0);
   /* 상태색 (라이트) */
-  --positive: oklch(0.50 0.13 155);
-  --positive-soft: oklch(0.96 0.03 155);
+  --positive: oklch(0.55 0.20 262);
+  --positive-soft: oklch(0.97 0.02 255);
   --risk: oklch(0.62 0.14 50);
   --risk-soft: oklch(0.97 0.03 50);
   --negative: oklch(0.56 0.20 25);
@@ -156,8 +156,8 @@
   --sidebar-border: #2A2F3A;
   --sidebar-ring: oklch(0.556 0 0);
   /* 상태색 (다크 — 대비 확보) */
-  --positive: oklch(0.70 0.14 155);
-  --positive-soft: oklch(0.18 0.05 155);
+  --positive: oklch(0.72 0.13 253);
+  --positive-soft: oklch(0.18 0.06 255);
   --risk: oklch(0.74 0.13 50);
   --risk-soft: oklch(0.18 0.05 50);
   --negative: oklch(0.72 0.18 25);

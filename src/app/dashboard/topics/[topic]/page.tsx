@@ -179,9 +179,9 @@ export default async function TopicTimelinePage({ params }: PageProps) {
                       {article.sentiment && (
                         <span className={cn(
                           'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
-                          article.sentiment === '긍정' && 'bg-emerald-100 text-emerald-700',
+                          article.sentiment === '긍정' && 'bg-positive-soft text-positive',
                           article.sentiment === '중립' && 'bg-muted text-muted-foreground',
-                          article.sentiment === '부정' && 'bg-red-100 text-red-700',
+                          article.sentiment === '부정' && 'bg-negative-soft text-negative',
                         )}>
                           {article.sentiment}
                         </span>

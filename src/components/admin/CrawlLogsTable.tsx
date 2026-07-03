@@ -337,7 +337,7 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
                       {log.inserted_count > 0 && canDrill ? (
                         <button
                           onClick={() => openDrill(log, false)}
-                          className="font-medium text-green-700 underline decoration-dotted hover:text-green-800"
+                          className="font-medium text-positive underline decoration-dotted hover:opacity-80"
                         >
                           +{log.inserted_count}
                         </button>

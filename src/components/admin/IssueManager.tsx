@@ -524,7 +524,7 @@ export default function IssueManager() {
                     <button
                       onClick={() => { void handleCandidateTransition(issue, 'published') }}
                       disabled={transitioningId === issue.id}
-                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-positive hover:bg-positive-soft transition-colors disabled:opacity-40"
                       title="승인(발행)"
                     >
                       {transitioningId === issue.id
@@ -758,7 +758,7 @@ export default function IssueManager() {
                     {rematchMsg?.id === issue.id && (
                       <div className={cn(
                         'mt-1 text-[11px] font-medium',
-                        rematchMsg.ok ? 'text-emerald-600' : 'text-red-500'
+                        rematchMsg.ok ? 'text-positive' : 'text-negative'
                       )}>
                         {rematchMsg.text}
                       </div>
@@ -766,7 +766,7 @@ export default function IssueManager() {
                     {briefMsg?.id === issue.id && (
                       <div className={cn(
                         'mt-1 text-[11px] font-medium',
-                        briefMsg.ok ? 'text-blue-600' : 'text-red-500'
+                        briefMsg.ok ? 'text-positive' : 'text-negative'
                       )}>
                         {briefMsg.text}
                       </div>

@@ -95,7 +95,7 @@ function getBodyState(r: AdminContentRow): 'full' | 'snippet' | 'none' {
 }
 
 const BODY_STATE_CLASS: Record<'full' | 'snippet' | 'none', string> = {
-  full:    'text-emerald-700',
+  full:    'text-positive',
   snippet: 'text-amber-600',
   none:    'text-muted-foreground',
 }
@@ -667,27 +667,27 @@ export default function AdminContentManager() {
             </AdminFilterChip>
           )}
           {pendingCount === 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
               ✅ 검토 대기 없음
             </span>
           )}
           {purgeResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
               ✅ {purgeResult}
             </span>
           )}
           {ytPurgeResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
               ✅ {ytPurgeResult}
             </span>
           )}
           {enrichResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
               {isEnriching ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {enrichResult}
             </span>
           )}
           {signalResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
               {isSignalling ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {signalResult}
             </span>
           )}
@@ -883,7 +883,7 @@ export default function AdminContentManager() {
               variant="outline"
               disabled={isBulkWorking}
               onClick={() => handleBulkStatus('published')}
-              className="text-green-700"
+              className="text-positive"
             >
               {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               일괄 보이기
@@ -1021,7 +1021,7 @@ export default function AdminContentManager() {
                             type="button" size="sm" variant="outline"
                             disabled={isWorking || isBulkWorking}
                             onClick={() => handleStatusChange(content, 'published')}
-                            className="text-green-700"
+                            className="text-positive"
                           >
                             <Check className="h-3.5 w-3.5" />
                             보이기

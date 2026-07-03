@@ -352,7 +352,7 @@ export default function ReportUploadForm() {
   if (success) {
     return (
       <Card className="max-w-md mx-auto text-center py-12 px-8">
-        <CheckCircle className="mx-auto mb-4 h-12 w-12 text-green-500" />
+        <CheckCircle className="mx-auto mb-4 h-12 w-12 text-positive" />
         <h2 className="text-lg font-semibold text-foreground mb-1">업로드 완료</h2>
         <p className="text-sm text-muted-foreground mb-4">
           리포트가 성공적으로 등록됐습니다.
@@ -363,7 +363,7 @@ export default function ReportUploadForm() {
           <div className={cn(
             'mb-6 rounded-lg border px-4 py-3 text-left text-sm',
             extractResult.ok
-              ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
+              ? 'border-positive/20 bg-positive-soft text-positive'
               : extractResult.reason === 'scanned'
                 ? 'border-amber-100 bg-amber-50 text-amber-800'
                 : 'border-muted bg-muted/50 text-muted-foreground'

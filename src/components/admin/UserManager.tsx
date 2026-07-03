@@ -157,7 +157,7 @@ export default function UserManager({ initialUsers }: Props) {
               </div>
             )}
             {formSuccess && (
-              <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-2 text-sm text-green-700">
+              <div className="rounded-lg border border-positive/20 bg-positive-soft px-4 py-2 text-sm text-positive">
                 {formSuccess}
               </div>
             )}
@@ -293,7 +293,7 @@ export default function UserManager({ initialUsers }: Props) {
                   </td>
                   <td className="px-4 py-3">
                     {u.approval_status === 'approved' ? (
-                      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">승인</Badge>
+                      <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge>
                     ) : u.approval_status === 'rejected' ? (
                       <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">거절</Badge>
                     ) : (
@@ -309,7 +309,7 @@ export default function UserManager({ initialUsers }: Props) {
                         <button
                           onClick={() => handleApprove(u)}
                           disabled={approvingId === u.id || isPending}
-                          className="inline-flex items-center gap-1 rounded bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-600 transition-colors disabled:opacity-40"
+                          className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40"
                         >
                           {approvingId === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
                           승인

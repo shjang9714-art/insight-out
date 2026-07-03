@@ -133,7 +133,7 @@ export default function AdminOpsSignals({
                     : 'border-border text-muted-foreground',
                 )}
               >
-                <span className={cn('h-1.5 w-1.5 rounded-full', chip.value > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+                <span className={cn('h-1.5 w-1.5 rounded-full', chip.value > 0 ? 'bg-positive' : 'bg-muted-foreground/40')} />
                 {chip.label} {chip.value.toLocaleString()}
               </span>
             ))}

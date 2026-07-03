@@ -171,7 +171,7 @@ export default function TranslationStatusManager() {
                       className={cn(
                         'inline-flex items-center gap-1 text-xs font-medium',
                         provider.configured
-                          ? 'text-green-700'
+                          ? 'text-positive'
                           : 'text-muted-foreground'
                       )}
                     >
@@ -215,7 +215,7 @@ export default function TranslationStatusManager() {
                   <span
                     className={cn(
                       'text-xs font-medium',
-                      provider.enabled ? 'text-green-700' : 'text-muted-foreground'
+                      provider.enabled ? 'text-positive' : 'text-muted-foreground'
                     )}
                   >
                     {provider.enabled ? '사용 중' : '중지됨'}

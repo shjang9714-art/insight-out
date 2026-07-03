@@ -725,7 +725,7 @@ export default function EntityManager() {
                           <span className={cn(
                             'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums',
                             group.confidence >= 0.9
-                              ? 'bg-emerald-50 text-emerald-700'
+                              ? 'bg-positive-soft text-positive'
                               : 'bg-amber-50 text-amber-700'
                           )}>
                             신뢰도 {confidencePct}%
