@@ -8,6 +8,7 @@ import { type ContentCategory } from '@/lib/types'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
 import EditPreferencesButton from './EditPreferencesButton'
 import OnboardingKeywordPicker from './OnboardingKeywordPicker'
+import FeedCarousel from './FeedCarousel'
 
 interface ServiceOption {
   id: string
@@ -167,7 +168,7 @@ export default function RecommendedFeed({
           {fallbackTrending ? '지금 화제가 되는 콘텐츠' : '맞춤 추천 피드'}
         </h2>
         <EditPreferencesButton
-          label={fallbackTrending ? '관심사 설정하기' : '관심사 편집'}
+          label={fallbackTrending ? '관심사 설정하기' : '관심사 눌러 추천받기'}
           onClick={() => setMode('edit')}
         />
       </div>
@@ -180,7 +181,7 @@ export default function RecommendedFeed({
         fallbackItems.length > 0 ? (
           <div>
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <FeedCarousel>
               {fallbackItems.map((item) => (
                 <ContentCard
                   key={item.id}
@@ -195,7 +196,7 @@ export default function RecommendedFeed({
                   keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                 />
               ))}
-            </div>
+            </FeedCarousel>
             <p className="mt-3 text-center text-xs text-muted-foreground">
               관심사를 설정하면 더 잘 맞는 추천을 받을 수 있어요.
             </p>
@@ -210,7 +211,7 @@ export default function RecommendedFeed({
           {sections.map((section) => (
             <div key={section.slot}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{section.label}</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <FeedCarousel>
                 {section.items.map((item) => (
                   <ContentCard
                     key={item.id}
@@ -225,7 +226,7 @@ export default function RecommendedFeed({
                     keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   />
                 ))}
-              </div>
+              </FeedCarousel>
             </div>
           ))}
         </div>
