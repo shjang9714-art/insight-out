@@ -33,6 +33,9 @@ import type {
   CrawlProgress,
 } from '@/lib/crawler/progress'
 import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
+import type { SourceQualityStat } from '@/app/api/admin/source-quality/route'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
+import { REVIEW_REASON_LABEL, type Tone } from '@/lib/admin/status-style'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +61,17 @@ function defaultCollectionMethod(type: SourceType): CollectionMethod {
   return 'rss'
 }
 const CRAWL_JOB_STORAGE_KEY = 'insight-out:admin-crawl-job'
+
+// 186: 소스 품질 기간 옵션
+const QUALITY_DAYS_OPTIONS = [7, 14, 30] as const
+type QualityDays = typeof QUALITY_DAYS_OPTIONS[number]
+
+// 불량률(검토 대기율) 임계값 — 20% 미만 정상 · 20~40% 주의 · 40% 초과 저품질(175/180 톤, 그린 없음)
+function qualityTone(pendingRate: number): Tone {
+  if (pendingRate > 0.4) return 'negative'
+  if (pendingRate > 0.2) return 'risk'
+  return 'positive'
+}
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -138,6 +152,10 @@ export default function SourceManager() {
   // 소스별 수집 상태 (crawl_logs 7일 집계)
   const [sourceStatusMap, setSourceStatusMap] = useState<Map<string, SourceStatusInfo>>(new Map())
 
+  // 186: 소스별 수집 품질 (RPC source_quality_stats, 기간 선택)
+  const [qualityDays, setQualityDays] = useState<QualityDays>(30)
+  const [sourceQualityMap, setSourceQualityMap] = useState<Map<string, SourceQualityStat>>(new Map())
+
   // ── 수집 상태 로드 ────────────────────────────────────────────────────────
 
   async function loadSourceStatus() {
@@ -150,6 +168,26 @@ export default function SourceManager() {
       // 비차단 — 상태 열만 '—' 표시
     }
   }
+
+  // ── 소스 품질 로드 (186) — RPC 미적용 시 graceful 빈 결과 ───────────────────
+
+  async function loadSourceQuality(days: QualityDays) {
+    try {
+      const res = await fetch(`/api/admin/source-quality?days=${days}`)
+      if (!res.ok) return
+      const data = await res.json() as Record<string, SourceQualityStat>
+      setSourceQualityMap(new Map(Object.entries(data)))
+    } catch {
+      // 비차단 — 품질 열만 숨김
+    }
+  }
+
+  useEffect(() => {
+    const run = async () => {
+      await loadSourceQuality(qualityDays)
+    }
+    void run()
+  }, [qualityDays])
 
   // ── 목록 로드 ─────────────────────────────────────────────────────────────
 
@@ -772,6 +810,19 @@ export default function SourceManager() {
         <div className="flex items-center gap-2">
           {!showForm && (
             <>
+              <Select
+                value={String(qualityDays)}
+                onValueChange={(v) => setQualityDays(Number(v) as QualityDays)}
+              >
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUALITY_DAYS_OPTIONS.map((d) => (
+                    <SelectItem key={d} value={String(d)}>품질 최근 {d}일</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-2">
                   <Select
@@ -855,6 +906,7 @@ export default function SourceManager() {
                 <th className="px-4 py-3">활성</th>
                 <th className="px-4 py-3">주기(분)</th>
                 <th className="px-4 py-3 whitespace-nowrap">수집 상태</th>
+                <th className="px-4 py-3 whitespace-nowrap">수집 품질</th>
                 <th className="px-4 py-3 whitespace-nowrap">마지막 수집 (KST)</th>
                 <th className="px-4 py-3 text-right">작업</th>
               </tr>
@@ -937,6 +989,30 @@ export default function SourceManager() {
                         <span className="text-muted-foreground">
                           ✅ {s.inserted7d}건/7일
                         </span>
+                      )
+                    })()}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {(() => {
+                      const q = sourceQualityMap.get(src.id)
+                      if (!q || q.total === 0) return <span className="text-muted-foreground/40">—</span>
+                      const pendingPct = Math.round(q.pendingRate * 100)
+                      const bodyFullPct = Math.round(q.bodyFullRate * 100)
+                      const deadLinkPct = Math.round(q.deadLinkRate * 100)
+                      const topReasonLabel = q.topReason ? REVIEW_REASON_LABEL[q.topReason] ?? q.topReason : '없음'
+                      const tooltip =
+                        `발행률 ${Math.round(q.publishRate * 100)}% · 본문확보율 ${bodyFullPct}% · ` +
+                        `dead-link율 ${deadLinkPct}% · 대표 불량사유 ${topReasonLabel} · 북마크 ${q.bookmarks.toLocaleString()}건`
+                      return (
+                        <div className="space-y-0.5" title={tooltip}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">{q.total.toLocaleString()}건</span>
+                            <StatusBadge tone={qualityTone(q.pendingRate)} label={`불량 ${pendingPct}%`} />
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            본문확보 {bodyFullPct}%
+                          </p>
+                        </div>
                       )
                     })()}
                   </td>
