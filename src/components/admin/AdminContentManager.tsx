@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
@@ -975,7 +975,7 @@ export default function AdminContentManager() {
                     key={content.id}
                     className={cn(
                       'hover:bg-accent/50 transition-colors',
-                      isSelected && 'bg-accent/30'
+                      isSelected && 'bg-brand-600/5'
                     )}
                   >
                     <td className="px-3 py-3">
@@ -1034,13 +1034,11 @@ export default function AdminContentManager() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
-                        <Button
-                          type="button" size="sm" variant="outline"
-                          disabled={isWorking || isBulkWorking}
-                          onClick={() => openEdit(content)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          수정
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={`/admin/contents/${content.id}`}>
+                            <Eye className="h-3.5 w-3.5" />
+                            보기
+                          </Link>
                         </Button>
                         {content.status !== 'published' && (
                           <Button
@@ -1050,7 +1048,7 @@ export default function AdminContentManager() {
                             className="text-positive"
                           >
                             <Check className="h-3.5 w-3.5" />
-                            보이기
+                            노출
                           </Button>
                         )}
                         {content.status === 'published' && (
@@ -1058,23 +1056,30 @@ export default function AdminContentManager() {
                             type="button" size="sm" variant="outline"
                             disabled={isWorking || isBulkWorking}
                             onClick={() => handleStatusChange(content, 'rejected')}
-                            className="text-red-600"
                           >
                             <X className="h-3.5 w-3.5" />
-                            숨기기
+                            숨김
                           </Button>
                         )}
                         <Button
-                          type="button" size="icon-sm" variant="ghost"
+                          type="button" size="sm" variant="outline"
+                          disabled={isWorking || isBulkWorking}
+                          onClick={() => openEdit(content)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          수정
+                        </Button>
+                        <Button
+                          type="button" size="sm" variant="destructive"
                           disabled={isWorking || isBulkWorking}
                           onClick={() => handleDelete(content)}
                           aria-label={`${content.title} 삭제`}
-                          className="text-muted-foreground/40 hover:text-red-600"
                         >
                           {isWorking
-                            ? <Loader2 className="h-4 w-4 animate-spin" />
-                            : <Trash2 className="h-4 w-4" />
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5" />
                           }
+                          삭제
                         </Button>
                       </div>
                     </td>

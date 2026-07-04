@@ -297,6 +297,31 @@
   cursor: not-allowed;
 }
 
+/*
+ * 테이블 가독성/밀도 (192) — 어드민 표 공통(콘텐츠 관리·소스·크롤·키워드·사용자 등)
+ * 헤더가 작고 흐리고(text-xs) 행이 낮아(py-3) 밀도가 낮은 문제를, 요소 셀렉터로
+ * 일괄 상향. Tailwind 유틸(text-xs 등)보다 특이도가 높아 컴포넌트 수정 없이 적용된다.
+ */
+.admin-scope table { font-size: 15px; }
+.admin-scope thead th {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background-color: var(--muted);
+  padding-top: .625rem;
+  padding-bottom: .625rem;
+}
+.admin-scope tbody td {
+  padding-top: .875rem;
+  padding-bottom: .875rem;
+}
+.admin-scope tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+.admin-scope tbody tr:hover {
+  background-color: var(--accent);
+}
+
 /* ─── 어드민 v2 색 토큰 (180, .admin-scope 한정) ────────────────────────────
  * 전역 :root/.dark 는 건드리지 않는다 — 사용자 화면은 무영향.
  * 어드민은 전역 next-themes(html.dark)와 독립적으로 data-admin-theme 속성만 따른다.
