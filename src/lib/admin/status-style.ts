@@ -1,10 +1,11 @@
-export type Tone = 'positive' | 'risk' | 'negative' | 'neutral'
+export type Tone = 'positive' | 'risk' | 'negative' | 'neutral' | 'info'
 
 export const TONE_BADGE_CLS: Record<Tone, string> = {
   positive: 'bg-positive-soft text-positive',
   risk:     'bg-risk-soft text-risk',
   negative: 'bg-negative-soft text-negative',
   neutral:  'bg-muted text-muted-foreground',
+  info:     'bg-info-soft text-info',
 }
 
 // ─── 도메인 상태 → tone 매핑 (라벨은 각 컴포넌트가 보유, 여기선 색만) ────────────

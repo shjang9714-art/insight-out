@@ -15,6 +15,7 @@ import {
   Users,
   Boxes,
   Radar,
+  ClipboardList,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -156,6 +157,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
   group: '시스템',
   items: [
+    {
+      href: '/admin/requests',
+      label: '운영 게시판',
+      description: 'SQL·인프라 요청과 핸드오프 추적',
+      icon: ClipboardList,
+    },
     {
       href: '/admin/users',
       label: '사용자 관리',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
@@ -13,6 +13,22 @@ export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [query, setQuery] = useState('')
+
+  // 187: 미완료(대기+진행) 운영 요청 개수 배지 (in-admin 알림)
+  const [openRequestCount, setOpenRequestCount] = useState(0)
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const res = await fetch('/api/admin/requests/count')
+        if (!res.ok) return
+        const data = await res.json() as { count: number }
+        setOpenRequestCount(data.count ?? 0)
+      } catch {
+        // 비차단 — 배지 숨김
+      }
+    }
+    void run()
+  }, [])
 
   function isActive(href: string) {
     if (href === '/admin') return pathname === '/admin'
@@ -178,7 +194,12 @@ export function AdminSidebar() {
                   )}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.href === '/admin/requests' && openRequestCount > 0 && (
+                    <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
+                      {openRequestCount}
+                    </span>
+                  )}
                 </Link>
               </li>
             )
