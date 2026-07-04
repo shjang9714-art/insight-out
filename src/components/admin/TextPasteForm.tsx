@@ -307,6 +307,7 @@ export default function TextPasteForm() {
         </CardHeader>
         <CardContent>
           <textarea
+            data-slot="textarea"
             id="bodyText"
             value={form.bodyText}
             onChange={(e) => setForm(p => ({ ...p, bodyText: e.target.value }))}
@@ -327,6 +328,7 @@ export default function TextPasteForm() {
         </CardHeader>
         <CardContent>
           <textarea
+            data-slot="textarea"
             id="summary"
             value={form.summary}
             onChange={(e) => setForm(p => ({ ...p, summary: e.target.value }))}

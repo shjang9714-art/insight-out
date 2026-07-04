@@ -612,6 +612,7 @@ export default function IssueManager() {
                   요약 <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                 </Label>
                 <textarea
+                  data-slot="textarea"
                   id="issue-summary"
                   value={form.summary}
                   onChange={(e) => setForm(p => ({ ...p, summary: e.target.value }))}

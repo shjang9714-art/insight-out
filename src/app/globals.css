@@ -264,6 +264,39 @@
   border-color: var(--border);
 }
 
+/*
+ * 입력창 대비·비활성 가독성 (191) — input/textarea 가 bg-transparent 라
+ * 회색 배경(#EEF1F5) 위에서 흐려지고, disabled:opacity-50 이 값 텍스트까지
+ * 반투명하게 만들어 안 보이는 문제 수정. "동작 불가"는 유지하되 색만 읽히게.
+ */
+.admin-scope [data-slot="input"],
+.admin-scope [data-slot="textarea"] {
+  background-color: var(--card);
+  border-color: var(--border);
+}
+.admin-scope [data-slot="input"]::placeholder,
+.admin-scope [data-slot="textarea"]::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+.admin-scope [data-slot="button"]:disabled,
+.admin-scope [data-slot="button"][aria-disabled="true"] {
+  opacity: 1;
+  background-color: var(--muted);
+  color: var(--text-tertiary);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.admin-scope [data-slot="input"]:disabled,
+.admin-scope [data-slot="textarea"]:disabled,
+.admin-scope [data-slot="select-trigger"][data-disabled] {
+  opacity: 1;
+  background-color: var(--muted);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
 /* ─── 어드민 v2 색 토큰 (180, .admin-scope 한정) ────────────────────────────
  * 전역 :root/.dark 는 건드리지 않는다 — 사용자 화면은 무영향.
  * 어드민은 전역 next-themes(html.dark)와 독립적으로 data-admin-theme 속성만 따른다.

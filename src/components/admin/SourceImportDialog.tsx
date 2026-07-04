@@ -132,6 +132,7 @@ export function SourceImportDialog({
                 소스 목록
               </label>
               <textarea
+                data-slot="textarea"
                 id="source-import-text"
                 value={text}
                 onChange={(event) => handleTextChange(event.target.value)}

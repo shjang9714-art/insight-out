@@ -68,6 +68,8 @@ interface EditState {
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
+const BULK_SELECTION_HINT = '콘텐츠를 1개 이상 선택하면 실행할 수 있습니다.'
+
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
 // 소스 필터 특수값
@@ -872,52 +874,64 @@ export default function AdminContentManager() {
       )}
 
       {/* ── 일괄 작업 바 ── */}
-      {selectedIds.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-accent/60 px-4 py-2.5 text-sm">
-          <span className="font-medium text-foreground">{selectedIds.size}건 선택</span>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking}
-              onClick={() => handleBulkStatus('published')}
-              className="text-positive"
-            >
-              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              일괄 보이기
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking}
-              onClick={() => handleBulkStatus('rejected')}
-              className="text-red-600"
-            >
-              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              일괄 숨기기
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking || isEnrichingSel || selectedIds.size > 50}
-              onClick={handleEnrichSelected}
-            >
-              {isEnrichingSel
-                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />채우는 중…</>
-                : `선택 풀본문 채우기${selectedIds.size > 50 ? ' (50건 초과)' : ''}`
-              }
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={isBulkWorking || isEnrichingSel}
-              onClick={() => setSelectedIds(new Set())}
-            >
-              선택 해제
-            </Button>
+      {(() => {
+        const noSelection = selectedIds.size === 0
+        const bulkDisabledTitle = noSelection ? BULK_SELECTION_HINT : undefined
+        return (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-accent/60 px-4 py-2.5 text-sm">
+            <span className="font-medium text-foreground">
+              {noSelection ? '선택된 콘텐츠 없음' : `${selectedIds.size}건 선택`}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={noSelection || isBulkWorking}
+                title={bulkDisabledTitle}
+                onClick={() => handleBulkStatus('published')}
+                className="text-positive"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                일괄 보이기
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={noSelection || isBulkWorking}
+                title={bulkDisabledTitle}
+                onClick={() => handleBulkStatus('rejected')}
+                className="text-red-600"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                일괄 숨기기
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={noSelection || isBulkWorking || isEnrichingSel || selectedIds.size > 50}
+                title={bulkDisabledTitle}
+                onClick={handleEnrichSelected}
+              >
+                {isEnrichingSel
+                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />채우는 중…</>
+                  : `선택 풀본문 채우기${selectedIds.size > 50 ? ' (50건 초과)' : ''}`
+                }
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={noSelection || isBulkWorking || isEnrichingSel}
+                onClick={() => setSelectedIds(new Set())}
+              >
+                선택 해제
+              </Button>
+            </div>
+            {noSelection && (
+              <p className="w-full text-xs text-muted-foreground">{BULK_SELECTION_HINT}</p>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       <p className="text-xs text-muted-foreground">
         {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
@@ -1217,6 +1231,7 @@ export default function AdminContentManager() {
                   <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                 </Label>
                 <textarea
+                  data-slot="textarea"
                   id="edit-summary"
                   value={edit.summary}
                   onChange={(e) => setEdit((p) => p && { ...p, summary: e.target.value })}
@@ -1233,6 +1248,7 @@ export default function AdminContentManager() {
                   <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                 </Label>
                 <textarea
+                  data-slot="textarea"
                   id="edit-body"
                   value={edit.bodyOriginal}
                   onChange={(e) => setEdit((p) => p && { ...p, bodyOriginal: e.target.value })}

@@ -39,6 +39,7 @@ export default function AiRefreshButton() {
         variant="outline"
         onClick={() => { void handleRun() }}
         disabled={isRunning}
+        title={isRunning ? '실행 중… 최대 5분 소요됩니다.' : undefined}
       >
         {isRunning
           ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />AI 갱신 중… (최대 5분)</>

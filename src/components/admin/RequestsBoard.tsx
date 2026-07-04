@@ -484,6 +484,7 @@ export default function RequestsBoard() {
             <div className="space-y-1.5">
               <Label htmlFor="req-body">본문</Label>
               <textarea
+                data-slot="textarea"
                 id="req-body"
                 value={form.body}
                 onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
