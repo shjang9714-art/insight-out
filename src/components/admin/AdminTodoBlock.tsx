@@ -1,16 +1,77 @@
 import Link from 'next/link'
-import { ClipboardCheck } from 'lucide-react'
+import { ChevronRight, ClipboardCheck } from 'lucide-react'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
+import { cn } from '@/lib/utils'
 
 interface Props {
   pending: number
   todayCollected: number
   todayFailed: number
   sourcesToCheck: number
+  /** 승인 대기 사용자 수. 승인 컬럼을 확인할 수 없으면 null → 타일 생략(graceful) */
+  pendingUsers: number | null
 }
 
-export default function AdminTodoBlock({ pending, todayCollected, todayFailed, sourcesToCheck }: Props) {
-  const allClear = pending === 0 && todayFailed === 0 && sourcesToCheck === 0
+interface Tile {
+  key: string
+  label: string
+  count: number
+  unit: string
+  href: string
+  description: string
+  urgent: boolean // true면 count > 0 일 때 risk 톤
+}
+
+export default function AdminTodoBlock({ pending, todayCollected, todayFailed, sourcesToCheck, pendingUsers }: Props) {
+  const tiles: Tile[] = [
+    {
+      key: 'pending',
+      label: '검토 대기',
+      count: pending,
+      unit: '건',
+      href: '/admin/contents?status=pending',
+      description: '검토가 필요한 콘텐츠',
+      urgent: false,
+    },
+    {
+      key: 'today',
+      label: '오늘 수집',
+      count: todayCollected,
+      unit: '건',
+      href: '/admin/contents?from=today',
+      description: '오늘 새로 수집된 콘텐츠',
+      urgent: false,
+    },
+    {
+      key: 'failed',
+      label: '수집 실패',
+      count: todayFailed,
+      unit: '건',
+      href: '/admin/crawl-logs',
+      description: '오늘 수집이 실패한 건수',
+      urgent: true,
+    },
+    {
+      key: 'sources',
+      label: '소스 오류',
+      count: sourcesToCheck,
+      unit: '곳',
+      href: '/admin/sources',
+      description: '최근 24시간 내 오류가 발생한 소스',
+      urgent: true,
+    },
+    ...(pendingUsers !== null ? [{
+      key: 'users',
+      label: '승인 대기',
+      count: pendingUsers,
+      unit: '명',
+      href: '/admin/users',
+      description: '가입 승인이 필요한 사용자',
+      urgent: false,
+    }] : []),
+  ]
+
+  const allClear = tiles.every((t) => t.count === 0)
 
   return (
     <section aria-labelledby="todo-heading">
@@ -20,57 +81,34 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
         <p className="mb-3 text-xs text-muted-foreground">오늘은 급한 작업이 없습니다.</p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {/* 콘텐츠 검토 */}
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">콘텐츠 검토</p>
-          {pending > 0 ? (
-            <p className="text-2xl font-bold tabular-nums text-foreground">{pending.toLocaleString()}건</p>
-          ) : (
-            <p className="text-sm font-medium text-muted-foreground">검토할 항목 없음 ✓</p>
-          )}
-          <Link
-            href="/admin/contents?status=pending"
-            className="inline-block text-xs font-medium text-brand-600 hover:underline"
-          >
-            검토하기 →
-          </Link>
-        </div>
-
-        {/* 오늘 수집 */}
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">오늘 수집</p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold tabular-nums text-foreground">{todayCollected.toLocaleString()}건</p>
-            {todayFailed > 0 && (
-              <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-700 tabular-nums">
-                실패 {todayFailed}
-              </span>
-            )}
-          </div>
-          <Link
-            href="/admin/contents?from=today"
-            className="inline-block text-xs font-medium text-brand-600 hover:underline"
-          >
-            오늘 수집 보기 →
-          </Link>
-        </div>
-
-        {/* 소스 점검 */}
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">소스 점검</p>
-          {sourcesToCheck > 0 ? (
-            <p className="text-2xl font-bold tabular-nums text-amber-600">{sourcesToCheck}곳</p>
-          ) : (
-            <p className="text-sm font-medium text-muted-foreground">정상 ✓</p>
-          )}
-          <Link
-            href="/admin/sources"
-            className="inline-block text-xs font-medium text-brand-600 hover:underline"
-          >
-            소스 목록 →
-          </Link>
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {tiles.map((tile) => {
+          const isDone = tile.count === 0
+          const isRisk = tile.urgent && !isDone
+          return (
+            <Link
+              key={tile.key}
+              href={tile.href}
+              className="group relative flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-accent"
+            >
+              <ChevronRight className="absolute top-4 right-4 h-4 w-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+              <p className="admin-card-title pr-5 text-muted-foreground">{tile.label}</p>
+              {isDone ? (
+                <p className="mt-3 text-sm font-medium text-muted-foreground">없음 ✓</p>
+              ) : (
+                <p className="mt-3 flex items-baseline gap-1.5">
+                  <span className={cn('admin-metric', isRisk ? 'text-risk' : 'text-foreground')}>
+                    {tile.count.toLocaleString()}
+                  </span>
+                  <span className={cn('admin-metric-unit', isRisk ? 'text-risk' : 'text-muted-foreground')}>
+                    {tile.unit}
+                  </span>
+                </p>
+              )}
+              <p className="mt-1 admin-caption text-muted-foreground">{tile.description}</p>
+            </Link>
+          )
+        })}
       </div>
     </section>
   )
