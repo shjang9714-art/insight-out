@@ -44,6 +44,7 @@ async function verifyAdmin() {
 }
 
 const TABLE_MISSING_CODE = '42P01'
+const COLUMN_MISSING_CODE = '42703'
 
 /**
  * GET /api/admin/requests?post_type=request|announcement&status=&owner=
@@ -98,9 +99,9 @@ export async function POST(req: NextRequest) {
   if (!title) {
     return NextResponse.json({ error: '제목을 입력해주세요.' }, { status: 400 })
   }
-  const postType = body.post_type === 'announcement' ? 'announcement' : 'request'
+  const postType = body.post_type === 'announcement' ? 'announcement' : body.post_type === 'work' ? 'work' : 'request'
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     post_type:  postType,
     title,
     body:       body.body?.trim() || null,
@@ -111,15 +112,23 @@ export async function POST(req: NextRequest) {
     pinned:     postType === 'announcement' ? Boolean(body.pinned) : false,
     created_by: body.created_by?.trim() || null,
   }
+  // 189: work 항목 그룹핑/정렬. phase/seq 컬럼 미적용 환경 대비 42703 graceful 재시도.
+  if (postType === 'work') {
+    if (body.phase != null) payload.phase = body.phase
+    if (body.seq   != null) payload.seq   = body.seq
+  }
 
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('ops_requests')
-      .insert(payload)
-      .select('*')
-      .single()
+    let insertRes = await admin.from('ops_requests').insert(payload).select('*').single()
 
+    if (insertRes.error?.code === COLUMN_MISSING_CODE && ('phase' in payload || 'seq' in payload)) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { phase: _phase, seq: _seq, ...withoutWorkCols } = payload
+      insertRes = await admin.from('ops_requests').insert(withoutWorkCols).select('*').single()
+    }
+
+    const { data, error } = insertRes
     if (error) {
       if (error.code === TABLE_MISSING_CODE) {
         return NextResponse.json(
@@ -152,7 +161,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 })
   }
 
-  const allowedFields: (keyof OpsRequestRow)[] = ['title', 'body', 'kind', 'status', 'owner', 'ref', 'pinned']
+  const allowedFields: (keyof OpsRequestRow)[] = ['title', 'body', 'kind', 'status', 'owner', 'ref', 'pinned', 'phase', 'seq']
   const updatePayload: Record<string, unknown> = {}
   for (const key of allowedFields) {
     if (key in rest) updatePayload[key] = rest[key as keyof typeof rest]
@@ -164,13 +173,17 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('ops_requests')
-      .update(updatePayload)
-      .eq('id', id)
-      .select('*')
-      .single()
+    let updateRes = await admin.from('ops_requests').update(updatePayload).eq('id', id).select('*').single()
 
+    if (updateRes.error?.code === COLUMN_MISSING_CODE && ('phase' in updatePayload || 'seq' in updatePayload)) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { phase: _phase, seq: _seq, ...withoutWorkCols } = updatePayload
+      if (Object.keys(withoutWorkCols).length > 0) {
+        updateRes = await admin.from('ops_requests').update(withoutWorkCols).eq('id', id).select('*').single()
+      }
+    }
+
+    const { data, error } = updateRes
     if (error) {
       if (error.code === TABLE_MISSING_CODE) {
         return NextResponse.json(

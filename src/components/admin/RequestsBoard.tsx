@@ -35,6 +35,8 @@ import {
   ANNOUNCEMENT_STATUS_TONE,
   REQUEST_KINDS,
   REQUEST_KIND_LABEL,
+  STATUS_EMOJI,
+  groupWorkByPhase,
 } from '@/lib/admin/ops-requests'
 
 function formatKst(iso: string): string {
@@ -53,6 +55,8 @@ const CREATE_FORM_INIT = {
   ref: '',
   pinned: false,
   created_by: '',
+  phase: '',
+  seq: '',
 }
 
 export default function RequestsBoard() {
@@ -117,7 +121,12 @@ export default function RequestsBoard() {
       const res = await fetch('/api/admin/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, post_type: segment }),
+        body: JSON.stringify({
+          ...form,
+          seq: form.seq ? Number(form.seq) : undefined,
+          phase: form.phase.trim() || undefined,
+          post_type: segment,
+        }),
       })
       const data = await res.json() as { item?: OpsRequestRow; error?: string }
       if (!res.ok || !data.item) {
@@ -195,11 +204,21 @@ export default function RequestsBoard() {
           >
             공지
           </button>
+          <button
+            type="button"
+            onClick={() => setSegment('work')}
+            className={cn(
+              'admin-btn-text rounded-md px-4 transition-colors',
+              segment === 'work' ? 'bg-brand-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            작업
+          </button>
         </div>
 
         <Button size="sm" onClick={openCreate} disabled={!tableReady}>
           <Plus className="mr-1.5 h-4 w-4" />
-          {segment === 'request' ? '새 요청' : '새 공지'}
+          {segment === 'request' ? '새 요청' : segment === 'announcement' ? '새 공지' : '새 작업'}
         </Button>
       </div>
 
@@ -315,7 +334,7 @@ export default function RequestsBoard() {
             </div>
           )}
         </>
-      ) : (
+      ) : segment === 'announcement' ? (
         <>
           {/* 공지 목록 */}
           {isLoading ? (
@@ -368,13 +387,89 @@ export default function RequestsBoard() {
             </div>
           )}
         </>
+      ) : (
+        <>
+          {/* 작업(work) 뷰 — phase 그룹핑, seq 정렬, 신호등 */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16 admin-body text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              불러오는 중...
+            </div>
+          ) : posts.length === 0 ? (
+            <AdminEmptyState message={tableReady ? '등록된 작업이 없습니다.' : '작업 목록을 표시할 수 없습니다.'} />
+          ) : (
+            <div className="space-y-6">
+              {groupWorkByPhase(posts).map(([phase, items]) => (
+                <div key={phase}>
+                  <h3 className="admin-section-title mb-2 text-foreground">{phase}</h3>
+                  <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                    <table className="w-full min-w-[720px] admin-body">
+                      <thead>
+                        <tr className="border-b border-border bg-muted text-left admin-table-th text-muted-foreground">
+                          <th className="px-4 py-3 w-[90px]">신호등</th>
+                          <th className="px-4 py-3">제목</th>
+                          <th className="px-4 py-3">참조</th>
+                          <th className="px-4 py-3">담당</th>
+                          <th className="px-4 py-3">메모</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {items.map((p) => {
+                          const status = p.status as OpsRequestStatus
+                          const isDone = status === 'done'
+                          return (
+                            <tr key={p.id} className={cn('hover:bg-accent/50 transition-colors', isDone && 'opacity-60')}>
+                              <td className="whitespace-nowrap px-4 py-3">
+                                <Select
+                                  value={p.status}
+                                  onValueChange={(v) => void patchPost(p.id, { status: v })}
+                                  disabled={workingId === p.id}
+                                >
+                                  <SelectTrigger className="h-8 w-[110px] text-xs">
+                                    <SelectValue>
+                                      <StatusBadge
+                                        tone={REQUEST_STATUS_TONE[status] ?? 'neutral'}
+                                        label={`${STATUS_EMOJI[status] ?? ''} ${REQUEST_STATUS_LABEL[status] ?? p.status}`}
+                                      />
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {REQUEST_STATUSES.map((s) => (
+                                      <SelectItem key={s} value={s}>{STATUS_EMOJI[s]} {REQUEST_STATUS_LABEL[s]}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </td>
+                              <td className="max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
+                                <span className="line-clamp-2">{p.title}</span>
+                              </td>
+                              <td className="max-w-[160px] px-4 py-3 admin-table-td text-muted-foreground">
+                                {p.ref ? <span className="block truncate" title={p.ref}>{p.ref}</span> : '—'}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
+                                {p.owner ?? '—'}
+                              </td>
+                              <td className="max-w-xs px-4 py-3 admin-caption text-muted-foreground">
+                                {p.body ? <span className="line-clamp-2">{p.body}</span> : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* 생성 모달 */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{segment === 'request' ? '새 요청' : '새 공지'}</DialogTitle>
+            <DialogTitle>{segment === 'request' ? '새 요청' : segment === 'announcement' ? '새 공지' : '새 작업'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-1.5">
@@ -427,6 +522,46 @@ export default function RequestsBoard() {
                     value={form.ref}
                     onChange={(e) => setForm((f) => ({ ...f, ref: e.target.value }))}
                     placeholder="지시서 번호 / 커밋 SHA / 링크"
+                  />
+                </div>
+              </div>
+            ) : segment === 'work' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-phase">phase</Label>
+                  <Input
+                    id="req-phase"
+                    value={form.phase}
+                    onChange={(e) => setForm((f) => ({ ...f, phase: e.target.value }))}
+                    placeholder="예: 어드민 v2"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-seq">seq</Label>
+                  <Input
+                    id="req-seq"
+                    type="number"
+                    value={form.seq}
+                    onChange={(e) => setForm((f) => ({ ...f, seq: e.target.value }))}
+                    placeholder="예: 1"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-owner-work">담당</Label>
+                  <Input
+                    id="req-owner-work"
+                    value={form.owner}
+                    onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))}
+                    placeholder="예: Sonnet"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-ref-work">참조</Label>
+                  <Input
+                    id="req-ref-work"
+                    value={form.ref}
+                    onChange={(e) => setForm((f) => ({ ...f, ref: e.target.value }))}
+                    placeholder="지시서 번호 / 커밋 SHA"
                   />
                 </div>
               </div>
