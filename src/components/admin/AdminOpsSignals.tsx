@@ -82,7 +82,7 @@ export default function AdminOpsSignals({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* 사용량 바 */}
-        <div className="rounded-xl border border-border p-4 space-y-4">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">사용량 / 한도</p>
 
           {/* LLM */}
@@ -120,7 +120,7 @@ export default function AdminOpsSignals({
         </div>
 
         {/* 데이터 점등 */}
-        <div className="rounded-xl border border-border p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">데이터 점등</p>
           <div className="flex flex-wrap gap-2">
             {chips.map(chip => (

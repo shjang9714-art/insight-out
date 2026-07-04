@@ -22,7 +22,7 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {/* 콘텐츠 검토 */}
-        <div className="rounded-xl border border-border p-4 space-y-2">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
           <p className="text-xs font-medium text-muted-foreground">콘텐츠 검토</p>
           {pending > 0 ? (
             <p className="text-2xl font-bold tabular-nums text-foreground">{pending.toLocaleString()}건</p>
@@ -38,7 +38,7 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
         </div>
 
         {/* 오늘 수집 */}
-        <div className="rounded-xl border border-border p-4 space-y-2">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
           <p className="text-xs font-medium text-muted-foreground">오늘 수집</p>
           <div className="flex items-baseline gap-2">
             <p className="text-2xl font-bold tabular-nums text-foreground">{todayCollected.toLocaleString()}건</p>
@@ -57,7 +57,7 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
         </div>
 
         {/* 소스 점검 */}
-        <div className="rounded-xl border border-border p-4 space-y-2">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
           <p className="text-xs font-medium text-muted-foreground">소스 점검</p>
           {sourcesToCheck > 0 ? (
             <p className="text-2xl font-bold tabular-nums text-amber-600">{sourcesToCheck}곳</p>

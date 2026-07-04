@@ -251,6 +251,19 @@
   font-weight: 600;
 }
 
+/*
+ * 컨트롤 대비 정상화 (185) — 183에서 --background 가 회색(#EEF1F5)이 되며
+ * outline 버튼(bg-background)·select 트리거(bg-transparent)가 배경과 같은
+ * 색이 되어 사라지는 문제 수정. 어드민 스코프에서만 흰 surface(--card)로.
+ */
+.admin-scope [data-slot="button"][data-variant="outline"] {
+  background-color: var(--card);
+}
+.admin-scope [data-slot="select-trigger"] {
+  background-color: var(--card);
+  border-color: var(--border);
+}
+
 /* ─── 어드민 v2 색 토큰 (180, .admin-scope 한정) ────────────────────────────
  * 전역 :root/.dark 는 건드리지 않는다 — 사용자 화면은 무영향.
  * 어드민은 전역 next-themes(html.dark)와 독립적으로 data-admin-theme 속성만 따른다.
