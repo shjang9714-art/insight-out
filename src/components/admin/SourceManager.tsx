@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
+  Ban,
   CheckCircle2,
   FileUp,
   Loader2,
@@ -155,6 +156,50 @@ export default function SourceManager() {
   // 186: 소스별 수집 품질 (RPC source_quality_stats, 기간 선택)
   const [qualityDays, setQualityDays] = useState<QualityDays>(30)
   const [sourceQualityMap, setSourceQualityMap] = useState<Map<string, SourceQualityStat>>(new Map())
+
+  // 190: 저품질 소스 "도메인 제외" 원클릭
+  const [excludingId, setExcludingId] = useState<string | null>(null)
+
+  async function handleExcludeDomain(src: SourceRow) {
+    const raw = src.rss_url || src.url
+    if (!raw) return
+    let domain = ''
+    try {
+      domain = new URL(raw).hostname.replace(/^www\./, '')
+    } catch {
+      setError('이 소스의 URL을 해석할 수 없어 도메인 제외 규칙을 만들 수 없습니다.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `"${domain}" 도메인을 제외 규칙(검토 대기)에 추가하시겠습니까?\n\n` +
+      `이후 이 도메인에서 수집되는 콘텐츠는 자동으로 검토 대기 처리됩니다(즉시 삭제 아님).`
+    )
+    if (!confirmed) return
+
+    setExcludingId(src.id)
+    try {
+      const res = await fetch('/api/admin/exclusion-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rule_type: 'domain',
+          value: domain,
+          action: 'hold',
+          note: `소스 "${src.name}" 저품질 → 소스 관리에서 원클릭 추가`,
+          created_by: 'admin-ui',
+        }),
+      })
+      const data = await res.json() as { item?: unknown; error?: string }
+      if (!res.ok) {
+        setError(data.error ?? '제외 규칙 생성에 실패했습니다.')
+      }
+    } catch {
+      setError('제외 규칙 생성 중 오류가 발생했습니다.')
+    } finally {
+      setExcludingId(null)
+    }
+  }
 
   // ── 수집 상태 로드 ────────────────────────────────────────────────────────
 
@@ -912,7 +957,10 @@ export default function SourceManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredSources.map(src => (
+              {filteredSources.map(src => {
+                const q = sourceQualityMap.get(src.id)
+                const isLowQuality = Boolean(q && q.total > 0 && qualityTone(q.pendingRate) !== 'positive')
+                return (
                 <tr key={src.id} className="hover:bg-accent/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{src.name}</td>
                   <td className="px-4 py-3">
@@ -994,7 +1042,6 @@ export default function SourceManager() {
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {(() => {
-                      const q = sourceQualityMap.get(src.id)
                       if (!q || q.total === 0) return <span className="text-muted-foreground/40">—</span>
                       const pendingPct = Math.round(q.pendingRate * 100)
                       const bodyFullPct = Math.round(q.bodyFullRate * 100)
@@ -1046,10 +1093,24 @@ export default function SourceManager() {
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                      {isLowQuality && (
+                        <button
+                          onClick={() => void handleExcludeDomain(src)}
+                          disabled={excludingId === src.id}
+                          className="rounded p-1.5 text-risk transition-colors hover:bg-risk-soft disabled:cursor-not-allowed disabled:opacity-40"
+                          title="이 소스 도메인을 제외 규칙(검토 대기)에 추가"
+                        >
+                          {excludingId === src.id
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Ban className="h-3.5 w-3.5" />
+                          }
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

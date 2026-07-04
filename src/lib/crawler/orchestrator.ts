@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason } from './quality'
+import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, matchExclusion, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason, type ExclusionRule } from './quality'
 import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
@@ -289,7 +289,8 @@ async function processCrawlItem(
   classifyBudget: TranslationBudget,
   counts: CrawlCounts,
   aliasMap: Map<string, string> = new Map(),
-  issueList: IssueMatchDef[] = []
+  issueList: IssueMatchDef[] = [],
+  exclusionRules: ExclusionRule[] = []
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
     const url = normalizeUrl(item.original_url)
@@ -315,10 +316,13 @@ async function processCrawlItem(
     // 품질 필터 단계 1: 광고성·짧은 글·도메인무관 제외 (#13, B1)
     // 완전중복이 아닌 것 중 품질 기준 미달은 미적재(rejected).
     const qText = `${item.title} ${item.body ?? ''}`
+    // 제외 규칙(190) — 도메인/URL/제목 부분일치. reject 는 기존 제외와 동급 처리, hold 는 아래서 검토 대기 사유로 반영.
+    const exclusionMatch = matchExclusion({ title: item.title, url }, exclusionRules)
     if (
       isAdLike(qText) ||
       isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
-      effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH
+      effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH ||
+      exclusionMatch?.action === 'reject'
     ) {
       counts.rejected++
       return {}
@@ -358,17 +362,19 @@ async function processCrawlItem(
     const score = relatednessScore(item.title, item.body ?? '', groups)
     const importance = score
     const exempt = src.trust_tier >= 2 || groups.length === 0 || src.type === 'web_insight'
+    const exclusionHold = exclusionMatch?.action === 'hold'
     let contentStatus: 'pending' | 'published' =
-      (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
+      exclusionHold || (!exempt && RELATEDNESS_GATING_ENABLED && score < RELATEDNESS_THRESHOLD)
         ? 'pending' : 'published'
     let reviewReason: ReviewReason | null =
-      contentStatus === 'pending' ? 'low_relevance' : null
+      exclusionHold ? 'excluded_rule' : (contentStatus === 'pending' ? 'low_relevance' : null)
 
     // LLM 재판정: 애매 밴드(THRESHOLD ± MARGIN)의 기사만, 면제 소스 제외
     let llmTags: string[] = []
     const inAmbiguousBand =
       RELATEDNESS_GATING_ENABLED &&
       !exempt &&
+      !exclusionHold &&  // 190: 제외 규칙 hold 는 관련도 재판정으로 덮어쓰지 않음
       classifyBudget.remaining > 0 &&
       score >= (RELATEDNESS_THRESHOLD - RELATEDNESS_MARGIN) &&
       score < (RELATEDNESS_THRESHOLD + RELATEDNESS_MARGIN)
@@ -604,7 +610,8 @@ async function crawlOne(
   summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string> = new Map(),
-  issueList: IssueMatchDef[] = []
+  issueList: IssueMatchDef[] = [],
+  exclusionRules: ExclusionRule[] = []
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -637,7 +644,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -785,7 +792,8 @@ async function crawlKeywordSearch(
   summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string> = new Map(),
-  issueList: IssueMatchDef[] = []
+  issueList: IssueMatchDef[] = [],
+  exclusionRules: ExclusionRule[] = []
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -810,7 +818,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules
         )
         if (result.partial) hadError = true
       }
@@ -1038,6 +1046,22 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     console.warn('[크롤러] issues 로드 실패, 배정 skip:', e)
   }
 
+  // 제외 규칙(190) 로드 — SQL 미적용(42P01) 시 빈 배열로 격리(크롤 무중단, 기존 동작 유지)
+  const exclusionRules: ExclusionRule[] = []
+  try {
+    const exclusionResult = await admin
+      .from('exclusion_rules')
+      .select('id, rule_type, value, action, is_active')
+      .eq('is_active', true)
+    if (exclusionResult.error) {
+      console.warn('[크롤러] exclusion_rules 조회 실패 (SQL 190 미적용 가능), 제외 규칙 skip:', exclusionResult.error.message)
+    } else {
+      exclusionRules.push(...(exclusionResult.data ?? []) as ExclusionRule[])
+    }
+  } catch (e) {
+    console.warn('[크롤러] exclusion_rules 로드 실패, 제외 규칙 skip:', e)
+  }
+
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
@@ -1073,7 +1097,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             summarizeBudget,
             classifyBudget,
             aliasMap,
-            issueList
+            issueList,
+            exclusionRules
           )
     )
   )
@@ -1129,7 +1154,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted

@@ -139,6 +139,7 @@ export type ReviewReason =
   | 'body_truncated'  // 말줄임·더보기 등 잘림 마커
   | 'low_relevance'   // 관련도 낮음(기존 게이트)
   | 'llm_irrelevant'  // LLM 재판정 무관
+  | 'excluded_rule'   // 제외 규칙(190) 매칭 — hold 액션
 
 /**
  * 본문 품질 판정. 문제 없으면 null.
@@ -154,6 +155,54 @@ export function assessBodyQuality(
   const min = opts?.minLen ?? 200
   if (/(…|\.\.\.|\[…\]|더보기|read more)\s*$/i.test(text)) return 'body_truncated'
   if (text.length < min) return 'body_short'
+  return null
+}
+
+/**
+ * 제외 규칙(190) — 도메인/URL/제목 부분일치(정규식 아님, 안전).
+ */
+export interface ExclusionRule {
+  id: string
+  rule_type: 'domain' | 'url_pattern' | 'title_pattern'
+  value: string
+  action: 'reject' | 'hold'
+  is_active: boolean
+}
+
+function ruleHit(rule: ExclusionRule, host: string, urlLower: string, titleLower: string): boolean {
+  const value = rule.value.trim().toLowerCase()
+  if (!value) return false
+  if (rule.rule_type === 'domain') {
+    return host === value || host.endsWith(`.${value}`)
+  }
+  if (rule.rule_type === 'url_pattern') {
+    return urlLower.includes(value)
+  }
+  return titleLower.includes(value)  // title_pattern
+}
+
+/**
+ * 아이템을 활성 제외 규칙과 대조. reject 규칙이 hold 규칙보다 우선(더 엄격한 조치 우선 적용).
+ * 순수 함수 — DB 접근 없음(rules 는 호출부가 1콜로 로드해 전달).
+ */
+export function matchExclusion(
+  item: { title: string; url: string },
+  rules: ExclusionRule[]
+): { action: 'reject' | 'hold'; ruleId: string } | null {
+  const active = rules.filter(r => r.is_active)
+  if (active.length === 0) return null
+
+  let host = ''
+  try { host = new URL(item.url).hostname.toLowerCase() } catch { /* URL 파싱 실패 시 host 매칭만 스킵 */ }
+  const urlLower = item.url.toLowerCase()
+  const titleLower = item.title.toLowerCase()
+
+  const rejectHit = active.find(r => r.action === 'reject' && ruleHit(r, host, urlLower, titleLower))
+  if (rejectHit) return { action: 'reject', ruleId: rejectHit.id }
+
+  const holdHit = active.find(r => r.action === 'hold' && ruleHit(r, host, urlLower, titleLower))
+  if (holdHit) return { action: 'hold', ruleId: holdHit.id }
+
   return null
 }
 

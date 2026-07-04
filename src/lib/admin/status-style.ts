@@ -30,6 +30,7 @@ export const REVIEW_REASON_LABEL: Record<string, string> = {
   body_truncated: '본문 잘림',
   low_relevance:  '관련도 낮음',
   llm_irrelevant: 'AI 무관 판정',
+  excluded_rule:  '제외 규칙',
 }
 
 export const CRAWL_STATUS_TONE = {

@@ -16,6 +16,7 @@ import {
   Boxes,
   Radar,
   ClipboardList,
+  Ban,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -81,6 +82,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '크롤링 현황',
         description: '자동 수집 결과와 오류 확인',
         icon: ListChecks,
+      },
+      {
+        href: '/admin/exclusion-rules',
+        label: '제외 규칙',
+        description: '도메인·URL·제목 패턴 자동 보류/거부 규칙',
+        icon: Ban,
       },
     ],
   },
