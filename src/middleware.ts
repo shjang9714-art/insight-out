@@ -28,9 +28,10 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  // /api/cron/* 는 자체 CRON_SECRET 로 인증, /api/version 은 공개 배포정보 →
+  // /api/cron/* 는 자체 CRON_SECRET 로 인증, /api/version 은 공개 배포정보,
+  // /api/mcp 는 자체 Bearer(MCP_TOKEN) 인증 →
   // 로그인 가드에서 제외 (제외 안 하면 세션 없는 요청이 /login 으로 리다이렉트됨)
-  const publicPaths = ['/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe', '/api/webhooks/brevo']
+  const publicPaths = ['/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe', '/api/webhooks/brevo', '/api/mcp']
   if (!user && !publicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
