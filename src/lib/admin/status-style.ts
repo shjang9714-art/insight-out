@@ -15,6 +15,22 @@ export const CONTENT_STATUS_TONE = {
   rejected:  'negative',
 } as const
 
+export const CONTENT_STATUS_LABEL = {
+  published: '노출',
+  pending:   '검토 대기',
+  rejected:  '숨김',
+} as const
+
+// 검토 대기 사유 라벨 (178)
+export const REVIEW_REASON_LABEL: Record<string, string> = {
+  body_missing:   '본문 없음',
+  body_short:     '본문 짧음(잘림 의심)',
+  extract_failed: '본문 추출 실패',
+  body_truncated: '본문 잘림',
+  low_relevance:  '관련도 낮음',
+  llm_irrelevant: 'AI 무관 판정',
+}
+
 export const CRAWL_STATUS_TONE = {
   success: 'positive',
   partial: 'risk',

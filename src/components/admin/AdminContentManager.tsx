@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Check, ChevronLeft, ChevronRight, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
-import { CONTENT_STATUS_TONE } from '@/lib/admin/status-style'
+import { CONTENT_STATUS_TONE, CONTENT_STATUS_LABEL, REVIEW_REASON_LABEL } from '@/lib/admin/status-style'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -66,22 +67,6 @@ interface EditState {
 }
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
-
-const STATUS_STYLE: Record<ContentStatus, { label: string }> = {
-  published: { label: '노출' },
-  pending:   { label: '검토 대기' },
-  rejected:  { label: '숨김' },
-}
-
-// 검토 대기 사유 라벨 (178)
-const REVIEW_REASON_LABEL: Record<string, string> = {
-  body_missing:   '본문 없음',
-  body_short:     '본문 짧음(잘림 의심)',
-  extract_failed: '본문 추출 실패',
-  body_truncated: '본문 잘림',
-  low_relevance:  '관련도 낮음',
-  llm_irrelevant: 'AI 무관 판정',
-}
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
@@ -818,7 +803,7 @@ export default function AdminContentManager() {
           <SelectContent>
             <SelectItem value="all">전체 상태</SelectItem>
             {CONTENT_STATUSES.map((value) => (
-              <SelectItem key={value} value={value}>{STATUS_STYLE[value].label}</SelectItem>
+              <SelectItem key={value} value={value}>{CONTENT_STATUS_LABEL[value]}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -971,7 +956,6 @@ export default function AdminContentManager() {
               {contents.map((content) => {
                 const isWorking   = workingId === content.id
                 const isSelected  = selectedIds.has(content.id)
-                const statusStyle = STATUS_STYLE[content.status]
                 return (
                   <tr
                     key={content.id}
@@ -990,7 +974,12 @@ export default function AdminContentManager() {
                       />
                     </td>
                     <td className="max-w-md px-4 py-3 font-medium text-foreground">
-                      <span className="line-clamp-2">{content.title}</span>
+                      <Link
+                        href={`/admin/contents/${content.id}`}
+                        className="line-clamp-2 block hover:text-brand-600 hover:underline"
+                      >
+                        {content.title}
+                      </Link>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {CONTENT_CATEGORY_LABEL[content.category]}
@@ -1002,7 +991,7 @@ export default function AdminContentManager() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={statusStyle.label} />
+                        <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} />
                         {content.status === 'pending' && content.review_reason && (
                           <span
                             title={`검토 대기 사유: ${REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}`}

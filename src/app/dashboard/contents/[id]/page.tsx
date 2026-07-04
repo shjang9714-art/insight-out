@@ -10,6 +10,7 @@ import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
+import ContentArticleView from '@/components/contents/ContentArticleView'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
@@ -215,104 +216,102 @@ export default async function ContentDetailPage({ params }: PageProps) {
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
 
       <article>
-        {/* 카테고리 뱃지 */}
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          <span
-            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${catStyle}`}
-          >
-            {CONTENT_CATEGORY_LABEL[content.category] ?? content.category}
-          </span>
-          {content.original_language === 'en' && (
-            <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              영어 원문
-            </span>
-          )}
-        </div>
-
         {hasKoreanTranslation && !isReport ? (
-          <TranslatedArticle
-            translatedTitle={content.title}
-            originalTitle={content.title_original ?? content.title}
-            translatedBody={content.body_translated_ko ?? ''}
-            originalBody={cleanBodyText(
-              htmlToPlainText(content.body_original ?? '')
-            )}
-          >
-            {/* 메타 + 상단 액션 */}
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {content.sources?.name && (
-                  <span className="font-medium text-foreground">{content.sources.name}</span>
-                )}
-                {content.author && <span>{content.author}</span>}
-                <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <BookmarkButton contentId={content.id} />
-                <ArchiveButton contentId={content.id} />
-                {content.original_url && (
-                  linkDead ? (
-                    <span
-                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
-                      title="원문을 찾을 수 없습니다"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      원문 없음
-                    </span>
-                  ) : (
-                    <a
-                      href={`/api/contents/${content.id}/source`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      원문 보기
-                    </a>
-                  )
-                )}
-              </div>
+          <>
+            {/* 카테고리 뱃지 */}
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              <span
+                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${catStyle}`}
+              >
+                {CONTENT_CATEGORY_LABEL[content.category] ?? content.category}
+              </span>
+              {content.original_language === 'en' && (
+                <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  영어 원문
+                </span>
+              )}
             </div>
 
-            {(serviceNames.length > 0 || keywordNames.length > 0) && (
-              <div className="mb-5 flex flex-wrap gap-1.5">
-                {serviceNames.map((name) => (
-                  <span
-                    key={name}
-                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-                  >
-                    {name}
-                  </span>
-                ))}
-                {keywordNames.map((name) => (
-                  <span
-                    key={name}
-                    className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
-                  >
-                    #{name}
-                  </span>
-                ))}
+            <TranslatedArticle
+              translatedTitle={content.title}
+              originalTitle={content.title_original ?? content.title}
+              translatedBody={content.body_translated_ko ?? ''}
+              originalBody={cleanBodyText(
+                htmlToPlainText(content.body_original ?? '')
+              )}
+            >
+              {/* 메타 + 상단 액션 */}
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {content.sources?.name && (
+                    <span className="font-medium text-foreground">{content.sources.name}</span>
+                  )}
+                  {content.author && <span>{content.author}</span>}
+                  <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <BookmarkButton contentId={content.id} />
+                  <ArchiveButton contentId={content.id} />
+                  {content.original_url && (
+                    linkDead ? (
+                      <span
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
+                        title="원문을 찾을 수 없습니다"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        원문 없음
+                      </span>
+                    ) : (
+                      <a
+                        href={`/api/contents/${content.id}/source`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        원문 보기
+                      </a>
+                    )
+                  )}
+                </div>
               </div>
-            )}
 
-            <div className="mb-6 border-t border-border" />
-          </TranslatedArticle>
+              {(serviceNames.length > 0 || keywordNames.length > 0) && (
+                <div className="mb-5 flex flex-wrap gap-1.5">
+                  {serviceNames.map((name) => (
+                    <span
+                      key={name}
+                      className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                  {keywordNames.map((name) => (
+                    <span
+                      key={name}
+                      className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
+                    >
+                      #{name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mb-6 border-t border-border" />
+            </TranslatedArticle>
+          </>
         ) : (
-          <>
-            <h1 className="mb-3 text-xl font-bold leading-snug text-foreground">
-              {content.title}
-            </h1>
-
-            {/* 메타 + 상단 액션 */}
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-y-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {content.sources?.name && (
-                  <span className="font-medium text-foreground">{content.sources.name}</span>
-                )}
-                {content.author && <span>{content.author}</span>}
-                <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
+          <ContentArticleView
+            title={content.title}
+            category={content.category}
+            sourceName={content.sources?.name ?? null}
+            author={content.author}
+            dateLabel={dateStr ? `발행 ${dateStr}` : '발행일 미상'}
+            originalLanguage={content.original_language}
+            serviceNames={serviceNames}
+            keywordNames={keywordNames}
+            actions={
+              <>
                 <BookmarkButton contentId={content.id} />
                 <ArchiveButton contentId={content.id} />
                 {!isReport && content.original_url && (
@@ -336,32 +335,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
                     </a>
                   )
                 )}
-              </div>
-            </div>
-
-            {(serviceNames.length > 0 || keywordNames.length > 0) && (
-              <div className="mb-5 flex flex-wrap gap-1.5">
-                {serviceNames.map((name) => (
-                  <span
-                    key={name}
-                    className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-                  >
-                    {name}
-                  </span>
-                ))}
-                {keywordNames.map((name) => (
-                  <span
-                    key={name}
-                    className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
-                  >
-                    #{name}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className="mb-6 border-t border-border" />
-
+              </>
+            }
+          >
             {isReport ? (
               <>
                 {content.summary_ko && (
@@ -420,7 +396,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 originalUrl={content.original_url}
               />
             )}
-          </>
+          </ContentArticleView>
         )}
 
         {/* 하단 액션 */}
