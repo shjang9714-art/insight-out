@@ -56,7 +56,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                         : 'text-foreground/80 hover:bg-accent'
                     }`}
                   >
-                    <span className="text-lg leading-none">{tab.emoji}</span>
+                    <tab.Icon className="h-5 w-5" strokeWidth={1.75} />
                     <span>{tab.label}</span>
                   </Link>
                 )
