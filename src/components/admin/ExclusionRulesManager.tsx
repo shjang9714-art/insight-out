@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { EyeOff, Loader2, Plus, ShieldAlert, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +26,7 @@ import {
   type ExclusionRuleRow,
   type ExclusionRuleType,
   type ExclusionAction,
+  type ExclusionCandidate,
   EXCLUSION_RULE_TYPES,
   EXCLUSION_ACTIONS,
   EXCLUSION_RULE_TYPE_LABEL,
@@ -69,6 +70,84 @@ export default function ExclusionRulesManager() {
   const [isSaving, setIsSaving] = useState(false)
 
   const [workingId, setWorkingId] = useState<string | null>(null)
+
+  // 195 — 자동 제외 후보(도메인)
+  const [candidates, setCandidates] = useState<ExclusionCandidate[]>([])
+  const [candidatesLoading, setCandidatesLoading] = useState(true)
+  const [candidatesReady, setCandidatesReady] = useState(true)
+  const [candidatesError, setCandidatesError] = useState<string | null>(null)
+  const [candidateDays, setCandidateDays] = useState('30')
+  const [workingDomain, setWorkingDomain] = useState<string | null>(null)
+
+  async function loadCandidates(days = candidateDays) {
+    setCandidatesLoading(true)
+    setCandidatesError(null)
+    try {
+      const res = await fetch(`/api/admin/exclusion-candidates?days=${days}&min=3`)
+      const data = await res.json() as { candidates: ExclusionCandidate[]; ready: boolean }
+      setCandidates(data.candidates ?? [])
+      setCandidatesReady(data.ready ?? true)
+    } catch {
+      setCandidatesError('제외 후보를 불러오지 못했습니다.')
+      setCandidatesReady(false)
+    } finally {
+      setCandidatesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const run = async () => { await loadCandidates() }
+    void run()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleAddRuleFromCandidate(candidate: ExclusionCandidate) {
+    if (!window.confirm(`"${candidate.domain}" 도메인을 제외 규칙(검토 대기)으로 추가하시겠습니까?`)) return
+    setWorkingDomain(candidate.domain)
+    try {
+      const res = await fetch('/api/admin/exclusion-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rule_type: 'domain',
+          value: candidate.domain,
+          action: 'hold',
+          note: `자동 후보(불량 ${candidate.junk_count}건)`,
+        }),
+      })
+      const data = await res.json() as { item?: ExclusionRuleRow; error?: string }
+      if (!res.ok || !data.item) {
+        setCandidatesError(data.error ?? '규칙 추가에 실패했습니다.')
+        return
+      }
+      setCandidates((prev) => prev.filter((c) => c.domain !== candidate.domain))
+      await loadRules()
+    } catch {
+      setCandidatesError('규칙 추가 중 오류가 발생했습니다.')
+    } finally {
+      setWorkingDomain(null)
+    }
+  }
+
+  async function handleIgnoreCandidate(candidate: ExclusionCandidate) {
+    setWorkingDomain(candidate.domain)
+    try {
+      const res = await fetch('/api/admin/exclusion-candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: candidate.domain }),
+      })
+      if (res.ok) {
+        setCandidates((prev) => prev.filter((c) => c.domain !== candidate.domain))
+      } else {
+        const data = await res.json() as { error?: string }
+        setCandidatesError(data.error ?? '무시 처리에 실패했습니다.')
+      }
+    } catch {
+      setCandidatesError('무시 처리 중 오류가 발생했습니다.')
+    } finally {
+      setWorkingDomain(null)
+    }
+  }
 
   async function loadRules() {
     setIsLoading(true)
@@ -174,6 +253,94 @@ export default function ExclusionRulesManager() {
 
   return (
     <div className="space-y-6">
+      {/* 195 — 자동 제외 후보(도메인) 패널 */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+            <p className="admin-card-title text-foreground">제외 후보 (자동 제안)</p>
+          </div>
+          <Select
+            value={candidateDays}
+            onValueChange={(v) => { setCandidateDays(v); void loadCandidates(v) }}
+          >
+            <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">최근 7일</SelectItem>
+              <SelectItem value="14">최근 14일</SelectItem>
+              <SelectItem value="30">최근 30일</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="admin-caption text-muted-foreground">
+          최근 {candidateDays}일 검토대기·반려가 반복된 도메인입니다. 규칙으로 추가하면 다음 수집부터 자동 처리됩니다.
+        </p>
+
+        {candidatesError && <p className="admin-caption text-negative">{candidatesError}</p>}
+
+        {candidatesLoading ? (
+          <div className="flex items-center gap-2 py-6 admin-body text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            불러오는 중...
+          </div>
+        ) : !candidatesReady ? (
+          <p className="py-2 admin-body text-muted-foreground">집계 준비 전(195 SQL 적용·수집 후 반영)</p>
+        ) : candidates.length === 0 ? (
+          <p className="py-2 admin-body text-muted-foreground">제외할 만한 반복 도메인이 없습니다.</p>
+        ) : (
+          <div className="space-y-2">
+            {candidates.map((c) => {
+              const isWorking = workingDomain === c.domain
+              const isRisky = c.junk_ratio >= 0.5
+              return (
+                <div
+                  key={c.domain}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background p-3"
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-foreground">{c.domain}</span>
+                      <span className={cn(
+                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                        isRisky ? 'bg-risk-soft text-risk' : 'bg-muted text-muted-foreground'
+                      )}>
+                        불량 {c.junk_count.toLocaleString()}건 / 전체 {c.total.toLocaleString()}건 · {Math.round(c.junk_ratio * 100)}%
+                      </span>
+                    </div>
+                    <p className="admin-caption text-muted-foreground">
+                      {c.sample_title && (
+                        <span className="mr-2 max-w-xs truncate" title={c.sample_title}>{c.sample_title}</span>
+                      )}
+                      {c.last_collected && <span>최근 수집 {formatRelativeHit(c.last_collected)}</span>}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isWorking}
+                      onClick={() => void handleAddRuleFromCandidate(c)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      제외 규칙 추가
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={isWorking}
+                      onClick={() => void handleIgnoreCandidate(c)}
+                    >
+                      <EyeOff className="mr-1 h-3.5 w-3.5" />
+                      무시
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {!tableReady && (
         <AdminEmptyState
           message="exclusion_rules 테이블이 아직 적용되지 않았습니다."

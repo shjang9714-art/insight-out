@@ -38,3 +38,15 @@ export const EXCLUSION_ACTION_TONE: Record<ExclusionAction, Tone> = {
   reject: 'negative',
   hold:   'risk',
 }
+
+// 195 — 자동 제외 후보(도메인 단위 반복 junk 집계). exclusion_candidates RPC 반환 행.
+export interface ExclusionCandidate {
+  domain: string
+  total: number
+  junk_count: number
+  pending: number
+  rejected: number
+  junk_ratio: number      // 0~1
+  last_collected: string | null
+  sample_title: string | null
+}
