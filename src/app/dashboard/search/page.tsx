@@ -1,17 +1,15 @@
 'use client'
 
-import { Suspense, useEffect, useState, useMemo, useCallback, startTransition } from 'react'
-import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { Suspense, useEffect, useState, startTransition } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { Search, Sparkles, X, LayoutGrid, List } from 'lucide-react'
+import { type ContentCategory } from '@/lib/types'
+import { Search, Sparkles, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
-import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
-import { CATEGORY_DEFS, toDbCategories } from '@/lib/categories'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -33,9 +31,6 @@ interface SearchResult {
   matchedBy?: 'title' | 'summary' | 'body' | 'keyword'
 }
 
-interface ServiceOption { id: string; name: string; icon?: string | null }
-interface SourceOption  { id: string; name: string; group_name: string | null }
-
 interface RagSource { content_id: string; title: string; published_at: string | null; source: string | null }
 interface RagAnswerData { answer: string; citations: string[]; sources: RagSource[] }
 type RagState =
@@ -46,30 +41,11 @@ type RagState =
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
-const DATE_OPTIONS = [
-  { value: 'all',   label: '전체' },
-  { value: 'today', label: '오늘' },
-  { value: 'week',  label: '이번 주' },
-  { value: 'month', label: '이번 달' },
-] as const
-type DateFilter = (typeof DATE_OPTIONS)[number]['value']
-
 type ContentView = 'card' | 'list'
 const VIEW_KEY = 'io:search-view'
 const MAX_RESULTS = 60
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-function getDateStart(filter: string): string | null {
-  if (filter === 'today') {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d.toISOString()
-  }
-  if (filter === 'week')  return new Date(Date.now() - 7  * 86_400_000).toISOString()
-  if (filter === 'month') return new Date(Date.now() - 30 * 86_400_000).toISOString()
-  return null
-}
 
 function getSavedView(): ContentView {
   if (typeof window === 'undefined') return 'list'
@@ -92,17 +68,6 @@ function getServices(item: SearchResult): string[] {
 }
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
-
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700">
-      {label}
-      <button onClick={onRemove} className="ml-0.5 rounded-full p-0.5 hover:bg-brand-100" aria-label={`${label} 필터 제거`}>
-        <X className="h-2.5 w-2.5" />
-      </button>
-    </span>
-  )
-}
 
 function SkeletonRow() {
   return (
@@ -138,26 +103,14 @@ function SkeletonCard() {
 // ─── 검색 컨텐츠 ──────────────────────────────────────────────────────────────
 
 function SearchContent() {
-  const router       = useRouter()
-  const pathname     = usePathname()
   const searchParams = useSearchParams()
 
-  const q        = searchParams.get('q')?.trim() ?? ''
-  const category = (searchParams.get('category') ?? '') as ContentCategory | ''
-  const date     = (searchParams.get('date') ?? 'all') as DateFilter
-  const svcParam = searchParams.get('svc') ?? ''
-  const srcParam = searchParams.get('src') ?? ''
-  const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
-  const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
+  const q = searchParams.get('q')?.trim() ?? ''
 
   const [results, setResults]   = useState<SearchResult[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-  const [services, setServices] = useState<ServiceOption[]>([])
-  const [sources, setSources]   = useState<SourceOption[]>([])
   const [contentView, setContentView] = useState<ContentView>('list')
-  // null = 카테고리 미선택(전체 출처 노출)
-  const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
 
   // AI 답변
   const [ragState, setRagState] = useState<RagState>({ status: 'idle' })
@@ -171,53 +124,7 @@ function SearchContent() {
     try { localStorage.setItem(VIEW_KEY, v) } catch { /* noop */ }
   }
 
-  // 서비스·소스 로드 (1회)
-  useEffect(() => {
-    const supabase = createClient()
-    Promise.all([
-      supabase.from('services').select('id, name, icon').order('order'),
-      supabase.from('sources').select('id, name, group_name').order('name'),
-    ]).then(([{ data: svcs }, { data: srcs }]) => {
-      if (svcs) setServices(svcs as ServiceOption[])
-      if (srcs) setSources(srcs as SourceOption[])
-    })
-  }, [])
-
-  // 카테고리별 출처 스코프 조회
-  useEffect(() => {
-    if (!category) { startTransition(() => setScopedSourceIds(null)); return }
-    let cancelled = false
-    const dbCats = toDbCategories(category)
-    let q = createClient().from('contents').select('source_id').eq('status', 'published').not('source_id', 'is', null)
-    q = dbCats.length === 1
-      ? q.eq('category', dbCats[0])
-      : q.in('category', dbCats.length ? dbCats : ['__none__'])
-    q.then(({ data }) => {
-        if (cancelled) return
-        setScopedSourceIds(new Set((data ?? []).map((r) => r.source_id as string)))
-      })
-    return () => { cancelled = true }
-  }, [category])
-
-  const updateParam = useCallback(
-    (key: string, value: string) => {
-      const p = new URLSearchParams(searchParams.toString())
-      if (value) p.set(key, value)
-      else p.delete(key)
-      router.push(`${pathname}?${p.toString()}`)
-    },
-    [router, pathname, searchParams]
-  )
-
-  // 카테고리 전환 시 범위 밖 출처 선택 정리 (무한루프 가드: 값이 실제로 줄 때만)
-  useEffect(() => {
-    if (!scopedSourceIds || srcIds.length === 0) return
-    const kept = srcIds.filter((id) => scopedSourceIds.has(id))
-    if (kept.length < srcIds.length) updateParam('src', kept.join(','))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopedSourceIds])
-
-  // FTS 쿼리 (패싯 결합)
+  // ILIKE 멀티컬럼 검색 (제목·요약·본문)
   useEffect(() => {
     if (!q) {
       startTransition(() => { setResults(null); setLoading(false) })
@@ -230,20 +137,6 @@ function SearchContent() {
     const fetchResults = async () => {
       const supabase = createClient()
 
-      // svc 필터: 선택된 서비스와 매핑된 content_ids 선조회
-      let svcContentIds: string[] | null = null
-      if (svcIds.length > 0) {
-        const { data } = await supabase
-          .from('content_services')
-          .select('content_id')
-          .in('service_id', svcIds)
-        svcContentIds = [...new Set(data?.map((r) => r.content_id) ?? [])]
-        if (svcContentIds.length === 0) {
-          if (!cancelled) { setResults([]); setLoading(false) }
-          return
-        }
-      }
-
       // ILIKE 멀티컬럼 OR 검색 (title·summary_ko·body_original 커버)
       // FTS(search_vector)는 body_original·matched_keywords 미포함으로 단어 누락 발생 → ILIKE 대체
       const escapedQ = q.replace(/[%_]/g, '\\$&')
@@ -254,7 +147,7 @@ function SearchContent() {
         `body_original.ilike.${ilikePat}`,
       ].join(',')
 
-      let query = supabase
+      const { data, error: err } = await supabase
         .from('contents')
         .select(
           'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
@@ -264,23 +157,9 @@ function SearchContent() {
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(MAX_RESULTS)
 
-      if (category) {
-        const dbCats = toDbCategories(category)
-        query = dbCats.length === 1
-          ? query.eq('category', dbCats[0])
-          : query.in('category', dbCats.length ? dbCats : ['__none__'])
-      }
-      if (srcIds.length > 0) query = query.in('source_id', srcIds)
-
-      const dateStart = getDateStart(date)
-      if (dateStart)         query = query.gte('published_at', dateStart)
-      if (svcContentIds)     query = query.in('id', svcContentIds)
-
-      const { data, error: err } = await query
-
       if (!cancelled) {
         if (err) {
-          console.error('[search] FTS 쿼리 오류:', err)
+          console.error('[search] 검색 쿼리 오류:', err)
           setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
         } else {
           setResults((data ?? []) as unknown as SearchResult[])
@@ -291,7 +170,7 @@ function SearchContent() {
 
     fetchResults()
     return () => { cancelled = true }
-  }, [q, category, date, svcIds, srcIds])
+  }, [q])
 
   // RAG AI 답변 (검색어 변경 시)
   useEffect(() => {
@@ -326,45 +205,6 @@ function SearchContent() {
 
     return () => { cancelled = true }
   }, [q])
-
-  // 활성 필터 칩
-  const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
-
-  if (category) activeFilters.push({
-    key: 'cat',
-    label: CONTENT_CATEGORY_LABEL[category] ?? category,
-    onRemove: () => updateParam('category', ''),
-  })
-
-  if (date !== 'all') activeFilters.push({
-    key: 'date',
-    label: DATE_OPTIONS.find((d) => d.value === date)?.label ?? date,
-    onRemove: () => updateParam('date', ''),
-  })
-
-  for (const id of svcIds) {
-    const svcName = services.find((s) => s.id === id)?.name ?? '서비스'
-    activeFilters.push({
-      key: `svc-${id}`,
-      label: `사업: ${svcName}`,
-      onRemove: () => {
-        const next = svcIds.filter((x) => x !== id)
-        updateParam('svc', next.join(','))
-      },
-    })
-  }
-
-  const visibleSources = scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources
-  for (const grp of selectedGroups(srcIds, visibleSources)) {
-    activeFilters.push({
-      key: `src-grp-${grp.label}`,
-      label: `출처: ${grp.label}`,
-      onRemove: () => {
-        const next = srcIds.filter((x) => !grp.ids.includes(x))
-        updateParam('src', next.join(','))
-      },
-    })
-  }
 
   return (
     <div className="px-4 py-6 sm:px-6">
@@ -430,126 +270,6 @@ function SearchContent() {
 
       {/* 추천 질문 칩 — q 없을 때만 */}
       {!q && <SuggestedQuestions className="mb-6" />}
-
-      {/* 패싯 필터바 — 검색어 있을 때만 */}
-      {q && (
-        <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
-
-          {/* 날짜 + 출처 팝오버 한 줄 */}
-          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">날짜</span>
-              <div className="flex gap-1">
-                {DATE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => updateParam('date', opt.value === 'all' ? '' : opt.value)}
-                    className={cn(
-                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      date === opt.value || (opt.value === 'all' && !searchParams.get('date'))
-                        ? 'bg-brand-solid text-white'
-                        : 'bg-muted text-muted-foreground hover:bg-accent'
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* 출처 팝오버 — 우측 끝 (카테고리 있으면 해당 카테고리 출처만) */}
-            <div className="ml-auto">
-              <SourcePopover
-                sources={scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources}
-                value={srcIds}
-                onChange={(ids) => updateParam('src', ids.join(','))}
-              />
-            </div>
-          </div>
-
-          {/* 카테고리 */}
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">카테고리</span>
-              <button
-                onClick={() => updateParam('category', '')}
-                className={cn(
-                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                  !category ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
-                )}
-              >
-                전체
-              </button>
-              {CATEGORY_DEFS.map((def) => (
-                <button
-                  key={def.id}
-                  type="button"
-                  onClick={() => updateParam('category', category === def.category ? '' : def.category)}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    category === def.category ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  {def.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 사업 */}
-          {services.length > 0 && (
-            <div className="mt-3 border-t border-border pt-3">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">사업</span>
-                <button
-                  onClick={() => updateParam('svc', '')}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                    svcIds.length === 0 ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  전체
-                </button>
-                {services.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      const next = svcIds.includes(s.id) ? svcIds.filter((x) => x !== s.id) : [...svcIds, s.id]
-                      updateParam('svc', next.join(','))
-                    }}
-                    className={cn(
-                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                      svcIds.includes(s.id) ? 'bg-brand-solid text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
-                    )}
-                  >
-                    {s.icon ? `${s.icon} ${s.name}` : s.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 활성 필터 칩 */}
-          {activeFilters.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <span className="text-[11px] text-muted-foreground">적용 중:</span>
-              {activeFilters.map((f) => (
-                <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
-              ))}
-              <button
-                onClick={() => {
-                  const p = new URLSearchParams()
-                  if (q) p.set('q', q)
-                  router.push(`${pathname}?${p.toString()}`)
-                }}
-                className="text-[11px] text-muted-foreground underline hover:text-foreground"
-              >
-                전체 초기화
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* 검색어 없음 */}
       {!q && (
