@@ -5,11 +5,13 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface FeedCarouselProps {
   children: ReactNode[]
+  /** 자동 회전 사용 여부 (읽기 화면에선 끄기 권장) */
+  autoplay?: boolean
   /** 자동 회전 간격(ms) */
   intervalMs?: number
   /** 카드 하나의 고정 너비(px) */
   cardWidth?: number
-  /** 카드 하나의 고정 높이(px) — 요약까지 여유 있게 노출 */
+  /** 카드 하나의 고정 높이(px) — 지정 시 카드 높이 통일. 미지정 시 내용에 맞춤 */
   cardHeight?: number
 }
 
@@ -23,9 +25,10 @@ const GAP = 16 // gap-4
  */
 export default function FeedCarousel({
   children,
+  autoplay = true,
   intervalMs = 3800,
   cardWidth = 288,
-  cardHeight = 196,
+  cardHeight,
 }: FeedCarouselProps) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
@@ -56,14 +59,14 @@ export default function FeedCarousel({
 
   // 자동 회전
   useEffect(() => {
-    if (paused || children.length <= 1) return
+    if (!autoplay || paused || children.length <= 1) return
     const reduce =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     if (reduce) return
     const timer = setInterval(() => scrollByStep(1), intervalMs)
     return () => clearInterval(timer)
-  }, [paused, children.length, intervalMs, scrollByStep])
+  }, [autoplay, paused, children.length, intervalMs, scrollByStep])
 
   useEffect(() => {
     updateArrows()
@@ -88,6 +91,7 @@ export default function FeedCarousel({
             key={i}
             className="shrink-0 snap-start"
             style={{ width: cardWidth, height: cardHeight }}
+            // cardHeight 미지정 시 height: undefined → 내용 높이에 맞춤
           >
             {child}
           </div>

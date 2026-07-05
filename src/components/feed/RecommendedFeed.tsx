@@ -181,7 +181,7 @@ export default function RecommendedFeed({
         fallbackItems.length > 0 ? (
           <div>
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
-            <FeedCarousel>
+            <FeedCarousel cardHeight={196}>
               {fallbackItems.map((item) => (
                 <ContentCard
                   key={item.id}
@@ -211,7 +211,7 @@ export default function RecommendedFeed({
           {sections.map((section) => (
             <div key={section.slot}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{section.label}</h3>
-              <FeedCarousel>
+              <FeedCarousel cardHeight={196}>
                 {section.items.map((item) => (
                   <ContentCard
                     key={item.id}

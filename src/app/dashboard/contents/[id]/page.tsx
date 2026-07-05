@@ -14,6 +14,7 @@ import ContentArticleView from '@/components/contents/ContentArticleView'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
+import FeedCarousel from '@/components/feed/FeedCarousel'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -484,7 +485,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                 <h2 className="mb-3 text-sm font-semibold text-foreground">
                   관련 {bucket}
                 </h2>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <FeedCarousel autoplay={false} cardWidth={260} cardHeight={116}>
                   {items.map((r) => {
                     const relDate = r.published_at ?? r.collected_at
                     const relDateStr = relDate
@@ -498,7 +499,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       <Link
                         key={r.id}
                         href={`/dashboard/contents/${r.id}`}
-                        className="group flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
+                        className="group flex h-full min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
                       >
                         <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-brand-600">
                           {r.title}
@@ -510,7 +511,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       </Link>
                     )
                   })}
-                </div>
+                </FeedCarousel>
               </div>
             )
           })}
@@ -518,7 +519,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
           {youtubeRelated.length > 0 && (
             <div>
               <h2 className="mb-3 text-sm font-semibold text-foreground">관련 유튜브</h2>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <FeedCarousel autoplay={false} cardWidth={260} cardHeight={220}>
                 {youtubeRelated.map((v) => {
                   const relDateStr = v.published_at
                     ? new Date(v.published_at).toLocaleDateString('ko-KR', {
@@ -533,7 +534,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       href={`https://www.youtube.com/watch?v=${v.video_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-red-400/40 hover:bg-accent/50"
+                      className="group flex h-full min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-red-400/40 hover:bg-accent/50"
                     >
                       {v.thumbnail_url && (
                         <Image
@@ -555,7 +556,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                     </a>
                   )
                 })}
-              </div>
+              </FeedCarousel>
             </div>
           )}
         </section>
