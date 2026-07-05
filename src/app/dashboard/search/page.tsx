@@ -307,10 +307,10 @@ function SearchContent() {
         <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-brand-100 bg-brand-50/60 px-5 py-4 text-sm font-medium text-brand-700">
           <Sparkles className="h-4 w-4 shrink-0 animate-pulse text-brand-600" />
           <span>AI가 수집된 기사를 바탕으로 답변을 작성하고 있어요</span>
-          <span className="ml-0.5 flex items-end gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce" />
+          <span className="ml-0.5 flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-brand-600 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-2 w-2 rounded-full bg-brand-600 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-2 w-2 rounded-full bg-brand-600 animate-bounce" />
           </span>
         </div>
       )}
