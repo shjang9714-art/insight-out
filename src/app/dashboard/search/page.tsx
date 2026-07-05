@@ -581,18 +581,7 @@ function SearchContent() {
         </div>
       )}
 
-      {/* 결과 없음 */}
-      {q && !isLoading && results !== null && results.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
-          <span className="text-4xl">🔍</span>
-          <p className="text-sm font-medium text-foreground">
-            <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
-          </p>
-          <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
-        </div>
-      )}
-
-      {/* AI 답변 카드 */}
+      {/* AI 답변 카드 — 결과/빈화면보다 먼저 노출 */}
       {q && ragState.status === 'loading' && (
         <div className="mb-5 flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin shrink-0" />
@@ -621,6 +610,23 @@ function SearchContent() {
             </div>
           )}
         </div>
+      )}
+
+      {/* 결과 없음 — AI 답변이 있으면 컴팩트 안내, 답변 로딩 중엔 숨김 */}
+      {q && !isLoading && results !== null && results.length === 0 && !error && (
+        ragState.status === 'done' ? (
+          <p className="rounded-xl border border-border bg-card px-5 py-4 text-center text-xs text-muted-foreground">
+            &ldquo;{q}&rdquo;와 정확히 일치하는 기사는 없어요. 위 AI 답변의 출처 기사를 확인해보세요.
+          </p>
+        ) : ragState.status === 'loading' ? null : (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
+            <span className="text-4xl">🔍</span>
+            <p className="text-sm font-medium text-foreground">
+              <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
+            </p>
+            <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
+          </div>
+        )
       )}
 
       {/* 결과 목록 */}
