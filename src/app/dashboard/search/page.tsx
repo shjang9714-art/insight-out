@@ -5,11 +5,9 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
-import { Search, Sparkles, LayoutGrid, List } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Search, Sparkles } from 'lucide-react'
 import ContentRow from '@/components/dashboard/ContentRow'
-import ContentListCard from '@/components/dashboard/ContentListCard'
-import { toExcerpt, tagsOf } from '@/lib/contents/excerpt'
+import { tagsOf } from '@/lib/contents/excerpt'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -41,23 +39,9 @@ type RagState =
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
-type ContentView = 'card' | 'list'
-const VIEW_KEY = 'io:search-view'
 const MAX_RESULTS = 60
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-function getSavedView(): ContentView {
-  if (typeof window === 'undefined') return 'list'
-  try {
-    const v = localStorage.getItem(VIEW_KEY)
-    return v === 'card' ? 'card' : 'list'
-  } catch {
-    return 'list'
-  }
-}
-
-// ─── 스켈레톤 ─────────────────────────────────────────────────────────────────
 
 function getKeywords(item: SearchResult): string[] {
   return item.content_keywords.map((ck) => ck.keywords?.name).filter((n): n is string => Boolean(n))
@@ -82,24 +66,6 @@ function SkeletonRow() {
   )
 }
 
-function SkeletonCard() {
-  return (
-    <div className="animate-pulse rounded-2xl border border-border bg-card p-5">
-      <div className="mb-3 flex gap-1.5">
-        <div className="h-5 w-14 rounded-md bg-muted" />
-        <div className="h-5 w-20 rounded-md bg-muted" />
-      </div>
-      <div className="mb-2 h-5 w-full rounded bg-muted" />
-      <div className="mb-1 h-5 w-4/5 rounded bg-muted" />
-      <div className="mt-3 space-y-1.5">
-        <div className="h-3.5 w-full rounded bg-muted" />
-        <div className="h-3.5 w-5/6 rounded bg-muted" />
-        <div className="h-3.5 w-2/3 rounded bg-muted" />
-      </div>
-    </div>
-  )
-}
-
 // ─── 검색 컨텐츠 ──────────────────────────────────────────────────────────────
 
 function SearchContent() {
@@ -110,19 +76,9 @@ function SearchContent() {
   const [results, setResults]   = useState<SearchResult[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-  const [contentView, setContentView] = useState<ContentView>('list')
 
   // AI 답변
   const [ragState, setRagState] = useState<RagState>({ status: 'idle' })
-
-  useEffect(() => {
-    startTransition(() => setContentView(getSavedView()))
-  }, [])
-
-  const handleViewChange = (v: ContentView) => {
-    setContentView(v)
-    try { localStorage.setItem(VIEW_KEY, v) } catch { /* noop */ }
-  }
 
   // ILIKE 멀티컬럼 검색 (제목·요약·본문)
   useEffect(() => {
@@ -221,51 +177,21 @@ function SearchContent() {
         )}
       </div>
 
-      {/* 헤더 + 뷰 토글 */}
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted">
-            <Search className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground">
-              {q ? `"${q}" 검색 결과` : '콘텐츠 검색'}
-            </h1>
-            {!isLoading && results !== null && (
-              <p className="text-xs text-muted-foreground">
-                총 {results.length}건{results.length === MAX_RESULTS && ' (최대 60건 표시)'}
-              </p>
-            )}
-          </div>
+      {/* 헤더 */}
+      <div className="mb-5 flex items-start gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted">
+          <Search className="h-4 w-4 text-muted-foreground" />
         </div>
-
-        {/* 카드/목록 뷰 토글 */}
-        {q && (
-          <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
-            <button
-              onClick={() => handleViewChange('card')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                contentView === 'card' ? 'bg-brand-solid text-white' : 'text-muted-foreground hover:text-foreground'
-              )}
-              aria-label="카드 뷰"
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              카드
-            </button>
-            <button
-              onClick={() => handleViewChange('list')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                contentView === 'list' ? 'bg-brand-solid text-white' : 'text-muted-foreground hover:text-foreground'
-              )}
-              aria-label="목록 뷰"
-            >
-              <List className="h-3.5 w-3.5" />
-              목록
-            </button>
-          </div>
-        )}
+        <div>
+          <h1 className="text-lg font-bold text-foreground">
+            {q ? `"${q}" 검색 결과` : '콘텐츠 검색'}
+          </h1>
+          {!isLoading && results !== null && (
+            <p className="text-xs text-muted-foreground">
+              총 {results.length}건{results.length === MAX_RESULTS && ' (최대 60건 표시)'}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* 추천 질문 칩 — q 없을 때만 */}
@@ -284,15 +210,9 @@ function SearchContent() {
 
       {/* 로딩 */}
       {q && isLoading && (
-        contentView === 'card' ? (
-          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
-          </div>
-        )
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+        </div>
       )}
 
       {/* 에러 */}
@@ -357,46 +277,25 @@ function SearchContent() {
 
       {/* 결과 목록 */}
       {q && !isLoading && results !== null && results.length > 0 && (
-        contentView === 'card' ? (
-          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-            {results.map((item) => (
-              <ContentListCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                excerpt={toExcerpt(item.summary_ko, item.body_original)}
-                category={item.category}
-                publishedAt={item.published_at}
-                originalUrl={item.original_url}
-                filePath={item.file_path}
-                isEditorPick={item.is_editor_pick}
-                author={item.author}
-                sourceName={item.sources?.name ?? null}
-                tags={tagsOf(getKeywords(item), item.category, getServices(item))}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {results.map((item) => (
-              <ContentRow
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                summaryKo={item.summary_ko}
-                bodyOriginal={item.body_original}
-                category={item.category}
-                publishedAt={item.published_at}
-                originalUrl={item.original_url}
-                filePath={item.file_path}
-                isEditorPick={item.is_editor_pick}
-                author={item.author}
-                sourceName={item.sources?.name ?? null}
-                keywords={tagsOf(getKeywords(item), item.category, getServices(item))}
-              />
-            ))}
-          </div>
-        )
+        <div className="space-y-2">
+          {results.map((item) => (
+            <ContentRow
+              key={item.id}
+              id={item.id}
+              title={item.title}
+              summaryKo={item.summary_ko}
+              bodyOriginal={item.body_original}
+              category={item.category}
+              publishedAt={item.published_at}
+              originalUrl={item.original_url}
+              filePath={item.file_path}
+              isEditorPick={item.is_editor_pick}
+              author={item.author}
+              sourceName={item.sources?.name ?? null}
+              keywords={tagsOf(getKeywords(item), item.category, getServices(item))}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
