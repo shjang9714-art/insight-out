@@ -24,8 +24,8 @@ export default function DashboardPage() {
         {/* 추천 질문 칩 — 콜드스타트 진입점 */}
         <SuggestedQuestions />
 
-        {/* 1블록: 급상승 이슈(좌 1/2) + 오늘의 핵심 인사이트(우 1/2) */}
-        <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        {/* 1블록(세로 스택): 급상승 이슈 실검 스트립(상단 한 줄) + 오늘의 핵심 인사이트 */}
+        <div className="space-y-4">
           <Suspense fallback={null}>
             <IssueSignals />
           </Suspense>
