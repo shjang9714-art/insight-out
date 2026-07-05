@@ -21,7 +21,7 @@ interface Briefing {
   generated_at: string | null
   published_at: string | null
   updated_at: string | null
-  highlights: { content_id: string; insight: string }[] | null
+  highlights: { content_id: string; keyword?: string; insight: string; detail?: string }[] | null
 }
 
 interface BriefingsResponse {
@@ -151,7 +151,7 @@ export default function BriefingManager() {
       })
       const data = (await response.json()) as {
         ok: boolean
-        highlights?: { content_id: string; insight: string }[]
+        highlights?: { content_id: string; keyword?: string; insight: string; detail?: string }[]
         reason?: string
         error?: string
       }

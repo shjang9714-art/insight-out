@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Sparkles, ArrowRight } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -9,6 +9,7 @@ interface HighlightItem {
   content_id: string
   keyword?: string
   insight: string
+  detail?: string
 }
 
 interface BriefingRow {
@@ -26,21 +27,16 @@ interface ContentRow {
   sources: { name: string } | null
 }
 
-// 카드에 렌더할 한 줄. primary = 합성 인사이트(있으면) / 없으면 기사 제목(폴백).
+// 카드에 렌더할 한 항목. primary = 합성 인사이트 헤드라인(있으면) / 없으면 기사 제목(폴백).
 // keyword = 앞에 붙는 임팩트 태그(인사이트 모드=LLM 키워드 / 폴백 모드=카테고리).
+// detail = 뒷받침 분석 2문장(인사이트 모드에서만).
 interface Line {
   id: string
   primary: string
   keyword: string | null
+  detail: string | null
   isInsight: boolean
 }
-
-// 포스트잇 톤 — 인덱스별로 색과 기울기를 돌려 손으로 붙인 메모지 느낌.
-const NOTE_STYLES = [
-  { note: 'bg-amber-100', text: 'text-amber-950', pill: 'bg-amber-200/70 text-amber-900', link: 'text-amber-800/70', rotate: '-rotate-1' },
-  { note: 'bg-rose-100', text: 'text-rose-950', pill: 'bg-rose-200/70 text-rose-900', link: 'text-rose-800/70', rotate: 'rotate-1' },
-  { note: 'bg-sky-100', text: 'text-sky-950', pill: 'bg-sky-200/70 text-sky-900', link: 'text-sky-800/70', rotate: '-rotate-1' },
-] as const
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -123,6 +119,7 @@ export default async function TodayBriefingHighlights() {
         id,
         primary: insight,
         keyword: (hit?.keyword ?? '').trim() || null,
+        detail: (hit?.detail ?? '').trim() || null,
         isInsight: true,
       })
     } else if (c) {
@@ -130,6 +127,7 @@ export default async function TodayBriefingHighlights() {
         id,
         primary: c.title,
         keyword: c.category ?? null,
+        detail: null,
         isInsight: false,
       })
     }
@@ -138,47 +136,43 @@ export default async function TodayBriefingHighlights() {
   if (lines.length === 0) return null
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-border bg-gradient-to-b from-brand-50/40 to-card p-5">
-      {/* 헤더 — LGU+ 관점 오늘의 인사이트 */}
-      <div className="mb-4 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 shadow-sm">
-          <Sparkles className="h-3.5 w-3.5 text-white" />
-        </span>
-        <h2 className="text-sm font-semibold text-foreground">오늘의 핵심 인사이트</h2>
-        <span className="text-[11px] text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
+    <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
+      {/* 마스트헤드 — 사내 전략 저널 톤 */}
+      <div className="mb-5 border-b-2 border-foreground/80 pb-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="font-serif text-lg font-bold tracking-tight text-foreground">오늘의 핵심 인사이트</h2>
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
+        </div>
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-700">
+          LG U+ Strategy Brief
+        </p>
       </div>
 
-      {/* 핵심 3줄 — 포스트잇 메모지. 출처 없이 '인사이트 한 줄'만, 상단에 관련기사 링크. */}
-      <ol className="flex flex-1 flex-col justify-between gap-3.5">
-        {lines.map((line, i) => {
-          const s = NOTE_STYLES[i % NOTE_STYLES.length]
-          return (
-            <li key={line.id} className="flex-1">
-              <Link
-                href={`/dashboard/contents/${line.id}`}
-                className={`group relative flex h-full flex-col justify-center rounded-lg ${s.note} px-4 py-3 shadow-sm ring-1 ring-black/5 transition-transform duration-200 ${s.rotate} hover:rotate-0 hover:shadow-md`}
-              >
-                {/* 상단: 키워드 태그 + 관련 기사 보러가기 */}
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  {line.keyword ? (
-                    <span className={`inline-flex items-center rounded-md ${s.pill} px-2 py-0.5 text-[11px] font-bold tracking-tight`}>
-                      {line.keyword}
-                    </span>
-                  ) : (
-                    <span />
-                  )}
-                  <span className={`flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium ${s.link} transition-opacity group-hover:opacity-100`}>
-                    관련 기사 보러가기
-                    <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </div>
-                <p className={`line-clamp-3 text-[15px] font-semibold leading-snug tracking-tight ${s.text}`}>
-                  {line.primary}
+      {/* 인사이트 목록 — 저널 아티클 티저(키커·헤드라인·분석). 헤어라인으로 구분. */}
+      <ol className="flex flex-1 flex-col divide-y divide-border">
+        {lines.map((line) => (
+          <li key={line.id} className="flex flex-1 flex-col justify-center py-4 first:pt-0 last:pb-0">
+            <Link href={`/dashboard/contents/${line.id}`} className="group block">
+              {line.keyword && (
+                <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.14em] text-brand-700">
+                  {line.keyword}
+                </span>
+              )}
+              <h3 className="font-serif text-[17px] font-bold leading-snug tracking-tight text-foreground transition-colors group-hover:text-brand-700">
+                {line.primary}
+              </h3>
+              {line.detail && (
+                <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">
+                  {line.detail}
                 </p>
-              </Link>
-            </li>
-          )
-        })}
+              )}
+              <span className="mt-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground transition-colors group-hover:text-brand-700">
+                관련 기사 보러가기
+                <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              </span>
+            </Link>
+          </li>
+        ))}
       </ol>
     </div>
   )
