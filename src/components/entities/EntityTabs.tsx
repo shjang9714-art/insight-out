@@ -16,16 +16,16 @@ export default function EntityTabs() {
   const view = searchParams.get('view') ?? 'watchlist'
 
   return (
-    <div className="mb-6 inline-flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+    <div className="mb-6 flex gap-2">
       {TABS.map(t => (
         <Link
           key={t.id}
           href={`/dashboard/entities?view=${t.id}`}
           className={cn(
-            'rounded-md px-3 py-1 text-[13px] font-medium transition-colors',
+            'flex-1 rounded-xl border px-3 py-3.5 text-center text-base font-semibold transition-colors',
             view === t.id
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'border-brand-600 bg-brand-600/10 text-brand-600'
+              : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
           )}
         >
           {t.label}

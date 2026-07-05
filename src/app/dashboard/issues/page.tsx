@@ -13,13 +13,13 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ view?: string }>
 
-const VALID_VIEWS = ['briefing', 'issues'] as const
+const VALID_VIEWS = ['brief', 'headline', 'trending', 'issues'] as const
 type ViewId = typeof VALID_VIEWS[number]
 
 export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const raw = typeof params.view === 'string' ? params.view : ''
-  const view: ViewId = (VALID_VIEWS.includes(raw as ViewId) ? raw : 'briefing') as ViewId
+  const view: ViewId = (VALID_VIEWS.includes(raw as ViewId) ? raw : 'brief') as ViewId
 
   return (
     <PageContainer>

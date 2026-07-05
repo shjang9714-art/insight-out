@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { X, Loader2, LayoutGrid, List, Newspaper, Play, Globe, BarChart2 } from 'lucide-react'
+import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import ArchiveButton from '@/components/archive/ArchiveButton'
@@ -80,10 +80,10 @@ const PAGE_SIZE = 20
 
 // 콘텐츠 소스타입 선택 바 (4개 고정)
 const CONTENT_SOURCE_TABS = [
-  { label: '뉴스',    value: '뉴스'      as ContentCategory, Icon: Newspaper, color: 'text-blue-600',   activeBg: 'bg-blue-50 border-blue-600 text-blue-700 dark:bg-blue-950/30 dark:border-blue-400 dark:text-blue-300',   hoverBg: 'hover:border-blue-200 hover:text-blue-700' },
-  { label: '유튜브',  value: '유튜브'    as ContentCategory, Icon: Play,      color: 'text-red-600',    activeBg: 'bg-red-50 border-red-600 text-red-700 dark:bg-red-950/30 dark:border-red-400 dark:text-red-300',         hoverBg: 'hover:border-red-200 hover:text-red-700'   },
-  { label: '웹인사이트', value: '웹인사이트' as ContentCategory, Icon: Globe,   color: 'text-emerald-600', activeBg: 'bg-emerald-50 border-emerald-600 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-400 dark:text-emerald-300', hoverBg: 'hover:border-emerald-200 hover:text-emerald-700' },
-  { label: '리서치',  value: '리서치'    as ContentCategory, Icon: BarChart2, color: 'text-indigo-600', activeBg: 'bg-indigo-50 border-indigo-600 text-indigo-700 dark:bg-indigo-950/30 dark:border-indigo-400 dark:text-indigo-300', hoverBg: 'hover:border-indigo-200 hover:text-indigo-700' },
+  { label: '뉴스',      value: '뉴스'      as ContentCategory },
+  { label: '유튜브',    value: '유튜브'    as ContentCategory },
+  { label: '웹인사이트', value: '웹인사이트' as ContentCategory },
+  { label: '리서치',    value: '리서치'    as ContentCategory },
 ] as const
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -493,10 +493,10 @@ function ContentsContent() {
               key={tab.value}
               onClick={() => updateParam('category', tab.value)}
               className={cn(
-                'relative flex min-w-[4.5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border px-3 py-3 transition-colors',
+                'relative flex min-w-[4.5rem] flex-1 flex-col items-center justify-center rounded-xl border px-3 py-3.5 transition-colors',
                 isActive
-                  ? tab.activeBg
-                  : `border-border text-muted-foreground ${tab.hoverBg}`,
+                  ? 'border-brand-600 bg-brand-600/10 text-brand-600'
+                  : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground',
               )}
             >
               {count !== undefined && count > 0 && (
@@ -504,8 +504,7 @@ function ContentsContent() {
                   {count >= 1000 ? `${Math.floor(count / 1000)}k` : count}
                 </span>
               )}
-              <tab.Icon className={`h-5 w-5 ${isActive ? '' : tab.color}`} />
-              <span className="text-xs font-medium leading-tight">{tab.label}</span>
+              <span className="text-base font-semibold leading-tight">{tab.label}</span>
               {count === 0 && (
                 <span className="text-[9px] text-muted-foreground/60">데이터 없음</span>
               )}

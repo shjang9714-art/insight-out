@@ -69,7 +69,7 @@ function computeTrendingTopics(
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
-export default async function AiInsightsView({ view = 'briefing' }: { view?: 'briefing' | 'issues' }) {
+export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief' | 'headline' | 'trending' | 'issues' }) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
