@@ -140,7 +140,7 @@ export default async function TodayBriefingHighlights() {
       {/* 마스트헤드 — 사내 전략 저널 톤 */}
       <div className="mb-5 border-b-2 border-foreground/80 pb-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="font-serif text-lg font-bold tracking-tight text-foreground">오늘의 핵심 인사이트</h2>
+          <h2 className="text-sm font-semibold text-foreground">오늘의 핵심 인사이트</h2>
           <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
         </div>
         <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-700">
