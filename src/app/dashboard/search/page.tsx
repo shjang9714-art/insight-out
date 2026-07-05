@@ -8,6 +8,7 @@ import { type ContentCategory } from '@/lib/types'
 import { Search, Sparkles } from 'lucide-react'
 import ContentRow from '@/components/dashboard/ContentRow'
 import { tagsOf } from '@/lib/contents/excerpt'
+import { normalizeCompany } from '@/lib/search/company-alias'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -95,7 +96,9 @@ function SearchContent() {
 
       // ILIKE 멀티컬럼 OR 검색 (title·summary_ko·body_original 커버)
       // FTS(search_vector)는 body_original·matched_keywords 미포함으로 단어 누락 발생 → ILIKE 대체
-      const escapedQ = q.replace(/[%_]/g, '\\$&')
+      // 회사 별칭 정규화: 'lguplus' → 'LG유플러스' (영문 슬러그가 한글 기사에 안 걸리는 문제 보정)
+      const searchTerm = normalizeCompany(q) ?? q
+      const escapedQ = searchTerm.replace(/[%_]/g, '\\$&')
       const ilikePat = `%${escapedQ}%`
       const orFilter = [
         `title.ilike.${ilikePat}`,

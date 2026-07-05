@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { COMPANY_ALIASES } from './company-alias'
 
 // ─── 공개 타입 ────────────────────────────────────────────────────────────────
 
@@ -54,8 +55,10 @@ export function tokenizeQuestion(question: string): string[] {
     const cleaned = raw.replace(/[?？！!.,·~\-]/g, '').trim()
     if (cleaned.length < 2) continue
     // 조사 제거: '동향은' → '동향'(불용어로 제외), '이슈는' → '이슈'(유지)
-    const t = stripJosa(cleaned)
-    if (t.length < 2) continue
+    const stem = stripJosa(cleaned)
+    if (stem.length < 2) continue
+    // 회사 별칭 정규화: 'lguplus' → 'LG유플러스'
+    const t = COMPANY_ALIASES[stem.toLowerCase()] ?? stem
     if (STOPWORDS.has(t)) continue
     if (seen.has(t)) continue
     seen.add(t)
