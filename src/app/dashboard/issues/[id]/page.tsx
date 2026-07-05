@@ -70,8 +70,10 @@ function getKstDateLabel(iso: string): string {
   })
 }
 
-function getKstDateKey(iso: string): string {
-  const kst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000)
+function getKstDateKey(iso: string | null | undefined): string {
+  const base = iso ? new Date(iso).getTime() : NaN
+  if (Number.isNaN(base)) return '날짜 미상'
+  const kst = new Date(base + 9 * 60 * 60 * 1000)
   return kst.toISOString().slice(0, 10)
 }
 
@@ -171,8 +173,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
     .map(ic => ic.contents)
     .filter((c): c is NonNullable<IssueContentRow['contents']> => c !== null)
     .sort((a, b) => {
-      const aDate = a.published_at ?? a.collected_at
-      const bDate = b.published_at ?? b.collected_at
+      const aDate = a.published_at ?? a.collected_at ?? ''
+      const bDate = b.published_at ?? b.collected_at ?? ''
       return bDate.localeCompare(aDate)
     })
 
