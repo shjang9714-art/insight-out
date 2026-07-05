@@ -140,7 +140,7 @@ export default function ContentCard({
     )
 
     const compactClass =
-      'group rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
+      'group flex h-full flex-col rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
 
     if (resolvedHref) {
       return <Link href={resolvedHref} className={compactClass}>{compactInner}</Link>

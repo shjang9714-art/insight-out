@@ -43,8 +43,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'slot 파라미터가 올바르지 않습니다.' }, { status: 400 })
   }
 
-  // B2B 무관 기사가 섞여 있을 수 있으므로 여유 있게 가져온 뒤 필터+slice
-  const fetchLimit = limit * 5
+  // B2B 무관 기사 + 5일 초과 기사가 필터링되므로 여유 있게 가져온 뒤 필터+slice
+  const fetchLimit = limit * 10
+
+  // 최신 기사 위주 노출: 발행 5일 이내로 제한
+  const RECENT_DAYS = 5
+  const recentSince = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   const { data: ranked, error: rpcError } = await supabase.rpc('get_recommended_feed', {
     p_user_id: user.id,
@@ -65,6 +69,7 @@ export async function GET(req: NextRequest) {
     .from('contents')
     .select(CONTENT_SELECT)
     .in('id', rows.map((row) => row.content_id))
+    .gte('published_at', recentSince)
 
   const contentMap = new Map(
     (contents ?? []).map((c) => [(c as unknown as ContentRow).id, c as unknown as ContentRow])
@@ -77,7 +82,13 @@ export async function GET(req: NextRequest) {
     .filter((c): c is ContentRow => c !== undefined)
     .filter((c) => isB2BRelevant(c.title, c.summary_ko))
   const deduped = dedupSimilarItems(filtered)
-  const items = deduped
+  // 최신순 정렬 — RPC 점수순 대신 발행일 내림차순으로 노출
+  const sorted = deduped.sort((a, b) => {
+    const ta = a.published_at ? new Date(a.published_at).getTime() : 0
+    const tb = b.published_at ? new Date(b.published_at).getTime() : 0
+    return tb - ta
+  })
+  const items = sorted
     .slice(0, limit)
     .map((c) => ({
       ...c,

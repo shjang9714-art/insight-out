@@ -9,6 +9,8 @@ interface FeedCarouselProps {
   intervalMs?: number
   /** 카드 하나의 고정 너비(px) */
   cardWidth?: number
+  /** 카드 하나의 고정 높이(px) — 요약까지 여유 있게 노출 */
+  cardHeight?: number
 }
 
 const GAP = 16 // gap-4
@@ -23,6 +25,7 @@ export default function FeedCarousel({
   children,
   intervalMs = 3800,
   cardWidth = 288,
+  cardHeight = 196,
 }: FeedCarouselProps) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
@@ -84,7 +87,7 @@ export default function FeedCarousel({
           <div
             key={i}
             className="shrink-0 snap-start"
-            style={{ width: cardWidth }}
+            style={{ width: cardWidth, height: cardHeight }}
           >
             {child}
           </div>
