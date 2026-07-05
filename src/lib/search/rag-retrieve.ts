@@ -25,6 +25,25 @@ const STOPWORDS = new Set([
   '동향', '현황', '상황', '어떻습니까', '알려주세요', '설명해주세요',
 ])
 
+// ─── 한국어 조사 (긴 것부터: 다중 문자 조사 우선 매칭) ──────────────────────────
+
+const JOSA = [
+  '으로써', '으로서', '에서는', '에서도', '에게서',
+  '으로', '에서', '에게', '한테', '까지', '부터', '보다', '처럼', '마다',
+  '조차', '밖에', '이나', '이란', '라는', '이라', '와는', '과는', '에는', '에도',
+  '은', '는', '이', '가', '을', '를', '의', '에', '와', '과', '도', '만', '로', '나', '란',
+]
+
+// 토큰 끝의 조사를 제거한 어간 반환 (어간이 2자 이상일 때만)
+function stripJosa(t: string): string {
+  for (const j of JOSA) {
+    if (t.length > j.length + 1 && t.endsWith(j)) {
+      return t.slice(0, t.length - j.length)
+    }
+  }
+  return t
+}
+
 // ─── 질문 토큰화 ──────────────────────────────────────────────────────────────
 
 export function tokenizeQuestion(question: string): string[] {
@@ -32,7 +51,10 @@ export function tokenizeQuestion(question: string): string[] {
   const tokens: string[] = []
 
   for (const raw of question.split(/\s+/)) {
-    const t = raw.replace(/[?？！!.,·~\-]/g, '').trim()
+    const cleaned = raw.replace(/[?？！!.,·~\-]/g, '').trim()
+    if (cleaned.length < 2) continue
+    // 조사 제거: '동향은' → '동향'(불용어로 제외), '이슈는' → '이슈'(유지)
+    const t = stripJosa(cleaned)
     if (t.length < 2) continue
     if (STOPWORDS.has(t)) continue
     if (seen.has(t)) continue
