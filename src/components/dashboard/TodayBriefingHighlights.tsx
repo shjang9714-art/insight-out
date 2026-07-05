@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, ArrowRight } from 'lucide-react'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
 interface HighlightItem {
   content_id: string
+  keyword?: string
   insight: string
 }
 
@@ -26,13 +27,20 @@ interface ContentRow {
 }
 
 // 카드에 렌더할 한 줄. primary = 합성 인사이트(있으면) / 없으면 기사 제목(폴백).
+// keyword = 앞에 붙는 임팩트 태그(인사이트 모드=LLM 키워드 / 폴백 모드=카테고리).
 interface Line {
   id: string
   primary: string
+  keyword: string | null
   isInsight: boolean
-  category: string | null
-  source: string | null
 }
+
+// 포스트잇 톤 — 인덱스별로 색과 기울기를 돌려 손으로 붙인 메모지 느낌.
+const NOTE_STYLES = [
+  { note: 'bg-amber-100', text: 'text-amber-950', pill: 'bg-amber-200/70 text-amber-900', link: 'text-amber-800/70', rotate: '-rotate-1' },
+  { note: 'bg-rose-100', text: 'text-rose-950', pill: 'bg-rose-200/70 text-rose-900', link: 'text-rose-800/70', rotate: 'rotate-1' },
+  { note: 'bg-sky-100', text: 'text-sky-950', pill: 'bg-sky-200/70 text-sky-900', link: 'text-sky-800/70', rotate: '-rotate-1' },
+] as const
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -106,26 +114,23 @@ export default async function TodayBriefingHighlights() {
   const lines: Line[] = []
   for (const id of ids) {
     const c = byId.get(id)
-    const insight = useInsights
-      ? rawHighlights.find(h => h.content_id === id)?.insight.trim()
-      : undefined
+    const hit = useInsights ? rawHighlights.find(h => h.content_id === id) : undefined
+    const insight = hit?.insight.trim()
 
     // 인사이트 모드: 기사 메타가 없어도 인사이트 문구만으로 렌더 가능
     if (insight) {
       lines.push({
         id,
         primary: insight,
+        keyword: (hit?.keyword ?? '').trim() || null,
         isInsight: true,
-        category: c?.category ?? null,
-        source: c?.sources?.name ?? null,
       })
     } else if (c) {
       lines.push({
         id,
         primary: c.title,
+        keyword: c.category ?? null,
         isInsight: false,
-        category: c.category ?? null,
-        source: c.sources?.name ?? null,
       })
     }
   }
@@ -143,32 +148,37 @@ export default async function TodayBriefingHighlights() {
         <span className="text-[11px] text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
       </div>
 
-      {/* 핵심 3줄 — 카드 높이를 균등 분할해 임팩트 있게 */}
-      <ol className="flex flex-1 flex-col justify-between gap-3">
-        {lines.map((line, i) => (
-          <li key={line.id} className="flex-1">
-            <Link
-              href={`/dashboard/contents/${line.id}`}
-              className="group flex h-full items-start gap-3.5 rounded-xl border border-border/50 bg-card/70 px-4 py-3.5 transition-all hover:border-brand-600/50 hover:bg-card hover:shadow-md"
-            >
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-xs font-bold tabular-nums text-white shadow-sm">
-                {i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-3 text-[15px] font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-brand-700">
+      {/* 핵심 3줄 — 포스트잇 메모지. 출처 없이 '인사이트 한 줄'만, 상단에 관련기사 링크. */}
+      <ol className="flex flex-1 flex-col justify-between gap-3.5">
+        {lines.map((line, i) => {
+          const s = NOTE_STYLES[i % NOTE_STYLES.length]
+          return (
+            <li key={line.id} className="flex-1">
+              <Link
+                href={`/dashboard/contents/${line.id}`}
+                className={`group relative flex h-full flex-col justify-center rounded-lg ${s.note} px-4 py-3 shadow-sm ring-1 ring-black/5 transition-transform duration-200 ${s.rotate} hover:rotate-0 hover:shadow-md`}
+              >
+                {/* 상단: 키워드 태그 + 관련 기사 보러가기 */}
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  {line.keyword ? (
+                    <span className={`inline-flex items-center rounded-md ${s.pill} px-2 py-0.5 text-[11px] font-bold tracking-tight`}>
+                      {line.keyword}
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                  <span className={`flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium ${s.link} transition-opacity group-hover:opacity-100`}>
+                    관련 기사 보러가기
+                    <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </div>
+                <p className={`line-clamp-3 text-[15px] font-semibold leading-snug tracking-tight ${s.text}`}>
                   {line.primary}
                 </p>
-                {(line.category || line.source) && (
-                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    {line.category && <span>{line.category}</span>}
-                    {line.category && line.source && <span>·</span>}
-                    {line.source && <span className="truncate">{line.source}</span>}
-                  </p>
-                )}
-              </div>
-            </Link>
-          </li>
-        ))}
+              </Link>
+            </li>
+          )
+        })}
       </ol>
     </div>
   )
