@@ -23,7 +23,7 @@ export default async function IssueSignals() {
   )
 
   const cards = await fetchIssueActivity(supabase)
-  const top = cards.filter(c => c.recentCount > 0 || c.changePct === null).slice(0, 5)
+  const top = cards.filter(c => c.recentCount > 0 || c.changePct === null).slice(0, 15)
 
   if (top.length === 0) return null
 
