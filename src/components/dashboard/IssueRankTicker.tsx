@@ -34,7 +34,7 @@ function ChangeBadge({ issue }: { issue: TickerIssue }) {
   if (issue.changeFlag === 'surge') {
     return (
       <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
-        {issue.changePct === null ? '신규' : `+${issue.changePct}%`}
+        {issue.changePct === null ? '신규' : '급상승'}
       </span>
     )
   }
