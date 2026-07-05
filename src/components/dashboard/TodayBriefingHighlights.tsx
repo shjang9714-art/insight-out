@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { Radio, ArrowUpRight, Play } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -133,59 +133,43 @@ export default async function TodayBriefingHighlights() {
   if (lines.length === 0) return null
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
-      {/* 헤더 */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Radio className="h-4 w-4 text-brand-600" />
-          <h2 className="text-sm font-semibold text-foreground">오늘의 핵심 인사이트</h2>
-          <span className="text-[11px] text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
-        </div>
-        <Link
-          href="/dashboard/briefings"
-          className="text-[11px] text-brand-600 hover:underline"
-        >
-          브리핑 →
-        </Link>
+    <div className="flex h-full flex-col rounded-2xl border border-border bg-gradient-to-b from-brand-50/40 to-card p-5">
+      {/* 헤더 — LGU+ 관점 오늘의 인사이트 */}
+      <div className="mb-4 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 shadow-sm">
+          <Sparkles className="h-3.5 w-3.5 text-white" />
+        </span>
+        <h2 className="text-sm font-semibold text-foreground">오늘의 핵심 인사이트</h2>
+        <span className="text-[11px] text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
       </div>
 
-      {/* 핵심 3줄 */}
-      <ol className="flex-1 space-y-2.5">
+      {/* 핵심 3줄 — 카드 높이를 균등 분할해 임팩트 있게 */}
+      <ol className="flex flex-1 flex-col justify-between gap-3">
         {lines.map((line, i) => (
-          <li key={line.id}>
+          <li key={line.id} className="flex-1">
             <Link
               href={`/dashboard/contents/${line.id}`}
-              className="group flex items-start gap-3 rounded-xl border border-border/60 bg-gradient-to-br from-brand-50/50 to-transparent px-3.5 py-3 transition-colors hover:border-brand-600/40 hover:from-brand-50"
+              className="group flex h-full items-start gap-3.5 rounded-xl border border-border/50 bg-card/70 px-4 py-3.5 transition-all hover:border-brand-600/50 hover:bg-card hover:shadow-md"
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[11px] font-bold tabular-nums text-white">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-xs font-bold tabular-nums text-white shadow-sm">
                 {i + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground transition-colors group-hover:text-brand-600">
+                <p className="line-clamp-3 text-[15px] font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-brand-700">
                   {line.primary}
                 </p>
                 {(line.category || line.source) && (
-                  <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     {line.category && <span>{line.category}</span>}
                     {line.category && line.source && <span>·</span>}
                     {line.source && <span className="truncate">{line.source}</span>}
                   </p>
                 )}
               </div>
-              <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-brand-600" />
             </Link>
           </li>
         ))}
       </ol>
-
-      {/* 푸터 — 전체 브리핑 듣기 · 상세 */}
-      <Link
-        href="/dashboard/briefings"
-        className="mt-4 flex items-center justify-center gap-1.5 rounded-xl bg-brand-50 py-2.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
-      >
-        <Play className="h-3.5 w-3.5 fill-current" />
-        브리핑 전체 듣기 · 상세보기
-      </Link>
     </div>
   )
 }
