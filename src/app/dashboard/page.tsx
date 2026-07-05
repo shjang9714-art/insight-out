@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import FeedSlot from '@/components/feed/FeedSlot'
 import IssueSignals from '@/components/dashboard/IssueSignals'
+import TodayBriefingHighlights from '@/components/dashboard/TodayBriefingHighlights'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 import VisitDelta from '@/components/dashboard/VisitDelta'
 import PersonalizationNudge from '@/components/dashboard/PersonalizationNudge'
@@ -23,10 +24,15 @@ export default function DashboardPage() {
         {/* 추천 질문 칩 — 콜드스타트 진입점 */}
         <SuggestedQuestions />
 
-        {/* 1블록: 급상승 이슈 신호 (이슈 없으면 숨김) — 실검 스타일 롤링 */}
-        <Suspense fallback={null}>
-          <IssueSignals />
-        </Suspense>
+        {/* 1블록: 급상승 이슈(좌 1/2) + 오늘의 핵심 인사이트(우 1/2) */}
+        <div className="grid items-stretch gap-4 lg:grid-cols-2">
+          <Suspense fallback={null}>
+            <IssueSignals />
+          </Suspense>
+          <Suspense fallback={null}>
+            <TodayBriefingHighlights />
+          </Suspense>
+        </div>
 
         {/* 2블록: 추천 피드 (신규/스킵/기존 분기 — FeedSlot) */}
         <section>

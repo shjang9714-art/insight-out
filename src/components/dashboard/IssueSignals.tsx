@@ -28,7 +28,7 @@ export default async function IssueSignals() {
   if (top.length === 0) return null
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
+    <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
       {/* 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">

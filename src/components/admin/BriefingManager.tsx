@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, Volume2 } from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronUp, Loader2, Sparkles, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
@@ -21,6 +21,7 @@ interface Briefing {
   generated_at: string | null
   published_at: string | null
   updated_at: string | null
+  highlights: { content_id: string; insight: string }[] | null
 }
 
 interface BriefingsResponse {
@@ -30,7 +31,7 @@ interface BriefingsResponse {
   error?: string
 }
 
-type PendingAction = 'tts' | 'approve' | 'archive' | 'revert'
+type PendingAction = 'tts' | 'approve' | 'archive' | 'revert' | 'highlights'
 
 const STATUS_LABELS: Record<BriefingStatus, string> = {
   draft: '초안',
@@ -133,6 +134,41 @@ export default function BriefingManager() {
       )
     } catch {
       setRowErrors((prev) => ({ ...prev, [briefing.id]: 'TTS 요청 중 네트워크 오류가 발생했습니다.' }))
+    } finally {
+      setPendingId(null)
+      setPendingAction(null)
+    }
+  }
+
+  async function generateHighlights(briefing: Briefing) {
+    setPendingId(briefing.id)
+    setPendingAction('highlights')
+    clearRowError(briefing.id)
+
+    try {
+      const response = await fetch(`/api/admin/briefings/${briefing.id}/highlights`, {
+        method: 'POST',
+      })
+      const data = (await response.json()) as {
+        ok: boolean
+        highlights?: { content_id: string; insight: string }[]
+        reason?: string
+        error?: string
+      }
+
+      if (!response.ok || !data.ok) {
+        const reason = data.reason ?? data.error ?? '인사이트 생성 중 오류가 발생했습니다.'
+        setRowErrors((prev) => ({ ...prev, [briefing.id]: reason }))
+        return
+      }
+
+      setBriefings((current) =>
+        current.map((b) =>
+          b.id === briefing.id ? { ...b, highlights: data.highlights ?? b.highlights } : b
+        )
+      )
+    } catch {
+      setRowErrors((prev) => ({ ...prev, [briefing.id]: '인사이트 요청 중 네트워크 오류가 발생했습니다.' }))
     } finally {
       setPendingId(null)
       setPendingAction(null)
@@ -268,6 +304,22 @@ export default function BriefingManager() {
                         <Volume2 className="h-3.5 w-3.5" />
                       )}
                       {briefing.audio_url ? '재생성' : '오디오 생성'}
+                    </Button>
+
+                    {/* 홈 카드용 핵심 인사이트 3줄 생성/재생성 */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isRowPending}
+                      onClick={() => void generateHighlights(briefing)}
+                    >
+                      {isRowPending && pendingAction === 'highlights' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {briefing.highlights && briefing.highlights.length > 0 ? '인사이트 재생성' : '인사이트 생성'}
                     </Button>
 
                     {/* 승인(공개) — draft 상태일 때 */}
