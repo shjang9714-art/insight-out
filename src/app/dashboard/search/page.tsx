@@ -235,27 +235,39 @@ function SearchContent() {
         </div>
       )}
       {q && ragState.status === 'done' && (
-        <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 shrink-0 text-brand-600" />
-            <span className="text-sm font-semibold text-foreground">AI 답변</span>
-            <span className="text-xs text-muted-foreground">수집된 기사들을 근거로 정리했어요. 아래 출처를 확인하세요.</span>
+        <>
+          {/* AI 답변 카드 */}
+          <div className="mb-4 rounded-xl border border-border bg-card px-5 py-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0 text-brand-600" />
+              <span className="text-sm font-semibold text-foreground">AI 답변</span>
+              <span className="text-xs text-muted-foreground">수집된 기사들을 근거로 정리했어요.</span>
+            </div>
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{ragState.data.answer}</p>
           </div>
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{ragState.data.answer}</p>
+
+          {/* 관련 기사 — 답변 근거 출처 */}
           {ragState.data.sources.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {ragState.data.sources.map(s => (
-                <Link
-                  key={s.content_id}
-                  href={`/dashboard/contents/${s.content_id}`}
-                  className="inline-flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 transition-colors line-clamp-1 max-w-[240px]"
-                >
-                  {s.title}
-                </Link>
-              ))}
+            <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4 shrink-0 text-brand-600" />
+                <span className="text-sm font-semibold text-foreground">관련 기사</span>
+                <span className="text-xs text-muted-foreground">답변의 근거예요. 관련 기사를 확인하세요.</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {ragState.data.sources.map(s => (
+                  <Link
+                    key={s.content_id}
+                    href={`/dashboard/contents/${s.content_id}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 transition-colors line-clamp-1 max-w-[240px]"
+                  >
+                    {s.title}
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
-        </div>
+        </>
       )}
 
       {/* 결과 없음 — AI 답변이 있으면 컴팩트 안내, 답변 로딩 중엔 숨김 */}
