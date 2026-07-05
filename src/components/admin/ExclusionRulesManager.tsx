@@ -41,6 +41,14 @@ function formatKst(iso: string): string {
   })
 }
 
+/** 최근 차단(last_hit_at) 상대 표기 — 194. null 이면 호출부에서 '—' 처리. */
+function formatRelativeHit(iso: string): string {
+  const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+  if (diffDays <= 0) return '오늘'
+  const base = `${diffDays}일 전`
+  return diffDays >= 30 ? `${base} · 오래됨` : base
+}
+
 const FORM_INIT = {
   rule_type: 'domain' as ExclusionRuleType,
   value: '',
@@ -156,6 +164,14 @@ export default function ExclusionRulesManager() {
     }
   }
 
+  const totalHits = rules.reduce((sum, r) => sum + (r.hit_count ?? 0), 0)
+  const neverHitCount = rules.filter((r) => r.is_active && (r.hit_count ?? 0) === 0).length
+  const summaryLine = rules.length === 0
+    ? '총 0개 규칙'
+    : totalHits === 0
+      ? `규칙 ${rules.length}개 · 아직 집계 전(수집 1회 후 반영)`
+      : `규칙 ${rules.length}개 · 지금까지 ${totalHits.toLocaleString()}건 차단${neverHitCount > 0 ? ` · 안 걸린 규칙 ${neverHitCount}개` : ''}`
+
   return (
     <div className="space-y-6">
       {!tableReady && (
@@ -167,7 +183,7 @@ export default function ExclusionRulesManager() {
 
       <div className="flex items-center justify-between gap-3">
         <p className="admin-body text-muted-foreground">
-          {isLoading ? '불러오는 중…' : `총 ${rules.length}개 규칙`}
+          {isLoading ? '불러오는 중…' : summaryLine}
         </p>
         <Button size="sm" onClick={openCreate} disabled={!tableReady}>
           <Plus className="mr-1.5 h-4 w-4" />
@@ -194,6 +210,7 @@ export default function ExclusionRulesManager() {
                 <th className="px-4 py-3">동작</th>
                 <th className="px-4 py-3">활성</th>
                 <th className="px-4 py-3">적중</th>
+                <th className="px-4 py-3 whitespace-nowrap">최근 차단</th>
                 <th className="px-4 py-3">비고</th>
                 <th className="px-4 py-3 whitespace-nowrap">등록일 (KST)</th>
                 <th className="px-4 py-3 text-right">관리</th>
@@ -226,8 +243,14 @@ export default function ExclusionRulesManager() {
                       {r.is_active ? '활성' : '비활성'}
                     </button>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
+                  <td className={cn(
+                    'whitespace-nowrap px-4 py-3 admin-table-td',
+                    r.hit_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
+                  )}>
                     {r.hit_count.toLocaleString()}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 admin-caption text-muted-foreground">
+                    {r.last_hit_at ? formatRelativeHit(r.last_hit_at) : '—'}
                   </td>
                   <td className="max-w-[200px] px-4 py-3 admin-caption text-muted-foreground">
                     {r.note ? <span className="block truncate" title={r.note}>{r.note}</span> : '—'}

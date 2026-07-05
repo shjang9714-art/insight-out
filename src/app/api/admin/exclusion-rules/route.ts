@@ -58,6 +58,7 @@ export async function GET() {
     const { data, error } = await admin
       .from('exclusion_rules')
       .select('*')
+      .order('hit_count', { ascending: false })
       .order('created_at', { ascending: false })
 
     if (error) {

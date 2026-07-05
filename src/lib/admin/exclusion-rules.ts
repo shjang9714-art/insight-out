@@ -13,6 +13,7 @@ export interface ExclusionRuleRow {
   is_active: boolean
   note: string | null
   hit_count: number
+  last_hit_at: string | null
   created_by: string | null
   created_at: string
   updated_at: string

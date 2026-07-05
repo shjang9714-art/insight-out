@@ -290,7 +290,8 @@ async function processCrawlItem(
   counts: CrawlCounts,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
-  exclusionRules: ExclusionRule[] = []
+  exclusionRules: ExclusionRule[] = [],
+  exclusionHits: Map<string, number> = new Map()
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
     const url = normalizeUrl(item.original_url)
@@ -318,6 +319,9 @@ async function processCrawlItem(
     const qText = `${item.title} ${item.body ?? ''}`
     // 제외 규칙(190) — 도메인/URL/제목 부분일치. reject 는 기존 제외와 동급 처리, hold 는 아래서 검토 대기 사유로 반영.
     const exclusionMatch = matchExclusion({ title: item.title, url }, exclusionRules)
+    if (exclusionMatch) {
+      exclusionHits.set(exclusionMatch.ruleId, (exclusionHits.get(exclusionMatch.ruleId) ?? 0) + 1)
+    }
     if (
       isAdLike(qText) ||
       isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
@@ -611,7 +615,8 @@ async function crawlOne(
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
-  exclusionRules: ExclusionRule[] = []
+  exclusionRules: ExclusionRule[] = [],
+  exclusionHits: Map<string, number> = new Map()
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -644,7 +649,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -793,7 +798,8 @@ async function crawlKeywordSearch(
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
-  exclusionRules: ExclusionRule[] = []
+  exclusionRules: ExclusionRule[] = [],
+  exclusionHits: Map<string, number> = new Map()
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -818,7 +824,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits
         )
         if (result.partial) hadError = true
       }
@@ -1062,6 +1068,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     console.warn('[크롤러] exclusion_rules 로드 실패, 제외 규칙 skip:', e)
   }
 
+  // 제외 규칙 hit 집계(194) — 런 단위 누적, 종료 후 배치 flush(아이템별 write 없음)
+  const exclusionHits = new Map<string, number>()
+
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
@@ -1098,7 +1107,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             classifyBudget,
             aliasMap,
             issueList,
-            exclusionRules
+            exclusionRules,
+            exclusionHits
           )
     )
   )
@@ -1154,7 +1164,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted
@@ -1170,6 +1180,18 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       rejected:  kwResult.counts.rejected,
     })
     if (!kwResult.hadError) successCount++
+  }
+
+  // 제외 규칙 hit 배치 flush(194) — 런당 1콜, SQL 미적용(RPC 없음) 시 graceful skip
+  if (exclusionHits.size > 0) {
+    try {
+      const { error } = await admin.rpc('increment_exclusion_hits', {
+        hits: Object.fromEntries(exclusionHits),
+      })
+      if (error) console.warn('[크롤러] exclusion hit 집계 skip (194 SQL 미적용 가능):', error.message)
+    } catch (e) {
+      console.warn('[크롤러] exclusion hit 집계 실패:', e)
+    }
   }
 
   // enrichment tail — 신규 적재분 풀본문 추출·요약 재생성 (실패해도 크롤 결과 보존)
