@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { Loader2, Search, Sparkles, X, LayoutGrid, List } from 'lucide-react'
+import { Search, Sparkles, X, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
@@ -298,6 +298,7 @@ function SearchContent() {
     if (!q) { startTransition(() => setRagState({ status: 'idle' })); return }
 
     let cancelled = false
+    startTransition(() => setRagState({ status: 'loading' }))
 
     fetch('/api/search/rag', {
       method: 'POST',
@@ -583,9 +584,14 @@ function SearchContent() {
 
       {/* AI 답변 카드 — 결과/빈화면보다 먼저 노출 */}
       {q && ragState.status === 'loading' && (
-        <div className="mb-5 flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          AI가 수집된 기사를 바탕으로 답변을 정리하고 있어요…
+        <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-brand-100 bg-brand-50/60 px-5 py-4 text-sm font-medium text-brand-700">
+          <Sparkles className="h-4 w-4 shrink-0 animate-pulse text-brand-600" />
+          <span>AI가 수집된 기사를 바탕으로 답변을 작성하고 있어요</span>
+          <span className="ml-0.5 flex items-end gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-bounce" />
+          </span>
         </div>
       )}
       {q && ragState.status === 'done' && (
