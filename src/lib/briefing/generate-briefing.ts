@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { llmComplete } from '@/lib/llm'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { generateHighlights } from '@/lib/briefing/highlights'
 
 // ─── 환경변수 기본값 ─────────────────────────────────────────────────────────
 // 윈도우 48h: 일일 크롤이 배치로 들어와 24h 창은 후보가 한 자릿수까지 떨어진다(라이브 확인: h24=7, h48=128).
@@ -408,6 +409,12 @@ export async function generateBriefing(
   const script = cleanScript(scriptRaw)
   const title = `${dateParts.month}월 ${dateParts.day}일 모닝브리핑`
 
+  // 5-b. 홈 카드용 핵심 인사이트 3줄 생성 (실패해도 브리핑 저장은 진행)
+  const highlights = await generateHighlights(
+    selected.map(a => ({ id: a.id, title: a.title, summary_ko: a.summary_ko }))
+  )
+  console.log(`[브리핑] 핵심 인사이트 ${highlights.length}줄 생성`)
+
   // 6. upsert
   const publish = (opts?.autoPublish ?? false) && selected.length >= MIN_ARTICLES
   const { data: upserted, error: upsertError } = await admin
@@ -417,6 +424,7 @@ export async function generateBriefing(
       title,
       script,
       source_content_ids: sourceContentIds,
+      highlights: highlights.length > 0 ? highlights : null,
       status: publish ? 'published' : 'draft',
       ...(publish ? { published_at: new Date().toISOString() } : {}),
       generated_at: new Date().toISOString(),

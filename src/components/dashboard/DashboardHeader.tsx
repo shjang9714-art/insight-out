@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu, Search } from 'lucide-react'
+import { Menu, Search, Home, Brain, Building2, Layers, BarChart2 } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
@@ -14,11 +14,11 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
 export const NAV_TABS = [
-  { emoji: '🏠', label: '홈',        href: '/dashboard',          exact: true  },
-  { emoji: '💡', label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
-  { emoji: '🏢', label: '기업동향',   href: '/dashboard/entities', exact: false },
-  { emoji: '📑', label: '콘텐츠',     href: '/dashboard/contents', exact: false },
-  { emoji: '📊', label: '전략보고서', href: '/dashboard/reports',  exact: false },
+  { Icon: Home,       label: '홈',        href: '/dashboard',          exact: true  },
+  { Icon: Brain,      label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
+  { Icon: Building2,  label: '기업동향',   href: '/dashboard/entities', exact: false },
+  { Icon: Layers,     label: '콘텐츠',     href: '/dashboard/contents', exact: false },
+  { Icon: BarChart2,  label: '전략보고서', href: '/dashboard/reports',  exact: false },
 ]
 
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
@@ -321,14 +321,14 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors ${
+              className={`relative flex flex-1 flex-col items-center justify-center gap-1 py-3 text-sm font-medium transition-colors ${
                 active
                   ? 'text-brand-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-brand-600'
                   : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
               }`}
             >
-              <span className="text-xl leading-none">{tab.emoji}</span>
-              <span className="mt-0.5">{tab.label}</span>
+              <tab.Icon className="h-5 w-5" strokeWidth={1.75} />
+              <span>{tab.label}</span>
             </Link>
           )
         })}

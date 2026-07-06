@@ -44,6 +44,7 @@ interface Props {
   entities: EntitySummary[]
   allEntities: EntityItem[]
   totalByType: Record<string, number>
+  showLensSwitcher?: boolean
 }
 
 // ─── 렌즈 배지 ────────────────────────────────────────────────────────────────
@@ -56,7 +57,13 @@ function EntityLensBadge({ label }: { label: string }) {
   )
 }
 
-export default function EntitiesPageClient({ initialCenter, entities, allEntities, totalByType }: Props) {
+export default function EntitiesPageClient({
+  initialCenter,
+  entities,
+  allEntities,
+  totalByType,
+  showLensSwitcher = true,
+}: Props) {
   const [view, setView] = useState<ViewMode>('graph')
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
@@ -132,9 +139,11 @@ export default function EntitiesPageClient({ initialCenter, entities, allEntitie
       </div>
 
       {/* 보기 스위처 */}
-      <div className="mb-4">
-        <LensSwitcher />
-      </div>
+      {showLensSwitcher && (
+        <div className="mb-4">
+          <LensSwitcher />
+        </div>
+      )}
 
       {/* 보기 결과 요약 (list 뷰에서 필터 활성 시) */}
       {view === 'list' && activeLens !== 'all' && lensedEntities.length > 0 && (

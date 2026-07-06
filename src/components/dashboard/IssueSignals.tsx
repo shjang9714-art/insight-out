@@ -28,34 +28,35 @@ export default async function IssueSignals() {
   if (top.length === 0) return null
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      {/* 헤더 */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-orange-500" />
-          <h2 className="text-sm font-semibold text-foreground">급상승 이슈</h2>
-          <span className="text-[11px] text-muted-foreground">이번 주</span>
-        </div>
-        <Link
-          href="/dashboard/issues"
-          className="text-[11px] text-brand-600 hover:underline"
-        >
-          전체 보기 →
-        </Link>
+    // 실검 스트립 — 카드가 아닌 한 줄 바. 제목만 휘리릭 롤링.
+    <div className="flex items-center gap-3 rounded-xl bg-muted/50 px-4 py-2 ring-1 ring-border/60">
+      <div className="flex shrink-0 items-center gap-1.5">
+        <TrendingUp className="h-4 w-4 text-orange-500" />
+        <span className="whitespace-nowrap text-xs font-semibold text-foreground">실시간 급상승</span>
       </div>
 
-      {/* 이슈 목록 — 실검 스타일 순번 롤링 (클라이언트) */}
-      <IssueRankTicker
-        issues={top.map(card => ({
-          id: card.id,
-          title: card.title,
-          recentCount: card.recentCount,
-          changePct: card.changePct,
-          changeFlag: card.changeFlag,
-          sentimentPos: card.sentimentPos,
-          sentimentNeg: card.sentimentNeg,
-        }))}
-      />
+      {/* 한 줄 롤링(클라이언트) */}
+      <div className="min-w-0 flex-1">
+        <IssueRankTicker
+          compact
+          issues={top.map(card => ({
+            id: card.id,
+            title: card.title,
+            recentCount: card.recentCount,
+            changePct: card.changePct,
+            changeFlag: card.changeFlag,
+            sentimentPos: card.sentimentPos,
+            sentimentNeg: card.sentimentNeg,
+          }))}
+        />
+      </div>
+
+      <Link
+        href="/dashboard/issues"
+        className="shrink-0 whitespace-nowrap text-[11px] text-brand-600 hover:underline"
+      >
+        전체 →
+      </Link>
     </div>
   )
 }

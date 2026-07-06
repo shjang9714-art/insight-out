@@ -8,6 +8,7 @@ import { type ContentCategory } from '@/lib/types'
 import { Search, Sparkles } from 'lucide-react'
 import ContentRow from '@/components/dashboard/ContentRow'
 import { tagsOf } from '@/lib/contents/excerpt'
+import { normalizeCompany } from '@/lib/search/company-alias'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -95,7 +96,9 @@ function SearchContent() {
 
       // ILIKE 멀티컬럼 OR 검색 (title·summary_ko·body_original 커버)
       // FTS(search_vector)는 body_original·matched_keywords 미포함으로 단어 누락 발생 → ILIKE 대체
-      const escapedQ = q.replace(/[%_]/g, '\\$&')
+      // 회사 별칭 정규화: 'lguplus' → 'LG유플러스' (영문 슬러그가 한글 기사에 안 걸리는 문제 보정)
+      const searchTerm = normalizeCompany(q) ?? q
+      const escapedQ = searchTerm.replace(/[%_]/g, '\\$&')
       const ilikePat = `%${escapedQ}%`
       const orFilter = [
         `title.ilike.${ilikePat}`,
@@ -248,23 +251,36 @@ function SearchContent() {
 
           {/* 관련 기사 — 답변 근거 출처 */}
           {ragState.data.sources.length > 0 && (
-            <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4 space-y-3">
-              <div className="flex items-center gap-2">
+            <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4">
+              <div className="mb-1 flex items-center gap-2">
                 <Search className="h-4 w-4 shrink-0 text-brand-600" />
                 <span className="text-sm font-semibold text-foreground">관련 기사</span>
                 <span className="text-xs text-muted-foreground">답변의 근거예요. 관련 기사를 확인하세요.</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <ul className="divide-y divide-border">
                 {ragState.data.sources.map(s => (
-                  <Link
-                    key={s.content_id}
-                    href={`/dashboard/contents/${s.content_id}`}
-                    className="inline-flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 transition-colors line-clamp-1 max-w-[240px]"
-                  >
-                    {s.title}
-                  </Link>
+                  <li key={s.content_id}>
+                    <Link
+                      href={`/dashboard/contents/${s.content_id}`}
+                      className="group -mx-2 flex items-start gap-2.5 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/50"
+                    >
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-600" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
+                          {s.title}
+                        </p>
+                        {(s.source || s.published_at) && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {[s.source, s.published_at?.slice(0, 10).replace(/-/g, '.')]
+                              .filter(Boolean)
+                              .join('  ·  ')}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
         </>

@@ -71,11 +71,13 @@ export async function answerQuestion(
     : []
   const citations = rawCitations.filter(id => validIds.has(id))
 
-  // 5. sources: citations에 해당하는 RagDoc (없으면 retrieved 상위 3건)
+  // 5. sources: citations에 해당하는 RagDoc만.
+  //    citations가 없으면(=근거 기사를 못 찾은 경우) 무관한 기사를 관련기사로
+  //    노출하지 않도록 빈 배열 반환.
   const citationSet = new Set(citations)
   const sources = citations.length > 0
     ? docs.filter(d => citationSet.has(d.content_id))
-    : docs.slice(0, 3)
+    : []
 
   return { answer, citations, sources }
 }

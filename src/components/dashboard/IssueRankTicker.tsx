@@ -15,13 +15,16 @@ export interface TickerIssue {
 
 interface IssueRankTickerProps {
   issues: TickerIssue[]
-  /** 한 번에 보이는 행 수 */
+  /** 한 번에 보이는 행 수 (compact 기본 1, 일반 기본 5) */
   visibleRows?: number
   /** 한 행이 지나가는 시간(ms) — 스크롤 속도 */
   msPerRow?: number
+  /** 한 줄짜리 실검 스트립 모드(제목만 휘리릭) */
+  compact?: boolean
 }
 
 const ROW_H = 44 // px, h-11
+const ROW_H_COMPACT = 36 // px, h-9
 
 function ChangeBadge({ issue }: { issue: TickerIssue }) {
   if (issue.changeFlag === 'worsening') {
@@ -91,11 +94,50 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
   )
 }
 
+// 실검 스트립용 한 줄 로우 — 순위 + 제목만, 작은 변화 표식. 카드/배지 없이 담백하게.
+function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
+  return (
+    <Link
+      href={`/dashboard/issues/${issue.id}`}
+      className="group flex h-9 items-center gap-2.5"
+    >
+      <span
+        className={`shrink-0 w-4 text-center text-sm font-bold tabular-nums ${
+          rank <= 3 ? 'text-brand-600' : 'text-muted-foreground'
+        }`}
+      >
+        {rank}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors group-hover:text-brand-600">
+        {issue.title}
+      </span>
+      {issue.changeFlag && (
+        <span
+          className={`shrink-0 text-[11px] font-semibold ${
+            issue.changeFlag === 'surge' ? 'text-orange-500' : 'text-amber-600'
+          }`}
+        >
+          {issue.changeFlag === 'surge'
+            ? issue.changePct === null
+              ? '신규'
+              : '▲ 급상승'
+            : '⚠ 악화'}
+        </span>
+      )}
+    </Link>
+  )
+}
+
 export default function IssueRankTicker({
   issues,
-  visibleRows = 5,
+  visibleRows,
   msPerRow = 2200,
+  compact = false,
 }: IssueRankTickerProps) {
+  const rowH = compact ? ROW_H_COMPACT : ROW_H
+  const rows = visibleRows ?? (compact ? 1 : 5)
+  const RowComp = compact ? CompactRow : Row
+
   const trackRef = useRef<HTMLDivElement>(null)
   const animRef = useRef<Animation | null>(null)
 
@@ -108,7 +150,7 @@ export default function IssueRankTicker({
     mounted &&
     typeof window !== 'undefined' &&
     !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  const scroll = mounted && !reduceMotion && issues.length > visibleRows
+  const scroll = mounted && !reduceMotion && issues.length > rows
 
   // Web Animations API로 무한 세로 스크롤 (리스트 2벌 복제 → -50% 이동으로 이음매 없음)
   useEffect(() => {
@@ -126,12 +168,12 @@ export default function IssueRankTicker({
   const pause = () => animRef.current?.pause()
   const resume = () => animRef.current?.play()
 
-  // 폴백: 스크롤 불필요 → 정적 리스트
+  // 폴백: 스크롤 불필요 → 정적 리스트(compact은 1건만)
   if (!scroll) {
     return (
-      <div className="flex flex-col gap-1">
-        {issues.map((issue, i) => (
-          <Row key={issue.id} issue={issue} rank={i + 1} />
+      <div className={compact ? 'flex flex-col' : 'flex flex-col gap-1'}>
+        {(compact ? issues.slice(0, 1) : issues).map((issue, i) => (
+          <RowComp key={issue.id} issue={issue} rank={i + 1} />
         ))}
       </div>
     )
@@ -140,7 +182,7 @@ export default function IssueRankTicker({
   return (
     <div
       className="relative overflow-hidden"
-      style={{ height: visibleRows * ROW_H }}
+      style={{ height: rows * rowH }}
       onMouseEnter={pause}
       onMouseLeave={resume}
       onTouchStart={pause}
@@ -148,12 +190,16 @@ export default function IssueRankTicker({
     >
       <div ref={trackRef} className="flex flex-col">
         {[...issues, ...issues].map((issue, i) => (
-          <Row key={`${issue.id}-${i}`} issue={issue} rank={(i % issues.length) + 1} />
+          <RowComp key={`${issue.id}-${i}`} issue={issue} rank={(i % issues.length) + 1} />
         ))}
       </div>
-      {/* 위/아래 페이드 마스크 */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-gradient-to-b from-card to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-card to-transparent" />
+      {/* 위/아래 페이드 마스크(일반 모드만) */}
+      {!compact && (
+        <>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-gradient-to-b from-card to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-card to-transparent" />
+        </>
+      )}
     </div>
   )
 }

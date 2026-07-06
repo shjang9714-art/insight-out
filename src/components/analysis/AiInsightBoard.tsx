@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { TrendingUp, FileText } from 'lucide-react'
+import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
+import type { EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
 import InsightBriefCard from '@/components/analysis/InsightBriefCard'
@@ -11,6 +12,8 @@ import InsightCardsSectionClient, {
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
+import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
+import ScopeFilter from '@/components/analysis/ScopeFilter'
 import type { IssueCard } from '@/lib/issues/activity'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
@@ -31,8 +34,10 @@ export interface TopicTrend {
   changePct: number | null
 }
 
+export type AiInsightViewId = 'brief' | 'headline' | 'trending' | 'issues' | 'graph'
+
 export interface AiInsightBoardProps {
-  initialView: 'briefing' | 'issues'
+  initialView: AiInsightViewId
   brief: InsightBrief
   insightGroups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
@@ -40,28 +45,28 @@ export interface AiInsightBoardProps {
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
   bucketByTopic: Record<string, TagBucket>
+  entities: EntitySummary[]
+  allEntities: {
+    id: string
+    canonical_name: string
+    entity_type: EntityType
+    is_competitor: boolean
+    mention_count: number
+    description: string | null
+  }[]
+  initialCenter: EntitySummary | null
+  totalByType: Record<string, number>
 }
 
-type ViewId = 'briefing' | 'issues'
+// ─── 하위 카테고리 탭 ──────────────────────────────────────────────────────────
 
-const TABS: { id: ViewId; label: string }[] = [
-  { id: 'briefing', label: '브리핑' },
-  { id: 'issues',   label: '이슈'   },
+const TABS: { id: AiInsightViewId; label: string }[] = [
+  { id: 'brief',    label: '브리핑 요약' },
+  { id: 'headline', label: '헤드라인 분석' },
+  { id: 'trending', label: '뜨는 토픽' },
+  { id: 'issues',   label: '이슈 타임라인' },
+  { id: 'graph',    label: '관계지도' },
 ]
-
-// ─── 헬퍼 ──────────────────────────────────────────────────────────────────────
-
-function SectionHeader({ icon, title, desc }: { icon: ReactNode; title: string; desc: string }) {
-  return (
-    <div className="mb-4">
-      <div className="flex items-center gap-2 mb-0.5">
-        {icon}
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
-      <p className="text-xs text-muted-foreground">{desc}</p>
-    </div>
-  )
-}
 
 // ─── 보드 ──────────────────────────────────────────────────────────────────────
 
@@ -74,10 +79,14 @@ export default function AiInsightBoard({
   kwStrip,
   issueCards,
   bucketByTopic,
+  entities,
+  allEntities,
+  initialCenter,
+  totalByType,
 }: AiInsightBoardProps) {
-  const [view, setView] = useState<ViewId>(initialView)
+  const [view, setView] = useState<AiInsightViewId>(initialView)
 
-  function handleTabChange(v: ViewId) {
+  function handleTabChange(v: AiInsightViewId) {
     setView(v)
     // 풀 네비게이션 없이 URL만 갱신 (공유·새로고침 대비)
     history.replaceState(null, '', `?view=${v}`)
@@ -85,18 +94,18 @@ export default function AiInsightBoard({
 
   return (
     <div className="space-y-6">
-      {/* 탭 */}
-      <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+      {/* 하위 카테고리 탭 */}
+      <div className="flex gap-2">
         {TABS.map(t => (
           <button
             key={t.id}
             type="button"
             onClick={() => handleTabChange(t.id)}
             className={cn(
-              'rounded-md px-3 py-1 text-[13px] font-medium transition-colors',
+              'flex-1 rounded-xl border px-3 py-3.5 text-center text-base font-semibold transition-colors',
               view === t.id
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'border-brand-600 bg-brand-600/10 text-brand-600'
+                : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
             )}
           >
             {t.label}
@@ -104,97 +113,109 @@ export default function AiInsightBoard({
         ))}
       </div>
 
-      {/* 브리핑 탭 */}
-      {view === 'briefing' && (
-        <div className="space-y-10">
-          <InsightBriefCard brief={brief} />
+      {/* 범위 필터 (전체/내 관심사) */}
+      <div className="flex justify-end">
+        <ScopeFilter />
+      </div>
 
-          <section>
-            <SectionHeader
-              icon={<FileText className="h-4 w-4 text-brand-600" />}
-              title="AI 인사이트"
-              desc="이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점"
-            />
-            <InsightCardsSectionClient
-              groups={insightGroups}
-              contentMap={contentMap}
-              bucketByTopic={bucketByTopic}
-            />
-          </section>
+      {/* 브리핑 요약 */}
+      {view === 'brief' && <InsightBriefCard brief={brief} />}
 
-          <section>
-            <SectionHeader
-              icon={<TrendingUp className="h-4 w-4 text-brand-600" />}
-              title="이번 주 뜨는 토픽"
-              desc="이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비"
-            />
-            {trendingTopics.length === 0 ? (
-              <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
-            ) : (
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-                {trendingTopics.map((t) => (
-                  <Link
-                    key={t.group}
-                    href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
-                    className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
-                  >
-                    <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
-                    <div className="flex items-center gap-2">
-                      {t.changePct === null ? (
-                        <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
-                          NEW
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-semibold text-positive">
-                          ▲{t.changePct}%
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">{t.cur}건</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {kwStrip.length > 0 && (
-              <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
-                <span className="shrink-0 text-[11px] text-muted-foreground/60">키워드</span>
-                {kwStrip.map((kw) => (
-                  <Link
-                    key={kw.name}
-                    href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
-                    className={cn(
-                      'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium transition-colors hover:opacity-80',
-                      BUCKET_CHIP_CLS[kw.bucket]
-                    )}
-                  >
-                    {kw.direction && (
-                      <span className={cn(
-                        'font-semibold leading-none',
-                        kw.direction === '▲' ? 'text-positive' : 'text-negative'
-                      )}>
-                        {kw.direction}
-                      </span>
-                    )}
-                    {kw.name}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
+      {/* 헤드라인 분석 */}
+      {view === 'headline' && (
+        <section>
+          <p className="mb-4 text-xs text-muted-foreground">
+            이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점
+          </p>
+          <InsightCardsSectionClient
+            groups={insightGroups}
+            contentMap={contentMap}
+            bucketByTopic={bucketByTopic}
+          />
+        </section>
       )}
 
-      {/* 이슈 탭 */}
+      {/* 뜨는 토픽 */}
+      {view === 'trending' && (
+        <section>
+          <p className="mb-4 text-xs text-muted-foreground">
+            이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비
+          </p>
+          {trendingTopics.length === 0 ? (
+            <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+              {trendingTopics.map((t) => (
+                <Link
+                  key={t.group}
+                  href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
+                  className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
+                >
+                  <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
+                  <div className="flex items-center gap-2">
+                    {t.changePct === null ? (
+                      <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">
+                        NEW
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-positive">
+                        ▲{t.changePct}%
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">{t.cur}건</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {kwStrip.length > 0 && (
+            <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <span className="shrink-0 text-[11px] text-muted-foreground/60">키워드</span>
+              {kwStrip.map((kw) => (
+                <Link
+                  key={kw.name}
+                  href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
+                  className={cn(
+                    'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium transition-colors hover:opacity-80',
+                    BUCKET_CHIP_CLS[kw.bucket]
+                  )}
+                >
+                  {kw.direction && (
+                    <span className={cn(
+                      'font-semibold leading-none',
+                      kw.direction === '▲' ? 'text-positive' : 'text-negative'
+                    )}>
+                      {kw.direction}
+                    </span>
+                  )}
+                  {kw.name}
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 이슈 타임라인 */}
       {view === 'issues' && (
         <section>
-          <SectionHeader
-            icon={<TrendingUp className="h-4 w-4 text-risk" />}
-            title="시장 주요 이슈"
-            desc="추적 이슈의 변화 — 건수·논조 변동을 확인합니다"
-          />
+          <p className="mb-4 text-xs text-muted-foreground">
+            추적 이슈의 변화 — 건수·논조 변동을 확인합니다
+          </p>
           <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
         </section>
+      )}
+
+      {/* 관계지도 */}
+      {view === 'graph' && (
+        <EntitiesPageClient
+          initialCenter={initialCenter}
+          entities={entities}
+          allEntities={allEntities}
+          totalByType={totalByType}
+          showLensSwitcher={false}
+        />
       )}
     </div>
   )
