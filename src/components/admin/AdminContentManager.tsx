@@ -172,14 +172,6 @@ export default function AdminContentManager() {
   const [isSaving,    setIsSaving]    = useState(false)
   const [editError,   setEditError]   = useState<string | null>(null)
 
-  // 수집 기사 비우기
-  const [isPurging,   setIsPurging]   = useState(false)
-  const [purgeResult, setPurgeResult] = useState<string | null>(null)
-
-  // 유튜브 비우기
-  const [isYtPurging,   setIsYtPurging]   = useState(false)
-  const [ytPurgeResult, setYtPurgeResult] = useState<string | null>(null)
-
   // 풀본문 채우기
   const [isEnriching,   setIsEnriching]   = useState(false)
   const [enrichResult,  setEnrichResult]  = useState<string | null>(null)
@@ -473,68 +465,6 @@ export default function AdminContentManager() {
     setIsBulkWorking(false)
   }
 
-  const handlePurge = async () => {
-    setIsPurging(true)
-    setError(null)
-    setPurgeResult(null)
-    try {
-      // 1단계: 건수 조회
-      const countRes = await fetch('/api/admin/contents/purge')
-      if (!countRes.ok) throw new Error((await countRes.json()).error ?? '건수 조회 실패')
-      const { count } = await countRes.json() as { count: number }
-
-      // 2단계: 확인 다이얼로그
-      const confirmed = window.confirm(
-        `크롤링 기사 ${count.toLocaleString()}건을 삭제합니다.\n업로드한 리포트·AI보고서·유튜브는 보존됩니다.\n\n되돌릴 수 없습니다. 계속하시겠습니까?`
-      )
-      if (!confirmed) { setIsPurging(false); return }
-
-      // 실행
-      const delRes = await fetch('/api/admin/contents/purge', { method: 'POST' })
-      if (!delRes.ok) throw new Error((await delRes.json()).error ?? '삭제 실패')
-      const { deleted } = await delRes.json() as { deleted: number }
-
-      setPurgeResult(`${deleted.toLocaleString()}건 삭제 완료`)
-      setPage(1)
-      // pending 카운트 및 목록 새로고침
-      supabase
-        .from('contents')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending')
-        .then(({ count: c }) => setPendingCount(c ?? 0))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '비우기 중 오류가 발생했습니다.')
-    } finally {
-      setIsPurging(false)
-    }
-  }
-
-  const handleYoutubePurge = async () => {
-    setIsYtPurging(true)
-    setYtPurgeResult(null)
-    setError(null)
-    try {
-      const countRes = await fetch('/api/admin/youtube/purge')
-      if (!countRes.ok) throw new Error((await countRes.json()).error ?? '건수 조회 실패')
-      const { count } = await countRes.json() as { count: number }
-
-      const confirmed = window.confirm(
-        `유튜브 영상 ${count.toLocaleString()}건을 삭제합니다.\n\n되돌릴 수 없습니다. 계속하시겠습니까?`
-      )
-      if (!confirmed) { setIsYtPurging(false); return }
-
-      const delRes = await fetch('/api/admin/youtube/purge', { method: 'POST' })
-      if (!delRes.ok) throw new Error((await delRes.json()).error ?? '삭제 실패')
-      const { deleted } = await delRes.json() as { deleted: number }
-
-      setYtPurgeResult(`유튜브 ${deleted.toLocaleString()}건 삭제 완료`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '유튜브 비우기 중 오류가 발생했습니다.')
-    } finally {
-      setIsYtPurging(false)
-    }
-  }
-
   const handleEnrich = async () => {
     stopRef.current = false
     setIsEnriching(true)
@@ -735,16 +665,6 @@ export default function AdminContentManager() {
               ✅ 검토 대기 없음
             </span>
           )}
-          {purgeResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
-              ✅ {purgeResult}
-            </span>
-          )}
-          {ytPurgeResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
-              ✅ {ytPurgeResult}
-            </span>
-          )}
           {enrichResult && (
             <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
               {isEnriching ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {enrichResult}
@@ -763,32 +683,6 @@ export default function AdminContentManager() {
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={isPurging}
-              onClick={handlePurge}
-              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
-            >
-              {isPurging
-                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
-                : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />수집 기사 비우기</>
-              }
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={isYtPurging}
-              onClick={handleYoutubePurge}
-              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
-            >
-              {isYtPurging
-                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
-                : <><Trash2 className="mr-1.5 h-3.5 w-3.5" />유튜브 비우기</>
-              }
-            </Button>
             <Select
               value={backfillRange}
               onValueChange={(v) => setBackfillRange(v as 'all' | '7d' | '30d')}
