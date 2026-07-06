@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 
 const OPTS: { key: LensKey; label: string }[] = [
   { key: 'all',   label: '전체' },
-  { key: 'mine',  label: '내 업무' },
   { key: 'watch', label: '내 관심사' },
 ]
 

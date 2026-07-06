@@ -7,8 +7,6 @@ import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { getKstTodayStartIso } from '@/lib/date'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
-import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
-import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import EntityTabs from '@/components/entities/EntityTabs'
 import InsightCardsSectionClient, {
   type InsightGroup,
@@ -26,7 +24,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ view?: string }>
 
-const VALID_VIEWS = ['watchlist', 'competitor', 'briefing', 'graph'] as const
+const VALID_VIEWS = ['watchlist', 'competitor', 'briefing'] as const
 type ViewId = typeof VALID_VIEWS[number]
 
 const WATCHLIST_LIMIT = 20
@@ -265,42 +263,6 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
     }
   }
 
-  // ─── 관계지도 탭 ─────────────────────────────────────────────────────────
-  let entities: EntitySummary[] = []
-  let allEntities: {
-    id: string
-    canonical_name: string
-    entity_type: EntityType
-    is_competitor: boolean
-    mention_count: number
-    description: string | null
-  }[] = []
-  let initialCenter: EntitySummary | null = null
-  let totalByType: Record<string, number> = {}
-
-  if (view === 'graph') {
-    const [entityRes, allEntityRes] = await Promise.all([
-      supabase
-        .from('entities')
-        .select('id, canonical_name, entity_type, is_competitor, mention_count')
-        .order('mention_count', { ascending: false })
-        .limit(500),
-      supabase
-        .from('entities')
-        .select('id, canonical_name, entity_type, is_competitor, mention_count, description')
-        .order('mention_count', { ascending: false })
-        .limit(500),
-    ])
-
-    entities = (entityRes.data ?? []) as EntitySummary[]
-    allEntities = (allEntityRes.data ?? []) as typeof allEntities
-    initialCenter = entities.length > 0 ? entities[0] : null
-    totalByType = { 전체: allEntities.length }
-    for (const type of Object.keys(ENTITY_TYPE_LABEL) as EntityType[]) {
-      totalByType[type] = allEntities.filter((e) => e.entity_type === type).length
-    }
-  }
-
   return (
     <PageContainer>
       <div className="mb-6">
@@ -458,16 +420,6 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
             </div>
           )}
         </div>
-      )}
-
-      {/* 관계지도 탭 */}
-      {view === 'graph' && (
-        <EntitiesPageClient
-          initialCenter={initialCenter}
-          entities={entities}
-          allEntities={allEntities}
-          totalByType={totalByType}
-        />
       )}
     </PageContainer>
   )

@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
+import type { EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
 import InsightBriefCard from '@/components/analysis/InsightBriefCard'
@@ -10,6 +12,8 @@ import InsightCardsSectionClient, {
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
+import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
+import ScopeFilter from '@/components/analysis/ScopeFilter'
 import type { IssueCard } from '@/lib/issues/activity'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
@@ -30,7 +34,7 @@ export interface TopicTrend {
   changePct: number | null
 }
 
-export type AiInsightViewId = 'brief' | 'headline' | 'trending' | 'issues'
+export type AiInsightViewId = 'brief' | 'headline' | 'trending' | 'issues' | 'graph'
 
 export interface AiInsightBoardProps {
   initialView: AiInsightViewId
@@ -41,6 +45,17 @@ export interface AiInsightBoardProps {
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
   bucketByTopic: Record<string, TagBucket>
+  entities: EntitySummary[]
+  allEntities: {
+    id: string
+    canonical_name: string
+    entity_type: EntityType
+    is_competitor: boolean
+    mention_count: number
+    description: string | null
+  }[]
+  initialCenter: EntitySummary | null
+  totalByType: Record<string, number>
 }
 
 // ─── 하위 카테고리 탭 ──────────────────────────────────────────────────────────
@@ -50,6 +65,7 @@ const TABS: { id: AiInsightViewId; label: string }[] = [
   { id: 'headline', label: '헤드라인 분석' },
   { id: 'trending', label: '뜨는 토픽' },
   { id: 'issues',   label: '이슈 타임라인' },
+  { id: 'graph',    label: '관계지도' },
 ]
 
 // ─── 보드 ──────────────────────────────────────────────────────────────────────
@@ -63,6 +79,10 @@ export default function AiInsightBoard({
   kwStrip,
   issueCards,
   bucketByTopic,
+  entities,
+  allEntities,
+  initialCenter,
+  totalByType,
 }: AiInsightBoardProps) {
   const [view, setView] = useState<AiInsightViewId>(initialView)
 
@@ -91,6 +111,11 @@ export default function AiInsightBoard({
             {t.label}
           </button>
         ))}
+      </div>
+
+      {/* 범위 필터 (전체/내 관심사) */}
+      <div className="flex justify-end">
+        <ScopeFilter />
       </div>
 
       {/* 브리핑 요약 */}
@@ -180,6 +205,17 @@ export default function AiInsightBoard({
           </p>
           <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
         </section>
+      )}
+
+      {/* 관계지도 */}
+      {view === 'graph' && (
+        <EntitiesPageClient
+          initialCenter={initialCenter}
+          entities={entities}
+          allEntities={allEntities}
+          totalByType={totalByType}
+          showLensSwitcher={false}
+        />
       )}
     </div>
   )

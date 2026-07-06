@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { getKstTodayStartIso } from '@/lib/date'
-import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
+import { ENTITY_TYPE_LABEL, type EntityType, type InsightCard, type InsightCardCitation, type WatchlistItem } from '@/lib/types'
+import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { tagTypeToBucket, type KeywordItem } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
@@ -69,7 +70,7 @@ function computeTrendingTopics(
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
-export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief' | 'headline' | 'trending' | 'issues' }) {
+export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief' | 'headline' | 'trending' | 'issues' | 'graph' }) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,7 +94,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -122,10 +123,37 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       .eq('is_active', true)
       .limit(200),
     fetchIssueActivity(supabase),
+    supabase
+      .from('entities')
+      .select('id, canonical_name, entity_type, is_competitor, mention_count')
+      .order('mention_count', { ascending: false })
+      .limit(500),
+    supabase
+      .from('entities')
+      .select('id, canonical_name, entity_type, is_competitor, mention_count, description')
+      .order('mention_count', { ascending: false })
+      .limit(500),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
   const watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
+
+  // ─── 관계지도 데이터 ────────────────────────────────────────────────────────
+  type AllEntityRow = {
+    id: string
+    canonical_name: string
+    entity_type: EntityType
+    is_competitor: boolean
+    mention_count: number
+    description: string | null
+  }
+  const entities = (entityRes.data ?? []) as EntitySummary[]
+  const allEntities = (allEntityRes.data ?? []) as AllEntityRow[]
+  const initialCenter = entities.length > 0 ? entities[0] : null
+  const totalByType: Record<string, number> = { 전체: allEntities.length }
+  for (const type of Object.keys(ENTITY_TYPE_LABEL) as EntityType[]) {
+    totalByType[type] = allEntities.filter((e) => e.entity_type === type).length
+  }
 
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
   const trendingTopics = computeTrendingTopics(
@@ -294,6 +322,10 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       kwStrip={kwStrip}
       issueCards={issueCards}
       bucketByTopic={bucketByTopic}
+      entities={entities}
+      allEntities={allEntities}
+      initialCenter={initialCenter}
+      totalByType={totalByType}
     />
   )
 }
