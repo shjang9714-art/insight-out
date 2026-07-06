@@ -1,18 +1,54 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_BOTTOM } from '@/lib/admin/nav'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import { AdminThemeToggle } from '@/components/admin/AdminThemeToggle'
 
+const SYSTEM_OPEN_STORAGE_KEY = 'io:admin-system-open'
+const SYSTEM_PATH_PREFIXES = ['/admin/requests', '/admin/users', '/admin/settings']
+
+function isSystemPath(pathname: string) {
+  return SYSTEM_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
+}
+
 export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [query, setQuery] = useState('')
+
+  // 199 — 하단 "시스템" 그룹 접이식. 기본 접힘, 시스템 하위 페이지면 자동 펼침.
+  const [systemOpen, setSystemOpen] = useState(() => isSystemPath(pathname))
+
+  useEffect(() => {
+    if (isSystemPath(pathname)) startTransition(() => setSystemOpen(true))
+  }, [pathname])
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SYSTEM_OPEN_STORAGE_KEY)
+      if (stored === 'true' && !isSystemPath(pathname)) startTransition(() => setSystemOpen(true))
+    } catch {
+      // localStorage 접근 실패 — 기본값 유지
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function toggleSystemOpen() {
+    setSystemOpen((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(SYSTEM_OPEN_STORAGE_KEY, String(next))
+      } catch {
+        // 저장 실패는 무시 — 이번 세션 내 토글만 반영
+      }
+      return next
+    })
+  }
 
   // 187: 미완료(대기+진행) 운영 요청 개수 배지 (in-admin 알림)
   const [openRequestCount, setOpenRequestCount] = useState(0)
@@ -173,41 +209,72 @@ export function AdminSidebar() {
         )}
       </nav>
 
-      {/* 하단 시스템 그룹 */}
-      <div className="px-2 pb-3 border-t border-border pt-3">
-        <p className="admin-sidebar-group mb-1 px-2 text-muted-foreground/80">
-          {ADMIN_NAV_BOTTOM.group}
-        </p>
-        <ul className="space-y-0.5">
-          {ADMIN_NAV_BOTTOM.items.map((item) => {
-            const Icon = item.icon
-            const active = isActive(item.href)
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
-                    active
-                      ? 'bg-accent text-brand-600 font-medium'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  {item.href === '/admin/requests' && openRequestCount > 0 && (
-                    <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
-                      {openRequestCount}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="mt-1 border-t border-border pt-1">
-          <AdminThemeToggle />
-        </div>
+      {/* 하단 시스템 그룹 — 접이식(199), shrink-0 로 본메뉴 가림 방지 */}
+      <div className="shrink-0 px-2 pb-3 border-t border-border pt-3">
+        <button
+          type="button"
+          onClick={toggleSystemOpen}
+          aria-expanded={systemOpen}
+          className="admin-sidebar-group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <span className="flex-1 text-left">{ADMIN_NAV_BOTTOM.group}</span>
+          {!systemOpen && openRequestCount > 0 && (
+            <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
+              {openRequestCount}
+            </span>
+          )}
+          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', systemOpen && 'rotate-180')} />
+        </button>
+
+        {systemOpen && (
+          <>
+            <ul className="mt-1 space-y-0.5">
+              {ADMIN_NAV_BOTTOM.items.map((item) => {
+                const Icon = item.icon
+                if (item.disabled) {
+                  return (
+                    <li key={item.href}>
+                      <div className="admin-sidebar-menu flex min-h-11 cursor-default items-center gap-3 rounded-md px-3 py-2 text-muted-foreground opacity-60">
+                        <Icon className="h-5 w-5 shrink-0" />
+                        <span className="flex-1">{item.label}</span>
+                        {item.badge && (
+                          <span className="admin-caption rounded px-1.5 py-0.5 font-medium bg-muted text-muted-foreground">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                }
+                const active = isActive(item.href)
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
+                        active
+                          ? 'bg-accent text-brand-600 font-medium'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      )}
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                      <span className="flex-1">{item.label}</span>
+                      {item.href === '/admin/requests' && openRequestCount > 0 && (
+                        <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
+                          {openRequestCount}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="mt-1 border-t border-border pt-1">
+              <AdminThemeToggle />
+            </div>
+          </>
+        )}
       </div>
     </aside>
   )

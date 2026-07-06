@@ -17,6 +17,7 @@ import {
   Radar,
   ClipboardList,
   Ban,
+  Settings,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -175,6 +176,14 @@ export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
       label: '사용자 관리',
       description: '사용자 목록과 권한 관리',
       icon: Users,
+    },
+    {
+      href: '/admin/settings',
+      label: '시스템 설정',
+      description: '테마·폰트·화면 구성(준비중)',
+      icon: Settings,
+      disabled: true,
+      badge: '준비중',
     },
   ],
 }
