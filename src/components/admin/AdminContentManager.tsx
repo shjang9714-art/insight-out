@@ -35,6 +35,7 @@ import {
 } from '@/lib/types'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
+import { useResizableColumns, type ResizableColumnDef } from '@/lib/admin/use-resizable-columns'
 
 interface AdminContentRow {
   id: string
@@ -71,6 +72,19 @@ const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 const BULK_SELECTION_HINT = '콘텐츠를 1개 이상 선택하면 실행할 수 있습니다.'
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
+
+// 200 — 콘텐츠 테이블 열 너비 드래그 리사이즈. 선택·관리 열은 고정(제외).
+const COLUMN_WIDTHS_STORAGE_KEY = 'io:admin-contents-col-widths'
+const SELECT_COL_WIDTH = 40
+const MANAGE_COL_WIDTH = 300
+const RESIZABLE_COLUMNS: ResizableColumnDef[] = [
+  { id: 'title',     defaultWidth: 320, minWidth: 200 },
+  { id: 'category',  defaultWidth: 96,  minWidth: 64 },
+  { id: 'source',    defaultWidth: 140, minWidth: 90 },
+  { id: 'status',    defaultWidth: 130, minWidth: 100 },
+  { id: 'body',      defaultWidth: 80,  minWidth: 64 },
+  { id: 'collected', defaultWidth: 150, minWidth: 110 },
+]
 
 // 소스 필터 특수값
 const SOURCE_ALL = 'all'
@@ -115,6 +129,10 @@ function toDateInput(value: string | null | undefined): string {
 export default function AdminContentManager() {
   const supabase = createClient()
   const searchParams = useSearchParams()
+
+  // 200 — 열 너비 드래그 리사이즈(제목·카테고리·소스·상태·본문·수집일)
+  const { widths: colWidths, startResize, resetWidths: resetColumnWidths } =
+    useResizableColumns(RESIZABLE_COLUMNS, COLUMN_WIDTHS_STORAGE_KEY)
 
   const [contents,       setContents]       = useState<AdminContentRow[]>([])
   const [isLoading,      setIsLoading]      = useState(true)
@@ -993,9 +1011,14 @@ export default function AdminContentManager() {
         )
       })()}
 
-      <p className="text-xs text-muted-foreground">
-        {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
+        </p>
+        <Button type="button" size="sm" variant="ghost" onClick={resetColumnWidths}>
+          열 너비 초기화
+        </Button>
+      </div>
 
       {!isLoading && contents.length === 0 ? (
         <AdminEmptyState
@@ -1004,7 +1027,20 @@ export default function AdminContentManager() {
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[960px] border-collapse text-sm">
+          <table
+            className="table-fixed border-collapse text-sm"
+            style={{
+              width: SELECT_COL_WIDTH + MANAGE_COL_WIDTH +
+                RESIZABLE_COLUMNS.reduce((sum, c) => sum + (colWidths[c.id] ?? c.defaultWidth), 0),
+            }}
+          >
+            <colgroup>
+              <col style={{ width: SELECT_COL_WIDTH }} />
+              {RESIZABLE_COLUMNS.map((c) => (
+                <col key={c.id} style={{ width: colWidths[c.id] ?? c.defaultWidth }} />
+              ))}
+              <col style={{ width: MANAGE_COL_WIDTH }} />
+            </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
                 <th className="px-3 py-3">
@@ -1017,12 +1053,60 @@ export default function AdminContentManager() {
                     aria-label="전체 선택"
                   />
                 </th>
-                <th className="min-w-[220px] px-4 py-3">제목</th>
-                <th className="px-4 py-3">카테고리</th>
-                <th className="px-4 py-3">소스</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3">본문</th>
-                <th className="px-4 py-3">수집일 (KST)</th>
+                <th className="relative px-4 py-3">
+                  <span className="block truncate">제목</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={(e) => startResize('title', e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
+                  />
+                </th>
+                <th className="relative px-4 py-3">
+                  <span className="block truncate">카테고리</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={(e) => startResize('category', e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
+                  />
+                </th>
+                <th className="relative px-4 py-3">
+                  <span className="block truncate">소스</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={(e) => startResize('source', e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
+                  />
+                </th>
+                <th className="relative px-4 py-3">
+                  <span className="block truncate">상태</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={(e) => startResize('status', e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
+                  />
+                </th>
+                <th className="relative px-4 py-3">
+                  <span className="block truncate">본문</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={(e) => startResize('body', e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
+                  />
+                </th>
+                <th className="relative px-4 py-3">
+                  <span className="block truncate">수집일 (KST)</span>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    onPointerDown={(e) => startResize('collected', e)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
+                  />
+                </th>
                 <th className="px-4 py-3 text-right">관리</th>
               </tr>
             </thead>
@@ -1047,7 +1131,7 @@ export default function AdminContentManager() {
                         aria-label={`${content.title} 선택`}
                       />
                     </td>
-                    <td className="max-w-md min-w-[220px] px-4 py-3 font-medium text-foreground">
+                    <td className="px-4 py-3 font-medium text-foreground">
                       <Link
                         href={`/admin/contents/${content.id}`}
                         className="line-clamp-2 block hover:text-brand-600 hover:underline"
@@ -1055,15 +1139,15 @@ export default function AdminContentManager() {
                         {content.title}
                       </Link>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    <td className="truncate px-4 py-3 text-muted-foreground" title={CONTENT_CATEGORY_LABEL[content.category]}>
                       {CONTENT_CATEGORY_LABEL[content.category]}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    <td className="truncate px-4 py-3 text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
                       {content.sources?.name ?? (
                         <span className="text-xs text-muted-foreground/60">Google News 검색</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="truncate px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} />
                         {content.status === 'pending' && content.review_reason && (
@@ -1076,7 +1160,7 @@ export default function AdminContentManager() {
                         )}
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="truncate px-4 py-3">
                       {(() => {
                         const bs = getBodyState(content)
                         const label = bs === 'none' ? '미시도'
@@ -1089,7 +1173,7 @@ export default function AdminContentManager() {
                         )
                       })()}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
+                    <td className="truncate px-4 py-3 text-xs text-muted-foreground">
                       {formatKst(content.collected_at)}
                     </td>
                     <td className="px-4 py-3">
