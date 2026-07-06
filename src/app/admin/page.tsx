@@ -254,7 +254,6 @@ export default async function AdminPage() {
       {/* ① 오늘 할 일 */}
       <AdminTodoBlock
         pending={pendingRes.count ?? 0}
-        todayCollected={todayRes.count ?? 0}
         todayFailed={todayFailed}
         sourcesToCheck={sourcesToCheck}
         pendingUsers={pendingUsers}
@@ -309,16 +308,6 @@ export default async function AdminPage() {
                 <span key={c}>{c} {catToday[c].toLocaleString()}</span>
               ))}
             </div>
-          </Link>
-
-          {/* 검토 대기 */}
-          <Link href="/admin/contents?status=pending" className={KPI_CARD}>
-            <p className="admin-card-title text-muted-foreground">검토 대기</p>
-            <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric-dashboard text-foreground">{(pendingRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
-            </p>
-            <p className="mt-1 admin-caption text-muted-foreground">검토가 필요한 콘텐츠</p>
           </Link>
 
           {/* 북마크된 콘텐츠 */}

@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   pending: number
-  todayCollected: number
   todayFailed: number
   sourcesToCheck: number
   /** 승인 대기 사용자 수. 승인 컬럼을 확인할 수 없으면 null → 타일 생략(graceful) */
@@ -22,7 +21,7 @@ interface Tile {
   urgent: boolean // true면 count > 0 일 때 risk 톤
 }
 
-export default function AdminTodoBlock({ pending, todayCollected, todayFailed, sourcesToCheck, pendingUsers }: Props) {
+export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck, pendingUsers }: Props) {
   const tiles: Tile[] = [
     {
       key: 'pending',
@@ -31,15 +30,6 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
       unit: '건',
       href: '/admin/contents?status=pending',
       description: '검토가 필요한 콘텐츠',
-      urgent: false,
-    },
-    {
-      key: 'today',
-      label: '오늘 수집',
-      count: todayCollected,
-      unit: '건',
-      href: '/admin/contents?from=today',
-      description: '오늘 새로 수집된 콘텐츠',
       urgent: false,
     },
     {
@@ -81,7 +71,7 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
         <p className="mb-3 text-xs text-muted-foreground">오늘은 급한 작업이 없습니다.</p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {tiles.map((tile) => {
           const isDone = tile.count === 0
           const isRisk = tile.urgent && !isDone
