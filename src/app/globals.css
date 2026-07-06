@@ -209,6 +209,9 @@
   .admin-scope .admin-card-title    { font-size: 15px; line-height: 22px; font-weight: 600; }
   .admin-scope .admin-metric        { font-size: 44px; line-height: 54px; font-weight: 700; }
   .admin-scope .admin-metric-unit   { font-size: 26px; line-height: 36px; font-weight: 600; }
+  /* 197 — 대시보드 KPI(오늘 할 일·운영현황 카드) 전용 축소 크기. admin-metric 은 다른 화면용으로 그대로 유지. */
+  .admin-scope .admin-metric-dashboard      { font-size: 32px; line-height: 40px; font-weight: 700; }
+  .admin-scope .admin-metric-unit-dashboard { font-size: 18px; line-height: 26px; font-weight: 600; }
   .admin-scope .admin-body          { font-size: 16px; line-height: 26px; font-weight: 400; }
   .admin-scope .admin-table-th      { font-size: 15px; line-height: 22px; font-weight: 600; }
   .admin-scope .admin-table-td      { font-size: 15px; line-height: 24px; font-weight: 400; }
@@ -222,12 +225,14 @@
 @media (max-width: 1439px) {
   .admin-scope .admin-page-title    { font-size: 28px; line-height: 36px; }
   .admin-scope .admin-metric        { font-size: 36px; line-height: 44px; }
+  .admin-scope .admin-metric-dashboard { font-size: 28px; line-height: 36px; }
   .admin-scope .admin-body          { font-size: 15px; line-height: 24px; }
 }
 
 @media (max-width: 1023px) {
   .admin-scope .admin-page-title    { font-size: 24px; line-height: 32px; }
   .admin-scope .admin-metric        { font-size: 32px; line-height: 40px; }
+  .admin-scope .admin-metric-dashboard { font-size: 24px; line-height: 32px; }
   .admin-scope .admin-section-title { font-size: 18px; line-height: 26px; }
 }
 
@@ -351,6 +356,16 @@
   --info: #64748B;
   --info-soft: #F1F5F9;
   --sidebar-accent: #FDF2F8;
+  /*
+   * 197 — card/popover/secondary/accent 는 배경만 재정의하고 대응 -foreground 는
+   * 손대지 않아, 전역 next-themes(.dark)가 꺼진 상태(기본값 — 어드민 다크 토글은
+   * html.dark 와 독립)에서 :root 의 근흑색 foreground 가 그대로 새어나온다.
+   * 라이트에서는 :root 기본값과 동일해 무변화(회귀 0) — 다크 쪽 대비 버그의 대칭 보강.
+   */
+  --card-foreground: #111827;
+  --popover-foreground: #111827;
+  --secondary-foreground: #111827;
+  --accent-foreground: #111827;
 }
 
 .admin-scope[data-admin-theme="dark"] {
@@ -378,6 +393,18 @@
   --info: #94A3B8;
   --info-soft: rgba(148, 163, 184, .14);
   --sidebar-accent: rgba(230, 0, 126, .12);
+  /*
+   * 197 (근본 수정) — bg-card/bg-popover/bg-secondary/bg-accent 를 쓰는 모든 곳
+   * (Select 드롭다운·Dialog·Card 등)이 위에서 배경만 네이비로 바뀌고 대응
+   * text-*-foreground 는 :root 의 근흑색(oklch(0.145 0 0) 등)에 그대로 머물러
+   * "네이비 배경 + 검은 글씨"(대비 ~1.1:1, WCAG AA 4.5:1 미달)가 되는 문제의 원인.
+   * 여기 한 곳에서 밝은 전경색을 지정해 전 어드민 다크 화면에 일괄 반영(AA 충족,
+   * #121821 배경 대비 17:1). 어드민 스코프 한정 — 사용자 화면(:root/.dark) 무영향.
+   */
+  --card-foreground: #F9FAFB;
+  --popover-foreground: #F9FAFB;
+  --secondary-foreground: #F9FAFB;
+  --accent-foreground: #F9FAFB;
 }
 
 /*

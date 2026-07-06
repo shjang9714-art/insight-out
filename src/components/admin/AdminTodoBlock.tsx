@@ -97,10 +97,10 @@ export default function AdminTodoBlock({ pending, todayCollected, todayFailed, s
                 <p className="mt-3 text-sm font-medium text-muted-foreground">없음 ✓</p>
               ) : (
                 <p className="mt-3 flex items-baseline gap-1.5">
-                  <span className={cn('admin-metric', isRisk ? 'text-risk' : 'text-foreground')}>
+                  <span className={cn('admin-metric-dashboard', isRisk ? 'text-risk' : 'text-foreground')}>
                     {tile.count.toLocaleString()}
                   </span>
-                  <span className={cn('admin-metric-unit', isRisk ? 'text-risk' : 'text-muted-foreground')}>
+                  <span className={cn('admin-metric-unit-dashboard', isRisk ? 'text-risk' : 'text-muted-foreground')}>
                     {tile.unit}
                   </span>
                 </p>

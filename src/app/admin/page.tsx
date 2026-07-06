@@ -285,8 +285,8 @@ export default async function AdminPage() {
           <Link href="/admin/contents" className={KPI_CARD}>
             <p className="admin-card-title text-muted-foreground">총 콘텐츠</p>
             <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric text-foreground">{(totalRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit text-muted-foreground">건</span>
+              <span className="admin-metric-dashboard text-foreground">{(totalRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">수집·저장된 전체 콘텐츠</p>
             <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 admin-caption text-muted-foreground">
@@ -300,8 +300,8 @@ export default async function AdminPage() {
           <Link href="/admin/contents?from=today" className={KPI_CARD}>
             <p className="admin-card-title text-muted-foreground">오늘 수집</p>
             <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric text-foreground">{(todayRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit text-muted-foreground">건</span>
+              <span className="admin-metric-dashboard text-foreground">{(todayRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">오늘 새로 들어온 콘텐츠</p>
             <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 admin-caption text-muted-foreground">
@@ -315,8 +315,8 @@ export default async function AdminPage() {
           <Link href="/admin/contents?status=pending" className={KPI_CARD}>
             <p className="admin-card-title text-muted-foreground">검토 대기</p>
             <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric text-foreground">{(pendingRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit text-muted-foreground">건</span>
+              <span className="admin-metric-dashboard text-foreground">{(pendingRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">검토가 필요한 콘텐츠</p>
           </Link>
@@ -325,8 +325,8 @@ export default async function AdminPage() {
           <Link href="/admin/contents?bookmarked=1" className={KPI_CARD}>
             <p className="admin-card-title text-muted-foreground">북마크된 콘텐츠</p>
             <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric text-foreground">{(bookmarkedRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit text-muted-foreground">건</span>
+              <span className="admin-metric-dashboard text-foreground">{(bookmarkedRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">사용자가 저장한 콘텐츠</p>
           </Link>
@@ -335,8 +335,8 @@ export default async function AdminPage() {
           <Link href="/admin/sources" className={KPI_CARD}>
             <p className="admin-card-title text-muted-foreground">활성 소스</p>
             <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric text-foreground">{(activeSourcesRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit text-muted-foreground">곳</span>
+              <span className="admin-metric-dashboard text-foreground">{(activeSourcesRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">곳</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">수집 중인 소스</p>
             <p className="mt-1 admin-caption text-muted-foreground">
@@ -348,8 +348,8 @@ export default async function AdminPage() {
           <div className={KPI_CARD + ' cursor-default opacity-60'}>
             <p className="admin-card-title text-muted-foreground">리서치 반영</p>
             <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric text-foreground">{researchRes.count ?? 0}</span>
-              <span className="admin-metric-unit text-muted-foreground">건</span>
+              <span className="admin-metric-dashboard text-foreground">{researchRes.count ?? 0}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">AI 보고서 인용 콘텐츠 · 준비중</p>
           </div>

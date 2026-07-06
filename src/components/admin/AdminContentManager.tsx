@@ -985,9 +985,10 @@ export default function AdminContentManager() {
                 선택 해제
               </Button>
             </div>
-            {noSelection && (
-              <p className="w-full text-xs text-muted-foreground">{BULK_SELECTION_HINT}</p>
-            )}
+            {/* 197 — 항상 렌더링(invisible 로 토글)해 상태 전환 시 바 높이 점프 방지 */}
+            <p className={cn('w-full text-xs text-muted-foreground', !noSelection && 'invisible')}>
+              {BULK_SELECTION_HINT}
+            </p>
           </div>
         )
       })()}
@@ -1016,7 +1017,7 @@ export default function AdminContentManager() {
                     aria-label="전체 선택"
                   />
                 </th>
-                <th className="px-4 py-3">제목</th>
+                <th className="min-w-[220px] px-4 py-3">제목</th>
                 <th className="px-4 py-3">카테고리</th>
                 <th className="px-4 py-3">소스</th>
                 <th className="px-4 py-3">상태</th>
@@ -1046,7 +1047,7 @@ export default function AdminContentManager() {
                         aria-label={`${content.title} 선택`}
                       />
                     </td>
-                    <td className="max-w-md px-4 py-3 font-medium text-foreground">
+                    <td className="max-w-md min-w-[220px] px-4 py-3 font-medium text-foreground">
                       <Link
                         href={`/admin/contents/${content.id}`}
                         className="line-clamp-2 block hover:text-brand-600 hover:underline"

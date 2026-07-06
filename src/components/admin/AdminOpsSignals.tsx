@@ -28,10 +28,11 @@ interface Props {
 
 function UsageBar({ used, limit, label }: { used: number; limit: number; label: string }) {
   const pct = limit > 0 ? Math.round((used / limit) * 100) : 0
+  // 197 — 100% 위험만 또렷하게, 그 아래는 연한 톤(brand-600/amber 에 투명도)으로 차분하게
   const barColor =
     pct >= 100 ? 'bg-destructive'
-    : pct >= 80  ? 'bg-amber-500'
-    : 'bg-brand-600'
+    : pct >= 80  ? 'bg-amber-500/60'
+    : 'bg-brand-600/50'
   const textColor =
     pct >= 100 ? 'text-destructive'
     : pct >= 80  ? 'text-amber-600'
