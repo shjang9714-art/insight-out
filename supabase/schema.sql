@@ -1379,6 +1379,49 @@ create policy "issue_contents: admin 전체" on public.issue_contents
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- ============================================================
+-- 공개 홈 위젯 구성 (202-homepage-sections — 2026-07-06)
+-- 홈(/dashboard) 섹션 노출·순서. section_key 는 코드 레지스트리
+-- (HOME_SECTION_REGISTRY, src/lib/home/sections.ts)와 1:1.
+-- 읽기=전체 허용(비민감 레이아웃), 쓰기=어드민만.
+-- ============================================================
+create table if not exists public.homepage_sections (
+  section_key text primary key,
+  enabled     boolean not null default true,
+  sort_order  integer not null default 0,
+  updated_at  timestamptz not null default now()
+);
+
+drop trigger if exists trg_homepage_sections_updated_at on public.homepage_sections;
+create trigger trg_homepage_sections_updated_at
+  before update on public.homepage_sections
+  for each row execute function public.set_updated_at();
+
+alter table public.homepage_sections enable row level security;
+
+drop policy if exists "homepage_sections read all" on public.homepage_sections;
+create policy "homepage_sections read all"
+  on public.homepage_sections for select
+  using (true);
+
+drop policy if exists "homepage_sections admin write" on public.homepage_sections;
+create policy "homepage_sections admin write"
+  on public.homepage_sections for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+grant select on table public.homepage_sections to anon, authenticated;
+grant select, insert, update, delete on table public.homepage_sections to service_role;
+
+insert into public.homepage_sections (section_key, enabled, sort_order) values
+  ('personalization_nudge', true, 10),
+  ('visit_delta',           true, 20),
+  ('suggested_questions',   true, 30),
+  ('issue_signals',         true, 40),
+  ('briefing_highlights',   true, 50),
+  ('feed_slot',             true, 60)
+on conflict (section_key) do nothing;
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
