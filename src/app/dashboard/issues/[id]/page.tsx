@@ -379,11 +379,11 @@ export default async function IssueDetailPage({ params }: PageProps) {
       {/* 뒤로가기 */}
       <div className="mb-6">
         <Link
-          href="/dashboard/issues"
+          href="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         >
           <ArrowLeft className="h-4 w-4" />
-          이슈 보드로
+          홈으로
         </Link>
       </div>
 
