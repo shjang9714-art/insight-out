@@ -18,6 +18,7 @@ import {
   ClipboardList,
   Ban,
   Settings,
+  Database,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -176,6 +177,12 @@ export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
       label: '사용자 관리',
       description: '사용자 목록과 권한 관리',
       icon: Users,
+    },
+    {
+      href: '/admin/content-data',
+      label: '콘텐츠 데이터 관리',
+      description: '풀본문·신호·URL 정규화·수집 데이터 삭제',
+      icon: Database,
     },
     {
       href: '/admin/settings',
