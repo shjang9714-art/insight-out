@@ -180,10 +180,8 @@ export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
     {
       href: '/admin/settings',
       label: '시스템 설정',
-      description: '테마·폰트·화면 구성(준비중)',
+      description: '화면 테마·폰트·색상',
       icon: Settings,
-      disabled: true,
-      badge: '준비중',
     },
   ],
 }

@@ -200,40 +200,41 @@
 
 @layer components {
   .admin-scope {
-    font-size: 16px;
+    font-size: calc(16px * var(--admin-font-scale, 1));
+    font-family: var(--admin-font-family, var(--font-sans));
   }
-  .admin-scope .admin-page-title    { font-size: 32px; line-height: 40px; font-weight: 700; }
-  .admin-scope .admin-page-desc     { font-size: 16px; line-height: 24px; font-weight: 400; }
-  .admin-scope .admin-section-title { font-size: 20px; line-height: 28px; font-weight: 700; }
-  .admin-scope .admin-section-desc  { font-size: 15px; line-height: 24px; font-weight: 400; }
-  .admin-scope .admin-card-title    { font-size: 15px; line-height: 22px; font-weight: 600; }
-  .admin-scope .admin-metric        { font-size: 44px; line-height: 54px; font-weight: 700; }
-  .admin-scope .admin-metric-unit   { font-size: 26px; line-height: 36px; font-weight: 600; }
+  .admin-scope .admin-page-title    { font-size: calc(32px * var(--admin-font-scale, 1)); line-height: calc(40px * var(--admin-font-scale, 1)); font-weight: 700; }
+  .admin-scope .admin-page-desc     { font-size: calc(16px * var(--admin-font-scale, 1)); line-height: calc(24px * var(--admin-font-scale, 1)); font-weight: 400; }
+  .admin-scope .admin-section-title { font-size: calc(20px * var(--admin-font-scale, 1)); line-height: calc(28px * var(--admin-font-scale, 1)); font-weight: 700; }
+  .admin-scope .admin-section-desc  { font-size: calc(15px * var(--admin-font-scale, 1)); line-height: calc(24px * var(--admin-font-scale, 1)); font-weight: 400; }
+  .admin-scope .admin-card-title    { font-size: calc(15px * var(--admin-font-scale, 1)); line-height: calc(22px * var(--admin-font-scale, 1)); font-weight: 600; }
+  .admin-scope .admin-metric        { font-size: calc(44px * var(--admin-font-scale, 1)); line-height: calc(54px * var(--admin-font-scale, 1)); font-weight: 700; }
+  .admin-scope .admin-metric-unit   { font-size: calc(26px * var(--admin-font-scale, 1)); line-height: calc(36px * var(--admin-font-scale, 1)); font-weight: 600; }
   /* 197 — 대시보드 KPI(오늘 할 일·운영현황 카드) 전용 축소 크기. admin-metric 은 다른 화면용으로 그대로 유지. */
-  .admin-scope .admin-metric-dashboard      { font-size: 32px; line-height: 40px; font-weight: 700; }
-  .admin-scope .admin-metric-unit-dashboard { font-size: 18px; line-height: 26px; font-weight: 600; }
-  .admin-scope .admin-body          { font-size: 16px; line-height: 26px; font-weight: 400; }
-  .admin-scope .admin-table-th      { font-size: 15px; line-height: 22px; font-weight: 600; }
-  .admin-scope .admin-table-td      { font-size: 15px; line-height: 24px; font-weight: 400; }
-  .admin-scope .admin-caption       { font-size: 13px; line-height: 20px; font-weight: 400; }
-  .admin-scope .admin-sidebar-group { font-size: 13px; line-height: 20px; font-weight: 600; }
-  .admin-scope .admin-sidebar-menu  { font-size: 16px; line-height: 24px; font-weight: 500; }
-  .admin-scope .admin-btn-text      { font-size: 15px; line-height: 22px; font-weight: 600; }
-  .admin-scope .admin-badge         { font-size: 13px; line-height: 20px; font-weight: 600; }
+  .admin-scope .admin-metric-dashboard      { font-size: calc(32px * var(--admin-font-scale, 1)); line-height: calc(40px * var(--admin-font-scale, 1)); font-weight: 700; }
+  .admin-scope .admin-metric-unit-dashboard { font-size: calc(18px * var(--admin-font-scale, 1)); line-height: calc(26px * var(--admin-font-scale, 1)); font-weight: 600; }
+  .admin-scope .admin-body          { font-size: calc(16px * var(--admin-font-scale, 1)); line-height: calc(26px * var(--admin-font-scale, 1)); font-weight: 400; }
+  .admin-scope .admin-table-th      { font-size: calc(15px * var(--admin-font-scale, 1)); line-height: calc(22px * var(--admin-font-scale, 1)); font-weight: 600; }
+  .admin-scope .admin-table-td      { font-size: calc(15px * var(--admin-font-scale, 1)); line-height: calc(24px * var(--admin-font-scale, 1)); font-weight: 400; }
+  .admin-scope .admin-caption       { font-size: calc(13px * var(--admin-font-scale, 1)); line-height: calc(20px * var(--admin-font-scale, 1)); font-weight: 400; }
+  .admin-scope .admin-sidebar-group { font-size: calc(13px * var(--admin-font-scale, 1)); line-height: calc(20px * var(--admin-font-scale, 1)); font-weight: 600; }
+  .admin-scope .admin-sidebar-menu  { font-size: calc(16px * var(--admin-font-scale, 1)); line-height: calc(24px * var(--admin-font-scale, 1)); font-weight: 500; }
+  .admin-scope .admin-btn-text      { font-size: calc(15px * var(--admin-font-scale, 1)); line-height: calc(22px * var(--admin-font-scale, 1)); font-weight: 600; }
+  .admin-scope .admin-badge         { font-size: calc(13px * var(--admin-font-scale, 1)); line-height: calc(20px * var(--admin-font-scale, 1)); font-weight: 600; }
 }
 
 @media (max-width: 1439px) {
-  .admin-scope .admin-page-title    { font-size: 28px; line-height: 36px; }
-  .admin-scope .admin-metric        { font-size: 36px; line-height: 44px; }
-  .admin-scope .admin-metric-dashboard { font-size: 28px; line-height: 36px; }
-  .admin-scope .admin-body          { font-size: 15px; line-height: 24px; }
+  .admin-scope .admin-page-title    { font-size: calc(28px * var(--admin-font-scale, 1)); line-height: calc(36px * var(--admin-font-scale, 1)); }
+  .admin-scope .admin-metric        { font-size: calc(36px * var(--admin-font-scale, 1)); line-height: calc(44px * var(--admin-font-scale, 1)); }
+  .admin-scope .admin-metric-dashboard { font-size: calc(28px * var(--admin-font-scale, 1)); line-height: calc(36px * var(--admin-font-scale, 1)); }
+  .admin-scope .admin-body          { font-size: calc(15px * var(--admin-font-scale, 1)); line-height: calc(24px * var(--admin-font-scale, 1)); }
 }
 
 @media (max-width: 1023px) {
-  .admin-scope .admin-page-title    { font-size: 24px; line-height: 32px; }
-  .admin-scope .admin-metric        { font-size: 32px; line-height: 40px; }
-  .admin-scope .admin-metric-dashboard { font-size: 24px; line-height: 32px; }
-  .admin-scope .admin-section-title { font-size: 18px; line-height: 26px; }
+  .admin-scope .admin-page-title    { font-size: calc(24px * var(--admin-font-scale, 1)); line-height: calc(32px * var(--admin-font-scale, 1)); }
+  .admin-scope .admin-metric        { font-size: calc(32px * var(--admin-font-scale, 1)); line-height: calc(40px * var(--admin-font-scale, 1)); }
+  .admin-scope .admin-metric-dashboard { font-size: calc(24px * var(--admin-font-scale, 1)); line-height: calc(32px * var(--admin-font-scale, 1)); }
+  .admin-scope .admin-section-title { font-size: calc(18px * var(--admin-font-scale, 1)); line-height: calc(26px * var(--admin-font-scale, 1)); }
 }
 
 /*
