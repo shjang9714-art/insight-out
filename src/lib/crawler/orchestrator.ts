@@ -861,6 +861,45 @@ interface EnrichRow {
 }
 
 /**
+ * 교차중복 클러스터 병합(196) — canonical(해소된 원문 URL)이 같은 기존 행이 있으면
+ * cluster_id 로 묶는다(342 near-dup 대표 승격 패턴 재사용). 데이터 삭제 없음, cluster_id 만 세팅.
+ * canonical_url 컬럼 없음(42703) 등은 조용히 skip(호출부에서 이미 canonical 저장 성공 후에만 호출).
+ */
+export async function mergeByCanonical(admin: SupabaseClient, rowId: string, canonical: string): Promise<boolean> {
+  const byCanonical = await admin
+    .from('contents')
+    .select('id, cluster_id')
+    .eq('canonical_url', canonical)
+    .neq('id', rowId)
+    .order('collected_at', { ascending: true })
+    .limit(1)
+
+  if (byCanonical.error) return false
+
+  let found = byCanonical.data?.[0] as { id: string; cluster_id: string | null } | undefined
+
+  if (!found) {
+    const byOriginal = await admin
+      .from('contents')
+      .select('id, cluster_id')
+      .eq('original_url', canonical)
+      .neq('id', rowId)
+      .order('collected_at', { ascending: true })
+      .limit(1)
+    found = byOriginal.data?.[0] as { id: string; cluster_id: string | null } | undefined
+  }
+
+  if (!found) return false
+
+  const repId = found.cluster_id ?? found.id
+  if (!found.cluster_id) {
+    await admin.from('contents').update({ cluster_id: repId }).eq('id', found.id)
+  }
+  await admin.from('contents').update({ cluster_id: repId }).eq('id', rowId)
+  return true
+}
+
+/**
  * 이번 수집 런에서 신규 적재된 콘텐츠의 풀본문을 best-effort 로 추출한다.
  * - body_fetched_at IS NULL + original_url 있음 + 이번 런 이후 수집분만 대상.
  * - 추출 성공 시 body_original 갱신 + published 이면 요약 재생성.
@@ -892,6 +931,22 @@ async function enrichRecentContents(
     for (const row of rows as EnrichRow[]) {
       try {
         const resolved = await resolveArticleUrl(row.original_url)
+
+        // canonical URL 저장 + 교차중복 병합(196) — 추가 fetch 0(위 resolved 재사용). 실패해도 본문 추출 흐름 무중단.
+        try {
+          const canonical = normalizeUrl(resolved)
+          const { error: canonError } = await admin
+            .from('contents')
+            .update({ canonical_url: canonical })
+            .eq('id', row.id)
+          if (!canonError) {
+            await mergeByCanonical(admin, row.id, canonical)
+          } else if (canonError.code !== '42703') {
+            console.warn('[보강] canonical_url 갱신 실패 (id:', row.id, '):', canonError.message)
+          }
+        } catch (e) {
+          console.warn('[보강] canonical 처리 오류 (id:', row.id, '):', e)
+        }
 
         let extracted: string | null = null
         try {

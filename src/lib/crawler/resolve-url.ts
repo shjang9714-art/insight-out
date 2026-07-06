@@ -1,4 +1,5 @@
 import 'server-only'
+import { normalizeUrl } from './normalize'
 
 /**
  * Google News 리다이렉트 URL 을 실제 원문 URL 로 해소한다.
@@ -23,4 +24,13 @@ export async function resolveArticleUrl(url: string): Promise<string> {
   } catch {
     return url
   }
+}
+
+/**
+ * 원문 URL 해소(196) — resolveArticleUrl 결과를 normalizeUrl 로 표준화해 canonical_url 로 사용.
+ * 실패 시에도 normalizeUrl(originalUrl) 반환(throw 금지, resolveArticleUrl 자체가 이미 실패-안전).
+ */
+export async function resolveCanonical(originalUrl: string): Promise<string> {
+  const resolved = await resolveArticleUrl(originalUrl)
+  return normalizeUrl(resolved)
 }

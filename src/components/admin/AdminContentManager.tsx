@@ -173,6 +173,11 @@ export default function AdminContentManager() {
   const [signalResult,  setSignalResult]  = useState<string | null>(null)
   const signalStopRef = useRef(false)
 
+  // 원문 URL 정규화 (196)
+  const [isCanonicalizing,  setIsCanonicalizing]  = useState(false)
+  const [canonicalResult,   setCanonicalResult]   = useState<string | null>(null)
+  const canonicalStopRef = useRef(false)
+
   // 본문 상태 필터 + body_len degrade 추적
   const [bodyFilter,      setBodyFilter]      = useState<'all' | 'full' | 'snippet' | 'none'>('all')
   const [bodyLenAvailable, setBodyLenAvailable] = useState(true)
@@ -615,6 +620,47 @@ export default function AdminContentManager() {
     }
   }
 
+  const handleCanonicalize = async () => {
+    canonicalStopRef.current = false
+    setIsCanonicalizing(true)
+    setCanonicalResult(null)
+    setError(null)
+    const acc = { processed: 0, resolved: 0, deduped: 0 }
+    try {
+      while (true) {
+        const res = await fetch('/api/admin/canonical-backfill?limit=15')
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '원문 URL 정규화 실패')
+        const { processed, resolved, deduped, remaining, ready } = await res.json() as {
+          processed: number; resolved: number; deduped: number; remaining: number; ready: boolean
+        }
+        if (!ready) {
+          setCanonicalResult('canonical_url 컬럼이 아직 적용되지 않았습니다.')
+          break
+        }
+        acc.processed += processed
+        acc.resolved  += resolved
+        acc.deduped   += deduped
+
+        if (canonicalStopRef.current) {
+          setCanonicalResult(`중단됨 · 누적 처리 ${acc.processed} · 정규화 ${acc.resolved} · 중복병합 ${acc.deduped} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setCanonicalResult(`완료 · 처리 ${acc.processed} · 정규화 ${acc.resolved} · 중복병합 ${acc.deduped}`)
+          break
+        }
+        if (processed === 0) break
+
+        setCanonicalResult(`정규화 중… 누적 처리 ${acc.processed} · 정규화 ${acc.resolved} · 중복병합 ${acc.deduped} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '원문 URL 정규화 중 오류가 발생했습니다.')
+    } finally {
+      setIsCanonicalizing(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
   // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
@@ -691,6 +737,11 @@ export default function AdminContentManager() {
               {isSignalling ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {signalResult}
             </span>
           )}
+          {canonicalResult && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
+              {isCanonicalizing ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {canonicalResult}
+            </span>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-2">
@@ -748,6 +799,14 @@ export default function AdminContentManager() {
               onClick={isSignalling ? () => { signalStopRef.current = true } : handleSignalClassify}
             >
               {isSignalling ? '중단' : '신호 분류'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isCanonicalizing ? () => { canonicalStopRef.current = true } : handleCanonicalize}
+            >
+              {isCanonicalizing ? '중단' : '원문 URL 정규화'}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">

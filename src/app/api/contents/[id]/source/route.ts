@@ -22,16 +22,37 @@ export async function GET(
     { cookies: { getAll() { return cookieStore.getAll() }, setAll() {} } },
   )
 
-  const { data } = await supabase
+  let originalUrl: string | null = null
+  let canonicalUrl: string | null = null
+
+  const { data, error } = await supabase
     .from('contents')
-    .select('id, original_url')
+    .select('id, original_url, canonical_url')
     .eq('id', id)
     .single()
 
-  const originalUrl = (data as { original_url: string | null } | null)?.original_url
+  if (error?.code === '42703') {
+    // canonical_url 컬럼 미적용(196 SQL 전) → 제외 재시도
+    const fallback = await supabase
+      .from('contents')
+      .select('id, original_url')
+      .eq('id', id)
+      .single()
+    originalUrl = (fallback.data as { original_url: string | null } | null)?.original_url ?? null
+  } else {
+    const row = data as { original_url: string | null; canonical_url: string | null } | null
+    originalUrl = row?.original_url ?? null
+    canonicalUrl = row?.canonical_url ?? null
+  }
+
   if (!originalUrl) {
     // 원문 없음(업로드 리포트 등) → 상세로
     return NextResponse.redirect(detailUrl, 302)
+  }
+
+  // canonical(196) 이미 해소돼 있으면 재fetch·자가치유 스킵 — 즉시 원문으로
+  if (canonicalUrl) {
+    return NextResponse.redirect(canonicalUrl, 302)
   }
 
   // dead 백스톱: link_ok=false 확정 링크는 상세로(42703 graceful — 컬럼 없으면 null→통과)
