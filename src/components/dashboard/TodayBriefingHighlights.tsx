@@ -158,7 +158,7 @@ export default async function TodayBriefingHighlights() {
                   {line.keyword}
                 </span>
               )}
-              <h3 className="font-serif text-[17px] font-bold leading-snug tracking-tight text-foreground transition-colors group-hover:text-brand-700">
+              <h3 className="text-[17px] font-bold leading-snug tracking-tight text-foreground transition-colors group-hover:text-brand-700">
                 {line.primary}
               </h3>
               {line.detail && (
