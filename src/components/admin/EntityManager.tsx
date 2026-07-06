@@ -20,6 +20,7 @@ import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
 import type { MergeJob } from '@/lib/admin/merge-progress'
 import { Progress } from '@/components/ui/progress'
 import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
+import AdminTabs from '@/components/admin/ui/AdminTabs'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -1018,31 +1019,22 @@ export default function EntityManager() {
         </Card>
       )}
 
-      {/* ── 타입 필터 + 검색 + 추가 버튼 ── */}
+      {/* ── 타입 필터 + 검색 + 추가 버튼 (209 — 공유 세그먼트 박스로 통일) ── */}
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {(['all', ...ENTITY_TYPES] as const).map(t => {
+        <AdminTabs
+          items={(['all', ...ENTITY_TYPES] as const).map((t) => {
             const count = t === 'all' ? entities.length : (typeCounts[t] ?? 0)
-            const isEmpty = count === 0 && t !== 'all'
-            return (
-              <button
-                key={t}
-                onClick={() => { if (!isEmpty) setFilterType(t) }}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  filterType === t
-                    ? 'border-foreground bg-foreground text-background'
-                    : isEmpty
-                      ? 'cursor-default border-border text-muted-foreground/40'
-                      : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
-                )}
-              >
-                {t === 'all' ? '전체' : ENTITY_TYPE_LABEL[t]}
-                <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
-              </button>
-            )
+            return {
+              value: t,
+              label: t === 'all' ? '전체' : ENTITY_TYPE_LABEL[t],
+              count,
+              disabled: count === 0 && t !== 'all',
+            }
           })}
-        </div>
+          value={filterType}
+          onChange={(v) => setFilterType(v as EntityType | 'all')}
+          aria-label="엔티티 타입"
+        />
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Input

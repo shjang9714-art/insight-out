@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { BrainCircuit, CheckCircle, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle } from 'lucide-react'
 import type { IssueStatus } from '@/lib/types'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminTabs from '@/components/admin/ui/AdminTabs'
 import { ISSUE_STATUS_TONE } from '@/lib/admin/status-style'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
@@ -673,28 +674,18 @@ export default function IssueManager() {
         </div>
       )}
 
-      {/* ── 상태 필터 + 검색 + 추가 버튼 ── */}
+      {/* ── 상태 필터 + 검색 + 추가 버튼 (209 — 공유 세그먼트 박스로 통일) ── */}
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {(['all', 'draft', 'published', 'archived'] as const).map(s => {
-            const count = s === 'all' ? issues.length : (statusCounts[s] ?? 0)
-            return (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  filterStatus === s
-                    ? 'border-foreground bg-foreground text-background'
-                    : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
-                )}
-              >
-                {s === 'all' ? '전체' : STATUS_LABEL[s]}
-                <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
-              </button>
-            )
-          })}
-        </div>
+        <AdminTabs
+          items={(['all', 'draft', 'published', 'archived'] as const).map((s) => ({
+            value: s,
+            label: s === 'all' ? '전체' : STATUS_LABEL[s],
+            count: s === 'all' ? issues.length : (statusCounts[s] ?? 0),
+          }))}
+          value={filterStatus}
+          onChange={(v) => setFilterStatus(v as IssueStatus | 'all')}
+          aria-label="이슈 상태"
+        />
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Input

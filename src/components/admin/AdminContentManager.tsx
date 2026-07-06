@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Check, ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
+import AdminTabs from '@/components/admin/ui/AdminTabs'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { CONTENT_STATUS_TONE, CONTENT_STATUS_LABEL, REVIEW_REASON_LABEL } from '@/lib/admin/status-style'
 import { Button } from '@/components/ui/button'
@@ -506,23 +507,14 @@ export default function AdminContentManager() {
         </div>
       )}
 
-      {/* ── 카테고리 탭 (205 — 최상단·확대, 메뉴화) ── */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
-        {categoryTabs.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => { setCategory(tab.value); setSourceId(SOURCE_ALL); setPage(1) }}
-            className={cn(
-              'rounded-full border px-5 py-2.5 text-[15px] font-medium transition-colors',
-              category === tab.value
-                ? 'border-brand-600 bg-brand-600 text-white'
-                : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* ── 카테고리 탭 (205 — 최상단, 209 — 공유 세그먼트 박스로 통일) ── */}
+      <div className="border-b border-border pb-4">
+        <AdminTabs
+          items={categoryTabs}
+          value={category}
+          onChange={(v) => { setCategory(v); setSourceId(SOURCE_ALL); setPage(1) }}
+          aria-label="카테고리"
+        />
       </div>
 
       {/* ── 검색·소스·상태·본문 상태·페이지 크기 필터 ── */}

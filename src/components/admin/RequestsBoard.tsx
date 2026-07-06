@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminTabs from '@/components/admin/ui/AdminTabs'
 import { cn } from '@/lib/utils'
 import {
   type OpsPostType,
@@ -38,6 +39,12 @@ import {
   STATUS_EMOJI,
   groupWorkByPhase,
 } from '@/lib/admin/ops-requests'
+
+const SEGMENT_TABS = [
+  { value: 'request',      label: '요청' },
+  { value: 'announcement', label: '공지' },
+  { value: 'work',         label: '작업' },
+]
 
 function formatKst(iso: string): string {
   return new Date(iso).toLocaleString('ko-KR', {
@@ -181,40 +188,14 @@ export default function RequestsBoard() {
         />
       )}
 
-      {/* 세그먼트 필터 — [요청]/[공지] */}
+      {/* 세그먼트 필터 — [요청]/[공지]/[작업] (209 — 공유 세그먼트 박스로 통일) */}
       <div className="flex items-center justify-between gap-3">
-        <div className="inline-flex h-11 items-stretch rounded-lg border border-border bg-muted p-1 gap-1">
-          <button
-            type="button"
-            onClick={() => setSegment('request')}
-            className={cn(
-              'admin-btn-text rounded-md px-4 transition-colors',
-              segment === 'request' ? 'bg-brand-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            요청
-          </button>
-          <button
-            type="button"
-            onClick={() => setSegment('announcement')}
-            className={cn(
-              'admin-btn-text rounded-md px-4 transition-colors',
-              segment === 'announcement' ? 'bg-brand-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            공지
-          </button>
-          <button
-            type="button"
-            onClick={() => setSegment('work')}
-            className={cn(
-              'admin-btn-text rounded-md px-4 transition-colors',
-              segment === 'work' ? 'bg-brand-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            작업
-          </button>
-        </div>
+        <AdminTabs
+          items={SEGMENT_TABS}
+          value={segment}
+          onChange={(v) => setSegment(v as OpsPostType)}
+          aria-label="게시판 구분"
+        />
 
         <Button size="sm" onClick={openCreate} disabled={!tableReady}>
           <Plus className="mr-1.5 h-4 w-4" />
