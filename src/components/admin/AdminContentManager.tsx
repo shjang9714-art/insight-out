@@ -76,7 +76,7 @@ const PAGE_SIZE_OPTIONS = [20, 50, 100]
 // 200 — 콘텐츠 테이블 열 너비 드래그 리사이즈. 선택·관리 열은 고정(제외).
 const COLUMN_WIDTHS_STORAGE_KEY = 'io:admin-contents-col-widths'
 const SELECT_COL_WIDTH = 40
-const MANAGE_COL_WIDTH = 300
+const MANAGE_COL_WIDTH = 340
 const RESIZABLE_COLUMNS: ResizableColumnDef[] = [
   { id: 'title',     defaultWidth: 320, minWidth: 200 },
   { id: 'category',  defaultWidth: 96,  minWidth: 64 },
@@ -769,7 +769,7 @@ export default function AdminContentManager() {
               variant="outline"
               disabled={isPurging}
               onClick={handlePurge}
-              className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
             >
               {isPurging
                 ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
@@ -782,7 +782,7 @@ export default function AdminContentManager() {
               variant="outline"
               disabled={isYtPurging}
               onClick={handleYoutubePurge}
-              className="border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50"
+              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
             >
               {isYtPurging
                 ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />비우는 중…</>
@@ -1107,7 +1107,12 @@ export default function AdminContentManager() {
                     className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
                   />
                 </th>
-                <th className="px-4 py-3 text-right">관리</th>
+                <th
+                  className="sticky right-0 z-20 bg-muted px-4 py-3 text-right"
+                  style={{ boxShadow: 'inset 1px 0 0 0 var(--border)' }}
+                >
+                  관리
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -1176,7 +1181,10 @@ export default function AdminContentManager() {
                     <td className="truncate px-4 py-3 text-xs text-muted-foreground">
                       {formatKst(content.collected_at)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td
+                      className="sticky right-0 z-10 bg-card px-4 py-3"
+                      style={{ boxShadow: 'inset 1px 0 0 0 var(--border)' }}
+                    >
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="outline" asChild>
                           <Link href={`/admin/contents/${content.id}`}>

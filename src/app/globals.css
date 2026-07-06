@@ -379,6 +379,8 @@
   --info: #64748B;
   --info-soft: #F1F5F9;
   --sidebar-accent: #FDF2F8;
+  /* 204 — 전역 --destructive(강렬 레드)를 어드민만 차분한 무드 레드로 톤다운. */
+  --destructive: #C4564C;
   /*
    * 197 — card/popover/secondary/accent 는 배경만 재정의하고 대응 -foreground 는
    * 손대지 않아, 전역 next-themes(.dark)가 꺼진 상태(기본값 — 어드민 다크 토글은
@@ -416,6 +418,8 @@
   --info: #94A3B8;
   --info-soft: rgba(148, 163, 184, .14);
   --sidebar-accent: rgba(230, 0, 126, .12);
+  /* 204 — 다크 배경에서 읽히는 부드러운 살몬 레드로 톤다운. */
+  --destructive: #DD8079;
   /*
    * 197 (근본 수정) — bg-card/bg-popover/bg-secondary/bg-accent 를 쓰는 모든 곳
    * (Select 드롭다운·Dialog·Card 등)이 위에서 배경만 네이비로 바뀌고 대응
