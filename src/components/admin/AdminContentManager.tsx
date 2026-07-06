@@ -69,9 +69,15 @@ interface EditState {
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
-const BULK_SELECTION_HINT = '콘텐츠를 1개 이상 선택하면 실행할 수 있습니다.'
-
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
+
+// 205 — 풀본문 채우기 기간 팝업 프리셋
+const ENRICH_RANGE_PRESETS: { label: string; days: number | null }[] = [
+  { label: '최근 7일',  days: 7 },
+  { label: '최근 30일', days: 30 },
+  { label: '최근 90일', days: 90 },
+  { label: '전체',      days: null },
+]
 
 // 200 — 콘텐츠 테이블 열 너비 드래그 리사이즈. 선택·관리 열은 고정(제외).
 const COLUMN_WIDTHS_STORAGE_KEY = 'io:admin-contents-col-widths'
@@ -172,10 +178,12 @@ export default function AdminContentManager() {
   const [isSaving,    setIsSaving]    = useState(false)
   const [editError,   setEditError]   = useState<string | null>(null)
 
-  // 풀본문 채우기
-  const [isEnriching,   setIsEnriching]   = useState(false)
-  const [enrichResult,  setEnrichResult]  = useState<string | null>(null)
-  const [backfillRange, setBackfillRange] = useState<'all' | '7d' | '30d'>('30d')
+  // 풀본문 채우기 (205 — 기간 팝업으로 범위 지정)
+  const [isEnriching,      setIsEnriching]      = useState(false)
+  const [enrichResult,     setEnrichResult]     = useState<string | null>(null)
+  const [isEnrichRangeOpen, setIsEnrichRangeOpen] = useState(false)
+  const [enrichFrom,       setEnrichFrom]       = useState('')
+  const [enrichTo,         setEnrichTo]         = useState('')
   const stopRef = useRef(false)
 
   // 신호 분류
@@ -195,12 +203,6 @@ export default function AdminContentManager() {
 
   // review_reason 컬럼 가용 여부 (178, body_len 과 동일한 degrade 패턴)
   const reviewReasonRef = useRef(true)
-
-  // 선택 풀본문 채우기
-  const [isEnrichingSel, setIsEnrichingSel] = useState(false)
-
-  // 목록 강제 새로고침 (enrich-by-ids 완료 후)
-  const [fetchSeq, setFetchSeq] = useState(0)
 
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
@@ -307,7 +309,7 @@ export default function AdminContentManager() {
       setIsLoading(false)
     }
     void run()
-  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter, fetchSeq]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -465,7 +467,7 @@ export default function AdminContentManager() {
     setIsBulkWorking(false)
   }
 
-  const handleEnrich = async () => {
+  const handleEnrich = async ({ from, to }: { from: string | null; to: string | null }) => {
     stopRef.current = false
     setIsEnriching(true)
     setEnrichResult(null)
@@ -473,13 +475,11 @@ export default function AdminContentManager() {
 
     const acc = { processed: 0, improved: 0, skipped: 0 }
     try {
-      const from =
-        backfillRange === '7d'  ? new Date(Date.now() - 7  * 864e5).toISOString().slice(0, 10) :
-        backfillRange === '30d' ? new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10) :
-        null
-
       while (true) {
-        const url = `/api/admin/body-backfill?limit=30${from ? `&from=${from}` : ''}`
+        const params = new URLSearchParams({ limit: '30' })
+        if (from) params.set('from', from)
+        if (to) params.set('to', to)
+        const url = `/api/admin/body-backfill?${params.toString()}`
         const res = await fetch(url, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '풀본문 채우기 실패')
         const { processed, improved, skipped, remaining } = await res.json() as {
@@ -506,33 +506,6 @@ export default function AdminContentManager() {
       setError(err instanceof Error ? err.message : '풀본문 채우기 중 오류가 발생했습니다.')
     } finally {
       setIsEnriching(false)
-    }
-  }
-
-  const handleEnrichSelected = async () => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    setIsEnrichingSel(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/body-backfill/by-ids', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      })
-      if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '선택 채우기 실패')
-      const { processed, improved, skipped, truncated } = await res.json() as {
-        processed: number; improved: number; skipped: number; truncated: boolean
-      }
-      setEnrichResult(
-        `선택 ${processed}건 처리 · 개선 ${improved} · 실패 ${skipped}${truncated ? ' · 50건 초과분 제외' : ''}`
-      )
-      setSelectedIds(new Set())
-      setFetchSeq((s) => s + 1)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '선택 풀본문 채우기 중 오류가 발생했습니다.')
-    } finally {
-      setIsEnrichingSel(false)
     }
   }
 
@@ -609,6 +582,21 @@ export default function AdminContentManager() {
     }
   }
 
+  // 205 — 풀본문 채우기 기간 팝업 프리셋 적용 (Date.now() purity 규칙 회피, crawl-logs 패턴과 동일)
+  const applyEnrichPreset = (days: number | null) => {
+    if (days === null) { setEnrichFrom(''); setEnrichTo(''); return }
+    const to = new Date().toISOString().slice(0, 10)
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() - days)
+    setEnrichFrom(fromDate.toISOString().slice(0, 10))
+    setEnrichTo(to)
+  }
+
+  const startEnrich = () => {
+    setIsEnrichRangeOpen(false)
+    void handleEnrich({ from: enrichFrom || null, to: enrichTo || null })
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
 
   // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
@@ -648,94 +636,15 @@ export default function AdminContentManager() {
         </div>
       )}
 
-      {/* ── 검토 대기 칩 + 수집 기사 비우기 ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {pendingCount !== null && pendingCount > 0 && (
-            <AdminFilterChip
-              active={status === 'pending'}
-              onClick={() => { setStatus('pending'); setPage(1) }}
-              count={pendingCount}
-            >
-              ⏳ 검토 대기
-            </AdminFilterChip>
-          )}
-          {pendingCount === 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
-              ✅ 검토 대기 없음
-            </span>
-          )}
-          {enrichResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
-              {isEnriching ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {enrichResult}
-            </span>
-          )}
-          {signalResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
-              {isSignalling ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {signalResult}
-            </span>
-          )}
-          {canonicalResult && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
-              {isCanonicalizing ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {canonicalResult}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <div className="flex gap-2">
-            <Select
-              value={backfillRange}
-              onValueChange={(v) => setBackfillRange(v as 'all' | '7d' | '30d')}
-            >
-              <SelectTrigger className="h-8 w-[110px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="30d">최근 30일</SelectItem>
-                <SelectItem value="7d">최근 7일</SelectItem>
-                <SelectItem value="all">전체</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={isEnriching ? () => { stopRef.current = true } : handleEnrich}
-            >
-              {isEnriching ? '중단' : '기사 풀본문 채우기'}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={isSignalling ? () => { signalStopRef.current = true } : handleSignalClassify}
-            >
-              {isSignalling ? '중단' : '신호 분류'}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={isCanonicalizing ? () => { canonicalStopRef.current = true } : handleCanonicalize}
-            >
-              {isCanonicalizing ? '중단' : '원문 URL 정규화'}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            추출 성공률 ~60%(구글뉴스·봇차단 사이트는 구조적 실패). 탭을 열어둔 채 진행됩니다.
-          </p>
-        </div>
-      </div>
-
-      {/* ── 카테고리 탭 ── */}
-      <div className="flex flex-wrap gap-1.5">
+      {/* ── 카테고리 탭 (205 — 최상단·확대, 메뉴화) ── */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
         {categoryTabs.map((tab) => (
           <button
             key={tab.value}
             type="button"
             onClick={() => { setCategory(tab.value); setSourceId(SOURCE_ALL); setPage(1) }}
             className={cn(
-              'rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
+              'rounded-full border px-5 py-2.5 text-[15px] font-medium transition-colors',
               category === tab.value
                 ? 'border-brand-600 bg-brand-600 text-white'
                 : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
@@ -844,75 +753,101 @@ export default function AdminContentManager() {
         </div>
       )}
 
-      {/* ── 일괄 작업 바 ── */}
-      {(() => {
-        const noSelection = selectedIds.size === 0
-        const bulkDisabledTitle = noSelection ? BULK_SELECTION_HINT : undefined
-        return (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-accent/60 px-4 py-2.5 text-sm">
-            <span className="font-medium text-foreground">
-              {noSelection ? '선택된 콘텐츠 없음' : `${selectedIds.size}건 선택`}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={noSelection || isBulkWorking}
-                title={bulkDisabledTitle}
-                onClick={() => handleBulkStatus('published')}
-                className="text-positive"
-              >
-                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                일괄 보이기
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={noSelection || isBulkWorking}
-                title={bulkDisabledTitle}
-                onClick={() => handleBulkStatus('rejected')}
-                className="text-red-600"
-              >
-                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                일괄 숨기기
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={noSelection || isBulkWorking || isEnrichingSel || selectedIds.size > 50}
-                title={bulkDisabledTitle}
-                onClick={handleEnrichSelected}
-              >
-                {isEnrichingSel
-                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />채우는 중…</>
-                  : `선택 풀본문 채우기${selectedIds.size > 50 ? ' (50건 초과)' : ''}`
-                }
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={noSelection || isBulkWorking || isEnrichingSel}
-                onClick={() => setSelectedIds(new Set())}
-              >
-                선택 해제
-              </Button>
-            </div>
-            {/* 197 — 항상 렌더링(invisible 로 토글)해 상태 전환 시 바 높이 점프 방지 */}
-            <p className={cn('w-full text-xs text-muted-foreground', !noSelection && 'invisible')}>
-              {BULK_SELECTION_HINT}
-            </p>
+      {/* ── 리스트 헤더: 좌 건수/검토대기, 우 처리 도구(205) ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {pendingCount !== null && pendingCount > 0 && (
+            <AdminFilterChip
+              active={status === 'pending'}
+              onClick={() => { setStatus('pending'); setPage(1) }}
+              count={pendingCount}
+            >
+              ⏳ 검토 대기
+            </AdminFilterChip>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {enrichResult && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
+                {isEnriching ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {enrichResult}
+              </span>
+            )}
+            {signalResult && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
+                {isSignalling ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {signalResult}
+              </span>
+            )}
+            {canonicalResult && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-positive/20 bg-positive-soft px-3 py-1 text-xs font-medium text-positive">
+                {isCanonicalizing ? <Loader2 className="h-3 w-3 animate-spin" /> : '✅'} {canonicalResult}
+              </span>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isEnriching ? () => { stopRef.current = true } : () => setIsEnrichRangeOpen(true)}
+            >
+              {isEnriching ? '중단' : '기사 풀본문 채우기'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isSignalling ? () => { signalStopRef.current = true } : handleSignalClassify}
+            >
+              {isSignalling ? '중단' : '신호 분류'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isCanonicalizing ? () => { canonicalStopRef.current = true } : handleCanonicalize}
+            >
+              {isCanonicalizing ? '중단' : '원문 URL 정규화'}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={resetColumnWidths}>
+              열 너비 초기화
+            </Button>
           </div>
-        )
-      })()}
-
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
-        </p>
-        <Button type="button" size="sm" variant="ghost" onClick={resetColumnWidths}>
-          열 너비 초기화
-        </Button>
+          <p className="text-xs text-muted-foreground">
+            추출 성공률 ~60%(구글뉴스·봇차단 사이트는 구조적 실패). 탭을 열어둔 채 진행됩니다.
+          </p>
+        </div>
       </div>
+
+      {/* ── 선택 작업 바 (205 — 1개 이상 선택 시에만 sticky 등장) ── */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-30 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-accent px-4 py-2.5 text-sm shadow-sm">
+          <span className="font-medium text-foreground">{selectedIds.size}건 선택</span>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isBulkWorking}
+              onClick={() => handleBulkStatus('published')}
+              className="text-positive"
+            >
+              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              노출
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isBulkWorking}
+              onClick={() => handleBulkStatus('rejected')}
+              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
+            >
+              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+              숨김
+            </Button>
+          </div>
+        </div>
+      )}
 
       {!isLoading && contents.length === 0 ? (
         <AdminEmptyState
@@ -1080,12 +1015,6 @@ export default function AdminContentManager() {
                       style={{ boxShadow: 'inset 1px 0 0 0 var(--border)' }}
                     >
                       <div className="flex justify-end gap-1.5">
-                        <Button size="sm" variant="outline" asChild>
-                          <Link href={`/admin/contents/${content.id}`}>
-                            <Eye className="h-3.5 w-3.5" />
-                            보기
-                          </Link>
-                        </Button>
                         {content.status !== 'published' && (
                           <Button
                             type="button" size="sm" variant="outline"
@@ -1107,6 +1036,12 @@ export default function AdminContentManager() {
                             숨김
                           </Button>
                         )}
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={`/admin/contents/${content.id}`}>
+                            <Eye className="h-3.5 w-3.5" />
+                            보기
+                          </Link>
+                        </Button>
                         <Button
                           type="button" size="sm" variant="outline"
                           disabled={isWorking || isBulkWorking}
@@ -1166,6 +1101,61 @@ export default function AdminContentManager() {
           </div>
         </div>
       )}
+
+      {/* ── 풀본문 채우기 기간 팝업 (205) ── */}
+      <Dialog open={isEnrichRangeOpen} onOpenChange={setIsEnrichRangeOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>풀본문 채우기 기간</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {ENRICH_RANGE_PRESETS.map((preset) => (
+                <Button
+                  key={preset.label}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => applyEnrichPreset(preset.days)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="enrich-from">시작일</Label>
+                <Input
+                  id="enrich-from"
+                  type="date"
+                  value={enrichFrom}
+                  onChange={(e) => setEnrichFrom(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="enrich-to">종료일</Label>
+                <Input
+                  id="enrich-to"
+                  type="date"
+                  value={enrichTo}
+                  onChange={(e) => setEnrichTo(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              비워두면 전체 기간이 대상입니다.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setIsEnrichRangeOpen(false)}>
+              취소
+            </Button>
+            <Button type="button" onClick={startEnrich}>
+              채우기 시작
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── 편집 모달 ── */}
       <Dialog open={edit !== null} onOpenChange={(open) => { if (!open) { setEdit(null); setEditError(null) } }}>
