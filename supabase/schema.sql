@@ -631,6 +631,7 @@ create table if not exists public.briefings (
   audio_duration_seconds integer,
   voice                  text default 'ko-KR-Wavenet-C',
   status                 briefing_status not null default 'draft',
+  error_reason           text,
   generated_at           timestamptz,
   published_at           timestamptz,
   created_at             timestamptz not null default now(),
@@ -1443,5 +1444,8 @@ on conflict (section_key) do nothing;
 -- alter table public.users
 --   add column if not exists feed_onboarding_skipped boolean not null default false;
 
+-- briefings 테이블에 error_reason 추가 (LLM 실패 원인 기록, 지시서 참고)
+-- alter table public.briefings
+--   add column if not exists error_reason text;
 -- contents 테이블에 body_markdown 추가 (212-리치에디터-마크다운, docs/sql-handoff/212-body-markdown.sql)
 -- alter table public.contents add column if not exists body_markdown text;

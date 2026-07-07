@@ -66,7 +66,7 @@ export async function GET() {
     const [briefingsResult, usageResult] = await Promise.all([
       admin
         .from('briefings')
-        .select('id, briefing_date, title, script, audio_url, audio_duration_seconds, voice, status, generated_at, published_at, updated_at, highlights')
+        .select('id, briefing_date, title, script, audio_url, audio_duration_seconds, voice, status, error_reason, generated_at, published_at, updated_at, highlights')
         .order('briefing_date', { ascending: false })
         .limit(60),
       admin

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { llmComplete } from '@/lib/llm'
+import { llmCompleteDetailed } from '@/lib/llm'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { generateHighlights } from '@/lib/briefing/highlights'
@@ -389,10 +389,10 @@ export async function generateBriefing(
 
   // 5. LLM 스크립트 생성
   const userPrompt = buildUserPrompt(selected, dateParts)
-  const scriptRaw = await llmComplete('briefing', SYSTEM_PROMPT, userPrompt)
+  const { text: scriptRaw, errorReason } = await llmCompleteDetailed('briefing', SYSTEM_PROMPT, userPrompt)
 
   if (!scriptRaw?.trim()) {
-    console.error('[브리핑] 스크립트 생성 실패 (LLM 반환 없음)')
+    console.error('[브리핑] 스크립트 생성 실패:', errorReason)
     await admin
       .from('briefings')
       .upsert({
@@ -401,6 +401,7 @@ export async function generateBriefing(
         script: null,
         source_content_ids: sourceContentIds,
         status: 'failed',
+        error_reason: errorReason ?? 'LLM 반환 없음',
         generated_at: new Date().toISOString(),
       }, { onConflict: 'briefing_date' })
     return { ok: false, reason: '스크립트 생성 실패' }
@@ -426,6 +427,7 @@ export async function generateBriefing(
       source_content_ids: sourceContentIds,
       highlights: highlights.length > 0 ? highlights : null,
       status: publish ? 'published' : 'draft',
+      error_reason: null,
       ...(publish ? { published_at: new Date().toISOString() } : {}),
       generated_at: new Date().toISOString(),
     }, { onConflict: 'briefing_date' })

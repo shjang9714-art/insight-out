@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { llmComplete } from '@/lib/llm'
+import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 
 // ─── signal_type enum (content_signals와 동일) ────────────────────────────────
@@ -123,11 +123,17 @@ function parseAndValidate(raw: string, validIdSet: Set<string>): EntityEvent[] {
 
 // ─── 메인 함수 ────────────────────────────────────────────────────────────────
 
+export interface GenerateEntityEventsResult {
+  events: EntityEvent[]
+  /** events가 빈 배열일 때 그 이유(엔티티 없음/콘텐츠 부족/LLM 실패 등). 정상 케이스면 null */
+  errorReason: string | null
+}
+
 export async function generateEntityEvents(
   admin: SupabaseClient,
   entityId: string,
   opts?: { days?: number },
-): Promise<EntityEvent[]> {
+): Promise<GenerateEntityEventsResult> {
   try {
     const days = opts?.days ?? 120
     const since = new Date(Date.now() - days * 86_400_000).toISOString()
@@ -138,7 +144,7 @@ export async function generateEntityEvents(
       .select('id, canonical_name')
       .eq('id', entityId)
       .single()
-    if (!entityData) return []
+    if (!entityData) return { events: [], errorReason: '엔티티를 찾을 수 없음' }
     const entity = entityData as { id: string; canonical_name: string }
 
     // 2. content_entities → 콘텐츠 (최근 days일, 최대 80건)
@@ -149,7 +155,9 @@ export async function generateEntityEvents(
       .limit(200)
 
     const allContentIds: string[] = (ceData ?? []).map((r: { content_id: string }) => r.content_id)
-    if (allContentIds.length === 0) return []
+    if (allContentIds.length === 0) {
+      return { events: [], errorReason: '연관된 콘텐츠 없음' }
+    }
 
     const { data: contentsData } = await admin
       .from('contents')
@@ -168,7 +176,9 @@ export async function generateEntityEvents(
       sentiment: string | null
     }[]
 
-    if (contentRows.length === 0) return []
+    if (contentRows.length === 0) {
+      return { events: [], errorReason: `최근 ${days}일 내 발행된 콘텐츠 없음` }
+    }
 
     const contentIds = contentRows.map(r => r.id)
     const validIdSet = new Set(contentIds)
@@ -205,13 +215,22 @@ export async function generateEntityEvents(
     }))
 
     // 5. LLM 호출
-    const raw = await llmComplete('report', SYSTEM_PROMPT, buildUserPrompt(entity.canonical_name, contents))
-    if (!raw) return []
+    const { text: raw, errorReason: llmErrorReason } = await llmCompleteDetailed(
+      'report', SYSTEM_PROMPT, buildUserPrompt(entity.canonical_name, contents)
+    )
+    if (!raw) {
+      return { events: [], errorReason: llmErrorReason ?? 'LLM 응답 없음' }
+    }
 
     // 6. 파싱 + 환각 가드
-    return parseAndValidate(raw, validIdSet)
+    const events = parseAndValidate(raw, validIdSet)
+    return {
+      events,
+      errorReason: events.length === 0 ? 'LLM 응답에서 유효한 사건을 추출하지 못함' : null,
+    }
   } catch (err) {
-    console.error('[generateEntityEvents] 오류:', err instanceof Error ? err.message : String(err))
-    return []
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[generateEntityEvents] 오류:', message)
+    return { events: [], errorReason: `내부 오류: ${message}` }
   }
 }
