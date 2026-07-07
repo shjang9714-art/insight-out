@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
       for (const entity of sorted.slice(0, DRAIN_LIMIT)) {
         if (Date.now() >= deadline) break
         try {
-          const events = await generateEntityEvents(admin, entity.id)
+          const { events } = await generateEntityEvents(admin, entity.id)
           if (events.length > 0) {
             await admin.from('entity_events').delete().eq('entity_id', entity.id)
             await admin.from('entity_events').insert(

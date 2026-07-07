@@ -60,11 +60,11 @@ export async function POST(
     const admin = createAdminClient()
 
     // LLM 생성
-    const events = await generateEntityEvents(admin, id)
+    const { events, errorReason } = await generateEntityEvents(admin, id)
 
     if (events.length === 0) {
       return NextResponse.json(
-        { error: 'LLM 키 없음 또는 입력 콘텐츠 부족으로 생성 실패' },
+        { error: `사건 타임라인 생성 실패: ${errorReason ?? '알 수 없는 원인'}` },
         { status: 503 }
       )
     }

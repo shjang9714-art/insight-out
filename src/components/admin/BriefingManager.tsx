@@ -18,6 +18,7 @@ interface Briefing {
   audio_duration_seconds: number | null
   voice: string | null
   status: BriefingStatus
+  error_reason: string | null
   generated_at: string | null
   published_at: string | null
   updated_at: string | null
@@ -286,6 +287,12 @@ export default function BriefingManager() {
                     <p className="mt-1 font-semibold text-foreground line-clamp-1">
                       {briefing.title ?? '제목 없음'}
                     </p>
+                    {briefing.status === 'failed' && briefing.error_reason && (
+                      <p className="mt-1 flex items-start gap-1 text-xs text-destructive">
+                        <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span className="break-all">{briefing.error_reason}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* 액션 버튼 */}

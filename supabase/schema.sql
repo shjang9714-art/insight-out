@@ -630,6 +630,7 @@ create table if not exists public.briefings (
   audio_duration_seconds integer,
   voice                  text default 'ko-KR-Wavenet-C',
   status                 briefing_status not null default 'draft',
+  error_reason           text,
   generated_at           timestamptz,
   published_at           timestamptz,
   created_at             timestamptz not null default now(),
@@ -1441,3 +1442,7 @@ on conflict (section_key) do nothing;
 -- users 테이블에 feed_onboarding_skipped 추가 (2026-06-16-추천피드-스키마.sql)
 -- alter table public.users
 --   add column if not exists feed_onboarding_skipped boolean not null default false;
+
+-- briefings 테이블에 error_reason 추가 (LLM 실패 원인 기록, 지시서 참고)
+-- alter table public.briefings
+--   add column if not exists error_reason text;
