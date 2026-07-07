@@ -49,6 +49,7 @@ interface AdminContentRow {
   body_len: number | null
   review_reason: string | null
   sources: { name: string } | null
+  thumbnail_url?: string | null
 }
 
 interface SourceOption {
@@ -66,6 +67,7 @@ interface EditState {
   author: string
   publishedAt: string // 'YYYY-MM-DD' 또는 ''
   bodyOriginal: string
+  thumbnailUrl: string | null
 }
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
@@ -170,6 +172,10 @@ export default function AdminContentManager() {
   const [edit,        setEdit]        = useState<EditState | null>(null)
   const [isSaving,    setIsSaving]    = useState(false)
   const [editError,   setEditError]   = useState<string | null>(null)
+
+  // 편집 모달 — 썸네일 업로드/교체 (211)
+  const [isUploadingThumb, setIsUploadingThumb] = useState(false)
+  const [thumbError,       setThumbError]       = useState<string | null>(null)
 
   // 본문 상태 필터 + body_len degrade 추적
   const [bodyFilter,      setBodyFilter]      = useState<'all' | 'full' | 'snippet' | 'none'>('all')
@@ -333,7 +339,7 @@ export default function AdminContentManager() {
     setWorkingId(content.id)
     const { data, error: loadError } = await supabase
       .from('contents')
-      .select('id, title, summary_ko, category, source_id, author, published_at, body_original')
+      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, thumbnail_url')
       .eq('id', content.id)
       .single()
     setWorkingId(null)
@@ -342,6 +348,7 @@ export default function AdminContentManager() {
       setError(`편집할 콘텐츠를 불러오지 못했습니다: ${loadError?.message ?? '알 수 없는 오류'}`)
       return
     }
+    setThumbError(null)
     setEdit({
       id:           data.id,
       title:        data.title ?? '',
@@ -351,6 +358,7 @@ export default function AdminContentManager() {
       author:       data.author ?? '',
       publishedAt:  toDateInput(data.published_at),
       bodyOriginal: data.body_original ?? '',
+      thumbnailUrl: data.thumbnail_url ?? null,
     })
   }
 
@@ -373,6 +381,7 @@ export default function AdminContentManager() {
         author:        edit.author.trim() || null,
         published_at:  edit.publishedAt || null,
         body_original: edit.bodyOriginal.trim() || null,
+        thumbnail_url: edit.thumbnailUrl,
       })
       .eq('id', edit.id)
 
@@ -382,17 +391,70 @@ export default function AdminContentManager() {
       return
     }
 
-    // 목록에 반영 (제목·카테고리·소스명)
+    // 목록에 반영 (제목·카테고리·소스명·썸네일)
     const nextSourceName = edit.sourceId
       ? (sources.find((s) => s.id === edit.sourceId)?.name ?? null)
       : null
     setContents((prev) => prev.map((item) =>
       item.id === edit.id
-        ? { ...item, title, category: edit.category, sources: nextSourceName ? { name: nextSourceName } : null }
+        ? {
+            ...item,
+            title,
+            category: edit.category,
+            sources: nextSourceName ? { name: nextSourceName } : null,
+            thumbnail_url: edit.thumbnailUrl,
+          }
         : item
     ))
     setIsSaving(false)
     setEdit(null)
+  }
+
+  // ── 편집 모달 — 썸네일 업로드/교체·제거 (211) ──────────────────────────
+  const handleThumbnailUpload = async (file: File) => {
+    if (!edit) return
+    if (!file.type.startsWith('image/')) {
+      setThumbError('이미지 파일만 업로드할 수 있습니다.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setThumbError('이미지 용량은 2MB 이하여야 합니다.')
+      return
+    }
+
+    setIsUploadingThumb(true)
+    setThumbError(null)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      const tokenRes = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: `cover.${ext}`, kind: 'cover', contentId: edit.id }),
+      })
+      const tokenData: { token?: string; storagePath?: string; error?: string } = await tokenRes.json()
+      if (!tokenRes.ok || !tokenData.token || !tokenData.storagePath) {
+        throw new Error(tokenData.error ?? '업로드 URL 발급에 실패했습니다.')
+      }
+
+      const { error: uploadErr } = await supabase.storage
+        .from('report-covers')
+        .uploadToSignedUrl(tokenData.storagePath, tokenData.token, file)
+      if (uploadErr) throw new Error(uploadErr.message)
+
+      const { data: pub } = supabase.storage.from('report-covers').getPublicUrl(tokenData.storagePath)
+      // 같은 경로 upsert라 URL이 동일해 브라우저 캐시로 옛 이미지가 보일 수 있음 → 쿼리로 무효화
+      const cacheBuster = new Date().getTime()
+      setEdit((p) => p && { ...p, thumbnailUrl: `${pub.publicUrl}?v=${cacheBuster}` })
+    } catch (err) {
+      setThumbError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다.')
+    } finally {
+      setIsUploadingThumb(false)
+    }
+  }
+
+  const handleThumbnailRemove = () => {
+    setThumbError(null)
+    setEdit((p) => p && { ...p, thumbnailUrl: null })
   }
 
   // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
@@ -1028,6 +1090,54 @@ export default function AdminContentManager() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* 썸네일 (211) */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-thumbnail">
+                  썸네일{' '}
+                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                </Label>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
+                    {edit.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={edit.thumbnailUrl} alt="썸네일 미리보기" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="px-2 text-center text-[11px] text-muted-foreground">기본 표지 사용 중</span>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="edit-thumbnail"
+                        type="file"
+                        accept="image/*"
+                        disabled={isUploadingThumb}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) void handleThumbnailUpload(file)
+                          e.target.value = ''
+                        }}
+                        className="max-w-xs"
+                      />
+                      {isUploadingThumb && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+                      {edit.thumbnailUrl && !isUploadingThumb && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleThumbnailRemove}
+                        >
+                          <Trash2 className="mr-1 h-3.5 w-3.5" />
+                          제거
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">이미지 파일, 2MB 이하. 비우면 기본 표지가 표시됩니다.</p>
+                    {thumbError && <p className="text-xs text-destructive">{thumbError}</p>}
+                  </div>
                 </div>
               </div>
 
