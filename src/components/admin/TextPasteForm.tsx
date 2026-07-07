@@ -39,7 +39,7 @@ interface Source {
   name: string
 }
 
-interface FormState {
+export interface FormState {
   category:    PasteCategory
   title:       string
   bodyText:    string
@@ -63,12 +63,17 @@ const FORM_INIT: FormState = {
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
-export default function TextPasteForm() {
+interface Props {
+  /** 프리필용 초기값(URL 임포트 등에서 사용). 없으면 현행과 동일한 빈 폼. */
+  initialForm?: Partial<FormState>
+}
+
+export default function TextPasteForm({ initialForm }: Props = {}) {
   const [supabase] = useState(createClient)
 
   const [services, setServices]     = useState<Service[]>([])
   const [sources, setSources]       = useState<Source[]>([])
-  const [form, setForm]             = useState<FormState>(FORM_INIT)
+  const [form, setForm]             = useState<FormState>({ ...FORM_INIT, ...initialForm })
   const [serviceIds, setServiceIds] = useState<Set<string>>(new Set())
   const [keywords, setKeywords]     = useState<string[]>([])
   const [kwInput, setKwInput]       = useState('')
