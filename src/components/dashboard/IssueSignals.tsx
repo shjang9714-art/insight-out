@@ -3,7 +3,8 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { TrendingUp } from 'lucide-react'
 import { fetchIssueActivity } from '@/lib/issues/activity'
-import IssueRankTicker from './IssueRankTicker'
+import { fetchTrendingKeywords, TRENDING_LIMIT } from '@/lib/issues/trending'
+import IssueRankTicker, { type TickerIssue } from './IssueRankTicker'
 
 export default async function IssueSignals() {
   const cookieStore = await cookies()
@@ -22,8 +23,32 @@ export default async function IssueSignals() {
     }
   )
 
-  const cards = await fetchIssueActivity(supabase)
-  const top = cards.filter(c => c.recentCount > 0 || c.changePct === null).slice(0, 15)
+  // "실시간 급상승" = 이슈 클러스터의 최근 48h 발행건수 desc(trending_keywords 뷰).
+  // 뷰 미적용 시(42P01) 기존 주간 활동량 집계로 폴백 — 섹션이 빈 화면이 되지 않게.
+  const trending = await fetchTrendingKeywords(supabase)
+
+  const top: TickerIssue[] = trending
+    ? trending.map(t => ({
+        id: t.id,
+        title: t.title,
+        recentCount: t.recentCount,
+        changePct: t.changePct,
+        changeFlag: t.changeFlag,
+        sentimentPos: 0,
+        sentimentNeg: 0,
+      }))
+    : (await fetchIssueActivity(supabase))
+        .filter(c => c.recentCount > 0 || c.changePct === null)
+        .slice(0, TRENDING_LIMIT)
+        .map(card => ({
+          id: card.id,
+          title: card.title,
+          recentCount: card.recentCount,
+          changePct: card.changePct,
+          changeFlag: card.changeFlag,
+          sentimentPos: card.sentimentPos,
+          sentimentNeg: card.sentimentNeg,
+        }))
 
   if (top.length === 0) return null
 
@@ -37,18 +62,7 @@ export default async function IssueSignals() {
 
       {/* 한 줄 롤링(클라이언트) */}
       <div className="min-w-0 flex-1">
-        <IssueRankTicker
-          compact
-          issues={top.map(card => ({
-            id: card.id,
-            title: card.title,
-            recentCount: card.recentCount,
-            changePct: card.changePct,
-            changeFlag: card.changeFlag,
-            sentimentPos: card.sentimentPos,
-            sentimentNeg: card.sentimentNeg,
-          }))}
-        />
+        <IssueRankTicker compact issues={top} />
       </div>
 
       <Link
