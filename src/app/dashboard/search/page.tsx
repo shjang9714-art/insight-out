@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
-import { Search, Sparkles } from 'lucide-react'
+import { Search } from 'lucide-react'
 import ContentRow from '@/components/dashboard/ContentRow'
 import { tagsOf } from '@/lib/contents/excerpt'
 import { normalizeCompany } from '@/lib/search/company-alias'
@@ -29,14 +29,6 @@ interface SearchResult {
   content_services: { services: { name: string } | null }[]
   matchedBy?: 'title' | 'summary' | 'body' | 'keyword'
 }
-
-interface RagSource { content_id: string; title: string; published_at: string | null; source: string | null }
-interface RagAnswerData { answer: string; citations: string[]; sources: RagSource[] }
-type RagState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'done'; data: RagAnswerData }
-  | { status: 'none' }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -77,9 +69,6 @@ function SearchContent() {
   const [results, setResults]   = useState<SearchResult[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-
-  // AI 답변
-  const [ragState, setRagState] = useState<RagState>({ status: 'idle' })
 
   // ILIKE 멀티컬럼 검색 (제목·요약·본문)
   useEffect(() => {
@@ -128,40 +117,6 @@ function SearchContent() {
     }
 
     fetchResults()
-    return () => { cancelled = true }
-  }, [q])
-
-  // RAG AI 답변 (검색어 변경 시)
-  useEffect(() => {
-    if (!q) { startTransition(() => setRagState({ status: 'idle' })); return }
-
-    let cancelled = false
-    startTransition(() => setRagState({ status: 'loading' }))
-
-    fetch('/api/search/rag', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q }),
-    })
-      .then(r => r.json())
-      .then((data: unknown) => {
-        if (cancelled) return
-        const d = data as Record<string, unknown>
-        if (typeof d.answer === 'string' && d.answer) {
-          setRagState({
-            status: 'done',
-            data: {
-              answer: d.answer,
-              citations: Array.isArray(d.citations) ? d.citations as string[] : [],
-              sources: Array.isArray(d.sources) ? d.sources as RagSource[] : [],
-            },
-          })
-        } else {
-          setRagState({ status: 'none' })
-        }
-      })
-      .catch(() => { if (!cancelled) setRagState({ status: 'none' }) })
-
     return () => { cancelled = true }
   }, [q])
 
@@ -225,82 +180,15 @@ function SearchContent() {
         </div>
       )}
 
-      {/* AI 답변 카드 — 결과/빈화면보다 먼저 노출 */}
-      {q && ragState.status === 'loading' && (
-        <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-brand-100 bg-brand-50/60 px-5 py-4 text-sm font-medium text-brand-700">
-          <Sparkles className="h-4 w-4 shrink-0 animate-pulse text-brand-600" />
-          <span>AI가 수집된 기사를 바탕으로 답변을 작성하고 있어요</span>
-          <span className="ml-0.5 flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-brand-600 animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-2 w-2 rounded-full bg-brand-600 animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-2 w-2 rounded-full bg-brand-600 animate-bounce" />
-          </span>
-        </div>
-      )}
-      {q && ragState.status === 'done' && (
-        <>
-          {/* AI 답변 카드 */}
-          <div className="mb-4 rounded-xl border border-border bg-card px-5 py-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 shrink-0 text-brand-600" />
-              <span className="text-sm font-semibold text-foreground">AI 답변</span>
-              <span className="text-xs text-muted-foreground">수집된 기사들을 근거로 정리했어요.</span>
-            </div>
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{ragState.data.answer}</p>
-          </div>
-
-          {/* 관련 기사 — 답변 근거 출처 */}
-          {ragState.data.sources.length > 0 && (
-            <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4">
-              <div className="mb-1 flex items-center gap-2">
-                <Search className="h-4 w-4 shrink-0 text-brand-600" />
-                <span className="text-sm font-semibold text-foreground">관련 기사</span>
-                <span className="text-xs text-muted-foreground">답변의 근거예요. 관련 기사를 확인하세요.</span>
-              </div>
-              <ul className="divide-y divide-border">
-                {ragState.data.sources.map(s => (
-                  <li key={s.content_id}>
-                    <Link
-                      href={`/dashboard/contents/${s.content_id}`}
-                      className="group -mx-2 flex items-start gap-2.5 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/50"
-                    >
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-600" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
-                          {s.title}
-                        </p>
-                        {(s.source || s.published_at) && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {[s.source, s.published_at?.slice(0, 10).replace(/-/g, '.')]
-                              .filter(Boolean)
-                              .join('  ·  ')}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* 결과 없음 — AI 답변이 있으면 컴팩트 안내, 답변 로딩 중엔 숨김 */}
+      {/* 결과 없음 */}
       {q && !isLoading && results !== null && results.length === 0 && !error && (
-        ragState.status === 'done' ? (
-          <p className="rounded-xl border border-border bg-card px-5 py-4 text-center text-xs text-muted-foreground">
-            &ldquo;{q}&rdquo;와 정확히 일치하는 기사는 없어요. 위 AI 답변의 출처 기사를 확인해보세요.
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
+          <span className="text-4xl">🔍</span>
+          <p className="text-sm font-medium text-foreground">
+            <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
           </p>
-        ) : ragState.status === 'loading' ? null : (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
-            <span className="text-4xl">🔍</span>
-            <p className="text-sm font-medium text-foreground">
-              <span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다
-            </p>
-            <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
-          </div>
-        )
+          <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
+        </div>
       )}
 
       {/* 결과 목록 */}

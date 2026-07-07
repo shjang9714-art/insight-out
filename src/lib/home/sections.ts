@@ -17,11 +17,6 @@ export const HOME_SECTION_REGISTRY: HomeSectionDef[] = [
     description: '지난 방문 이후 신규 콘텐츠·이슈 수',
   },
   {
-    key: 'suggested_questions',
-    label: '추천 질문',
-    description: '트렌딩 기반 검색 진입점',
-  },
-  {
     key: 'issue_signals',
     label: '트렌딩 이슈 티커',
     description: '실시간 급상승 이슈 스트립',

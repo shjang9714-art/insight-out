@@ -1417,7 +1417,6 @@ grant select, insert, update, delete on table public.homepage_sections to servic
 insert into public.homepage_sections (section_key, enabled, sort_order) values
   ('personalization_nudge', true, 10),
   ('visit_delta',           true, 20),
-  ('suggested_questions',   true, 30),
   ('issue_signals',         true, 40),
   ('briefing_highlights',   true, 50),
   ('feed_slot',             true, 60)
