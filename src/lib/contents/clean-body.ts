@@ -38,6 +38,26 @@ export function htmlToPlainText(html: string): string {
   )
 }
 
+/**
+ * 마크다운 원본 → 평문(212). 검색·스니펫·body_original 용도라 완벽한 파싱은 불필요,
+ * 헤딩/강조/목록/인용/링크/코드 표기만 제거해 읽을 만한 평문을 만든다.
+ */
+export function stripMarkdown(md: string): string {
+  return md
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export function cleanBodyText(text: string): string {
   const normalized = decodeEntities(text)
     .replace(/\r\n?/g, '\n')

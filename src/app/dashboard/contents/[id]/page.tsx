@@ -12,6 +12,7 @@ import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
+import ReportMarkdown from '@/components/reports/ReportMarkdown'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
@@ -99,7 +100,7 @@ const getContentRow = cache(async (id: string) => {
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
-  const [{ data, error }, { data: lh }] = await Promise.all([
+  const [{ data, error }, { data: lh }, { data: md }] = await Promise.all([
     supabase
       .from('contents')
       .select(`
@@ -116,11 +117,14 @@ const getContentRow = cache(async (id: string) => {
       .single(),
     // 별도 가드 쿼리: link_ok(컬럼 없으면 null→정상 링크 표시, 42703 graceful)
     supabase.from('contents').select('link_ok').eq('id', id).single(),
+    // 별도 가드 쿼리: body_markdown(212, 컬럼 없으면 null→기존 평문 렌더, 42703 graceful)
+    supabase.from('contents').select('body_markdown').eq('id', id).single(),
   ])
 
   const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
+  const bodyMarkdown = (md as { body_markdown: string | null } | null)?.body_markdown ?? null
 
-  return { data, error, linkDead, supabase }
+  return { data, error, linkDead, bodyMarkdown, supabase }
 })
 
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
@@ -140,7 +144,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ContentDetailPage({ params }: PageProps) {
   const { id } = await params
-  const { data, error, linkDead, supabase } = await getContentRow(id)
+  const { data, error, linkDead, bodyMarkdown, supabase } = await getContentRow(id)
 
   if (error || !data) {
     notFound()
@@ -394,6 +398,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
                   </div>
                 )}
               </>
+            ) : bodyMarkdown ? (
+              <ReportMarkdown>{bodyMarkdown}</ReportMarkdown>
             ) : (
               <ArticleBodyLoader
                 contentId={content.id}

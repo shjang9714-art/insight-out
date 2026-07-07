@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { X, Loader2, CheckCircle, Send } from 'lucide-react'
 import type { Service } from '@/lib/types'
+import MarkdownEditor from '@/components/admin/MarkdownEditor'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -144,15 +145,16 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          category:    form.category,
-          title:       form.title.trim(),
-          bodyText:    form.bodyText,
-          originalUrl: form.originalUrl.trim() || null,
-          summary:     form.summary.trim() || null,
-          author:      form.author.trim() || null,
-          publishedAt: form.publishedAt || null,
-          sourceId:    form.sourceId || null,
-          serviceIds:  [...serviceIds],
+          category:     form.category,
+          title:        form.title.trim(),
+          bodyText:     form.bodyText,
+          bodyMarkdown: form.bodyText,
+          originalUrl:  form.originalUrl.trim() || null,
+          summary:      form.summary.trim() || null,
+          author:       form.author.trim() || null,
+          publishedAt:  form.publishedAt || null,
+          sourceId:     form.sourceId || null,
+          serviceIds:   [...serviceIds],
           keywords,
         }),
       })
@@ -311,17 +313,13 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
           <CardTitle className="text-sm font-semibold text-foreground">본문</CardTitle>
         </CardHeader>
         <CardContent>
-          <textarea
-            data-slot="textarea"
-            id="bodyText"
+          <MarkdownEditor
             value={form.bodyText}
-            onChange={(e) => setForm(p => ({ ...p, bodyText: e.target.value }))}
-            placeholder="본문을 붙여넣거나 직접 입력해주세요"
-            rows={12}
-            className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onChange={(v) => setForm(p => ({ ...p, bodyText: v }))}
+            placeholder="본문을 붙여넣거나 직접 입력해주세요. 마크다운 서식을 사용할 수 있습니다."
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            HTML 태그가 포함된 경우 서버에서 자동으로 정리됩니다.
+            서식 툴바로 마크다운을 작성하고 미리보기로 확인할 수 있습니다.
           </p>
         </CardContent>
       </Card>

@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 import { summarizeKo } from '@/lib/crawler/summarize'
+import { stripMarkdown } from '@/lib/contents/clean-body'
 
 // ─── HTML 정리 ───────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
     category?: string
     title?: string
     bodyText?: string
+    bodyMarkdown?: string
     originalUrl?: string | null
     summary?: string | null
     author?: string | null
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 })
   }
 
-  const { category, title, bodyText, originalUrl, summary, author, publishedAt, sourceId, serviceIds = [], keywords = [] } = body
+  const { category, title, bodyText, bodyMarkdown, originalUrl, summary, author, publishedAt, sourceId, serviceIds = [], keywords = [] } = body
 
   if (!title?.trim()) {
     return NextResponse.json({ error: '제목을 입력해주세요.' }, { status: 400 })
@@ -82,9 +84,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '본문을 입력해주세요.' }, { status: 400 })
   }
 
-  // ─── HTML 정리 ───────────────────────────────────────────────────────────
+  // ─── 본문 정리 — 212: 마크다운 있으면 stripMarkdown(평문화), 없으면 기존 HTML 정리 ──
 
-  const cleanBody = cleanHtml(bodyText)
+  const cleanBody = bodyMarkdown?.trim() ? stripMarkdown(bodyMarkdown) : cleanHtml(bodyText)
 
   // ─── 요약 생성 (best-effort) ─────────────────────────────────────────────
 
@@ -95,27 +97,41 @@ export async function POST(request: NextRequest) {
 
   // ─── contents insert ─────────────────────────────────────────────────────
 
-  const { data: contentRow, error: contentErr } = await supabase
+  const insertPayload: Record<string, unknown> = {
+    category:          category ?? '웹인사이트',
+    title:             title.trim(),
+    body_original:     cleanBody,
+    original_url:      originalUrl || null,
+    summary_ko:        summaryKo,
+    author:            author || null,
+    published_at:      publishedAt || null,
+    source_id:         sourceId || null,
+    file_path:         null,
+    original_language: 'ko',
+    status:            'published',
+  }
+  const hasMarkdown = Boolean(bodyMarkdown?.trim())
+  if (hasMarkdown) insertPayload.body_markdown = bodyMarkdown
+
+  let { data: contentRow, error: contentErr } = await supabase
     .from('contents')
-    .insert({
-      category:          category ?? '웹인사이트',
-      title:             title.trim(),
-      body_original:     cleanBody,
-      original_url:      originalUrl || null,
-      summary_ko:        summaryKo,
-      author:            author || null,
-      published_at:      publishedAt || null,
-      source_id:         sourceId || null,
-      file_path:         null,
-      original_language: 'ko',
-      status:            'published',
-    })
+    .insert(insertPayload)
     .select('id')
     .single()
 
-  if (contentErr) {
+  // 212 — body_markdown 컬럼 미적용(42703) graceful: 컬럼 없이 재시도
+  if (contentErr?.code === '42703' && hasMarkdown) {
+    delete insertPayload.body_markdown
+    ;({ data: contentRow, error: contentErr } = await supabase
+      .from('contents')
+      .insert(insertPayload)
+      .select('id')
+      .single())
+  }
+
+  if (contentErr || !contentRow) {
     // original_url 부분 유니크 인덱스 위반
-    if (contentErr.code === '23505' && originalUrl) {
+    if (contentErr?.code === '23505' && originalUrl) {
       return NextResponse.json({ error: '이미 등록된 원문 URL 입니다.' }, { status: 409 })
     }
     console.error('[api/admin/paste] contents insert 실패:', contentErr)
