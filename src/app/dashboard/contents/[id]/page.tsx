@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -91,18 +92,42 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스레터':  'bg-indigo-50 text-indigo-700 border-indigo-100',
 }
 
+// ─── 데이터 조회 (요청당 1회로 dedupe — generateMetadata/Page가 공유) ──────────
+// react cache()로 감싸 동일 id 호출 시 실제 쿼리는 한 번만 나가도록 함.
+// 메인 쿼리와 link_ok 가드 쿼리도 순차 대기 대신 Promise.all로 병렬 실행.
+const getContentRow = cache(async (id: string) => {
+  const cookieStore = await cookies()
+  const supabase = createSupabaseClient(cookieStore)
+
+  const [{ data, error }, { data: lh }] = await Promise.all([
+    supabase
+      .from('contents')
+      .select(`
+        id, title, title_original, category,
+        summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
+        file_path, original_url, author, published_at, collected_at,
+        matched_keywords, matched_groups, cluster_id,
+        sources(name),
+        content_services(services(name)),
+        content_keywords(keywords(name))
+      `)
+      .eq('id', id)
+      .eq('status', 'published')
+      .single(),
+    // 별도 가드 쿼리: link_ok(컬럼 없으면 null→정상 링크 표시, 42703 graceful)
+    supabase.from('contents').select('link_ok').eq('id', id).single(),
+  ])
+
+  const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
+
+  return { data, error, linkDead, supabase }
+})
+
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params
-  const cookieStore = await cookies()
-  const supabase = createSupabaseClient(cookieStore)
-
-  const { data } = await supabase
-    .from('contents')
-    .select('title')
-    .eq('id', id)
-    .single()
+  const { data } = await getContentRow(id)
 
   const title = data?.title ?? '콘텐츠 상세'
   return {
@@ -115,33 +140,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ContentDetailPage({ params }: PageProps) {
   const { id } = await params
-  const cookieStore = await cookies()
-  const supabase = createSupabaseClient(cookieStore)
-
-  const { data, error } = await supabase
-    .from('contents')
-    .select(`
-      id, title, title_original, category,
-      summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
-      file_path, original_url, author, published_at, collected_at,
-      matched_keywords, matched_groups, cluster_id,
-      sources(name),
-      content_services(services(name)),
-      content_keywords(keywords(name))
-    `)
-    .eq('id', id)
-    .eq('status', 'published')
-    .single()
+  const { data, error, linkDead, supabase } = await getContentRow(id)
 
   if (error || !data) {
     notFound()
   }
 
   const content = data as unknown as ContentDetail
-
-  // 별도 가드 쿼리: link_ok(컬럼 없으면 null→정상 링크 표시, 42703 graceful)
-  const { data: lh } = await supabase.from('contents').select('link_ok').eq('id', id).single()
-  const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
 
   // ── 리포트(file_path) vs 뉴스(original_url) 분기 ─────────────────────────
   const isReport = Boolean(content.file_path)
