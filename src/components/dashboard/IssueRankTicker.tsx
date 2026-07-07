@@ -6,6 +6,8 @@ import Link from 'next/link'
 export interface TickerIssue {
   id: string
   title: string
+  /** 서브이벤트의 지배 엔티티(회사/제품/인물) — 있으면 제목 앞에 보조 칩으로 표시 */
+  entityChip?: string | null
   recentCount: number
   changePct: number | null
   changeFlag: 'surge' | 'worsening' | null
@@ -108,6 +110,11 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
       >
         {rank}
       </span>
+      {issue.entityChip && (
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          {issue.entityChip}
+        </span>
+      )}
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors group-hover:text-brand-600">
         {issue.title}
       </span>
@@ -173,7 +180,7 @@ export default function IssueRankTicker({
     return (
       <div className={compact ? 'flex flex-col' : 'flex flex-col gap-1'}>
         {(compact ? issues.slice(0, 1) : issues).map((issue, i) => (
-          <RowComp key={issue.id} issue={issue} rank={i + 1} />
+          <RowComp key={`${issue.id}-${i}`} issue={issue} rank={i + 1} />
         ))}
       </div>
     )

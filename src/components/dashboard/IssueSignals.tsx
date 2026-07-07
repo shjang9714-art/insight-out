@@ -3,10 +3,11 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { TrendingUp } from 'lucide-react'
 import { fetchIssueActivity } from '@/lib/issues/activity'
-import { fetchTrendingKeywords, TRENDING_LIMIT } from '@/lib/issues/trending'
+import { fetchTrendingEvents, TRENDING_LIMIT } from '@/lib/issues/trending'
 import IssueRankTicker, { type TickerIssue } from './IssueRankTicker'
 
-export default async function IssueSignals() {
+/** trending_keywords/trending_issue_articles 뷰 미적용 시 기존 주간 활동량 집계로 폴백. */
+async function fetchFallbackTop(): Promise<TickerIssue[]> {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,32 +24,38 @@ export default async function IssueSignals() {
     }
   )
 
-  // "실시간 급상승" = 이슈 클러스터의 최근 48h 발행건수 desc(trending_keywords 뷰).
-  // 뷰 미적용 시(42P01) 기존 주간 활동량 집계로 폴백 — 섹션이 빈 화면이 되지 않게.
-  const trending = await fetchTrendingKeywords(supabase)
+  return (await fetchIssueActivity(supabase))
+    .filter(c => c.recentCount > 0 || c.changePct === null)
+    .slice(0, TRENDING_LIMIT)
+    .map(card => ({
+      id: card.id,
+      title: card.title,
+      recentCount: card.recentCount,
+      changePct: card.changePct,
+      changeFlag: card.changeFlag,
+      sentimentPos: card.sentimentPos,
+      sentimentNeg: card.sentimentNeg,
+    }))
+}
 
-  const top: TickerIssue[] = trending
-    ? trending.map(t => ({
-        id: t.id,
-        title: t.title,
-        recentCount: t.recentCount,
-        changePct: t.changePct,
-        changeFlag: t.changeFlag,
+export default async function IssueSignals() {
+  // "실시간 급상승" = trending_keywords 뷰(48h 발행건수 후보) 위에 이슈 내부
+  // 서브이벤트 클러스터링(§5)을 얹어 특정 사건 단위로 노출. 뷰 미적용 시(42P01/PGRST205)
+  // 기존 주간 활동량 집계로 폴백 — 섹션이 빈 화면이 되지 않게.
+  const events = await fetchTrendingEvents()
+
+  const top: TickerIssue[] = events
+    ? events.map(e => ({
+        id: e.issueId,
+        title: e.headline,
+        entityChip: e.entityChip,
+        recentCount: e.recentCount,
+        changePct: e.changePct,
+        changeFlag: e.changeFlag,
         sentimentPos: 0,
         sentimentNeg: 0,
       }))
-    : (await fetchIssueActivity(supabase))
-        .filter(c => c.recentCount > 0 || c.changePct === null)
-        .slice(0, TRENDING_LIMIT)
-        .map(card => ({
-          id: card.id,
-          title: card.title,
-          recentCount: card.recentCount,
-          changePct: card.changePct,
-          changeFlag: card.changeFlag,
-          sentimentPos: card.sentimentPos,
-          sentimentNeg: card.sentimentNeg,
-        }))
+    : await fetchFallbackTop()
 
   if (top.length === 0) return null
 
