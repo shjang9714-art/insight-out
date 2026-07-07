@@ -346,6 +346,7 @@ create table public.contents (
   title_original     text,                              -- 영문 원제(번역 시)
   summary_ko         text,                              -- 한국어 요약 (결정 F)
   body_original      text,                              -- 원문 본문 (결정 F) — 초기 RSS 스니펫, 상세 조회 시 풀본문으로 갱신
+  body_markdown      text,                              -- 어드민 수기 작성 콘텐츠의 마크다운 원본(212). null=평문(기존 body_original 렌더).
   body_fetched_at    timestamptz,                       -- 지연 풀본문 추출 시도 시각(null=미추출/스니펫, 값=추출 시도 완료)
   body_translated_ko text,                              -- 번역본 (결정 F)
   original_language  text not null default 'ko',        -- 'ko' | 'en' ...
@@ -1441,3 +1442,6 @@ on conflict (section_key) do nothing;
 -- users 테이블에 feed_onboarding_skipped 추가 (2026-06-16-추천피드-스키마.sql)
 -- alter table public.users
 --   add column if not exists feed_onboarding_skipped boolean not null default false;
+
+-- contents 테이블에 body_markdown 추가 (212-리치에디터-마크다운, docs/sql-handoff/212-body-markdown.sql)
+-- alter table public.contents add column if not exists body_markdown text;
