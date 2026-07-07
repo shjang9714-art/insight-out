@@ -27,6 +27,8 @@ interface IssueRankTickerProps {
 
 const ROW_H = 44 // px, h-11
 const ROW_H_COMPACT = 36 // px, h-9
+/** 한 행이 지나가는 기본 시간(ms). 기존 2200 → 약 1.8배 느리게. */
+export const DEFAULT_MS_PER_ROW = 4000
 
 function ChangeBadge({ issue }: { issue: TickerIssue }) {
   if (issue.changeFlag === 'worsening') {
@@ -138,7 +140,7 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
 export default function IssueRankTicker({
   issues,
   visibleRows,
-  msPerRow = 2200,
+  msPerRow = DEFAULT_MS_PER_ROW,
   compact = false,
 }: IssueRankTickerProps) {
   const rowH = compact ? ROW_H_COMPACT : ROW_H

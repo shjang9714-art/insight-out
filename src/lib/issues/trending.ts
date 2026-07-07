@@ -16,12 +16,14 @@ function createPublicClient() {
   )
 }
 
-// ─── 상수 (§5-4, 튜닝 시 이 블록만 수정) ─────────────────────────────────────
-// 실측(2026-07-08): 48h 창 기준 26개 이슈가 임계 2건 이상 확보(trending_keywords 뷰).
+// ─── 상수 (튜닝 시 이 블록만 수정) ────────────────────────────────────────────
+// 72h 창·임계 2건은 trending_keywords/trending_issue_articles 뷰(SQL)에 고정 — 여기선 미사용.
 
-export const TRENDING_LIMIT = 8
-// 48h 창·임계 2건은 trending_keywords/trending_issue_articles 뷰(SQL)에 고정 — 여기선 미사용.
-const SUBCLUSTER_SIM = 0.35
+export const TRENDING_LIMIT = 12
+const MIN_DISPLAY = 10 // 특정 사건이 모자라면 이 개수까지 degrade(이슈 전체) 항목으로 backfill
+const SUBCLUSTER_SIM = 0.35 // 이슈 내부 서브클러스터링(느슨 — 같은 사건 다매체 픽업 흡수용)
+const DEDUP_SIM = 0.5 // 이슈 간 동일 엔티티 + 헤드라인 유사 시 병합(느슨한 SUBCLUSTER_SIM보다 엄격)
+const IDENTICAL_SIM = 0.6 // 엔티티 무관, 사실상 같은 헤드라인이면 무조건 병합(교차 태깅된 동일 기사 중복 방지)
 const MIN_SUBCLUSTER = 2
 const SURGE_CHANGE_PCT_THRESHOLD = 30
 const CACHE_REVALIDATE_SECONDS = 20 * 60 // 20분 — 크롤 주기(1일 1회) 대비 매 요청 재계산 방지
@@ -123,8 +125,12 @@ function dominantEntity(articles: ArticleRow[]): string | null {
   return best
 }
 
-/** 이슈 하나의 48h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링. */
-function subclusterIssue(articles: ArticleRow[]): { headline: string; entityChip: string | null; count: number }[] {
+interface SubclusterResult { headline: string; entityChip: string | null; count: number }
+
+/** 이슈 하나의 48h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
+function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
+  if (articles.length === 0) return []
+
   const uf = new UnionFind(articles.length)
   for (let i = 0; i < articles.length; i++) {
     for (let j = i + 1; j < articles.length; j++) {
@@ -143,34 +149,24 @@ function subclusterIssue(articles: ArticleRow[]): { headline: string; entityChip
     groups.get(root)!.push(a)
   })
 
-  const qualified = [...groups.values()].filter(g => g.length >= MIN_SUBCLUSTER)
-
-  // degrade: 묶이는 그룹이 하나도 없으면(전부 단발) 이슈 전체를 대표 헤드라인 1개로.
-  if (qualified.length === 0) {
-    const latest = [...articles].sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))[0]
-    if (!latest) return []
-    return [{ headline: latest.title, entityChip: dominantEntity(articles), count: articles.length }]
-  }
-
-  return qualified.map(group => {
-    const representative = [...group].sort((a, b) => a.title.length - b.title.length)[0]
-    return { headline: representative.title, entityChip: dominantEntity(group), count: group.length }
-  })
+  return [...groups.values()]
+    .filter(g => g.length >= MIN_SUBCLUSTER)
+    .map(group => {
+      const representative = [...group].sort((a, b) => a.title.length - b.title.length)[0]
+      return { headline: representative.title, entityChip: dominantEntity(group), count: group.length }
+    })
 }
 
-// ─── 이슈 간 중복 억제 (§5-2 step7, 옵션) ────────────────────────────────────
+// ─── 이슈 간 중복 억제 ────────────────────────────────────────────────────────
+// 헤드라인이 사실상 동일하면(IDENTICAL_SIM) 엔티티 유무와 무관하게 병합 — 같은 기사가
+// 여러 이슈에 교차 태깅되어 동일 헤드라인이 반복 노출되는 걸 막는다(실측으로 확인된 케이스).
+// 그 외엔 "동일 엔티티 AND 헤드라인 유사도 높음(DEDUP_SIM)" 둘 다 만족해야 병합 —
+// 지배 엔티티만 같다고 병합하면 같은 회사의 서로 다른 사건이 뭉개진다.
 
-function dedupeAcrossIssues(events: TrendingEvent[]): TrendingEvent[] {
-  const kept: TrendingEvent[] = []
-  for (const ev of events) {
-    const isDup = kept.some(k =>
-      k.entityChip !== null &&
-      k.entityChip === ev.entityChip &&
-      similarity(normalizeTitle(k.headline), normalizeTitle(ev.headline)) >= SUBCLUSTER_SIM
-    )
-    if (!isDup) kept.push(ev)
-  }
-  return kept
+function isDuplicateEvent(a: TrendingEvent, b: TrendingEvent): boolean {
+  const sim = similarity(normalizeTitle(a.headline), normalizeTitle(b.headline))
+  if (sim >= IDENTICAL_SIM) return true
+  return a.entityChip !== null && a.entityChip === b.entityChip && sim >= DEDUP_SIM
 }
 
 // ─── 메인 계산 (unstable_cache로 래핑) ────────────────────────────────────────
@@ -229,7 +225,10 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
     }
   }
 
-  const events: TrendingEvent[] = []
+  const specificEvents: TrendingEvent[] = []
+  // 이슈별 changePct/changeFlag — backfill 단계에서 재사용(중복 계산 방지).
+  const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null }>()
+
   for (const issue of candidates) {
     const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
     if (articles.length === 0) continue
@@ -238,32 +237,79 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
       ? Math.round((issue.recent_count - issue.prev_count) / issue.prev_count * 100)
       : (issue.recent_count > 0 ? null : 0)
     const isSurge = issue.recent_count > 0 && (changePct === null || changePct > SURGE_CHANGE_PCT_THRESHOLD)
+    const changeFlag = isSurge ? 'surge' as const : null
+    issueChange.set(issue.issue_id, { changePct, changeFlag })
 
     for (const sc of subclusterIssue(articles)) {
-      events.push({
+      specificEvents.push({
         issueId: issue.issue_id,
         headline: sc.headline,
         entityChip: sc.entityChip,
         recentCount: sc.count,
         changePct,
-        changeFlag: isSurge ? 'surge' : null,
+        changeFlag,
       })
     }
   }
 
-  const ranked = events.sort((a, b) => {
+  specificEvents.sort((a, b) => {
     if (b.recentCount !== a.recentCount) return b.recentCount - a.recentCount
     const aScore = a.changePct === null ? Infinity : a.changePct
     const bScore = b.changePct === null ? Infinity : b.changePct
     return bScore - aScore
   })
 
-  return dedupeAcrossIssues(ranked).slice(0, TRENDING_LIMIT)
+  const primary: TrendingEvent[] = []
+  for (const ev of specificEvents) {
+    if (!primary.some(k => isDuplicateEvent(k, ev))) primary.push(ev)
+  }
+
+  const final = primary.slice(0, TRENDING_LIMIT)
+
+  // 최소 노출 개수 미달 시 이슈 전체 대표 헤드라인으로 backfill. content_id·정규화 헤드라인
+  // 기준으로 전역 distinct 보장 — 같은 기사가 여러 이슈에 교차 태깅돼도 최종 리스트엔 1번만.
+  // 한 이슈의 최신 기사가 이미 쓰였으면 그 이슈의 다음 최신 기사로, 그래도 없으면 다음 이슈로.
+  if (final.length < MIN_DISPLAY) {
+    const usedIssueIds = new Set(final.map(f => f.issueId))
+    const usedContentIds = new Set<string>()
+    const usedHeadlines = new Set(final.map(f => normalizeTitle(f.headline)))
+
+    const backfillIssues = candidates
+      .filter(c => !usedIssueIds.has(c.issue_id))
+      .sort((a, b) => b.recent_count - a.recent_count)
+
+    for (const issue of backfillIssues) {
+      if (final.length >= MIN_DISPLAY) break
+
+      const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
+        .sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
+
+      for (const article of articles) {
+        if (usedContentIds.has(article.contentId) || usedHeadlines.has(article.normTitle)) continue
+
+        const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null }
+        final.push({
+          issueId: issue.issue_id,
+          headline: article.title,
+          entityChip: dominantEntity([article]),
+          recentCount: issue.recent_count, // 이슈 전체 48h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미
+          changePct: change.changePct,
+          changeFlag: change.changeFlag,
+        })
+        usedContentIds.add(article.contentId)
+        usedHeadlines.add(article.normTitle)
+        break // 이슈당 backfill 항목 최대 1개
+      }
+    }
+  }
+
+  return final
 }
 
 /**
- * 홈 "실시간 급상승 키워드" — `trending_keywords` 뷰(48h 발행건수 후보) 위에
+ * 홈 "실시간 급상승 키워드" — `trending_keywords` 뷰(72h 발행건수 후보) 위에
  * 이슈 내부 서브이벤트 클러스터링(§5)을 얹어 특정 사건 단위로 반환.
+ * 특정 사건이 MIN_DISPLAY 미만이면 degrade(이슈 전체) 항목으로 backfill.
  * 뷰가 아직 적용되지 않았으면(42P01/PGRST205 등 조회 실패) null — 호출부에서 폴백 처리.
  * 20분 단위로 캐시(크롤 주기 대비 매 요청 재계산 방지).
  */
