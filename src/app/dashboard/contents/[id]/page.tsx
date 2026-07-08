@@ -18,6 +18,7 @@ import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
 import FeedCarousel from '@/components/feed/FeedCarousel'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
+import PageContainer from '@/components/PageContainer'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -210,7 +211,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
   const dateStr = formatDate(displayAt)
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer variant="reading">
 
       {/* 뒤로가기 */}
       <div className="mb-6">
@@ -572,6 +573,6 @@ export default async function ContentDetailPage({ params }: PageProps) {
           )}
         </section>
       )}
-    </div>
+    </PageContainer>
   )
 }

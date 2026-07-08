@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { ArrowLeft, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PageContainer from '@/components/PageContainer'
 
 interface PageProps {
   params: Promise<{ topic: string }>
@@ -113,7 +114,7 @@ export default async function TopicTimelinePage({ params }: PageProps) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer className="py-8 sm:px-6 lg:px-8">
       {/* 뒤로가기 */}
       <div className="mb-6">
         <Link
@@ -210,6 +211,6 @@ export default async function TopicTimelinePage({ params }: PageProps) {
           </section>
         ))}
       </div>
-    </div>
+    </PageContainer>
   )
 }

@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { ChevronLeft } from 'lucide-react'
 import BriefingArchive from '@/components/dashboard/BriefingArchive'
+import PageContainer from '@/components/PageContainer'
 
 export const metadata: Metadata = {
   title: '지난 브리핑 | Insight Out',
@@ -35,7 +36,7 @@ export default async function BriefingsPage() {
     .limit(90)
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer className="py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
         <Link
           href="/dashboard"
@@ -51,6 +52,6 @@ export default async function BriefingsPage() {
       </div>
 
       <BriefingArchive briefings={data ?? []} />
-    </div>
+    </PageContainer>
   )
 }

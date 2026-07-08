@@ -21,6 +21,7 @@ import type {
   ContentFilterMode,
   Service,
 } from '@/lib/types'
+import PageContainer from '@/components/PageContainer'
 
 const MAX_WATCHLIST = 20
 
@@ -461,7 +462,7 @@ export default function MyPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer variant="reading">
       <div className="mb-8">
         <button
           type="button"
@@ -989,6 +990,6 @@ export default function MyPage() {
           )}
         </section>
       </div>
-    </div>
+    </PageContainer>
   )
 }

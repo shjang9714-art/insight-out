@@ -10,6 +10,7 @@ import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/Issu
 import IssueEvidenceExplorer, { type EvidenceItem } from '@/components/issues/IssueEvidenceExplorer'
 import IssueEvidenceSection, { type EvidenceRow } from '@/components/issues/IssueEvidenceSection'
 import type { IssueBrief } from '@/lib/issues/brief'
+import PageContainer from '@/components/PageContainer'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -375,7 +376,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
   const articleById = new Map(articles.map(a => ({ ...a, id: a.id })).map(a => [a.id, a]))
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer className="py-8 sm:px-6 lg:px-8">
       {/* 뒤로가기 */}
       <div className="mb-6">
         <Link
@@ -394,7 +395,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
           <h1 className="text-xl font-bold text-foreground leading-snug">{issue.title}</h1>
         </div>
         {issue.summary && !issue.brief && (
-          <p className="text-sm text-muted-foreground leading-relaxed mt-2 ml-7">
+          <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed mt-2 ml-7">
             {issue.summary}
           </p>
         )}
@@ -417,7 +418,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
       <div className="space-y-10">
 
         {/* ── B-4. AI 브리핑 섹션 ── */}
-        <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-5">
+        <section className="max-w-3xl rounded-xl border border-blue-100 bg-blue-50/40 p-5">
           <h2 className="mb-1 text-sm font-semibold text-foreground">AI 브리핑</h2>
           {issue.brief ? (
             <div className="space-y-4">
@@ -764,6 +765,6 @@ export default async function IssueDetailPage({ params }: PageProps) {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   )
 }

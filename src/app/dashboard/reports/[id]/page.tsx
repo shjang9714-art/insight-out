@@ -9,6 +9,7 @@ import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
 import ReportEditor from '@/components/reports/ReportEditor'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
 import PrintButton from '@/components/reports/PrintButton'
+import PageContainer from '@/components/PageContainer'
 
 export const dynamic = 'force-dynamic'
 
@@ -110,7 +111,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
     .map(s => s.issues!)
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 print:px-0 print:py-0 print:max-w-none">
+    <PageContainer variant="reading" className="print:px-0 print:py-0 print:max-w-none">
       {/* 뒤로 + PDF 버튼 */}
       <div className="print:hidden mb-6 flex items-center justify-between">
         <Link
@@ -239,6 +240,6 @@ export default async function ReportDetailPage({ params }: PageProps) {
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

@@ -19,7 +19,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* 풀폭 본문 */}
-      <main className="mx-auto w-full max-w-screen-xl print:max-w-none">
+      <main className="mx-auto w-full max-w-6xl print:max-w-none">
         {children}
       </main>
 

@@ -7,6 +7,7 @@ import { ArrowLeft, FileText, Search, Loader2, CheckSquare, Square } from 'lucid
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import type { AiReportType } from '@/lib/types'
+import PageContainer from '@/components/PageContainer'
 
 const REPORT_TYPES: AiReportType[] = ['시장동향', '경쟁사분석', '키워드분석', '서비스리포트', '자유주제']
 
@@ -128,7 +129,7 @@ function WorkbenchForm() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <PageContainer variant="reading">
       <Link
         href="/dashboard/reports"
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -371,7 +372,7 @@ function WorkbenchForm() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 

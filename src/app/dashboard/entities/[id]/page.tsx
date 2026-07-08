@@ -11,6 +11,7 @@ import EntityEventTimeline, {
   type EntityEventItem,
 } from '@/components/entities/EntityEventTimeline'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
+import PageContainer from '@/components/PageContainer'
 
 export const dynamic = 'force-dynamic'
 
@@ -359,7 +360,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
   const typeLabel = ENTITY_TYPE_LABEL[e.entity_type]
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer className="py-8 sm:px-6 lg:px-8">
 
       {/* 뒤로가기 */}
       <div className="mb-6">
@@ -387,7 +388,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
         </div>
 
         {e.description && (
-          <p className="text-sm text-muted-foreground leading-relaxed mb-3">{e.description}</p>
+          <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed mb-3">{e.description}</p>
         )}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -619,6 +620,6 @@ export default async function EntityDetailPage({ params }: PageProps) {
           아직 수집된 콘텐츠가 없습니다.
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
