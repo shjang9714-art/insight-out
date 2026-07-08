@@ -176,7 +176,18 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
             const ext = coverFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
             await uploadCover(supabase, data.id, coverFile, ext)
           } else if (coverPreviewUrl) {
-            await supabase.from('contents').update({ thumbnail_url: coverPreviewUrl }).eq('id', data.id)
+            // 216 — 외부 URL을 그대로 저장(핫링크)하지 않고 서버에서 report-covers 로 복사
+            try {
+              const copyRes = await fetch('/api/admin/cover-from-url', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ contentId: data.id, imageUrl: coverPreviewUrl }),
+              })
+              if (!copyRes.ok) throw new Error(`서버 복사 실패 (${copyRes.status})`)
+            } catch (copyErr) {
+              console.error('[paste] og:image 서버 복사 실패, 외부 URL로 폴백:', copyErr)
+              await supabase.from('contents').update({ thumbnail_url: coverPreviewUrl }).eq('id', data.id)
+            }
           }
         } catch (coverErr) {
           console.error('[paste] 커버 저장 실패:', coverErr)

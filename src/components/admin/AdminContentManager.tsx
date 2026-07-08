@@ -37,7 +37,7 @@ import {
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import { useResizableColumns, type ResizableColumnDef } from '@/lib/admin/use-resizable-columns'
-import { uploadCover } from '@/lib/contents/upload-cover'
+import { uploadCoverFile } from '@/lib/contents/upload-cover'
 
 interface AdminContentRow {
   id: string
@@ -427,7 +427,8 @@ export default function AdminContentManager() {
     setThumbError(null)
     try {
       const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-      const publicUrl = await uploadCover(supabase, edit.id, file, ext)
+      // 216 — storage 업로드만 즉시 수행. contents.thumbnail_url 기록은 저장(handleEditSave) 시점에.
+      const publicUrl = await uploadCoverFile(supabase, edit.id, file, ext)
       setEdit((p) => p && { ...p, thumbnailUrl: publicUrl })
     } catch (err) {
       setThumbError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다.')
