@@ -268,8 +268,8 @@ export default function UserManager({ initialUsers }: Props) {
             <tbody className="divide-y divide-border">
               {users.map(u => (
                 <tr key={u.id} className="transition-colors hover:bg-accent/50">
-                  <td className="px-4 py-3 font-medium text-foreground">{u.email}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{u.name || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="max-w-[200px] truncate px-4 py-3 font-medium text-foreground" title={u.email}>{u.email}</td>
+                  <td className="max-w-[200px] truncate px-4 py-3 text-muted-foreground" title={u.name ?? undefined}>{u.name || <span className="text-muted-foreground/40">—</span>}</td>
                   <td className="px-4 py-3">
                     {u.department ? (
                       <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">

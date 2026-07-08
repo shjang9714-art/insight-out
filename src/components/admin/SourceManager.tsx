@@ -962,7 +962,7 @@ export default function SourceManager() {
                 const isLowQuality = Boolean(q && q.total > 0 && qualityTone(q.pendingRate) !== 'positive')
                 return (
                 <tr key={src.id} className="hover:bg-accent/50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{src.name}</td>
+                  <td className="max-w-[220px] truncate px-4 py-3 font-medium text-foreground" title={src.name}>{src.name}</td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                       {SOURCE_TYPE_LABELS[src.type]}
@@ -1040,7 +1040,7 @@ export default function SourceManager() {
                       )
                     })()}
                   </td>
-                  <td className="px-4 py-3 text-xs">
+                  <td className="admin-cell-wrap px-4 py-3 text-xs">
                     {(() => {
                       if (!q || q.total === 0) return <span className="text-muted-foreground/40">—</span>
                       const pendingPct = Math.round(q.pendingRate * 100)

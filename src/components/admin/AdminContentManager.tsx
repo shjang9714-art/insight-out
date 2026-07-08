@@ -848,7 +848,7 @@ export default function AdminContentManager() {
                         aria-label={`${content.title} 선택`}
                       />
                     </td>
-                    <td className="px-4 py-3 font-medium text-foreground">
+                    <td className="admin-cell-wrap px-4 py-3 font-medium text-foreground">
                       <Link
                         href={`/admin/contents/${content.id}`}
                         className="line-clamp-2 block hover:text-brand-600 hover:underline"

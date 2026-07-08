@@ -742,8 +742,8 @@ export default function IssueManager() {
             <tbody className="divide-y divide-border">
               {visibleIssues.map(issue => (
                 <tr key={issue.id} className="transition-colors hover:bg-accent/50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">{issue.title}</div>
+                  <td className="admin-cell-wrap px-4 py-3">
+                    <div className="line-clamp-1 font-medium text-foreground">{issue.title}</div>
                     {issue.summary && (
                       <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{issue.summary}</div>
                     )}

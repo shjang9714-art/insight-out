@@ -268,7 +268,7 @@ export default function RequestsBoard() {
                     const isDone = p.status === 'done'
                     return (
                       <tr key={p.id} className={cn('hover:bg-accent/50 transition-colors', isDone && 'opacity-60')}>
-                        <td className="max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
+                        <td className="admin-cell-wrap max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
                           <span className="line-clamp-2">{p.title}</span>
                           {p.body && (
                             <p className="mt-0.5 line-clamp-1 admin-caption text-muted-foreground">{p.body}</p>
@@ -421,7 +421,7 @@ export default function RequestsBoard() {
                                   </SelectContent>
                                 </Select>
                               </td>
-                              <td className="max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
+                              <td className="admin-cell-wrap max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
                                 <span className="line-clamp-2">{p.title}</span>
                               </td>
                               <td className="max-w-[160px] px-4 py-3 admin-table-td text-muted-foreground">
@@ -430,7 +430,7 @@ export default function RequestsBoard() {
                               <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
                                 {p.owner ?? '—'}
                               </td>
-                              <td className="max-w-xs px-4 py-3 admin-caption text-muted-foreground">
+                              <td className="admin-cell-wrap max-w-xs px-4 py-3 admin-caption text-muted-foreground">
                                 {p.body ? <span className="line-clamp-2">{p.body}</span> : '—'}
                               </td>
                             </tr>
