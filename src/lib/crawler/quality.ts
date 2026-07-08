@@ -58,6 +58,18 @@ export function effectiveLength(title: string, body: string | null): number {
 }
 
 /**
+ * 본문 최소 길이 기본값(221) — crawl_settings.min_body_length 미적용/조회 실패 시 폴백.
+ */
+export const DEFAULT_MIN_BODY_LENGTH = 250
+
+/**
+ * 순수 본문 길이(공백 정규화 후, 제목 제외). effectiveLength 와 달리 본문만 측정한다.
+ */
+export function bodyLength(body: string | null | undefined): number {
+  return (body ?? '').trim().replace(/\s+/g, ' ').length
+}
+
+/**
  * keyword_groups 의 경량 표현 (DB 로드 후 crawlOne 에 전달).
  */
 export interface ScoringGroup {

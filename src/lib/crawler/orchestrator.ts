@@ -5,7 +5,7 @@ import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
 import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, isExcludedByGroups, effectiveLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, matchExclusion, MIN_EFFECTIVE_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason, type ExclusionRule } from './quality'
+import { isAdLike, isExcludedByGroups, effectiveLength, bodyLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, matchExclusion, MIN_EFFECTIVE_LENGTH, DEFAULT_MIN_BODY_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason, type ExclusionRule } from './quality'
 import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
@@ -291,7 +291,8 @@ async function processCrawlItem(
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
-  exclusionHits: Map<string, number> = new Map()
+  exclusionHits: Map<string, number> = new Map(),
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
     const url = normalizeUrl(item.original_url)
@@ -326,6 +327,7 @@ async function processCrawlItem(
       isAdLike(qText) ||
       isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
       effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH ||
+      bodyLength(item.body ?? null) < minBodyLength ||  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
       exclusionMatch?.action === 'reject'
     ) {
       counts.rejected++
@@ -616,7 +618,8 @@ async function crawlOne(
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
-  exclusionHits: Map<string, number> = new Map()
+  exclusionHits: Map<string, number> = new Map(),
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -649,7 +652,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits
+        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -799,7 +802,8 @@ async function crawlKeywordSearch(
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
-  exclusionHits: Map<string, number> = new Map()
+  exclusionHits: Map<string, number> = new Map(),
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
 ): Promise<{ counts: CrawlCounts; hadError: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
@@ -824,7 +828,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
         if (result.partial) hadError = true
       }
@@ -1126,6 +1130,23 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   // 제외 규칙 hit 집계(194) — 런 단위 누적, 종료 후 배치 flush(아이템별 write 없음)
   const exclusionHits = new Map<string, number>()
 
+  // 본문 최소 길이(221) — crawl_settings 단일행, SQL 미적용(42P01) 시 기본값으로 격리(크롤 무중단)
+  let minBodyLength = DEFAULT_MIN_BODY_LENGTH
+  try {
+    const settingsResult = await admin
+      .from('crawl_settings')
+      .select('min_body_length')
+      .eq('id', true)
+      .maybeSingle()
+    if (settingsResult.error) {
+      console.warn('[크롤러] crawl_settings 조회 실패 (SQL 221 미적용 가능), 기본값 사용:', settingsResult.error.message)
+    } else if (settingsResult.data?.min_body_length != null) {
+      minBodyLength = settingsResult.data.min_body_length
+    }
+  } catch (e) {
+    console.warn('[크롤러] crawl_settings 로드 실패, 기본값 사용:', e)
+  }
+
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
@@ -1163,7 +1184,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             aliasMap,
             issueList,
             exclusionRules,
-            exclusionHits
+            exclusionHits,
+            minBodyLength
           )
     )
   )
@@ -1219,7 +1241,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits
+      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
     )
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted
