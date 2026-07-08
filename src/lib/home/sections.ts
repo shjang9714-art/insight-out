@@ -23,8 +23,8 @@ export const HOME_SECTION_REGISTRY: HomeSectionDef[] = [
   },
   {
     key: 'briefing_highlights',
-    label: '오늘의 핵심 인사이트',
-    description: 'AI가 뽑은 오늘의 핵심 인사이트 3개',
+    label: '주목하세요, 핵심 Insight',
+    description: 'AI가 뽑은 주간 핵심 Insight 3개',
   },
   {
     key: 'feed_slot',

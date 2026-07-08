@@ -49,7 +49,7 @@ function dateLabel(dateStr: string): string {
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
-// 최신 발행 브리핑의 '오늘의 핵심 인사이트' 3줄을 시각화.
+// 최신 발행 브리핑의 '주목하세요, 핵심 Insight' 3줄을 시각화.
 // briefings.highlights(합성 시사점)가 있으면 그걸 쓰고, 없으면 선정 기사 제목으로 폴백.
 // 재생/스크립트 상세는 우하단 플로팅 플레이어 + /dashboard/briefings 로 위임.
 
@@ -140,7 +140,7 @@ export default async function TodayBriefingHighlights() {
       {/* 마스트헤드 — 사내 전략 저널 톤 */}
       <div className="mb-5 border-b-2 border-foreground/80 pb-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">오늘의 핵심 인사이트</h2>
+          <h2 className="text-sm font-semibold text-foreground">주목하세요, 핵심 Insight</h2>
           <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{dateLabel(briefing.briefing_date)}</span>
         </div>
         <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-700">

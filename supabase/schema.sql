@@ -1423,6 +1423,73 @@ insert into public.homepage_sections (section_key, enabled, sort_order) values
 on conflict (section_key) do nothing;
 
 -- ============================================================
+-- "주목하세요, 핵심 Insight" 주간 파이프라인 (2026-07-08)
+-- 주간(목요일) LLM 초안 → 검수 → 게시. 홈 카드(published+featured 3건)와
+-- AI 인사이트 "핵심 Insight" 탭(해당 주차 published 전량)의 데이터 소스.
+-- supabase/2026-07-08-key-insights.sql 과 동일 정의(단일 진실 동기화).
+-- ============================================================
+create table if not exists public.key_insights (
+  id            uuid primary key default gen_random_uuid(),
+  week_of       date not null,                 -- 배치 주차 시작일(목)
+  status        text not null default 'draft', -- draft | needs_review | published | rejected
+  display_order integer,                        -- 배치 내 중요도순
+  is_featured   boolean not null default false, -- 홈 3건 노출 대상
+  category      text,                           -- 뉴스/유튜브/리서치/웹인사이트 등
+  headline      text not null,
+  summary_ko    text not null,                  -- 핵심요약 2문장
+  implication   text,                           -- LGU+ 관점 시사점 1~2문장
+  source_name   text,                           -- 매체명
+  published_at  date,                           -- 원문 발행일
+  source_url    text,                           -- 대표 원문 링크
+  is_new        boolean not null default false, -- NEW 배지(신선도 충족)
+  needs_verify  boolean not null default false, -- 링크 검증 필요 표기
+  issue_id      uuid references public.issues(id) on delete set null,
+  related_past  jsonb,        -- [{content_id,title,url,source,published_at,reason}]
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create index if not exists idx_key_insights_week     on public.key_insights(week_of);
+create index if not exists idx_key_insights_status   on public.key_insights(status);
+create index if not exists idx_key_insights_featured on public.key_insights(is_featured) where is_featured;
+
+drop trigger if exists set_key_insights_updated_at on public.key_insights;
+create trigger set_key_insights_updated_at
+  before update on public.key_insights
+  for each row execute function public.set_updated_at();
+
+alter table public.key_insights enable row level security;
+
+drop policy if exists "key_insights: 인증 사용자 published 조회" on public.key_insights;
+create policy "key_insights: 인증 사용자 published 조회"
+  on public.key_insights for select
+  using (auth.role() = 'authenticated' and status = 'published');
+
+drop policy if exists "key_insights: admin 전체 조회" on public.key_insights;
+create policy "key_insights: admin 전체 조회"
+  on public.key_insights for select
+  using (public.is_admin());
+
+drop policy if exists "key_insights: admin 관리" on public.key_insights;
+create policy "key_insights: admin 관리"
+  on public.key_insights for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+grant select on public.key_insights to anon, authenticated;
+grant insert, update on public.key_insights to authenticated;
+
+insert into public.llm_task_routing (id, task_type, priority, provider, model_id, is_active)
+values
+  (gen_random_uuid(), 'key_insight', 1, 'gemini', 'gemini-2.5-flash', true),
+  (gen_random_uuid(), 'key_insight', 2, 'openrouter', 'google/gemini-2.0-flash-exp:free', true)
+on conflict (task_type, priority)
+do update set
+  provider  = excluded.provider,
+  model_id  = excluded.model_id,
+  is_active = excluded.is_active;
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================

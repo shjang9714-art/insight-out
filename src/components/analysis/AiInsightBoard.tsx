@@ -61,7 +61,7 @@ export interface AiInsightBoardProps {
 // ─── 하위 카테고리 탭 ──────────────────────────────────────────────────────────
 
 const TABS: { id: AiInsightViewId; label: string }[] = [
-  { id: 'brief',    label: '브리핑 요약' },
+  { id: 'brief',    label: '핵심 Insight' },
   { id: 'headline', label: '헤드라인 분석' },
   { id: 'trending', label: '뜨는 토픽' },
   { id: 'issues',   label: '이슈 타임라인' },
