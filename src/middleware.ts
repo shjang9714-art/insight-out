@@ -1,5 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import {
+  PROFILE_COOKIE_NAME,
+  PROFILE_COOKIE_TTL_SECONDS,
+  buildProfileCookie,
+  parseProfileCookie,
+} from '@/lib/profile-cache-cookie'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -46,34 +52,80 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && !isApiRoute && !publicPaths.some((p) => pathname.startsWith(p))) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('onboarding_completed, role, approval_status')
-      .eq('id', user.id)
-      .single()
+    // gating 필드(onboarding_completed/role/approval_status)를 서명 쿠키로 캐시해
+    // 매 페이지 이동마다 붙던 users profile DB 왕복을 생략(지시서 232 Part A).
+    // 온보딩 미완 상태는 캐시하지 않음 — 온보딩 완료는 브라우저에서 직접 DB upsert 후
+    // router.push 로 넘어오므로 서버가 그 전이를 가로채 쿠키를 갱신할 지점이 없음.
+    // 캐시를 완료 후에만 기록하면 그 전이 구간에서 쿠키가 낡은 값(false)으로 대시보드를
+    // 막는 사고를 구조적으로 피할 수 있다. 승인취소·강등 등 타 세션발 전이는 TTL(15분) 내 반영.
+    let gate: { onboarding_completed: boolean; role: string; approval_status: string } | null = null
 
-    if (!profile?.onboarding_completed && pathname !== '/onboarding') {
+    const cachedCookie = request.cookies.get(PROFILE_COOKIE_NAME)?.value
+    if (cachedCookie) {
+      const cached = await parseProfileCookie(cachedCookie, user.id)
+      if (cached) {
+        gate = {
+          onboarding_completed: cached.onboardingCompleted,
+          role: cached.role,
+          approval_status: cached.approvalStatus,
+        }
+      }
+    }
+
+    if (!gate) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('onboarding_completed, role, approval_status')
+        .eq('id', user.id)
+        .single()
+
+      gate = {
+        onboarding_completed: profile?.onboarding_completed ?? false,
+        role: profile?.role ?? 'user',
+        approval_status: profile?.approval_status ?? 'pending',
+      }
+
+      if (gate.onboarding_completed) {
+        const cookieValue = await buildProfileCookie({
+          uid: user.id,
+          onboardingCompleted: gate.onboarding_completed,
+          role: gate.role,
+          approvalStatus: gate.approval_status,
+        })
+        if (cookieValue) {
+          supabaseResponse.cookies.set(PROFILE_COOKIE_NAME, cookieValue, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: PROFILE_COOKIE_TTL_SECONDS,
+          })
+        }
+      }
+    }
+
+    if (!gate.onboarding_completed && pathname !== '/onboarding') {
       return NextResponse.redirect(new URL('/onboarding', request.url))
     }
 
-    if (profile?.onboarding_completed && pathname === '/onboarding') {
+    if (gate.onboarding_completed && pathname === '/onboarding') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
     if (
-      profile?.onboarding_completed &&
-      profile.approval_status !== 'approved' &&
-      profile.role !== 'admin' &&
+      gate.onboarding_completed &&
+      gate.approval_status !== 'approved' &&
+      gate.role !== 'admin' &&
       pathname !== '/pending'
     ) {
       return NextResponse.redirect(new URL('/pending', request.url))
     }
 
-    if (pathname === '/pending' && (profile?.approval_status === 'approved' || profile?.role === 'admin')) {
+    if (pathname === '/pending' && (gate.approval_status === 'approved' || gate.role === 'admin')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    if (pathname.startsWith('/admin') && profile?.role !== 'admin') {
+    if (pathname.startsWith('/admin') && gate.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
