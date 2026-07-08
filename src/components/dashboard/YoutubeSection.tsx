@@ -1,27 +1,19 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
+import ContentCard from '@/components/dashboard/ContentCard'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
 interface VideoRow {
   id: string
-  video_id: string
   title: string
-  channel_name: string
+  summary_ko: string | null
+  original_url: string | null
   thumbnail_url: string | null
+  matched_keywords: string[] | null
   published_at: string | null
-}
-
-// ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: 'long',
-    day: 'numeric',
-  })
+  sources: { name: string } | null
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
@@ -44,12 +36,14 @@ export default async function YoutubeSection() {
   )
 
   const { data: rawVideos } = await supabase
-    .from('youtube_videos')
-    .select('id, video_id, title, channel_name, thumbnail_url, published_at')
+    .from('contents')
+    .select('id, title, summary_ko, original_url, thumbnail_url, matched_keywords, published_at, sources(name)')
+    .eq('category', '유튜브')
+    .eq('status', 'published')
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(6)
 
-  const videos = (rawVideos ?? []) as VideoRow[]
+  const videos = (rawVideos ?? []) as unknown as VideoRow[]
 
   // 영상 없으면 섹션 숨김
   if (videos.length === 0) return null
@@ -74,51 +68,20 @@ export default async function YoutubeSection() {
 
       {/* 카드 그리드 */}
       <div className="grid grid-cols-3 gap-4">
-        {videos.map((video) => {
-          const watchUrl = `https://www.youtube.com/watch?v=${video.video_id}`
-          return (
-            <a
-              key={video.id}
-              href={watchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group block"
-            >
-              {/* 썸네일 */}
-              <div className="relative mb-2.5 overflow-hidden rounded-xl bg-muted">
-                {video.thumbnail_url ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={video.thumbnail_url}
-                    alt={video.title}
-                    className="aspect-video w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex aspect-video w-full items-center justify-center bg-muted">
-                    <svg className="h-8 w-8 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-
-              {/* 제목·메타 */}
-              <p className="mb-1 line-clamp-2 text-xs font-medium leading-snug text-foreground group-hover:text-brand-600">
-                {video.title}
-              </p>
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <span className="truncate">{video.channel_name}</span>
-                {video.published_at && (
-                  <>
-                    <span>·</span>
-                    <span className="shrink-0">{formatDate(video.published_at)}</span>
-                  </>
-                )}
-              </div>
-            </a>
-          )
-        })}
+        {videos.map((video) => (
+          <ContentCard
+            key={video.id}
+            id={video.id}
+            title={video.title}
+            summaryKo={video.summary_ko ?? null}
+            category="유튜브"
+            sourceName={video.sources?.name ?? null}
+            publishedAt={video.published_at}
+            thumbnailUrl={video.thumbnail_url ?? null}
+            externalHref={video.original_url}
+            keywords={video.matched_keywords ?? []}
+          />
+        ))}
       </div>
     </div>
   )

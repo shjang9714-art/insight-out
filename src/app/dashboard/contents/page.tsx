@@ -13,7 +13,7 @@ import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
 import PageContainer from '@/components/PageContainer'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
-import YoutubeVideoCard from '@/components/dashboard/YoutubeVideoCard'
+import ContentCard from '@/components/dashboard/ContentCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 
@@ -664,14 +664,19 @@ function ContentsContent() {
                     {seg.label}
                   </p>
                   {category === '유튜브' ? (
-                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
                       {seg.items.map(({ item }) => (
-                        <YoutubeVideoCard
+                        <ContentCard
                           key={item.id}
+                          id={item.id}
                           title={item.title}
-                          originalUrl={item.original_url}
+                          summaryKo={item.summary_ko ?? null}
+                          category="유튜브"
                           sourceName={item.sources?.name ?? item.author ?? null}
                           publishedAt={displayDate(item, sortByCollected)}
+                          thumbnailUrl={item.thumbnail_url ?? null}
+                          externalHref={item.original_url}
+                          keywords={item.matched_keywords ?? []}
                         />
                       ))}
                     </div>
@@ -723,14 +728,19 @@ function ContentsContent() {
             </div>
           ) : category === '유튜브' ? (
             /* ── 유튜브 전용 그리드 ── */
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
               {clusteredItems.map(({ item }) => (
-                <YoutubeVideoCard
+                <ContentCard
                   key={item.id}
+                  id={item.id}
                   title={item.title}
-                  originalUrl={item.original_url}
+                  summaryKo={item.summary_ko ?? null}
+                  category="유튜브"
                   sourceName={item.sources?.name ?? item.author ?? null}
                   publishedAt={displayDate(item, sortByCollected)}
+                  thumbnailUrl={item.thumbnail_url ?? null}
+                  externalHref={item.original_url}
+                  keywords={item.matched_keywords ?? []}
                 />
               ))}
             </div>

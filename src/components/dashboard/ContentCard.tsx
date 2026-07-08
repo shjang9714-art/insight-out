@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover, { CATEGORY_COLOR } from '@/components/dashboard/BrandedCover'
+import { extractVideoId } from '@/lib/youtube'
 
 // ─── timeAgo ────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,8 @@ interface ContentCardProps {
   publishedAt: string | null
   thumbnailUrl: string | null
   href?: string | null
+  /** 외부(새 탭) 이동 링크 — 있으면 href/id 라우트보다 우선(유튜브 등) */
+  externalHref?: string | null
   keywords?: string[]
 }
 
@@ -40,22 +43,45 @@ function Thumbnail({
   category,
   title,
   sourceName,
+  externalHref,
 }: {
   url: string | null
   category: ContentCategory
   title: string
   sourceName: string | null
+  externalHref?: string | null
 }) {
-  if (url) {
+  const isYoutube = category === '유튜브'
+  // 크롤 썸네일 없으면 유튜브 video_id 유래 썸네일로 폴백(그것도 없으면 BrandedCover)
+  const fallbackYoutubeThumb = isYoutube && !url
+    ? (() => {
+        const videoId = extractVideoId(externalHref ?? null)
+        return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null
+      })()
+    : null
+  const resolvedUrl = url ?? fallbackYoutubeThumb
+
+  if (resolvedUrl) {
     return (
-      // next/image remotePatterns 미설정 → unoptimized로 빌드 에러 방지
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt={title}
-        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-        loading="lazy"
-      />
+      <div className="relative h-full w-full">
+        {/* next/image remotePatterns 미설정 → unoptimized로 빌드 에러 방지 */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={resolvedUrl}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          loading="lazy"
+        />
+        {isYoutube && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
+              <svg className="h-6 w-6 translate-x-0.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -73,16 +99,18 @@ export default function ContentCard({
   publishedAt,
   thumbnailUrl,
   href,
+  externalHref,
   keywords,
 }: ContentCardProps) {
   const catColor = CATEGORY_COLOR[category] ?? 'bg-muted text-muted-foreground'
-  const resolvedHref = href ?? (category !== '유튜브' ? `/dashboard/contents/${id}` : null)
+  const isExternal = Boolean(externalHref)
+  const resolvedHref = externalHref ?? href ?? `/dashboard/contents/${id}`
 
   // 211 — 모든 카드가 표지를 갖는다(썸네일 없으면 BrandedCover 표시 시점 렌더, 저장 없음)
   const inner = (
     <>
       <div className="aspect-[16/9] overflow-hidden rounded-t-2xl bg-muted">
-        <Thumbnail url={thumbnailUrl} category={category} title={title} sourceName={sourceName} />
+        <Thumbnail url={thumbnailUrl} category={category} title={title} sourceName={sourceName} externalHref={externalHref} />
       </div>
 
       <div className="flex flex-1 flex-col p-4">
@@ -129,9 +157,13 @@ export default function ContentCard({
   const cardClass =
     'group flex h-full flex-col rounded-2xl border border-border bg-card overflow-hidden transition-all hover:shadow-md hover:border-brand-200'
 
-  if (resolvedHref) {
-    return <Link href={resolvedHref} className={cardClass}>{inner}</Link>
+  if (isExternal) {
+    return (
+      <a href={resolvedHref} target="_blank" rel="noopener noreferrer" className={cardClass}>
+        {inner}
+      </a>
+    )
   }
 
-  return <div className={cardClass}>{inner}</div>
+  return <Link href={resolvedHref} className={cardClass}>{inner}</Link>
 }
