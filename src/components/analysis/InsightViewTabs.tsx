@@ -35,11 +35,11 @@ export default function InsightViewTabs<T extends string>({
   className,
 }: InsightViewTabsProps<T>) {
   return (
-    <div className={cn('inline-flex items-center gap-5 border-b border-border', className)}>
+    <div className={cn('flex items-center justify-center gap-6', className)}>
       {items.map((item) => {
         const active = item.id === value
         const cls = cn(
-          'relative flex items-center gap-1.5 py-2 text-[14px] transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:transition-colors',
+          'relative flex items-center gap-1.5 py-2 text-[15px] transition-colors after:absolute after:bottom-0 after:left-1/2 after:h-[1.5px] after:w-4 after:-translate-x-1/2 after:transition-colors',
           active
             ? 'font-medium text-foreground after:bg-brand-muted'
             : 'text-muted-foreground after:bg-transparent hover:text-foreground'

@@ -174,7 +174,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm">
+    <header className="sticky top-0 z-20 bg-card/90 backdrop-blur-sm">
 
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-4 sm:px-5">
@@ -312,17 +312,17 @@ export default function DashboardHeader({ onMenuClick }: Props) {
 
       {/* ── 5탭 네비게이션 (md+, CategoryGrid 톤 참고) ──────────────────────────── */}
       <nav
-        className="hidden border-t border-border md:flex"
+        className="hidden md:flex"
         aria-label="주 메뉴"
       >
-        <div className="mx-auto flex w-full max-w-6xl items-stretch px-4 sm:px-5">
+        <div className="mx-auto flex w-full max-w-6xl items-stretch justify-center gap-10 px-4 sm:px-5">
           {NAV_TABS.map((tab) => {
             const active = isTabActive(tab.href, tab.exact, pathname)
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`relative flex items-center px-3 py-3.5 text-[16px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:transition-colors ${
+                className={`relative flex items-center py-3.5 text-[17px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:transition-colors ${
                   active
                     ? 'text-foreground after:bg-brand-muted'
                     : 'text-muted-foreground after:bg-transparent hover:after:bg-border'
