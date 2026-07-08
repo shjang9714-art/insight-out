@@ -15,6 +15,7 @@ import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import ScopeFilter from '@/components/analysis/ScopeFilter'
 import type { IssueCard } from '@/lib/issues/activity'
+import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -95,23 +96,7 @@ export default function AiInsightBoard({
   return (
     <div className="space-y-6">
       {/* 하위 카테고리 탭 */}
-      <div className="flex gap-2">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => handleTabChange(t.id)}
-            className={cn(
-              'flex-1 rounded-xl border px-3 py-3.5 text-center text-base font-semibold transition-colors',
-              view === t.id
-                ? 'border-brand-600 bg-brand-600/10 text-brand-600'
-                : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <InsightViewTabs items={TABS} value={view} onChange={handleTabChange} />
 
       {/* 범위 필터 (전체/내 관심사) */}
       <div className="flex justify-end">

@@ -61,6 +61,7 @@
      텍스트 대비용으로 밝아진 만큼 흰 라벨 버튼엔 별도 어두운 값 필요 */
   --color-brand-solid: var(--brand-solid);
   --color-brand-solid-hover: var(--brand-solid-hover);
+  --color-brand-muted: var(--brand-muted);
 
   /* 레이어 토큰 */
   --color-surface: var(--surface);
@@ -137,6 +138,8 @@
   --brand-950: #2e0a1e;
   --brand-solid: #E6007E;
   --brand-solid-hover: #c5006b;
+  /* 저대비 무트 마젠타 — 내비 활성 인디케이터 등 얇은 강조용(227) */
+  --brand-muted: #A83E63;
 }
 
 .dark {
@@ -187,6 +190,8 @@
      14px 라벨은 large-text 예외 미충족이라 별도 어두운 값으로 4.5:1 이상 확보 */
   --brand-solid: #D40074;
   --brand-solid-hover: #B8005F;
+  /* 저대비 무트 마젠타(다크) — 배경 대비 확보를 위해 라이트보다 한 톤 밝게(227) */
+  --brand-muted: #C76A8A;
   /* 상태색 (다크 — 대비 확보) */
   --positive: oklch(0.72 0.13 253);
   --positive-soft: oklch(0.18 0.06 255);

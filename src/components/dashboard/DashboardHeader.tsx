@@ -177,7 +177,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
     <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm">
 
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
-      <div className="flex h-14 items-center px-4 sm:px-5">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-4 sm:px-5">
 
         {/* 좌측: 햄버거(모바일) + 로고 + 브레드크럼 */}
         <div className="flex shrink-0 items-center gap-2">
@@ -228,7 +228,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
           <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
             {todayCount > 0 && (
-              <span className="text-[11px] font-medium text-brand-600">
+              <span className="text-[11px] font-medium text-brand-muted">
                 오늘 업데이트 {todayCount}건
               </span>
             )}
@@ -312,25 +312,27 @@ export default function DashboardHeader({ onMenuClick }: Props) {
 
       {/* ── 5탭 네비게이션 (md+, CategoryGrid 톤 참고) ──────────────────────────── */}
       <nav
-        className="hidden md:flex items-stretch border-t border-border"
+        className="hidden border-t border-border md:flex"
         aria-label="주 메뉴"
       >
-        {NAV_TABS.map((tab) => {
-          const active = isTabActive(tab.href, tab.exact, pathname)
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`relative flex flex-1 items-center justify-center py-3.5 text-lg font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:transition-colors ${
-                active
-                  ? 'text-pink-600 after:bg-pink-500 hover:after:bg-pink-700'
-                  : 'text-muted-foreground after:bg-transparent hover:after:bg-muted-foreground'
-              }`}
-            >
-              <span>{tab.label}</span>
-            </Link>
-          )
-        })}
+        <div className="mx-auto flex w-full max-w-6xl items-stretch px-4 sm:px-5">
+          {NAV_TABS.map((tab) => {
+            const active = isTabActive(tab.href, tab.exact, pathname)
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`relative flex items-center px-3 py-3.5 text-[15px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:transition-colors ${
+                  active
+                    ? 'text-foreground after:bg-brand-muted'
+                    : 'text-muted-foreground after:bg-transparent hover:after:bg-border'
+                }`}
+              >
+                <span>{tab.label}</span>
+              </Link>
+            )
+          })}
+        </div>
       </nav>
     </header>
   )
