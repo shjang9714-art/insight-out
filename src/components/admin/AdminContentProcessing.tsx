@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 // 207 — 풀본문 채우기 기간 팝업 프리셋
 const ENRICH_RANGE_PRESETS: { label: string; days: number | null }[] = [
@@ -41,6 +42,11 @@ export default function AdminContentProcessing() {
   const [isCanonicalizing,  setIsCanonicalizing]  = useState(false)
   const [canonicalResult,   setCanonicalResult]   = useState<string | null>(null)
   const canonicalStopRef = useRef(false)
+
+  // 썸네일 재시도(og:image) — 219
+  const [isThumbRetrying, setIsThumbRetrying] = useState(false)
+  const [thumbRetryResult, setThumbRetryResult] = useState<string | null>(null)
+  const thumbRetryStopRef = useRef(false)
 
   const handleEnrich = async ({ from, to }: { from: string | null; to: string | null }) => {
     stopRef.current = false
@@ -157,6 +163,47 @@ export default function AdminContentProcessing() {
     }
   }
 
+  const handleThumbnailRetry = async () => {
+    thumbRetryStopRef.current = false
+    setIsThumbRetrying(true)
+    setThumbRetryResult(null)
+    setError(null)
+    const acc = { processed: 0, filled: 0, skipped: 0 }
+    try {
+      while (true) {
+        const res = await fetch('/api/admin/thumbnail-backfill?limit=10', { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '썸네일 재시도 실패')
+        const { processed, filled, skipped, remaining, ready } = await res.json() as {
+          processed: number; filled: number; skipped: number; remaining: number; ready: boolean
+        }
+        if (!ready) {
+          setThumbRetryResult('219 SQL 적용이 필요합니다.')
+          break
+        }
+        acc.processed += processed
+        acc.filled    += filled
+        acc.skipped   += skipped
+
+        if (thumbRetryStopRef.current) {
+          setThumbRetryResult(`중단됨 · 누적 처리 ${acc.processed} · 성공 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setThumbRetryResult(`완료 · 처리 ${acc.processed} · 성공 ${acc.filled} · 스킵 ${acc.skipped}`)
+          break
+        }
+        if (processed === 0) break
+
+        setThumbRetryResult(`채우는 중… 누적 처리 ${acc.processed} · 성공 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '썸네일 재시도 중 오류가 발생했습니다.')
+    } finally {
+      setIsThumbRetrying(false)
+    }
+  }
+
   // Date.now() purity 규칙 회피 (crawl-logs/page.tsx 패턴과 동일)
   const applyEnrichPreset = (days: number | null) => {
     if (days === null) { setEnrichFrom(''); setEnrichTo(''); return }
@@ -175,12 +222,9 @@ export default function AdminContentProcessing() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="ml-4 shrink-0 underline">
-            닫기
-          </button>
-        </div>
+        <AdminErrorBox onDismiss={() => setError(null)}>
+          {error}
+        </AdminErrorBox>
       )}
 
       {/* 풀본문 채우기 */}
@@ -260,6 +304,32 @@ export default function AdminContentProcessing() {
             onClick={isCanonicalizing ? () => { canonicalStopRef.current = true } : handleCanonicalize}
           >
             {isCanonicalizing ? '중단' : '원문 URL 정규화'}
+          </Button>
+        </div>
+      </div>
+
+      {/* 썸네일 재시도(og:image) — 219 */}
+      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="admin-card-title text-foreground">썸네일 재시도(og:image)</p>
+            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
+              썸네일이 없는 크롤 뉴스·웹인사이트의 원문 og:image를 다시 받아옵니다.
+            </p>
+            {thumbRetryResult && (
+              <p className="admin-caption mt-2 text-positive">
+                {isThumbRetrying ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{thumbRetryResult}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={isThumbRetrying ? () => { thumbRetryStopRef.current = true } : handleThumbnailRetry}
+          >
+            {isThumbRetrying ? '중단' : '썸네일 재시도'}
           </Button>
         </div>
       </div>

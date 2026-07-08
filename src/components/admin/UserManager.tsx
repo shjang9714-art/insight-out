@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, ShieldCheck, ShieldOff, CheckCircle, XCircle, Clock } from 'lucide-react'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { updateUserRole, promoteByEmail, approveUser, rejectUser } from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 
@@ -131,15 +133,9 @@ export default function UserManager({ initialUsers }: Props) {
     <div className="space-y-6">
       {/* 전역 오류 */}
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <AdminErrorBox onDismiss={() => setError(null)}>
           <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="ml-4 shrink-0 text-red-400 underline hover:text-red-600"
-          >
-            닫기
-          </button>
-        </div>
+        </AdminErrorBox>
       )}
 
       {/* ── 이메일로 admin 추가 폼 ── */}
@@ -152,9 +148,9 @@ export default function UserManager({ initialUsers }: Props) {
         <CardContent>
           <form onSubmit={handlePromote} className="space-y-3">
             {formError && (
-              <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+              <AdminErrorBox>
                 {formError}
-              </div>
+              </AdminErrorBox>
             )}
             {formSuccess && (
               <div className="rounded-lg border border-positive/20 bg-positive-soft px-4 py-2 text-sm text-positive">
@@ -295,7 +291,7 @@ export default function UserManager({ initialUsers }: Props) {
                     {u.approval_status === 'approved' ? (
                       <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge>
                     ) : u.approval_status === 'rejected' ? (
-                      <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">거절</Badge>
+                      <StatusBadge tone="negative" label="거절" />
                     ) : (
                       <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge>
                     )}
@@ -319,7 +315,7 @@ export default function UserManager({ initialUsers }: Props) {
                         <button
                           onClick={() => handleReject(u)}
                           disabled={approvingId === u.id || isPending}
-                          className="inline-flex items-center gap-1 rounded bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors disabled:opacity-40"
+                          className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40"
                         >
                           {approvingId === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
                           거절

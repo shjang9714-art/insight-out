@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import TextPasteForm, { type FormState } from '@/components/admin/TextPasteForm'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 export default function UrlImportForm() {
   const [url, setUrl] = useState('')
@@ -86,11 +87,7 @@ export default function UrlImportForm() {
           <p className="text-xs text-muted-foreground">
             기사 URL을 넣으면 제목·본문·발행 정보를 자동으로 가져옵니다. 가져온 뒤 수정할 수 있어요.
           </p>
-          {error && (
-            <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
+          {error && <AdminErrorBox>{error}</AdminErrorBox>}
         </form>
       </CardContent>
     </Card>

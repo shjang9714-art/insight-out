@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { BrainCircuit, CheckCircle, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle } from 'lucide-react'
 import type { IssueStatus } from '@/lib/types'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import { ISSUE_STATUS_TONE } from '@/lib/admin/status-style'
 
@@ -426,10 +427,9 @@ export default function IssueManager() {
 
       {/* 전역 오류 */}
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <AdminErrorBox onDismiss={() => setError(null)}>
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-4 shrink-0 text-red-400 underline hover:text-red-600">닫기</button>
-        </div>
+        </AdminErrorBox>
       )}
 
       {/* ── AI 이슈 후보 생성 패널 ── */}
@@ -537,7 +537,7 @@ export default function IssueManager() {
                     <button
                       onClick={() => { void handleCandidateTransition(issue, 'archived') }}
                       disabled={transitioningId === issue.id}
-                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
                       title="거절(보관)"
                     >
                       <XCircle className="h-3.5 w-3.5" />
@@ -573,15 +573,15 @@ export default function IssueManager() {
           <CardContent>
             <form onSubmit={(e) => { void handleSave(e) }} className="space-y-5">
               {formError && (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+                <AdminErrorBox>
                   {formError}
-                </div>
+                </AdminErrorBox>
               )}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="sm:col-span-2 flex flex-col gap-1.5">
                   <Label htmlFor="issue-title">
-                    제목 <span className="text-red-500">*</span>
+                    제목 <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="issue-title"
@@ -818,7 +818,7 @@ export default function IssueManager() {
                       </button>
                       <button
                         onClick={() => { void handleDelete(issue) }}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                         title="삭제"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

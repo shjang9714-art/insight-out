@@ -14,6 +14,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -221,15 +223,9 @@ export default function KeywordManager() {
     <div className="space-y-6">
       {/* 전역 오류 */}
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <AdminErrorBox onDismiss={() => setError(null)}>
           <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="ml-4 shrink-0 text-red-400 underline hover:text-red-600"
-          >
-            닫기
-          </button>
-        </div>
+        </AdminErrorBox>
       )}
 
       {/* ── 서비스별 키워드 수 요약 ── */}
@@ -238,16 +234,21 @@ export default function KeywordManager() {
           {services.map(s => {
             const count = serviceCounts[s.id] ?? 0
             return (
-              <span
-                key={s.id}
-                className={
-                  count === 0
-                    ? 'rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-600'
-                    : 'rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground'
-                }
-              >
-                {s.name} {count}개
-              </span>
+              count === 0 ? (
+                <StatusBadge
+                  key={s.id}
+                  tone="negative"
+                  label={`${s.name} ${count}개`}
+                  className="border border-negative/30 px-3 py-1"
+                />
+              ) : (
+                <span
+                  key={s.id}
+                  className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+                >
+                  {s.name} {count}개
+                </span>
+              )
             )
           })}
           <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -267,16 +268,16 @@ export default function KeywordManager() {
           <CardContent>
             <form onSubmit={handleSave} className="space-y-4">
               {formError && (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+                <AdminErrorBox>
                   {formError}
-                </div>
+                </AdminErrorBox>
               )}
 
               {/* 키워드명·서비스 */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="kw-name">
-                    키워드명 <span className="text-red-500">*</span>
+                    키워드명 <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="kw-name"
@@ -380,15 +381,17 @@ export default function KeywordManager() {
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold text-foreground">{s.name}</h3>
-                    <span
-                      className={
-                        svcKeywords.length === 0
-                          ? 'rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-600'
-                          : 'rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
-                      }
-                    >
-                      {svcKeywords.length === 0 ? '키워드 없음 — 추가 필요' : `${svcKeywords.length}개`}
-                    </span>
+                    {svcKeywords.length === 0 ? (
+                      <StatusBadge
+                        tone="negative"
+                        label="키워드 없음 — 추가 필요"
+                        className="border border-negative/30"
+                      />
+                    ) : (
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                        {svcKeywords.length}개
+                      </span>
+                    )}
                   </div>
                   {!showForm && (
                     <button
@@ -426,7 +429,7 @@ export default function KeywordManager() {
                                 </button>
                                 <button
                                   onClick={() => handleDelete(kw)}
-                                  className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                                  className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                                   title="삭제"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -476,7 +479,7 @@ export default function KeywordManager() {
                             </button>
                             <button
                               onClick={() => handleDelete(kw)}
-                              className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                              className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                               title="삭제"
                             >
                               <Trash2 className="h-3.5 w-3.5" />

@@ -21,6 +21,8 @@ import type { MergeJob } from '@/lib/admin/merge-progress'
 import { Progress } from '@/components/ui/progress'
 import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -580,12 +582,9 @@ export default function EntityManager() {
     <div className="space-y-6">
       {/* 전역 오류 */}
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <AdminErrorBox onDismiss={() => setError(null)}>
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-4 shrink-0 text-red-400 underline hover:text-red-600">
-            닫기
-          </button>
-        </div>
+        </AdminErrorBox>
       )}
 
       {/* ── 정규화 제안 패널 토글 버튼 ── */}
@@ -671,9 +670,9 @@ export default function EntityManager() {
             )}
 
             {applyNormError && (
-              <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-xs text-red-600">
+              <AdminErrorBox className="text-xs">
                 {applyNormError}
-              </div>
+              </AdminErrorBox>
             )}
 
             {normJob && (
@@ -739,12 +738,7 @@ export default function EntityManager() {
                             {group.mergeIds.map(id => {
                               const ent = entities.find(e => e.id === id)
                               return (
-                                <span
-                                  key={id}
-                                  className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs text-red-700"
-                                >
-                                  {ent?.canonical_name ?? id}
-                                </span>
+                                <StatusBadge key={id} tone="negative" label={ent?.canonical_name ?? id} />
                               )
                             })}
                           </div>
@@ -807,14 +801,14 @@ export default function EntityManager() {
           <CardContent>
             <form onSubmit={(e) => { void handleSave(e) }} className="space-y-5">
               {formError && (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+                <AdminErrorBox>
                   {formError}
-                </div>
+                </AdminErrorBox>
               )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="ent-name">
-                    이름 (canonical_name) <span className="text-red-500">*</span>
+                    이름 (canonical_name) <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="ent-name"
@@ -914,10 +908,9 @@ export default function EntityManager() {
           </CardHeader>
           <CardContent className="space-y-3">
             {aliasError && (
-              <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+              <AdminErrorBox onDismiss={() => setAliasError(null)}>
                 <span>{aliasError}</span>
-                <button onClick={() => setAliasError(null)} className="ml-2 shrink-0 text-red-400 underline hover:text-red-600">닫기</button>
-              </div>
+              </AdminErrorBox>
             )}
             <div className="flex flex-col gap-1.5">
               <Label>동의어 목록</Label>
@@ -946,10 +939,10 @@ export default function EntityManager() {
 
       {/* ── 병합 패널 ── */}
       {mergeSourceId && mergeSourceEntity && (
-        <Card className="border-red-100">
+        <Card className="border-destructive/30">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-red-700">
+              <CardTitle className="text-sm font-semibold text-destructive">
                 다른 엔티티로 병합 — {mergeSourceEntity.canonical_name}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={closeMerge}>
@@ -959,9 +952,9 @@ export default function EntityManager() {
           </CardHeader>
           <CardContent className="space-y-4">
             {mergeError && (
-              <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+              <AdminErrorBox>
                 {mergeError}
-              </div>
+              </AdminErrorBox>
             )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="merge-search">병합 대상 검색</Label>
@@ -996,7 +989,7 @@ export default function EntityManager() {
               </div>
             )}
             {mergeTargetId && mergeTargetEntity && (
-              <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+              <p className="rounded-lg bg-destructive/10 px-4 py-2 text-sm text-destructive">
                 ⚠️ &ldquo;{mergeSourceEntity.canonical_name}&rdquo;의 모든 기사 연결과 동의어가
                 &ldquo;{mergeTargetEntity.canonical_name}&rdquo;으로 이전되며{' '}
                 <strong>되돌릴 수 없습니다.</strong>
@@ -1119,9 +1112,7 @@ export default function EntityManager() {
                   </td>
                   <td className="px-4 py-3">
                     {entity.is_competitor && (
-                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-                        경쟁사
-                      </span>
+                      <StatusBadge tone="negative" label="경쟁사" />
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -1165,7 +1156,7 @@ export default function EntityManager() {
                       </button>
                       <button
                         onClick={() => { void handleDelete(entity) }}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                         title="삭제"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

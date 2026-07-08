@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { TagType } from '@/lib/types'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -338,15 +339,9 @@ export default function KeywordGroupManager() {
     <div className="space-y-6">
       {/* 전역 오류 */}
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <AdminErrorBox onDismiss={() => setError(null)}>
           <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="ml-4 shrink-0 text-red-400 underline hover:text-red-600"
-          >
-            닫기
-          </button>
-        </div>
+        </AdminErrorBox>
       )}
 
       {/* ── 추가/수정 폼 ── */}
@@ -360,16 +355,16 @@ export default function KeywordGroupManager() {
           <CardContent>
             <form onSubmit={handleSave} className="space-y-5">
               {formError && (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+                <AdminErrorBox>
                   {formError}
-                </div>
+                </AdminErrorBox>
               )}
 
               {/* 이름 · Kind */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="kg-name">
-                    이름 <span className="text-red-500">*</span>
+                    이름 <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="kg-name"
@@ -380,7 +375,7 @@ export default function KeywordGroupManager() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="kg-kind">
-                    Kind (슬러그) <span className="text-red-500">*</span>
+                    Kind (슬러그) <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="kg-kind"
@@ -588,7 +583,7 @@ export default function KeywordGroupManager() {
                     <span className={cn(
                       'rounded-full px-2 py-0.5 text-xs font-medium',
                       group.exclude_patterns?.length > 0
-                        ? 'bg-red-50 text-red-700'
+                        ? 'bg-negative-soft text-negative'
                         : 'text-muted-foreground'
                     )}>
                       {group.exclude_patterns?.length ?? 0}개
@@ -637,7 +632,7 @@ export default function KeywordGroupManager() {
                       </button>
                       <button
                         onClick={() => handleDelete(group)}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                         title="삭제"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

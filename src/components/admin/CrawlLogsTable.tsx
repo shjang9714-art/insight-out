@@ -374,7 +374,7 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
                     <td className="admin-cell-wrap max-w-[200px] px-4 py-3">
                       {log.error_message ? (
                         <span
-                          className="line-clamp-2 text-[11px] text-red-500"
+                          className="line-clamp-2 text-[11px] text-negative"
                           title={log.error_message}
                         >
                           {log.error_message}

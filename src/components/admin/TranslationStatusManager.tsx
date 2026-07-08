@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, KeyRound, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { cn } from '@/lib/utils'
 
 type ProviderName = 'deepl' | 'papago' | 'google'
@@ -133,10 +134,12 @@ export default function TranslationStatusManager() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
+        <AdminErrorBox>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        </AdminErrorBox>
       )}
 
       <div className="rounded-xl border border-border bg-card">

@@ -36,6 +36,7 @@ import type {
 import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
 import type { SourceQualityStat } from '@/app/api/admin/source-quality/route'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { REVIEW_REASON_LABEL, type Tone } from '@/lib/admin/status-style'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -604,15 +605,9 @@ export default function SourceManager() {
     <div className="space-y-6">
       {/* 전역 오류 */}
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          <span>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="ml-4 shrink-0 text-red-400 underline hover:text-red-600"
-          >
-            닫기
-          </button>
-        </div>
+        <AdminErrorBox onDismiss={() => setError(null)}>
+          {error}
+        </AdminErrorBox>
       )}
 
       {/* ── 추가/수정 폼 ── */}
@@ -626,16 +621,16 @@ export default function SourceManager() {
           <CardContent>
             <form onSubmit={handleSave} className="space-y-4">
               {formError && (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+                <AdminErrorBox>
                   {formError}
-                </div>
+                </AdminErrorBox>
               )}
 
               {/* 이름·유형 */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-name">
-                    이름 <span className="text-red-500">*</span>
+                    이름 <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="src-name"
@@ -647,7 +642,7 @@ export default function SourceManager() {
 
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="src-type">
-                    유형 <span className="text-red-500">*</span>
+                    유형 <span className="text-destructive">*</span>
                   </Label>
                   <Select
                     value={form.type}
@@ -738,7 +733,7 @@ export default function SourceManager() {
                   <Label htmlFor="src-rss">
                     RSS URL{' '}
                     {needsRssUrl(form.type) ? (
-                      <span className="text-[11px] text-red-500">수집에 필요</span>
+                      <span className="text-[11px] text-negative">수집에 필요</span>
                     ) : (
                       <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                     )}
@@ -1008,9 +1003,7 @@ export default function SourceManager() {
                       if (s.consecutiveFailures >= 2) {
                         return (
                           <div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-                              🔴 연속실패 {s.consecutiveFailures}
-                            </span>
+                            <StatusBadge tone="negative" label={`🔴 연속실패 ${s.consecutiveFailures}`} />
                             {s.lastError && (
                               <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
                                 {s.lastError}
@@ -1088,7 +1081,7 @@ export default function SourceManager() {
                       </button>
                       <button
                         onClick={() => handleDelete(src)}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
                         title="삭제"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -1131,7 +1124,7 @@ export default function SourceManager() {
               ) : crawlProgress.status === 'completed' ? (
                 <CheckCircle2 className="size-5 text-positive" />
               ) : (
-                <XCircle className="size-5 text-red-600" />
+                <XCircle className="size-5 text-negative" />
               )}
               <div>
                 <p className="text-sm font-semibold text-foreground">
@@ -1163,7 +1156,7 @@ export default function SourceManager() {
               className={cn(
                 'h-full rounded-full transition-[width] duration-500',
                 crawlProgress.status === 'failed'
-                  ? 'bg-red-500'
+                  ? 'bg-destructive'
                   : 'bg-brand-600'
               )}
               style={{ width: `${progressPercent}%` }}
@@ -1189,9 +1182,9 @@ export default function SourceManager() {
                 {crawlProgress.duplicates}
               </p>
             </div>
-            <div className="rounded-lg bg-red-50 px-2 py-2">
-              <p className="text-[10px] text-red-600">실패</p>
-              <p className="text-xs font-semibold text-red-700">
+            <div className="rounded-lg bg-negative-soft px-2 py-2">
+              <p className="text-[10px] text-negative">실패</p>
+              <p className="text-xs font-semibold text-negative">
                 {crawlProgress.failed}
               </p>
             </div>
@@ -1205,7 +1198,7 @@ export default function SourceManager() {
             </p>
           )}
           {crawlProgress.message && (
-            <p className="mt-3 text-xs leading-relaxed text-red-600">
+            <p className="mt-3 text-xs leading-relaxed text-negative">
               {crawlProgress.message}
             </p>
           )}

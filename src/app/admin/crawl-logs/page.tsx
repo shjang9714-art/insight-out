@@ -75,7 +75,7 @@ export default async function CrawlLogsPage() {
     { label: '마지막 실행',    value: lastRunAt ? formatKST(lastRunAt) : '—' },
     { label: '성공',          value: `${successCount}건`,  accent: successCount > 0 ? 'text-positive' : '' },
     { label: '부분',          value: `${partialCount}건`,  accent: partialCount > 0 ? 'text-yellow-600' : '' },
-    { label: '실패',          value: `${failedCount}건`,   accent: failedCount > 0 ? 'text-red-600 font-semibold' : '' },
+    { label: '실패',          value: `${failedCount}건`,   accent: failedCount > 0 ? 'text-negative font-semibold' : '' },
     { label: '신규 적재(합)', value: `${totalInserted.toLocaleString()}건` },
   ]
 

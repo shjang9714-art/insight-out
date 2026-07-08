@@ -244,7 +244,7 @@ export default function NewsletterManager({ initialSettings, initialIssues }: Pr
             />
           </div>
 
-          {settingsError && <p className="text-xs text-red-500">{settingsError}</p>}
+          {settingsError && <p className="text-xs text-negative">{settingsError}</p>}
 
           <Button type="submit" disabled={settingsStatus === 'saving'} className="w-full h-10">
             {settingsStatus === 'saving' ? '저장 중...' : settingsStatus === 'saved' ? '저장되었습니다!' : '설정 저장'}

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardStatus } from '@/lib/types'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
@@ -286,9 +287,7 @@ export default function InsightsAdminPage() {
 
       {/* 에러 */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+        <AdminErrorBox>{error}</AdminErrorBox>
       )}
 
       {/* 카드 목록 */}
@@ -413,7 +412,7 @@ export default function InsightsAdminPage() {
                   <button
                     onClick={() => void handleDelete(card.id, card.topic)}
                     disabled={updatingId === card.id}
-                    className="rounded p-1.5 text-muted-foreground/40 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
+                    className="rounded p-1.5 text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-40"
                     title="삭제"
                   >
                     <Trash2 className="h-3.5 w-3.5" />

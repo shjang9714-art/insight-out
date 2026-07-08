@@ -20,6 +20,7 @@ import type { Service } from '@/lib/types'
 import { renderPdfCover } from '@/lib/contents/pdf-cover'
 import { uploadCover } from '@/lib/contents/upload-cover'
 import CoverImageField from '@/components/admin/CoverImageField'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -392,11 +393,7 @@ export default function ReportUploadForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      {error && <AdminErrorBox>{error}</AdminErrorBox>}
 
       {/* ───────── 파일 ───────── */}
       <Card>
@@ -467,7 +464,7 @@ export default function ReportUploadForm() {
           {/* 제목 */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="title">
-              제목 <span className="text-red-500">*</span>
+              제목 <span className="text-destructive">*</span>
             </Label>
             <Input
               id="title"

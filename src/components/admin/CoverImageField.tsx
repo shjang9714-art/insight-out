@@ -77,7 +77,7 @@ export default function CoverImageField({
         {coverInner}
       </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-negative">{error}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button

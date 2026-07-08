@@ -5,6 +5,7 @@ import { AlertCircle, ChevronDown, ChevronUp, Loader2, Sparkles, Volume2 } from 
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { BRIEFING_STATUS_TONE } from '@/lib/admin/status-style'
 
 type BriefingStatus = 'draft' | 'published' | 'archived' | 'failed'
@@ -230,10 +231,12 @@ export default function BriefingManager() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
+        <AdminErrorBox>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        </AdminErrorBox>
       )}
 
       {/* TTS 사용량 카드 */}
@@ -394,9 +397,13 @@ export default function BriefingManager() {
 
                 {/* 행 단위 에러 */}
                 {rowError && (
-                  <div className="mx-5 mb-3 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {rowError}
+                  <div className="mx-5 mb-3">
+                    <AdminErrorBox>
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {rowError}
+                      </div>
+                    </AdminErrorBox>
                   </div>
                 )}
 

@@ -7,6 +7,7 @@ import { Check, ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Search, Trash2,
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { CONTENT_STATUS_TONE, CONTENT_STATUS_LABEL, REVIEW_REASON_LABEL } from '@/lib/admin/status-style'
 import { Button } from '@/components/ui/button'
@@ -565,12 +566,9 @@ export default function AdminContentManager() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-start justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <AdminErrorBox onDismiss={() => setError(null)}>
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="ml-4 shrink-0 underline">
-            닫기
-          </button>
-        </div>
+        </AdminErrorBox>
       )}
 
       {/* ── 카테고리 탭 (205 — 최상단, 209 — 공유 세그먼트 박스로 통일) ── */}
@@ -999,15 +997,15 @@ export default function AdminContentManager() {
           {edit && (
             <div className="space-y-4">
               {editError && (
-                <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                <AdminErrorBox>
                   {editError}
-                </div>
+                </AdminErrorBox>
               )}
 
               {/* 제목 */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-title">
-                  제목 <span className="text-red-500">*</span>
+                  제목 <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="edit-title"

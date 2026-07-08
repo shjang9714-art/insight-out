@@ -11,6 +11,7 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { Loader2, CheckCircle2, XCircle, FlaskConical } from 'lucide-react'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { cn } from '@/lib/utils'
 import { CHART_BRAND, CHART_MUTED } from '@/lib/admin/palette'
 
@@ -142,9 +143,9 @@ export default function LlmManager() {
 
   if (error && !data) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <AdminErrorBox>
         {error}
-      </div>
+      </AdminErrorBox>
     )
   }
 
@@ -191,7 +192,7 @@ export default function LlmManager() {
                         <CheckCircle2 className="h-3 w-3" />키 등록됨
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-red-500 font-medium">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-negative font-medium">
                         <XCircle className="h-3 w-3" />env 키 미등록
                       </span>
                     )}
@@ -223,7 +224,7 @@ export default function LlmManager() {
                     <div
                       className={cn(
                         'h-full rounded-full transition-all',
-                        usagePct >= 90 ? 'bg-red-500' : usagePct >= 70 ? 'bg-amber-500' : 'bg-brand-600'
+                        usagePct >= 90 ? 'bg-destructive' : usagePct >= 70 ? 'bg-amber-500' : 'bg-brand-600'
                       )}
                       style={{ width: `${usagePct}%` }}
                     />
@@ -344,7 +345,7 @@ export default function LlmManager() {
               'rounded-lg border px-4 py-3 text-sm space-y-1',
               testResult.ok && testResult.test?.ok
                 ? 'border-positive/20 bg-positive-soft text-positive'
-                : 'border-red-200 bg-red-50 text-red-700'
+                : 'border-negative/20 bg-negative-soft text-negative'
             )}>
               {testResult.error ? (
                 <p>{testResult.error}</p>
@@ -373,9 +374,9 @@ export default function LlmManager() {
 
       {/* 에러 배너 */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <AdminErrorBox>
           {error}
-        </div>
+        </AdminErrorBox>
       )}
     </div>
   )
