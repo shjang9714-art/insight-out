@@ -95,8 +95,8 @@ export default function AiInsightBoard({
 
   return (
     <div className="space-y-6">
-      {/* 하위 카테고리 탭 */}
-      <InsightViewTabs items={TABS} value={view} onChange={handleTabChange} />
+      {/* 하위 카테고리 탭 — L1 그룹 폭(--nav-group-w) 기준 좌측블록 안에서 center → L1 중앙 아래 정렬(233) */}
+      <InsightViewTabs items={TABS} value={view} onChange={handleTabChange} className="-mt-3 w-[var(--nav-group-w)]" />
 
       {/* 범위 필터 (전체/내 관심사) */}
       <div className="flex justify-end">

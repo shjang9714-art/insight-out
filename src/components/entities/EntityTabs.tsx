@@ -15,7 +15,7 @@ export default function EntityTabs() {
 
   return (
     <div className="mb-6">
-      <InsightViewTabs items={TABS} value={view} />
+      <InsightViewTabs items={TABS} value={view} className="-mt-3 w-[var(--nav-group-w)]" />
     </div>
   )
 }

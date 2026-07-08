@@ -315,14 +315,14 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         className="hidden md:flex"
         aria-label="주 메뉴"
       >
-        <div className="mx-auto flex w-full max-w-6xl items-stretch justify-center gap-10 px-4 sm:px-5">
+        <div className="mx-auto flex w-full max-w-6xl items-stretch justify-start gap-9 px-4 sm:px-5">
           {NAV_TABS.map((tab) => {
             const active = isTabActive(tab.href, tab.exact, pathname)
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`relative flex items-center py-3.5 text-[17px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:transition-colors ${
+                className={`relative flex items-center pt-3 pb-1.5 text-[17px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:transition-colors ${
                   active
                     ? 'text-foreground after:bg-brand-muted'
                     : 'text-muted-foreground after:bg-transparent hover:after:bg-border'

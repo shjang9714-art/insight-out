@@ -493,6 +493,7 @@ function ContentsContent() {
           }))}
           value={activeSourceTab}
           onChange={(v) => updateParam('category', v)}
+          className="-mt-3 w-[var(--nav-group-w)]"
         />
       </div>
 
