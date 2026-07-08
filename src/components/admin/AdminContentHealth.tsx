@@ -66,7 +66,7 @@ function HealthRow({ label, value, badPct, linkHref, linkLabel, note }: RowProps
         </div>
       </div>
       <HealthBar badPct={badPct} />
-      {note && <p className="text-[11px] text-muted-foreground">{note}</p>}
+      {note && <p className="admin-caption text-muted-foreground">{note}</p>}
     </div>
   )
 }

@@ -79,7 +79,7 @@ export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck, p
             <Link
               key={tile.key}
               href={tile.href}
-              className="group relative flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-accent"
+              className="group relative flex h-full flex-col justify-between rounded-xl border border-border bg-card p-5 transition-colors hover:bg-accent"
             >
               <ChevronRight className="absolute top-4 right-4 h-4 w-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
               <p className="admin-card-title pr-5 text-muted-foreground">{tile.label}</p>

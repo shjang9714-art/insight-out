@@ -26,7 +26,7 @@ type Category = typeof CATEGORIES[number]
 // ─── KPI 카드 스타일 ──────────────────────────────────────────────────────────
 
 const KPI_CARD =
-  'group flex flex-col rounded-2xl border border-border bg-card p-6 transition-colors hover:bg-accent'
+  'group flex h-full flex-col rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-accent'
 
 export default async function AdminPage() {
   const cookieStore = await cookies()
