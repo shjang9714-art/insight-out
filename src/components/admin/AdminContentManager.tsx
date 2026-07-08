@@ -38,6 +38,8 @@ import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import { useResizableColumns, type ResizableColumnDef } from '@/lib/admin/use-resizable-columns'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
+import MarkdownEditor from '@/components/admin/MarkdownEditor'
+import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 
 interface AdminContentRow {
   id: string
@@ -68,6 +70,7 @@ interface EditState {
   author: string
   publishedAt: string // 'YYYY-MM-DD' 또는 ''
   bodyOriginal: string
+  bodyMarkdown: string
   thumbnailUrl: string | null
 }
 
@@ -340,7 +343,7 @@ export default function AdminContentManager() {
     setWorkingId(content.id)
     const { data, error: loadError } = await supabase
       .from('contents')
-      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, thumbnail_url')
+      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, body_markdown, thumbnail_url')
       .eq('id', content.id)
       .single()
     setWorkingId(null)
@@ -359,6 +362,8 @@ export default function AdminContentManager() {
       author:       data.author ?? '',
       publishedAt:  toDateInput(data.published_at),
       bodyOriginal: data.body_original ?? '',
+      bodyMarkdown: (data.body_markdown ?? '') ||
+                    cleanBodyText(htmlToPlainText(data.body_original ?? '')),
       thumbnailUrl: data.thumbnail_url ?? null,
     })
   }
@@ -372,19 +377,33 @@ export default function AdminContentManager() {
     setIsSaving(true)
     setEditError(null)
 
-    const { error: updateError } = await supabase
+    // 217 — 마크다운 원본(상세 렌더용) + stripMarkdown 평문(검색·스니펫용) 동기 기록
+    const md = edit.bodyMarkdown.trim()
+    const updatePayload: Record<string, unknown> = {
+      title,
+      summary_ko:    edit.summary.trim() || null,
+      category:      edit.category,
+      source_id:     edit.sourceId || null,
+      author:        edit.author.trim() || null,
+      published_at:  edit.publishedAt || null,
+      body_markdown: md || null,
+      body_original: md ? (stripMarkdown(md).trim() || null) : null,
+      thumbnail_url: edit.thumbnailUrl,
+    }
+
+    let { error: updateError } = await supabase
       .from('contents')
-      .update({
-        title,
-        summary_ko:    edit.summary.trim() || null,
-        category:      edit.category,
-        source_id:     edit.sourceId || null,
-        author:        edit.author.trim() || null,
-        published_at:  edit.publishedAt || null,
-        body_original: edit.bodyOriginal.trim() || null,
-        thumbnail_url: edit.thumbnailUrl,
-      })
+      .update(updatePayload)
       .eq('id', edit.id)
+
+    // body_markdown 컬럼 미적용(42703) graceful: 컬럼 없이 재시도
+    if (updateError?.code === '42703') {
+      delete updatePayload.body_markdown
+      ;({ error: updateError } = await supabase
+        .from('contents')
+        .update(updatePayload)
+        .eq('id', edit.id))
+    }
 
     if (updateError) {
       setEditError(`저장에 실패했습니다: ${updateError.message}`)
@@ -1143,23 +1162,19 @@ export default function AdminContentManager() {
                 />
               </div>
 
-              {/* 본문 원문 */}
+              {/* 본문 */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-body">
-                  본문 (원문){' '}
-                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                <Label>
+                  본문{' '}
+                  <span className="text-xs font-normal text-muted-foreground">(마크다운·선택)</span>
                 </Label>
-                <textarea
-                  data-slot="textarea"
-                  id="edit-body"
-                  value={edit.bodyOriginal}
-                  onChange={(e) => setEdit((p) => p && { ...p, bodyOriginal: e.target.value })}
-                  rows={12}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-600/30 resize-y"
-                  placeholder="본문 원문(HTML·텍스트). 표시 시 자동 정리됩니다."
+                <MarkdownEditor
+                  value={edit.bodyMarkdown}
+                  onChange={(v) => setEdit((p) => p && { ...p, bodyMarkdown: v })}
+                  placeholder="본문을 입력·편집하세요. 툴바로 서식을 넣을 수 있어요."
                 />
                 <p className="text-xs text-muted-foreground">
-                  표시 화면에서 HTML·&amp;nbsp; 는 자동 정리됩니다. 여기서는 원문을 그대로 편집하세요.
+                  서식(마크다운)은 상세 화면에 그대로 반영됩니다. 검색·요약에는 서식을 제거한 본문이 사용됩니다.
                 </p>
               </div>
             </div>
