@@ -1,11 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCachedUser } from '@/lib/supabase/cached-user'
 import { getFeedOnboardingStatus, getUserPrimaryServiceId } from '@/lib/preferences'
 import PersonalizationNudgeBanner from './PersonalizationNudgeBanner'
 
 export default async function PersonalizationNudge() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCachedUser()
   if (!user) return null
+
+  const supabase = await createClient()
 
   const status = await getFeedOnboardingStatus(supabase, user.id)
   if (status === 'new') return null

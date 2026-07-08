@@ -2,9 +2,13 @@ import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { getCachedUser } from '@/lib/supabase/cached-user'
 import MarkSeen from './MarkSeen'
 
 export default async function VisitDelta() {
+  const user = await getCachedUser()
+  if (!user) return null
+
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,9 +20,6 @@ export default async function VisitDelta() {
       },
     },
   )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
 
   // 직전 방문 시각 조회 (42703 graceful)
   const { data: profile, error: profErr } = await supabase

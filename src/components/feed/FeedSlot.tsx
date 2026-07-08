@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCachedUser } from '@/lib/supabase/cached-user'
 import {
   getFeedOnboardingStatus,
   getUserPreferenceKeywordIds,
@@ -25,26 +26,36 @@ function recentSinceISO(days: number): string {
 /** 홈 "최근 피드" 슬롯 — 신규/스킵/기존 상태에 따라 분기 렌더링하는 서버 컴포넌트. */
 export default async function FeedSlot() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCachedUser()
   if (!user) return null // 미들웨어가 비로그인 접근을 막지만, 타입 안전성을 위해 가드
 
-  const { data: servicesData } = await supabase
-    .from('services')
-    .select('id, name')
-    .order('order')
+  // 1차 병렬: 서로 독립 — status==='new'면 services만 필요해 조기 반환.
+  const [{ data: servicesData }, status] = await Promise.all([
+    supabase.from('services').select('id, name').order('order'),
+    getFeedOnboardingStatus(supabase, user.id),
+  ])
   const services = (servicesData ?? []) as ServiceRow[]
-
-  const status = await getFeedOnboardingStatus(supabase, user.id)
 
   if (status === 'new') {
     return <OnboardingKeywordPicker services={services} mode="onboarding" />
   }
 
-  const [keywordIds, primaryServiceId] = await Promise.all([
+  // 2차 병렬: keywordIds/primaryServiceId/폴백 콘텐츠는 서로 독립.
+  const fbRecentSince = recentSinceISO(5)
+  const [keywordIds, primaryServiceId, { data: fbRaw }] = await Promise.all([
     getUserPreferenceKeywordIds(supabase, user.id),
     getUserPrimaryServiceId(supabase, user.id),
+    supabase
+      .from('contents')
+      .select(FALLBACK_SELECT)
+      .eq('status', 'published')
+      .neq('category', '유튜브')
+      .gte('published_at', fbRecentSince)
+      .order('published_at', { ascending: false })
+      .limit(18),
   ])
 
+  // 3차: keywordRows는 keywordIds 의존 — 순차 유지.
   let keywordNameById: Record<string, string> = {}
   if (keywordIds.length > 0) {
     const { data: keywordRows } = await supabase
@@ -55,17 +66,6 @@ export default async function FeedSlot() {
       ((keywordRows ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name])
     )
   }
-
-  // 폴백 페치: 피드가 비었을 때 사용할 최신 콘텐츠 (발행 5일 이내, 최신순)
-  const fbRecentSince = recentSinceISO(5)
-  const { data: fbRaw } = await supabase
-    .from('contents')
-    .select(FALLBACK_SELECT)
-    .eq('status', 'published')
-    .neq('category', '유튜브')
-    .gte('published_at', fbRecentSince)
-    .order('published_at', { ascending: false })
-    .limit(18)
 
   const fbFiltered = ((fbRaw ?? []) as unknown as FeedItem[])
     .filter((c) => isB2BRelevant(c.title, c.summary_ko))
