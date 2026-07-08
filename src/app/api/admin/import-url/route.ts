@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       summary: art?.description ?? '',
       publishedAt: art?.published ? art.published.slice(0, 10) : '',
       originalUrl: resolved,
+      thumbnailUrl: art?.image ?? '',
     })
   } catch (err) {
     console.error('[/api/admin/import-url] 추출 오류:', err)

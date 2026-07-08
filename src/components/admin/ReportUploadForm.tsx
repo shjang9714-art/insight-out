@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 import { Upload, X, FileText, Loader2, CheckCircle } from 'lucide-react'
 import type { Service } from '@/lib/types'
 import { renderPdfCover } from '@/lib/contents/pdf-cover'
+import { uploadCover } from '@/lib/contents/upload-cover'
+import CoverImageField from '@/components/admin/CoverImageField'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +103,7 @@ export default function ReportUploadForm() {
     message?: string
   } | null>(null)
   const [coverGenerated, setCoverGenerated] = useState(false)
+  const [coverFile, setCoverFile] = useState<File | null>(null)
 
   // DB 메타데이터 로드
   useEffect(() => {
@@ -281,7 +284,18 @@ export default function ReportUploadForm() {
         if (ckErr) throw new Error(`키워드 연결 실패: ${ckErr.message}`)
       }
 
-      // ⑤ PDF 본문 추출 (PDF만, 실패해도 업로드 성공 처리)
+      // ⑤ 커버 이미지 — 우선순위: 사용자 지정 > PDF 자동 > (없음 → 렌더 시 기본 표지). 전부 graceful.
+      if (coverFile) {
+        try {
+          const ext = coverFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+          await uploadCover(supabase, contentId, coverFile, ext)
+          setCoverGenerated(true)
+        } catch (coverErr) {
+          console.error('[upload] 커버 업로드 실패:', coverErr)
+        }
+      }
+
+      // ⑥ PDF 본문 추출 (PDF만, 실패해도 업로드 성공 처리)
       const ext = file!.name.split('.').pop()?.toLowerCase() ?? ''
       if (ext === 'pdf') {
         try {
@@ -293,42 +307,17 @@ export default function ReportUploadForm() {
           setExtractResult({ ok: false, reason: 'fetch_error', message: '추출 요청 실패' })
         }
 
-        // ⑥ 표지(1페이지) 생성 — 전부 graceful, 실패해도 업로드는 이미 성공
-        try {
-          const coverBlob = await renderPdfCover(file!)
-          if (coverBlob) {
-            const coverTokenRes = await fetch('/api/admin/upload', {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ filename: 'cover.webp', kind: 'cover', contentId }),
-            })
-            const coverTokenData: { token?: string; storagePath?: string; error?: string } =
-              await coverTokenRes.json()
-
-            if (coverTokenRes.ok && coverTokenData.token && coverTokenData.storagePath) {
-              const { error: coverUploadErr } = await supabase.storage
-                .from('report-covers')
-                .uploadToSignedUrl(coverTokenData.storagePath, coverTokenData.token, coverBlob)
-
-              if (!coverUploadErr) {
-                const { data: pub } = supabase.storage
-                  .from('report-covers')
-                  .getPublicUrl(coverTokenData.storagePath)
-                const { error: thumbErr } = await supabase
-                  .from('contents')
-                  .update({ thumbnail_url: pub.publicUrl })
-                  .eq('id', contentId)
-                if (!thumbErr) setCoverGenerated(true)
-                else console.error('[upload] thumbnail_url 업데이트 실패:', thumbErr)
-              } else {
-                console.error('[upload] 표지 업로드 실패:', coverUploadErr)
-              }
-            } else {
-              console.error('[upload] 표지 업로드 URL 발급 실패:', coverTokenData.error)
+        // ⑦ 표지(1페이지) 자동 생성 — 사용자가 커버를 직접 지정하지 않았을 때만
+        if (!coverFile) {
+          try {
+            const coverBlob = await renderPdfCover(file!)
+            if (coverBlob) {
+              await uploadCover(supabase, contentId, coverBlob, 'webp')
+              setCoverGenerated(true)
             }
+          } catch (coverErr) {
+            console.error('[upload] 표지 생성 실패:', coverErr)
           }
-        } catch (coverErr) {
-          console.error('[upload] 표지 생성 실패:', coverErr)
         }
       }
 
@@ -338,6 +327,7 @@ export default function ReportUploadForm() {
       setForm(FORM_INIT)
       setServiceIds(new Set())
       setKeywords([])
+      setCoverFile(null)
 
     } catch (err) {
       console.error('[admin/upload] error:', err)
@@ -580,6 +570,22 @@ export default function ReportUploadForm() {
             />
             <span className="text-sm text-foreground">에디터 픽으로 등록</span>
           </label>
+        </CardContent>
+      </Card>
+
+      {/* ───────── 커버 이미지 ───────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-foreground">커버 이미지</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CoverImageField
+            category="리포트"
+            title={form.title}
+            sourceName={sources.find(s => s.id === form.sourceId)?.name ?? null}
+            value={coverFile}
+            onChange={setCoverFile}
+          />
         </CardContent>
       </Card>
 

@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 import { X, Loader2, CheckCircle, Send } from 'lucide-react'
 import type { Service } from '@/lib/types'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
+import CoverImageField from '@/components/admin/CoverImageField'
+import { uploadCover } from '@/lib/contents/upload-cover'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -41,25 +43,28 @@ interface Source {
 }
 
 export interface FormState {
-  category:    PasteCategory
-  title:       string
-  bodyText:    string
-  originalUrl: string
-  summary:     string
-  author:      string
-  publishedAt: string
-  sourceId:    string
+  category:     PasteCategory
+  title:        string
+  bodyText:     string
+  originalUrl:  string
+  summary:      string
+  author:       string
+  publishedAt:  string
+  sourceId:     string
+  /** URL 임포트에서 추출한 og:image — 커버 미리보기 초기값(215) */
+  thumbnailUrl: string
 }
 
 const FORM_INIT: FormState = {
-  category:    '웹인사이트',
-  title:       '',
-  bodyText:    '',
-  originalUrl: '',
-  summary:     '',
-  author:      '',
-  publishedAt: '',
-  sourceId:    '',
+  category:     '웹인사이트',
+  title:        '',
+  bodyText:     '',
+  originalUrl:  '',
+  summary:      '',
+  author:       '',
+  publishedAt:  '',
+  sourceId:     '',
+  thumbnailUrl: '',
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
@@ -81,6 +86,8 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError]           = useState<string | null>(null)
   const [success, setSuccess]       = useState(false)
+  const [coverFile, setCoverFile]         = useState<File | null>(null)
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState(initialForm?.thumbnailUrl || '')
 
   // 서비스 목록 로드
   useEffect(() => {
@@ -162,10 +169,26 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
       const data: { id?: string; error?: string } = await res.json()
       if (!res.ok) throw new Error(data.error ?? '등록에 실패했습니다.')
 
+      // 커버 이미지 — 우선순위: 사용자 지정 > og:image 초기값 > (없음 → 기본 표지). 전부 graceful.
+      if (data.id) {
+        try {
+          if (coverFile) {
+            const ext = coverFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+            await uploadCover(supabase, data.id, coverFile, ext)
+          } else if (coverPreviewUrl) {
+            await supabase.from('contents').update({ thumbnail_url: coverPreviewUrl }).eq('id', data.id)
+          }
+        } catch (coverErr) {
+          console.error('[paste] 커버 저장 실패:', coverErr)
+        }
+      }
+
       setSuccess(true)
       setForm(FORM_INIT)
       setServiceIds(new Set())
       setKeywords([])
+      setCoverFile(null)
+      setCoverPreviewUrl('')
     } catch (err) {
       setError(err instanceof Error ? err.message : '등록 중 오류가 발생했습니다.')
     } finally {
@@ -304,6 +327,24 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
               placeholder="https://..."
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ───────── 커버 이미지 ───────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-foreground">커버 이미지</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CoverImageField
+            category={form.category}
+            title={form.title}
+            sourceName={sources.find(s => s.id === form.sourceId)?.name ?? null}
+            value={coverFile}
+            onChange={setCoverFile}
+            previewUrl={coverPreviewUrl || null}
+            onClearPreviewUrl={() => setCoverPreviewUrl('')}
+          />
         </CardContent>
       </Card>
 
