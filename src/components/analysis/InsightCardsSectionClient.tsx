@@ -18,6 +18,7 @@ import {
   computeRelevance,
   buildSelectionReason,
   computeRelatedKeywords,
+  getCardDetailHref,
   IMPORTANCE_LABEL,
   IMPORTANCE_CLS,
   RELEVANCE_LABEL,
@@ -263,6 +264,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                   matched: relevanceMatched,
                   generatedAt: card.generated_at,
                 })
+                const detailHref = getCardDetailHref(card)
 
                 return (
                   <article
@@ -288,9 +290,12 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                     </div>
 
                     {/* 2. 제목 */}
-                    <p className="text-base font-semibold text-foreground leading-snug">
+                    <Link
+                      href={detailHref}
+                      className="block text-base font-semibold text-foreground leading-snug hover:text-brand-600 hover:underline"
+                    >
                       {card.card_headline ?? card.headline}
-                    </p>
+                    </Link>
 
                     {/* 3. 핵심 — card_headline이 있고 headline과 다를 때만 */}
                     {card.card_headline && card.card_headline !== card.headline && (
@@ -351,7 +356,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                     {/* 7. 액션 */}
                     <div>
                       <Link
-                        href={`/dashboard/topics/${encodeURIComponent(card.topic)}`}
+                        href={detailHref}
                         className="text-xs font-medium text-brand-600 hover:underline"
                       >
                         자세히 보기 →

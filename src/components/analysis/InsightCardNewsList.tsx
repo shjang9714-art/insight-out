@@ -10,6 +10,7 @@ import {
   computeImportance,
   buildSelectionReason,
   computeRelatedKeywords,
+  getCardDetailHref,
   IMPORTANCE_LABEL,
   IMPORTANCE_CLS,
   RELEVANCE_LABEL,
@@ -66,6 +67,7 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
     generatedAt: card.generated_at,
   })
   const relatedKeywords = computeRelatedKeywords(card, contentMap)
+  const detailHref = getCardDetailHref(card)
 
   const bucket = bucketByTopic?.[card.topic] ?? '일반'
   const accentCls = BUCKET_ACCENT_CLS[bucket]
@@ -101,7 +103,9 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
       {/* 2. 헤드라인 — 어그로 앵커, 좌측 버킷색 액센트 바 */}
       <div className={cn('border-l-[3px] pl-4', accentCls)}>
         <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
-          {card.card_headline ?? card.headline}
+          <Link href={detailHref} className="hover:text-brand-600 hover:underline">
+            {card.card_headline ?? card.headline}
+          </Link>
         </h3>
       </div>
 
