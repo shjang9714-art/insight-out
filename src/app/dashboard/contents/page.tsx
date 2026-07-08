@@ -16,6 +16,7 @@ import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
+import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -484,33 +485,16 @@ function ContentsContent() {
     <PageContainer>
 
       {/* ── 소스타입 선택 바 ─────────────────────────────────────────────────── */}
-      <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {CONTENT_SOURCE_TABS.map((tab) => {
-          const isActive = activeSourceTab === tab.value
-          const count = catCounts[tab.value]
-          return (
-            <button
-              key={tab.value}
-              onClick={() => updateParam('category', tab.value)}
-              className={cn(
-                'relative flex min-w-[4.5rem] flex-1 flex-col items-center justify-center rounded-xl border px-3 py-3.5 transition-colors',
-                isActive
-                  ? 'border-brand-600 bg-brand-600/10 text-brand-600'
-                  : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground',
-              )}
-            >
-              {count !== undefined && count > 0 && (
-                <span className="absolute left-1.5 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-brand-solid px-1 py-0.5 text-[9px] font-bold leading-none text-white">
-                  {count >= 1000 ? `${Math.floor(count / 1000)}k` : count}
-                </span>
-              )}
-              <span className="text-base font-semibold leading-tight">{tab.label}</span>
-              {count === 0 && (
-                <span className="text-[9px] text-muted-foreground/60">데이터 없음</span>
-              )}
-            </button>
-          )
-        })}
+      <div className="mb-5">
+        <InsightViewTabs
+          items={CONTENT_SOURCE_TABS.map((tab) => ({
+            id: tab.value,
+            label: tab.label,
+            count: catCounts[tab.value],
+          }))}
+          value={activeSourceTab}
+          onChange={(v) => updateParam('category', v)}
+        />
       </div>
 
       {/* 제목 + 건수 + 뷰 토글 */}

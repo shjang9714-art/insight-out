@@ -322,7 +322,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`relative flex items-center px-3 py-3.5 text-[15px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:transition-colors ${
+                className={`relative flex items-center px-3 py-3.5 text-[16px] font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1.5px] after:transition-colors ${
                   active
                     ? 'text-foreground after:bg-brand-muted'
                     : 'text-muted-foreground after:bg-transparent hover:after:bg-border'

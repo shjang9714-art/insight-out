@@ -265,11 +265,6 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   return (
     <PageContainer>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">기업동향</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">관심기업·경쟁사 동향과 엔티티 관계를 탐색합니다.</p>
-      </div>
-
       <Suspense fallback={null}>
         <EntityTabs />
       </Suspense>

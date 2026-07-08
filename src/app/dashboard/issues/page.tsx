@@ -22,10 +22,6 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
 
   return (
     <PageContainer>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">AI 인사이트</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">AI가 분석한 시장 신호·이슈·인사이트를 한눈에.</p>
-      </div>
       <Suspense fallback={
         <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
           로딩 중...
