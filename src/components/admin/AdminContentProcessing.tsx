@@ -48,6 +48,11 @@ export default function AdminContentProcessing() {
   const [thumbRetryResult, setThumbRetryResult] = useState<string | null>(null)
   const thumbRetryStopRef = useRef(false)
 
+  // 관련기사 재클러스터링(본문 유사도) — 220
+  const [isClustering, setIsClustering] = useState(false)
+  const [clusterResult, setClusterResult] = useState<string | null>(null)
+  const clusterStopRef = useRef(false)
+
   const handleEnrich = async ({ from, to }: { from: string | null; to: string | null }) => {
     stopRef.current = false
     setIsEnriching(true)
@@ -204,6 +209,47 @@ export default function AdminContentProcessing() {
     }
   }
 
+  const handleClusterBackfill = async () => {
+    clusterStopRef.current = false
+    setIsClustering(true)
+    setClusterResult(null)
+    setError(null)
+    const acc = { processed: 0, merged: 0, repChanged: 0 }
+    try {
+      while (true) {
+        const res = await fetch('/api/admin/cluster-backfill?limit=20', { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '재클러스터링 실패')
+        const { processed, merged, repChanged, remaining, ready } = await res.json() as {
+          processed: number; merged: number; repChanged: number; remaining: number; ready: boolean
+        }
+        if (!ready) {
+          setClusterResult('220 SQL 적용이 필요합니다.')
+          break
+        }
+        acc.processed   += processed
+        acc.merged      += merged
+        acc.repChanged  += repChanged
+
+        if (clusterStopRef.current) {
+          setClusterResult(`중단됨 · 누적 처리 ${acc.processed} · 병합 ${acc.merged} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setClusterResult(`완료 · 처리 ${acc.processed} · 병합 ${acc.merged} · 대표교체 ${acc.repChanged}`)
+          break
+        }
+        if (processed === 0) break
+
+        setClusterResult(`재평가 중… 누적 처리 ${acc.processed} · 병합 ${acc.merged} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '재클러스터링 중 오류가 발생했습니다.')
+    } finally {
+      setIsClustering(false)
+    }
+  }
+
   // Date.now() purity 규칙 회피 (crawl-logs/page.tsx 패턴과 동일)
   const applyEnrichPreset = (days: number | null) => {
     if (days === null) { setEnrichFrom(''); setEnrichTo(''); return }
@@ -330,6 +376,32 @@ export default function AdminContentProcessing() {
             onClick={isThumbRetrying ? () => { thumbRetryStopRef.current = true } : handleThumbnailRetry}
           >
             {isThumbRetrying ? '중단' : '썸네일 재시도'}
+          </Button>
+        </div>
+      </div>
+
+      {/* 관련기사 재클러스터링(본문 유사도) — 220 */}
+      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="admin-card-title text-foreground">관련기사 재클러스터링(본문 유사도)</p>
+            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
+              제목만으론 못 묶인 같은 사건 기사를 본문 유사도로 재평가해 병합하고, 신호 기반으로 대표를 재선정합니다.
+            </p>
+            {clusterResult && (
+              <p className="admin-caption mt-2 text-positive">
+                {isClustering ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{clusterResult}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={isClustering ? () => { clusterStopRef.current = true } : handleClusterBackfill}
+          >
+            {isClustering ? '중단' : '재클러스터링'}
           </Button>
         </div>
       </div>

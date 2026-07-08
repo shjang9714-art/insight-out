@@ -120,3 +120,49 @@ export function sharesCoreTokens(t1: string, t2: string): boolean {
   const minLen = Math.min(tokensA.length, tokensB.length)
   return shared >= CORE_MIN_SHARED && shared / minLen >= CORE_MIN_RATIO
 }
+
+// ─── 본문 어휘 유사도(220) — 제목만으론 못 잡는 같은 사건 병합 ───────────────────
+
+/** 본문 유사도 계산 시 사용할 앞부분 문자 상한(전체를 보지 않아도 어휘 분포는 충분히 드러남) */
+const BODY_TOKEN_CHAR_LIMIT = 1500
+/** 본문 유사도 판정 최소 토큰 수 — 미만이면 신뢰 불가로 0 반환 */
+const BODY_MIN_TOKENS = 8
+
+/** 본문 유사도 임계값 — 이 값 이상이면 어휘가 강하게 겹침(같은 사건 가능성 높음) */
+export const BODY_SIM_THRESHOLD = 0.5
+/** 제목 유사도가 완전일치 기준(0.9)엔 못 미치지만 본문 결합 판정에 쓸 완화 임계값 */
+export const TITLE_SOFT_FOR_BODY = 0.55
+
+/** 본문을 토큰 배열로 변환(tokenize 재사용, 앞부분만 사용). */
+export function bodyTokens(body: string): string[] {
+  return tokenize(body.slice(0, BODY_TOKEN_CHAR_LIMIT))
+}
+
+/**
+ * 두 본문의 어휘 유사도(0~1). 토큰이 너무 적으면(BODY_MIN_TOKENS 미만) 0 반환(오탐 방지).
+ */
+export function bodySimilarity(b1: string, b2: string): number {
+  const tokensA = bodyTokens(b1)
+  const tokensB = bodyTokens(b2)
+  if (tokensA.length < BODY_MIN_TOKENS || tokensB.length < BODY_MIN_TOKENS) return 0
+  return jaccard(tokensA, tokensB)
+}
+
+/**
+ * near-dup 결합 판정(220) — 기존 제목 기준(완전일치·핵심토큰 공유) 또는
+ * 제목 부분일치 + 본문 강한 일치(같은 사건, 다른 제목)를 같은 클러스터로 판정.
+ * hasBody=false 면 본문 판정을 건너뛴다(삽입 hot-path는 RSS 스니펫뿐이라 기존 제목 판정만 적용).
+ */
+export function isNearDup(
+  a: { title: string; body?: string | null },
+  b: { title: string; body?: string | null },
+  hasBody: boolean
+): boolean {
+  if (titleSimilarity(a.title, b.title) >= SIMILARITY_THRESHOLD) return true
+  if (sharesCoreTokens(a.title, b.title)) return true
+  if (!hasBody) return false
+
+  const titleSoft = titleSimilarity(a.title, b.title) >= TITLE_SOFT_FOR_BODY
+  if (!titleSoft) return false
+  return bodySimilarity(a.body ?? '', b.body ?? '') >= BODY_SIM_THRESHOLD
+}

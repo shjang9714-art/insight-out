@@ -94,3 +94,62 @@ export async function findSimilarCandidates(
 
   return (data ?? []) as SimilarityCandidate[]
 }
+
+/** near-dup 재클러스터링 백필(220)용 확장 후보 — 대표 선정에 필요한 신호 포함. */
+export interface SimilarityCandidateWithBody extends SimilarityCandidate {
+  body_original: string | null
+  source_id: string | null
+  importance_score: number | null
+  thumbnail_url: string | null
+  trust_tier: number | null
+}
+
+/**
+ * findSimilarCandidates 확장판(220) — 본문·대표선정 신호(trust_tier·importance_score·
+ * thumbnail_url) 포함. 백필 전용(삽입 hot-path 는 기존 findSimilarCandidates 그대로 사용).
+ */
+export async function findSimilarCandidatesWithBody(
+  admin: SupabaseClient,
+  publishedAt: string | null | undefined,
+  sinceDays = 7,
+  limit = 300
+): Promise<SimilarityCandidateWithBody[]> {
+  const baseMs = publishedAt ? new Date(publishedAt).getTime() : Date.now()
+  if (isNaN(baseMs)) return []
+  const sinceIso = new Date(baseMs - sinceDays * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data, error } = await admin
+    .from('contents')
+    .select('id, title, published_at, collected_at, cluster_id, body_original, source_id, importance_score, thumbnail_url, sources(trust_tier)')
+    .eq('category', '뉴스')
+    .gte('collected_at', sinceIso)
+    .order('collected_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('[크롤러] 유사 후보(본문 포함) 조회 오류:', error.message)
+    return []
+  }
+
+  return ((data ?? []) as unknown[]).map((row) => {
+    const r = row as {
+      id: string; title: string; published_at: string | null; collected_at: string
+      cluster_id: string | null; body_original: string | null; source_id: string | null
+      importance_score: number | null; thumbnail_url: string | null
+      sources: { trust_tier: number | null } | { trust_tier: number | null }[] | null
+    }
+    const src = Array.isArray(r.sources) ? r.sources[0] : r.sources
+    return {
+      id: r.id,
+      title: r.title,
+      published_at: r.published_at,
+      collected_at: r.collected_at,
+      cluster_id: r.cluster_id,
+      body_original: r.body_original,
+      source_id: r.source_id,
+      importance_score: r.importance_score,
+      thumbnail_url: r.thumbnail_url,
+      trust_tier: src?.trust_tier ?? null,
+    }
+  })
+}
