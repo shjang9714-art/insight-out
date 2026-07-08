@@ -103,6 +103,73 @@ function entityStyle(type: EntityType, isCompetitor: boolean): string {
   return ENTITY_TYPE_STYLE[type]
 }
 
+interface SignalSummaryRow {
+  signal_count: number
+  content_count: number
+  signal_types: string[] | null
+  last_seen: string | null
+}
+
+/** 231 — entity_signal_summary 뷰 미존재 시 graceful(null). id 만 의존, 독립 쿼리. */
+async function loadSignalSummary(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  id: string
+): Promise<SignalSummaryRow | null> {
+  try {
+    const { data } = await supabase
+      .from('entity_signal_summary')
+      .select('signal_count, content_count, signal_types, last_seen')
+      .eq('entity_id', id)
+      .maybeSingle()
+    return data ? (data as unknown as SignalSummaryRow) : null
+  } catch {
+    return null
+  }
+}
+
+/** 231 — entity_events 테이블 미존재 시 graceful([]). id 만 의존, 독립 쿼리. */
+async function loadEntityEvents(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  id: string
+): Promise<EntityEventItem[]> {
+  try {
+    const { data: evData, error: evError } = await supabase
+      .from('entity_events')
+      .select('id, event_date, signal_type, headline, detail, sentiment, citations')
+      .eq('entity_id', id)
+      .order('event_date', { ascending: false })
+      .limit(30)
+
+    if (evError) {
+      if (evError.code !== '42703' && !evError.message?.includes('does not exist')) {
+        console.error('[EntityDetailPage] entity_events 조회 오류:', evError.message)
+      }
+      return []
+    }
+
+    return (evData ?? []).map((row: {
+      id: string
+      event_date: string
+      signal_type: string | null
+      headline: string
+      detail: string | null
+      sentiment: '긍정' | '중립' | '부정' | null
+      citations: string[] | null
+    }) => ({
+      id: row.id,
+      event_date: row.event_date,
+      signal_type: row.signal_type,
+      headline: row.headline,
+      detail: row.detail,
+      sentiment: row.sentiment,
+      citations: Array.isArray(row.citations) ? row.citations : [],
+    }))
+  } catch (err) {
+    console.error('[EntityDetailPage] entity_events 예외:', err instanceof Error ? err.message : String(err))
+    return []
+  }
+}
+
 function computeTrend(data: SentimentDay[]): '개선' | '악화' | '유지' {
   if (data.length < 2) return '유지'
   const half = Math.floor(data.length / 2)
@@ -144,14 +211,32 @@ export default async function EntityDetailPage({ params }: PageProps) {
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
-  // 1. 로그인 유저 + 엔티티 기본 정보
-  const [{ data: { user } }, { data: entity, error: entityError }] = await Promise.all([
+  // 1. 서로 독립인 쿼리(엔티티 자체 id 에만 의존) — 231: 한 배치로 병렬화
+  const [
+    { data: { user } },
+    { data: entity, error: entityError },
+    { data: aliasData },
+    { data: ceData },
+    signalSummary,
+    entityEvents,
+  ] = await Promise.all([
     supabase.auth.getUser(),
     supabase
       .from('entities')
       .select('id, canonical_name, entity_type, description, is_competitor, mention_count')
       .eq('id', id)
       .single(),
+    supabase
+      .from('entity_aliases')
+      .select('alias')
+      .eq('entity_id', id),
+    supabase
+      .from('content_entities')
+      .select('content_id')
+      .eq('entity_id', id)
+      .limit(200),
+    loadSignalSummary(supabase, id),
+    loadEntityEvents(supabase, id),
   ])
 
   if (entityError || !entity) {
@@ -159,57 +244,51 @@ export default async function EntityDetailPage({ params }: PageProps) {
   }
 
   const e = entity as EntityRow
-
-  // 2. 관리자 여부
-  let isAdmin = false
-  if (user) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-    isAdmin = profile?.role === 'admin'
-  }
-
-  // 3. 동의어
-  const { data: aliasData } = await supabase
-    .from('entity_aliases')
-    .select('alias')
-    .eq('entity_id', id)
-
   const aliases: AliasRow[] = (aliasData ?? []) as AliasRow[]
-
-  // 4. 기준 콘텐츠 id 목록 (최근 200건)
-  const { data: ceData } = await supabase
-    .from('content_entities')
-    .select('content_id')
-    .eq('entity_id', id)
-    .limit(200)
-
   const contentIds: string[] = (ceData ?? []).map((r: { content_id: string }) => r.content_id)
 
-  // 5. 콘텐츠 상세 조회
-  let contents: ContentRow[] = []
-  if (contentIds.length > 0) {
-    const { data: contentsData } = await supabase
-      .from('contents')
-      .select('id, title, category, published_at, collected_at, sentiment, sources(name)')
-      .in('id', contentIds)
-      .eq('status', 'published')
-      .order('collected_at', { ascending: false })
-      .limit(200)
+  // 2. contentIds/user 에 의존하는 쿼리 — 서로 독립이므로 한 배치로 병렬화
+  const [profileRes, contentsRes, coRes, icRes] = await Promise.all([
+    user
+      ? supabase.from('users').select('role').eq('id', user.id).single()
+      : Promise.resolve({ data: null as { role: string } | null }),
+    contentIds.length > 0
+      ? supabase
+          .from('contents')
+          .select('id, title, category, published_at, collected_at, sentiment, sources(name)')
+          .in('id', contentIds)
+          .eq('status', 'published')
+          .order('collected_at', { ascending: false })
+          .limit(200)
+      : Promise.resolve({ data: [] as unknown[] }),
+    contentIds.length > 0
+      ? supabase
+          .from('content_entities')
+          .select('entity_id, entities(id, canonical_name, entity_type, is_competitor)')
+          .in('content_id', contentIds)
+          .neq('entity_id', id)
+          .limit(1000)
+      : Promise.resolve({ data: [] as unknown[] }),
+    contentIds.length > 0
+      ? supabase
+          .from('issue_contents')
+          .select('issue_id')
+          .in('content_id', contentIds)
+          .limit(500)
+      : Promise.resolve({ data: [] as { issue_id: string }[] }),
+  ])
 
-    contents = (contentsData ?? []) as unknown as ContentRow[]
-  }
+  const isAdmin = profileRes.data?.role === 'admin'
+  const contents = (contentsRes.data ?? []) as unknown as ContentRow[]
 
-  // 6. 카테고리별 집계
+  // 3. 카테고리별 집계
   const categoryMap = new Map<ContentCategory, ContentRow[]>()
   for (const c of contents) {
     if (!categoryMap.has(c.category)) categoryMap.set(c.category, [])
     categoryMap.get(c.category)!.push(c)
   }
 
-  // 7. 타임라인 그룹 (상위 40건)
+  // 4. 타임라인 그룹 (상위 40건)
   const timelineContents = contents.slice(0, 40)
   const timelineGroups = new Map<string, ContentRow[]>()
   for (const c of timelineContents) {
@@ -218,24 +297,15 @@ export default async function EntityDetailPage({ params }: PageProps) {
     timelineGroups.get(key)!.push(c)
   }
 
-  // 8. 관련 엔티티 (co-occurrence)
+  // 5. 관련 엔티티 (co-occurrence)
   const relatedEntityMap = new Map<string, { count: number; entity: RelatedEntityRow }>()
-  if (contentIds.length > 0) {
-    const { data: coData } = await supabase
-      .from('content_entities')
-      .select('entity_id, entities(id, canonical_name, entity_type, is_competitor)')
-      .in('content_id', contentIds)
-      .neq('entity_id', id)
-      .limit(1000)
-
-    for (const row of (coData ?? []) as unknown as { entity_id: string; entities: RelatedEntityRow | null }[]) {
-      if (!row.entities) continue
-      const eid = row.entity_id
-      if (relatedEntityMap.has(eid)) {
-        relatedEntityMap.get(eid)!.count += 1
-      } else {
-        relatedEntityMap.set(eid, { count: 1, entity: row.entities })
-      }
+  for (const row of (coRes.data ?? []) as unknown as { entity_id: string; entities: RelatedEntityRow | null }[]) {
+    if (!row.entities) continue
+    const eid = row.entity_id
+    if (relatedEntityMap.has(eid)) {
+      relatedEntityMap.get(eid)!.count += 1
+    } else {
+      relatedEntityMap.set(eid, { count: 1, entity: row.entities })
     }
   }
 
@@ -243,37 +313,29 @@ export default async function EntityDetailPage({ params }: PageProps) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 20)
 
-  // 9. 관련 이슈
+  // 6. 관련 이슈 — icRes 로 집계 후 topIssueIds 로 2차(의존) 쿼리
   let relatedIssues: IssueRow[] = []
-  if (contentIds.length > 0) {
-    const issueCountMap = new Map<string, number>()
-    const { data: icData } = await supabase
-      .from('issue_contents')
-      .select('issue_id')
-      .in('content_id', contentIds)
-      .limit(500)
-
-    for (const row of (icData ?? []) as { issue_id: string }[]) {
-      issueCountMap.set(row.issue_id, (issueCountMap.get(row.issue_id) ?? 0) + 1)
-    }
-
-    if (issueCountMap.size > 0) {
-      const topIssueIds = [...issueCountMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([issueId]) => issueId)
-
-      const { data: issueData } = await supabase
-        .from('issues')
-        .select('id, title')
-        .in('id', topIssueIds)
-        .eq('status', 'published')
-
-      relatedIssues = (issueData ?? []) as IssueRow[]
-    }
+  const issueCountMap = new Map<string, number>()
+  for (const row of (icRes.data ?? []) as { issue_id: string }[]) {
+    issueCountMap.set(row.issue_id, (issueCountMap.get(row.issue_id) ?? 0) + 1)
   }
 
-  // 10. 논조 분포
+  if (issueCountMap.size > 0) {
+    const topIssueIds = [...issueCountMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([issueId]) => issueId)
+
+    const { data: issueData } = await supabase
+      .from('issues')
+      .select('id, title')
+      .in('id', topIssueIds)
+      .eq('status', 'published')
+
+    relatedIssues = (issueData ?? []) as IssueRow[]
+  }
+
+  // 7. 논조 분포
   const sentimentCount = { 긍정: 0, 중립: 0, 부정: 0 }
   for (const c of contents) {
     if (c.sentiment === '긍정') sentimentCount['긍정'] += 1
@@ -282,7 +344,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
   }
   const totalSentiment = contents.length
 
-  // 11. 논조 추세 (일자별 집계, 최근 30일)
+  // 8. 논조 추세 (일자별 집계, 최근 30일)
   const sentimentDayMap = new Map<string, SentimentDay>()
   for (const c of contents) {
     const dateKey = getKstDateKey(c.collected_at)
@@ -300,61 +362,6 @@ export default async function EntityDetailPage({ params }: PageProps) {
     .map(([, v]) => v)
 
   const sentimentTrend = computeTrend(sentimentTrendData)
-
-  // 12. 시그널 요약 (entity_signal_summary) — graceful
-  interface SignalSummaryRow {
-    signal_count: number
-    content_count: number
-    signal_types: string[] | null
-    last_seen: string | null
-  }
-  let signalSummary: SignalSummaryRow | null = null
-  try {
-    const { data: smData } = await supabase
-      .from('entity_signal_summary')
-      .select('signal_count, content_count, signal_types, last_seen')
-      .eq('entity_id', id)
-      .maybeSingle()
-    if (smData) signalSummary = smData as unknown as SignalSummaryRow
-  } catch {
-    // view 미존재 시 graceful
-  }
-
-  // 13. 사건 타임라인 (entity_events) — 테이블 없어도 graceful
-  let entityEvents: EntityEventItem[] = []
-  try {
-    const { data: evData, error: evError } = await supabase
-      .from('entity_events')
-      .select('id, event_date, signal_type, headline, detail, sentiment, citations')
-      .eq('entity_id', id)
-      .order('event_date', { ascending: false })
-      .limit(30)
-
-    // 42703: undefined_table (테이블 미존재), graceful 처리
-    if (!evError) {
-      entityEvents = (evData ?? []).map((row: {
-        id: string
-        event_date: string
-        signal_type: string | null
-        headline: string
-        detail: string | null
-        sentiment: '긍정' | '중립' | '부정' | null
-        citations: string[] | null
-      }) => ({
-        id: row.id,
-        event_date: row.event_date,
-        signal_type: row.signal_type,
-        headline: row.headline,
-        detail: row.detail,
-        sentiment: row.sentiment,
-        citations: Array.isArray(row.citations) ? row.citations : [],
-      }))
-    } else if (evError.code !== '42703' && !evError.message?.includes('does not exist')) {
-      console.error('[EntityDetailPage] entity_events 조회 오류:', evError.message)
-    }
-  } catch (err) {
-    console.error('[EntityDetailPage] entity_events 예외:', err instanceof Error ? err.message : String(err))
-  }
 
   const typeStyle = entityStyle(e.entity_type, e.is_competitor)
   const typeLabel = ENTITY_TYPE_LABEL[e.entity_type]

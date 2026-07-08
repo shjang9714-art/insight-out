@@ -24,7 +24,6 @@ interface ContentItem {
   id: string
   title: string
   summary_ko: string | null
-  body_original: string | null
   category: ContentCategory
   published_at: string | null
   file_path: string | null
@@ -358,7 +357,7 @@ function ContentsContent() {
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url',
+          'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url',
           { count: 'exact' }
         )
         .eq('status', 'published')
@@ -671,7 +670,7 @@ function ContentsContent() {
                           key={item.id}
                           id={item.id}
                           title={item.title}
-                          excerpt={toExcerpt(item.summary_ko, item.body_original)}
+                          excerpt={toExcerpt(item.summary_ko, null)}
                           category={item.category}
                           publishedAt={displayDate(item, sortByCollected)}
                           originalUrl={item.original_url}
@@ -693,7 +692,6 @@ function ContentsContent() {
                           id={item.id}
                           title={item.title}
                           summaryKo={item.summary_ko}
-                          bodyOriginal={item.body_original}
                           category={item.category}
                           publishedAt={displayDate(item, sortByCollected)}
                           originalUrl={item.original_url}
@@ -735,7 +733,7 @@ function ContentsContent() {
                   key={item.id}
                   id={item.id}
                   title={item.title}
-                  excerpt={toExcerpt(item.summary_ko, item.body_original)}
+                  excerpt={toExcerpt(item.summary_ko, null)}
                   category={item.category}
                   publishedAt={displayDate(item, sortByCollected)}
                   originalUrl={item.original_url}
@@ -757,7 +755,6 @@ function ContentsContent() {
                   id={item.id}
                   title={item.title}
                   summaryKo={item.summary_ko}
-                  bodyOriginal={item.body_original}
                   category={item.category}
                   publishedAt={displayDate(item, sortByCollected)}
                   originalUrl={item.original_url}

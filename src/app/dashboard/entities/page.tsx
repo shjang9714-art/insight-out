@@ -118,12 +118,27 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         bucketByTopic[card.topic] = tagTypeToBucket(tagType)
       }
 
-      // card_headline 보강
+      // card_headline 보강 + contentMap — 둘 다 companyCards 기반, 서로 독립 → 병렬화(231)
       if (companyCards.length > 0) {
-        const { data: chData, error: chErr } = await supabase
-          .from('insight_cards')
-          .select('id, card_headline')
-          .in('id', companyCards.map(c => c.id))
+        const allIds = new Set<string>()
+        for (const card of companyCards) {
+          for (const id of card.source_content_ids) allIds.add(id)
+          for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
+        }
+
+        const [{ data: chData, error: chErr }, { data: contents }] = await Promise.all([
+          supabase
+            .from('insight_cards')
+            .select('id, card_headline')
+            .in('id', companyCards.map(c => c.id)),
+          allIds.size > 0
+            ? supabase
+                .from('contents')
+                .select('id, title, category, matched_keywords, sources(name)')
+                .in('id', [...allIds])
+            : Promise.resolve({ data: [] as unknown[] }),
+        ])
+
         if (!chErr && chData) {
           const chMap = new Map(
             (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
@@ -133,28 +148,14 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
             if (ch) c.card_headline = ch
           }
         }
-      }
 
-      // contentMap
-      if (companyCards.length > 0) {
-        const allIds = new Set<string>()
-        for (const card of companyCards) {
-          for (const id of card.source_content_ids) allIds.add(id)
-          for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
-        }
-        if (allIds.size > 0) {
-          const { data: contents } = await supabase
-            .from('contents')
-            .select('id, title, category, matched_keywords, sources(name)')
-            .in('id', [...allIds])
-          for (const row of contents ?? []) {
-            const r = row as unknown as { id: string; title: string; category: string | null; matched_keywords: string[] | null; sources: { name: string } | null }
-            companyContentMap[r.id] = {
-              title: r.title,
-              category: r.category,
-              sourceName: r.sources?.name ?? null,
-              matchedKeywords: r.matched_keywords,
-            }
+        for (const row of contents ?? []) {
+          const r = row as unknown as { id: string; title: string; category: string | null; matched_keywords: string[] | null; sources: { name: string } | null }
+          companyContentMap[r.id] = {
+            title: r.title,
+            category: r.category,
+            sourceName: r.sources?.name ?? null,
+            matchedKeywords: r.matched_keywords,
           }
         }
       }
