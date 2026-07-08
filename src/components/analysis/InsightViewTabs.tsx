@@ -35,22 +35,22 @@ export default function InsightViewTabs<T extends string>({
   className,
 }: InsightViewTabsProps<T>) {
   return (
-    <div className={cn('flex items-center justify-center gap-6', className)}>
+    <div className={cn('flex items-center justify-center gap-6 tracking-[-0.01em]', className)}>
       {items.map((item) => {
         const active = item.id === value
         const cls = cn(
-          'relative flex items-center gap-1.5 pt-2 pb-1 text-[15px] transition-colors after:absolute after:bottom-0 after:left-1/2 after:h-[1.5px] after:w-4 after:-translate-x-1/2 after:transition-colors',
+          'inline-flex items-center gap-1.5 pt-2 pb-1 text-[15px] transition-colors',
           active
-            ? 'font-medium text-foreground after:bg-brand-muted'
-            : 'text-muted-foreground after:bg-transparent hover:text-foreground'
+            ? 'font-medium text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
         )
         const content = (
           <>
+            <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-brand-600' : 'bg-transparent')} />
             {item.label}
             {item.count !== undefined && (
               <span className={cn(
-                'text-[11px] tabular-nums',
-                active ? 'text-brand-muted' : 'text-muted-foreground',
+                'text-[11px] tabular-nums text-muted-foreground',
                 item.count === 0 && 'opacity-50',
               )}>
                 {formatCount(item.count)}
