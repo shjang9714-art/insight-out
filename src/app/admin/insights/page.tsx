@@ -17,7 +17,16 @@ import type { InsightCard, InsightCardStatus } from '@/lib/types'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import InfoHelp from '@/components/admin/ui/InfoHelp'
 import { INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
+import {
+  INSIGHT_GENERATION_HELP,
+  COMPANY_INSIGHT_HELP,
+  COMPETITOR_WEEKLY_HELP,
+  SENTIMENT_HELP,
+  LGU_IMPACT_HELP,
+  YOUTUBE_TAGGING_HELP,
+} from '@/lib/admin/help'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
 
@@ -272,7 +281,10 @@ export default function InsightsAdminPage() {
 
       {/* 생성 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">인사이트 생성</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">인사이트 생성</h2>
+          <InfoHelp copy={INSIGHT_GENERATION_HELP} />
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">기간</span>
@@ -310,7 +322,10 @@ export default function InsightsAdminPage() {
 
       {/* 관심업체 동향 생성 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">관심업체 동향 생성</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">관심업체 동향 생성</h2>
+          <InfoHelp copy={COMPANY_INSIGHT_HELP} />
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
             onClick={() => void handleGenerateCompany()}
@@ -336,7 +351,10 @@ export default function InsightsAdminPage() {
 
       {/* 주간 경쟁 리포트 생성 패널 (261) */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">주간 경쟁 리포트 생성</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">주간 경쟁 리포트 생성</h2>
+          <InfoHelp copy={COMPETITOR_WEEKLY_HELP} />
+        </div>
         <p className="text-xs text-muted-foreground">
           경쟁사(통신 3사 중심) 기사를 사업영역별(AIDC·AICC·통신B2B·보안·클라우드·IT 등)로 종합해 위기·기회를 판정합니다. 기본은 최근 완결된 주(월~일).
         </p>
@@ -365,7 +383,10 @@ export default function InsightsAdminPage() {
 
       {/* 논조 분석 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">논조 분석 (이슈·기업 기사)</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">논조 분석 (이슈·기업 기사)</h2>
+          <InfoHelp copy={SENTIMENT_HELP} />
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
             onClick={() => void handleSentiment()}
@@ -391,7 +412,10 @@ export default function InsightsAdminPage() {
 
       {/* 위기·기회 분석 패널 */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">위기·기회 분석 (경쟁사 기사, LG U+ 관점)</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">위기·기회 분석 (경쟁사 기사, LG U+ 관점)</h2>
+          <InfoHelp copy={LGU_IMPACT_HELP} />
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button
             onClick={() => void handleLguImpact()}
@@ -417,7 +441,10 @@ export default function InsightsAdminPage() {
 
       {/* 유튜브 태깅 백필 패널 (252) */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">유튜브 해시태그·엔티티 백필</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">유튜브 해시태그·엔티티 백필</h2>
+          <InfoHelp copy={YOUTUBE_TAGGING_HELP} />
+        </div>
         <p className="text-xs text-muted-foreground">
           크롤러가 분류 없이 적재한 기존 유튜브 콘텐츠에 뉴스와 동일한 해시태그·관련 엔티티를 붙입니다. 신규 수집분은 자동 태깅됩니다.
         </p>

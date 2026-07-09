@@ -2,6 +2,8 @@
 
 import { usePathname } from 'next/navigation'
 import { findAdminNavItem } from '@/lib/admin/nav'
+import { findAdminPageHelp } from '@/lib/admin/help'
+import InfoHelp from './InfoHelp'
 
 interface Props {
   actions?: React.ReactNode
@@ -10,7 +12,9 @@ interface Props {
 }
 
 export default function AdminPageHeader({ actions, titleOverride, descriptionOverride }: Props) {
-  const item = findAdminNavItem(usePathname())
+  const pathname = usePathname()
+  const item = findAdminNavItem(pathname)
+  const help = findAdminPageHelp(pathname)
   const Icon = item?.icon
   const title = titleOverride ?? item?.label ?? '어드민'
   const description = descriptionOverride ?? item?.description
@@ -21,6 +25,7 @@ export default function AdminPageHeader({ actions, titleOverride, descriptionOve
         <div className="flex items-center gap-2">
           {Icon && <Icon className="h-5 w-5 shrink-0 text-brand-600" />}
           <h1 className="admin-page-title text-foreground">{title}</h1>
+          {help && <InfoHelp copy={help} />}
         </div>
         {description && <p className="admin-page-desc mt-1 text-muted-foreground">{description}</p>}
       </div>

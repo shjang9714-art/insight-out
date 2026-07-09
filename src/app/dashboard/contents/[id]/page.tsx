@@ -13,6 +13,7 @@ import RecordRecentView from '@/components/contents/RecordRecentView'
 import BackLink from '@/components/BackLink'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
+import YoutubeAnalysisPanel from '@/components/contents/YoutubeAnalysisPanel'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
@@ -198,6 +199,15 @@ export default async function ContentDetailPage({ params }: PageProps) {
     })
     .filter((e): e is EntityRow => e !== null)
 
+  const youtubeHashtags = isYoutube
+    ? Array.from(new Set([
+        ...(content.matched_groups ?? []),
+        ...relatedEntities.map((e) => e.canonical_name),
+      ]))
+        .slice(0, 5)
+        .map((label) => ({ label, href: `/dashboard/topics/${encodeURIComponent(label)}` }))
+    : []
+
   const catStyle =
     CATEGORY_STYLE[content.category] ?? 'bg-muted text-muted-foreground border-border'
 
@@ -323,6 +333,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
             originalLanguage={content.original_language}
             serviceNames={serviceNames}
             keywordNames={keywordNames}
+            hashtags={isYoutube ? youtubeHashtags : undefined}
             actions={
               <>
                 <BookmarkButton contentId={content.id} />
@@ -352,9 +363,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
             }
           >
             {isYoutube ? (
-              <>
+              <div className="mb-6 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,400px)_1fr] lg:items-start">
                 {youtubeVideoId ? (
-                  <div className="mb-6 aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
+                  <div className="aspect-video w-full overflow-hidden rounded-xl border border-border bg-black lg:max-w-[400px]">
                     <iframe
                       src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}`}
                       title={content.title}
@@ -365,7 +376,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                     />
                   </div>
                 ) : (
-                  <div className="mb-6 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center">
+                  <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center lg:max-w-[400px]">
                     <p className="text-sm text-muted-foreground">이 영상은 인앱에서 재생할 수 없습니다.</p>
                     {content.original_url && (
                       <a
@@ -380,12 +391,12 @@ export default async function ContentDetailPage({ params }: PageProps) {
                     )}
                   </div>
                 )}
-                {content.summary_ko && (
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {content.summary_ko}
-                  </p>
-                )}
-              </>
+                <YoutubeAnalysisPanel
+                  contentId={content.id}
+                  initialSummary={content.summary_ko}
+                  entities={relatedEntities}
+                />
+              </div>
             ) : isReport ? (
               <>
                 {content.summary_ko && (
@@ -489,8 +500,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
         </div>
       </article>
 
-      {/* 관련 엔티티 칩 */}
-      {relatedEntities.length > 0 && (
+      {/* 관련 엔티티 칩 (유튜브는 우측 분석 패널에 표시하므로 생략) */}
+      {!isYoutube && relatedEntities.length > 0 && (
         <section className="mt-6 border-t border-border pt-5">
           <p className="mb-2.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wide">관련 엔티티</p>
           <div className="flex flex-wrap gap-1.5">

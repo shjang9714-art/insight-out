@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
@@ -22,6 +23,8 @@ interface Props {
   originalLanguage?: string | null
   serviceNames?: string[]
   keywordNames?: string[]
+  /** 카테고리 뱃지 옆에 노출하는 해시태그(엔티티 등) — 클릭 시 topics 모아보기로 이동 */
+  hashtags?: { label: string; href: string }[]
   actions?: React.ReactNode
   children: React.ReactNode
 }
@@ -40,6 +43,7 @@ export default function ContentArticleView({
   originalLanguage,
   serviceNames = [],
   keywordNames = [],
+  hashtags = [],
   actions,
   children,
 }: Props) {
@@ -59,6 +63,15 @@ export default function ContentArticleView({
             영어 원문
           </span>
         )}
+        {hashtags.map((h) => (
+          <Link
+            key={h.href}
+            href={h.href}
+            className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
+          >
+            #{h.label}
+          </Link>
+        ))}
       </div>
 
       <h1 className="mb-3 text-xl font-bold leading-snug text-foreground">{title}</h1>
