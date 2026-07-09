@@ -1482,7 +1482,7 @@ grant insert, update on public.key_insights to authenticated;
 insert into public.llm_task_routing (id, task_type, priority, provider, model_id, is_active)
 values
   (gen_random_uuid(), 'key_insight', 1, 'gemini', 'gemini-2.5-flash', true),
-  (gen_random_uuid(), 'key_insight', 2, 'openrouter', 'google/gemini-2.0-flash-exp:free', true)
+  (gen_random_uuid(), 'key_insight', 2, 'openrouter', 'meta-llama/llama-3.3-70b-instruct:free', true)
 on conflict (task_type, priority)
 do update set
   provider  = excluded.provider,
