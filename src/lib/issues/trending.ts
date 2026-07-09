@@ -43,6 +43,7 @@ interface EntityRef {
 }
 
 interface ArticleRow {
+  contentId: string
   title: string
   normTitle: string
   collectedAt: string
@@ -51,6 +52,8 @@ interface ArticleRow {
 
 export interface TrendingEvent {
   issueId: string
+  /** 대표 기사(헤드라인 근거) content_id — 칩 클릭 시 기사 상세로 바로 연결하는 데 사용 */
+  contentId: string
   headline: string
   entityChip: string | null
   recentCount: number
@@ -125,7 +128,7 @@ function dominantEntity(articles: ArticleRow[]): string | null {
   return best
 }
 
-interface SubclusterResult { headline: string; entityChip: string | null; count: number }
+interface SubclusterResult { headline: string; contentId: string; entityChip: string | null; count: number }
 
 /** 이슈 하나의 48h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
 function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
@@ -153,7 +156,12 @@ function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
     .filter(g => g.length >= MIN_SUBCLUSTER)
     .map(group => {
       const representative = [...group].sort((a, b) => a.title.length - b.title.length)[0]
-      return { headline: representative.title, entityChip: dominantEntity(group), count: group.length }
+      return {
+        headline: representative.title,
+        contentId: representative.contentId,
+        entityChip: dominantEntity(group),
+        count: group.length,
+      }
     })
 }
 
@@ -203,7 +211,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
   if (rowsErr || !rows) return null
 
   // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
-  const byIssue = new Map<string, Map<string, ArticleRow & { contentId: string }>>()
+  const byIssue = new Map<string, Map<string, ArticleRow>>()
   for (const row of rows as IssueArticleRow[]) {
     if (!byIssue.has(row.issue_id)) byIssue.set(row.issue_id, new Map())
     const articles = byIssue.get(row.issue_id)!
@@ -243,6 +251,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
     for (const sc of subclusterIssue(articles)) {
       specificEvents.push({
         issueId: issue.issue_id,
+        contentId: sc.contentId,
         headline: sc.headline,
         entityChip: sc.entityChip,
         recentCount: sc.count,
@@ -290,6 +299,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
         const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null }
         final.push({
           issueId: issue.issue_id,
+          contentId: article.contentId,
           headline: article.title,
           entityChip: dominantEntity([article]),
           recentCount: issue.recent_count, // 이슈 전체 48h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미

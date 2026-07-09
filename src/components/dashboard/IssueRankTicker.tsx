@@ -6,6 +6,8 @@ import Link from 'next/link'
 export interface TickerIssue {
   id: string
   title: string
+  /** 대표 기사 content_id. null이면(폴백 집계 등 기사 단위 정보 없음) 이슈 상세로 대체 링크. */
+  contentId: string | null
   /** 서브이벤트의 지배 엔티티(회사/제품/인물) — 있으면 제목 앞에 보조 칩으로 표시 */
   entityChip?: string | null
   recentCount: number
@@ -56,7 +58,7 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
   const sentimentTotal = issue.sentimentPos + issue.sentimentNeg
   return (
     <Link
-      href={`/dashboard/issues/${issue.id}`}
+      href={issue.contentId ? `/dashboard/contents/${issue.contentId}` : `/dashboard/issues/${issue.id}`}
       className="group flex h-11 items-center gap-3 rounded-xl border border-transparent px-3 transition-colors hover:border-border hover:bg-accent/50"
     >
       {/* 순위 번호 */}
@@ -102,7 +104,7 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
 function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
   return (
     <Link
-      href={`/dashboard/issues/${issue.id}`}
+      href={issue.contentId ? `/dashboard/contents/${issue.contentId}` : `/dashboard/issues/${issue.id}`}
       className="group flex h-9 items-center gap-2.5"
     >
       <span

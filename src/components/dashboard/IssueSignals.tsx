@@ -29,6 +29,7 @@ async function fetchFallbackTop(): Promise<TickerIssue[]> {
     .slice(0, TRENDING_LIMIT)
     .map(card => ({
       id: card.id,
+      contentId: null, // 폴백 집계는 기사 단위 정보가 없음 — 이슈 상세로 대체
       title: card.title,
       recentCount: card.recentCount,
       changePct: card.changePct,
@@ -47,6 +48,7 @@ export default async function IssueSignals() {
   const top: TickerIssue[] = events
     ? events.map(e => ({
         id: e.issueId,
+        contentId: e.contentId,
         title: e.headline,
         entityChip: e.entityChip,
         recentCount: e.recentCount,
@@ -73,7 +75,7 @@ export default async function IssueSignals() {
       </div>
 
       <Link
-        href="/dashboard/issues"
+        href="/dashboard/trending"
         className="shrink-0 whitespace-nowrap text-[11px] text-brand-600 hover:underline"
       >
         전체 →
