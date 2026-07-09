@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { llmComplete } from '@/lib/llm'
-import { insightAutoPublish } from '@/lib/insight/auto-publish'
+import { insightAutoPublish, insightCompanyAutoPublish } from '@/lib/insight/auto-publish'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -350,11 +350,14 @@ export async function generateCompanyInsightCards(
   adminClient: SupabaseClient,
   opts?: CompanyOptions,
 ): Promise<{ created: number; companies: string[] }> {
-  const days = Math.max(1, opts?.days ?? 7)
+  // 258 — build 단계 코퍼스 활용: window 7→90일(COMPANY_INSIGHT_WINDOW_DAYS로 조정 가능),
+  // minArticles 1로 완화(1건이라도 있으면 카드). 코퍼스 풍부해지면 축소 검토(후속 259).
+  const defaultDays = Number(process.env.COMPANY_INSIGHT_WINDOW_DAYS) || 90
+  const days = Math.max(1, opts?.days ?? defaultDays)
   // 254 — curated 41개사 전체 대상(캡 상향), deadline 인지로 시간 관리
   const maxCompanies = Math.max(1, Math.min(opts?.maxCompanies ?? 60, 100))
-  const articlesPerCompany = Math.max(1, opts?.articlesPerCompany ?? 8)
-  const minArticles = Math.max(1, opts?.minArticles ?? 2)
+  const articlesPerCompany = Math.max(1, opts?.articlesPerCompany ?? 12)
+  const minArticles = Math.max(1, opts?.minArticles ?? 1)
   const deadline = opts?.deadline
 
   const companies = await loadCompanySources(adminClient, maxCompanies)
@@ -425,7 +428,7 @@ export async function generateCompanyInsightCards(
       const articleIdSet = new Set(picked.map((a) => a.id))
       const validCitations = parsed.citations.filter((c) => articleIdSet.has(c.content_id))
       const sourceIds = picked.map((a) => a.id)
-      const autoPub = insightAutoPublish(validCitations.length, sourceIds.length)
+      const autoPub = insightCompanyAutoPublish(validCitations.length, sourceIds.length)
 
       const { error: upsertError } = await upsertInsightCard(adminClient, {
         period_start: periodStart,

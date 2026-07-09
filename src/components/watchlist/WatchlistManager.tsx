@@ -73,7 +73,8 @@ export default function WatchlistManager({ onChange }: Props) {
         setItems((data ?? []) as WatchlistRow[])
       }
 
-      // 255 — curated_groups/curated_companies(253) 있으면 그룹별 선택 UI 노출, 없으면 graceful 숨김
+      // 255/258 — curated_groups/curated_companies(253) 있으면 그룹별 선택 UI 노출, 없으면 graceful 숨김.
+      // 두 쿼리를 독립 처리 — 하나가 실패해도 나머지는 반영(258: 부분 실패로 전체가 숨겨지는 문제 방지).
       const [groupsRes, companiesRes] = await Promise.all([
         supabase
           .from('curated_groups')
@@ -87,10 +88,10 @@ export default function WatchlistManager({ onChange }: Props) {
           .eq('is_active', true)
           .order('sort_order', { ascending: true }),
       ])
-      if (!groupsRes.error && !companiesRes.error) {
-        setCuratedGroups((groupsRes.data ?? []) as CuratedGroup[])
-        setCuratedCompanies((companiesRes.data ?? []) as CuratedCompany[])
-      }
+      if (groupsRes.error) console.warn('[WatchlistManager] curated_groups 조회 실패:', groupsRes.error.message)
+      if (companiesRes.error) console.warn('[WatchlistManager] curated_companies 조회 실패:', companiesRes.error.message)
+      if (!groupsRes.error) setCuratedGroups((groupsRes.data ?? []) as CuratedGroup[])
+      if (!companiesRes.error) setCuratedCompanies((companiesRes.data ?? []) as CuratedCompany[])
 
       setLoaded(true)
       setLoading(false)

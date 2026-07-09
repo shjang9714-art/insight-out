@@ -37,11 +37,12 @@ export default function WatchlistSettingsModal({ trigger, onChange }: Props) {
         )}
       </DialogTrigger>
 
-      <DialogContent>
+      {/* 258 — curated 그룹별 체크 목록이 들어가 기본 max-w-sm(384px)로는 좁음(크롭 방지) */}
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>주요 기업 설정</DialogTitle>
           <DialogDescription>
-            검색해서 추가하면 기업동향·AI 인사이트에서 더 정확히 모아 보여드립니다.
+            그룹별 회사 목록에서 대표 기업을 선택하거나, 검색해서 추가하면 기업동향·AI 인사이트에서 더 정확히 모아 보여드립니다.
           </DialogDescription>
         </DialogHeader>
 
