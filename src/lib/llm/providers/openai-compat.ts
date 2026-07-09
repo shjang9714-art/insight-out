@@ -1,4 +1,5 @@
 import type { LlmProvider, LlmResult } from '@/lib/llm/types'
+import { LlmRateLimitError } from '@/lib/llm/types'
 
 interface OpenAICompatConfig {
   name: string
@@ -81,14 +82,19 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
 
       const first = await tryComplete(baseURL, firstKey, resolvedModel, system, user)
       if (first.result) return first.result
+      let sawHardLimit = first.retryable
 
       if (first.retryable && keys.length > 1) {
         const remaining = keys.filter((_, i) => i !== idx)
         const secondKey = remaining[Math.floor(Math.random() * remaining.length)]
         const second = await tryComplete(baseURL, secondKey, resolvedModel, system, user)
         if (second.result) return second.result
+        sawHardLimit = sawHardLimit || second.retryable
       }
 
+      // 429/401(한도소진·인증실패)은 재시도 무의미 — 상위(completeWithRetry)가 즉시 다음 provider로 넘어가게 throw.
+      // 그 외(5xx/timeout/빈응답)는 일시 오류로 보고 null(상위 재시도 허용).
+      if (sawHardLimit) throw new LlmRateLimitError(name)
       return null
     },
   }

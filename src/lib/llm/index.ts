@@ -5,8 +5,10 @@ import { getKstPeriod } from '@/lib/translate'
 import geminiProvider from '@/lib/llm/providers/gemini'
 import groqProvider from '@/lib/llm/providers/groq'
 import cerebrasProvider from '@/lib/llm/providers/cerebras'
+import sambanovaProvider from '@/lib/llm/providers/sambanova'
+import mistralProvider from '@/lib/llm/providers/mistral'
 import openrouterProvider from '@/lib/llm/providers/openrouter'
-import type { LlmProvider, LlmTask } from '@/lib/llm/types'
+import { LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
 
 export type { LlmTask }
 
@@ -15,6 +17,8 @@ export const LLM_PROVIDERS: LlmProvider[] = [
   geminiProvider,
   groqProvider,
   cerebrasProvider,
+  sambanovaProvider,
+  mistralProvider,
   openrouterProvider,
 ]
 
@@ -22,7 +26,17 @@ const PROVIDER_MAP: Record<string, LlmProvider> = {
   gemini:      geminiProvider,
   groq:        groqProvider,
   cerebras:    cerebrasProvider,
+  sambanova:   sambanovaProvider,
+  mistral:     mistralProvider,
   openrouter:  openrouterProvider,
+}
+
+// 한도소진(429/401) provider 쿨다운 — warm 인스턴스 내 best-effort(콜드스타트 시 리셋, 무해).
+const COOLDOWN_MS = 3 * 60 * 1000 // 3분
+const cooldownUntil = new Map<string, number>()
+
+function isOnCooldown(providerName: string): boolean {
+  return (cooldownUntil.get(providerName) ?? 0) > Date.now()
 }
 
 interface SettingsEntry { enabled: boolean; limit: number }
@@ -41,6 +55,8 @@ interface ProviderAttempt {
   result: { text: string; tokens: number } | null
   /** 마지막 시도 실패 원인 (성공 시 null) */
   errorReason: string | null
+  /** true 면 429/401 한도소진 — 같은 provider 재시도 없이 즉시 종료됨(호출부가 쿨다운 설정) */
+  hardLimit: boolean
 }
 
 async function completeWithRetry(
@@ -54,9 +70,12 @@ async function completeWithRetry(
   for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
     try {
       const result = await provider.complete(system, user, model)
-      if (result) return { result, errorReason: null }
+      if (result) return { result, errorReason: null, hardLimit: false }
       lastReason = `${provider.name}: 응답 없음`
     } catch (err) {
+      if (err instanceof LlmRateLimitError) {
+        return { result: null, errorReason: `${provider.name}: 한도소진(429/401)`, hardLimit: true }
+      }
       lastReason = `${provider.name}: ${err instanceof Error ? err.message : String(err)}`
     }
 
@@ -66,7 +85,7 @@ async function completeWithRetry(
     }
   }
 
-  return { result: null, errorReason: lastReason }
+  return { result: null, errorReason: lastReason, hardLimit: false }
 }
 
 async function incrementUsage(
@@ -152,16 +171,18 @@ export async function llmCompleteDetailed(
       for (const route of routingResult.data!) {
         const provider = PROVIDER_MAP[route.provider]
         if (!provider?.isConfigured()) continue
+        if (isOnCooldown(route.provider)) continue
 
         const s = settings.get(route.provider)
         if (s?.enabled === false) continue
         if ((usage.get(route.provider) ?? 0) >= (s?.limit ?? 1_000_000)) continue
 
         console.log(`[LLM] task=${task} provider=${route.provider} model=${route.model_id}`)
-        const { result, errorReason } = await completeWithRetry(provider, system, user, route.model_id)
+        const { result, errorReason, hardLimit } = await completeWithRetry(provider, system, user, route.model_id)
         if (!result) {
           lastErrorReason = errorReason
           console.error(`[LLM] task=${task} provider=${route.provider} 호출 실패:`, errorReason)
+          if (hardLimit) cooldownUntil.set(route.provider, Date.now() + COOLDOWN_MS)
           continue
         }
 
@@ -176,13 +197,15 @@ export async function llmCompleteDetailed(
     for (const provider of LLM_PROVIDERS) {
       const s = settings.get(provider.name)
       if (!provider.isConfigured() || s?.enabled === false) continue
+      if (isOnCooldown(provider.name)) continue
       if ((usage.get(provider.name) ?? 0) >= (s?.limit ?? 1_000_000)) continue
 
       console.log(`[LLM] fallback provider=${provider.name}`)
-      const { result, errorReason } = await completeWithRetry(provider, system, user)
+      const { result, errorReason, hardLimit } = await completeWithRetry(provider, system, user)
       if (!result) {
         lastErrorReason = errorReason
         console.error(`[LLM] fallback provider=${provider.name} 호출 실패:`, errorReason)
+        if (hardLimit) cooldownUntil.set(provider.name, Date.now() + COOLDOWN_MS)
         continue
       }
 
