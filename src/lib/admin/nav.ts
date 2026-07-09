@@ -19,6 +19,7 @@ import {
   Ban,
   Settings,
   Database,
+  Star,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -130,6 +131,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: 'AI 인사이트',
         description: 'AI 핵심 인사이트 카드 생성·검토·발행',
         icon: Sparkles,
+      },
+      {
+        href: '/admin/key-insights',
+        label: '핵심 Insight 검수',
+        description: '"주목하세요, 핵심 Insight" 주간 카드 검수·편집·게시',
+        icon: Star,
       },
     ],
   },

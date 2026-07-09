@@ -2,21 +2,13 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
+import { KEY_INSIGHT_CATEGORIES, type KeyInsightCategory } from '@/lib/key-insights/constants'
 
 // ─── 가이드 §1의 7개 주제 카테고리 (고정 순서 = 우선순위) ────────────────────
 // 지시서: docs/sonnet-지시서/(2026-07-08) "주목하세요, 핵심 Insight" 주간 파이프라인 §3-1
-
-export const KEY_INSIGHT_CATEGORIES = [
-  '자사·통신사 동향',
-  'AIDC·클라우드',
-  'AICC·비즈콜',
-  '사이버보안',
-  '통신사업·커넥티비티',
-  '정책·정부',
-  '빅테크·One LG',
-] as const
-
-export type KeyInsightCategory = typeof KEY_INSIGHT_CATEGORIES[number]
+// 실제 정의는 constants.ts(server-only 가드 없음) — 클라이언트 컴포넌트도 같이 참조하기 위함.
+export { KEY_INSIGHT_CATEGORIES }
+export type { KeyInsightCategory }
 
 // keyword_groups.name(matched_groups 에 저장된 한글 라벨) → 카테고리 매핑.
 // '자사·통신사 동향'과 '사이버보안'은 아래 별도 로직(entity·보안태그)으로 우선 판정하므로 제외.

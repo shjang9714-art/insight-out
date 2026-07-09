@@ -57,3 +57,10 @@ export const INSIGHT_STATUS_TONE = {
   draft:     'risk',
   archived:  'neutral',
 } as const
+
+export const KEY_INSIGHT_STATUS_TONE = {
+  draft:        'neutral',
+  needs_review: 'risk',
+  published:    'positive',
+  rejected:     'negative',
+} as const
