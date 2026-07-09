@@ -607,6 +607,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
               groups={trendGroups}
               contentMap={trendContentMap}
               bucketByTopic={trendBucketByTopic}
+              boxed
             />
           )}
         </div>

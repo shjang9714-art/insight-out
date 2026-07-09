@@ -296,6 +296,8 @@ interface Props {
   totalCount: number
   onResetLens: () => void
   bucketByTopic?: Record<string, TagBucket>
+  /** 그룹을 박스 컨테이너(242 경쟁사 최근 뉴스 양식)로 감쌈(243). 기본 false(기존 렌더 불변) */
+  boxed?: boolean
 }
 
 export default function InsightCardNewsList({
@@ -307,6 +309,7 @@ export default function InsightCardNewsList({
   totalCount,
   onResetLens,
   bucketByTopic,
+  boxed = false,
 }: Props) {
   if (visibleGroups.length === 0) {
     return (
@@ -366,25 +369,38 @@ export default function InsightCardNewsList({
       )}
 
       {visibleGroups.map(({ key, start, end, label, displayedCards, isLatest }) => (
-        <div key={key} className={cn(!label && !isLatest && 'opacity-70')}>
-          <div className="mb-4 flex items-center gap-3">
-            <span className={cn(
-              'text-sm font-medium',
-              label || isLatest ? 'text-foreground' : 'text-muted-foreground'
-            )}>
-              {label ?? formatPeriod(start, end)}
-            </span>
-            {label ? (
-              <span className="text-[11px] text-muted-foreground/60">{displayedCards.length}건</span>
-            ) : isLatest ? (
-              <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">최신</span>
-            ) : (
-              <span className="text-[11px] text-muted-foreground/60">이전 인사이트</span>
-            )}
-            <div className="flex-1 h-px bg-border" />
-          </div>
+        <div
+          key={key}
+          className={cn(
+            boxed && 'rounded-2xl border border-border bg-card overflow-hidden',
+            !boxed && !label && !isLatest && 'opacity-70'
+          )}
+        >
+          {boxed ? (
+            <div className="flex items-center gap-2.5 border-b border-border bg-gradient-to-b from-card to-muted/20 px-5 py-3">
+              <span className="text-[15px] font-bold text-foreground">{label ?? formatPeriod(start, end)}</span>
+              <span className="text-xs text-muted-foreground">{displayedCards.length}건</span>
+            </div>
+          ) : (
+            <div className="mb-4 flex items-center gap-3">
+              <span className={cn(
+                'text-sm font-medium',
+                label || isLatest ? 'text-foreground' : 'text-muted-foreground'
+              )}>
+                {label ?? formatPeriod(start, end)}
+              </span>
+              {label ? (
+                <span className="text-[11px] text-muted-foreground/60">{displayedCards.length}건</span>
+              ) : isLatest ? (
+                <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">최신</span>
+              ) : (
+                <span className="text-[11px] text-muted-foreground/60">이전 인사이트</span>
+              )}
+              <div className="flex-1 h-px bg-border" />
+            </div>
+          )}
 
-          <div className="space-y-4">
+          <div className={cn('space-y-4', boxed && 'p-4 sm:p-5')}>
             {displayedCards.map(({ card, matched }) => (
               <CardNewsItem
                 key={card.id}
