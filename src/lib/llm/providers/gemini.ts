@@ -42,13 +42,18 @@ const geminiProvider: LlmProvider = {
         })
 
         if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          console.error(`[gemini] HTTP ${res.status}: ${body.slice(0, 500)}`)
           if (res.status === 401 || res.status === 429) continue
           return null
         }
 
         const data = (await res.json()) as GeminiResponse
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-        if (!text) continue
+        if (!text) {
+          console.error(`[gemini] 응답에 text 없음: ${JSON.stringify(data).slice(0, 500)}`)
+          continue
+        }
 
         return {
           text,

@@ -19,6 +19,7 @@ function getKeys(keysEnv: string): string[] {
 }
 
 async function tryComplete(
+  providerName: string,
   baseURL: string,
   key: string,
   model: string,
@@ -44,12 +45,17 @@ async function tryComplete(
     })
 
     if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[${providerName}] HTTP ${res.status}: ${body.slice(0, 500)}`)
       return { result: null, retryable: res.status === 401 || res.status === 429 }
     }
 
     const data = (await res.json()) as ChatCompletionResponse
     const text = data.choices?.[0]?.message?.content
-    if (!text) return { result: null, retryable: false }
+    if (!text) {
+      console.error(`[${providerName}] 응답에 text 없음: ${JSON.stringify(data).slice(0, 500)}`)
+      return { result: null, retryable: false }
+    }
 
     return {
       result: { text, tokens: data.usage?.total_tokens ?? 0 },
@@ -80,14 +86,14 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
       const idx = Math.floor(Math.random() * keys.length)
       const firstKey = keys[idx]
 
-      const first = await tryComplete(baseURL, firstKey, resolvedModel, system, user)
+      const first = await tryComplete(name, baseURL, firstKey, resolvedModel, system, user)
       if (first.result) return first.result
       let sawHardLimit = first.retryable
 
       if (first.retryable && keys.length > 1) {
         const remaining = keys.filter((_, i) => i !== idx)
         const secondKey = remaining[Math.floor(Math.random() * remaining.length)]
-        const second = await tryComplete(baseURL, secondKey, resolvedModel, system, user)
+        const second = await tryComplete(name, baseURL, secondKey, resolvedModel, system, user)
         if (second.result) return second.result
         sawHardLimit = sawHardLimit || second.retryable
       }
