@@ -37,15 +37,16 @@ export default function LoginPage() {
       {/* ── 전구 + 로그인 카드 — 남은 공간에서 세로 중앙 ── */}
       <div className="flex flex-1 items-center pb-6 lg:pb-2">
         <div className="grid w-full max-w-[1500px] items-center gap-10 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,460px)] lg:gap-16 mx-auto">
-          {/* 전구 히어로 — 크게, 중심적으로. 데스크톱에선 컬럼보다 넓게 펼쳐
-              보라색 광류 밴드가 히어로 영역을 가득 채우게 한다. 256: 헤드라인이 그리드
-              밖 상단으로 분리되며 세로 공간을 더 쓰게 되어, 250의 122%보다 축소.
-              씬 폭(=높이, aspect 고정)은 1280~1535 구간 107%, 2xl(1536~) 88% — 폭이
-              커질수록 씬이 커지는데 세로 여유는 비례해 늘지 않아 2xl 에서 별도로 더
-              축소해야 1280×800·1440×900·1536×864 세로 스크롤 0 유지(세로 위치는
-              flex-1 items-center 가 결정, 카드 높이 560 은 250 기준 유지). */}
+          {/* 전구 히어로 — 크게, 중심적으로. 262: 256의 폭 퍼센트(2xl 88%)만으로는
+              화면이 더 넓어질수록(1920·2560 등) 씬 폭이 절대값으로 커져 aspect 고정 탓에
+              높이도 같이 커져 세로로 다시 넘친다. → 폭을 "컬럼 대비 %"와 "세로 높이 기준
+              환산값(87vh ≈ 65vh 높이를 aspect[1456/1087]로 폭 환산)" 중 작은 쪽으로 제한해
+              화면 폭이 아무리 넓어져도 씬 높이가 절대 65vh 를 넘지 않게 한다(aspect 고정이라
+              폭도 함께 축소). 좁은 뷰포트(1280~1536)에서는 %가, 넓은 뷰포트(1920·2560)에서는
+              vh 환산값이 상한으로 작동 — 5개 뷰포트(1280×800·1440×900·1536×864·1920×1080·
+              2560×1440) 세로 스크롤 0 실측 튜닝(카드 높이 560 은 250 기준 유지). */}
           <section className="relative min-w-0">
-            <div className="mx-auto w-full max-w-[840px] lg:-ml-[6%] lg:w-[107%] lg:max-w-none 2xl:-ml-[5%] 2xl:w-[88%]">
+            <div className="mx-auto w-full max-w-[840px] lg:-ml-[6%] lg:w-[min(107%,87vh)] lg:max-w-none">
               <BulbScene />
             </div>
           </section>
