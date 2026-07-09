@@ -6,6 +6,7 @@ import PageContainer from '@/components/PageContainer'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import { fetchTrendingEvents, TRENDING_LIMIT } from '@/lib/issues/trending'
 import IssueRankTicker, { type TickerIssue } from '@/components/dashboard/IssueRankTicker'
+import BackLink from '@/components/contents/BackLink'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,6 +67,13 @@ export default async function TrendingPage() {
 
   return (
     <PageContainer>
+      <div className="mb-4">
+        <BackLink
+          fallbackHref="/dashboard"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
+        />
+      </div>
+
       <div className="mb-6 flex items-center gap-2">
         <TrendingUp className="h-5 w-5 text-orange-500" />
         <h1 className="text-lg font-bold text-foreground">실시간 급상승 전체 순위</h1>
