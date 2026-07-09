@@ -55,9 +55,9 @@ export async function GET(request: NextRequest) {
     return Response.json(result)
   }
 
-  // ── ①b 관심 기업 카드 생성 ───────────────────────────────────────────────
+  // ── ①b 주요 기업 카드 생성(254 — curated 41개사, deadline 분할) ───────────
   try {
-    const { created } = await generateCompanyInsightCards(admin)
+    const { created } = await generateCompanyInsightCards(admin, { deadline })
     result.companyInsights = created
   } catch (err) {
     result.errors.push(`companyInsights: ${err instanceof Error ? err.message : String(err)}`)

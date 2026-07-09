@@ -6,6 +6,7 @@ import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
 async function verifyAdmin() {
   const cookieStore = await cookies()
@@ -67,7 +68,8 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient()
 
     if (scope === 'company') {
-      const result = await generateCompanyInsightCards(admin, { days, maxCompanies })
+      const deadline = Date.now() + 270_000
+      const result = await generateCompanyInsightCards(admin, { days, maxCompanies, deadline })
       return NextResponse.json({ created: result.created, topics: result.companies })
     }
 
