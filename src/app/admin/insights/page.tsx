@@ -50,6 +50,8 @@ export default function InsightsAdminPage() {
   const [sentimentResult, setSentimentResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isLguImpact, setIsLguImpact] = useState(false)
   const [lguImpactResult, setLguImpactResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
+  const [isYoutubeTagging, setIsYoutubeTagging] = useState(false)
+  const [youtubeTaggingResult, setYoutubeTaggingResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
   const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
   const [filterStatus, setFilterStatus] = useState<InsightCardStatus | 'all'>('all')
@@ -139,6 +141,27 @@ export default function InsightsAdminPage() {
       setError(e instanceof Error ? e.message : '위기·기회 분석에 실패했습니다.')
     } finally {
       setIsLguImpact(false)
+    }
+  }
+
+  const handleYoutubeTagging = async () => {
+    if (!window.confirm('기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 백필하시겠습니까?')) return
+    setIsYoutubeTagging(true)
+    setYoutubeTaggingResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/youtube-tagging', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? '유튜브 태깅 백필 실패')
+      setYoutubeTaggingResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '유튜브 태깅 백필에 실패했습니다.')
+    } finally {
+      setIsYoutubeTagging(false)
     }
   }
 
@@ -330,6 +353,35 @@ export default function InsightsAdminPage() {
             {lguImpactResult.reason
               ? lguImpactResult.reason
               : `후보 ${lguImpactResult.candidates}건 중 ${lguImpactResult.analyzed}건 분석 완료`}
+          </p>
+        )}
+      </div>
+
+      {/* 유튜브 태깅 백필 패널 (252) */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-foreground">유튜브 해시태그·엔티티 백필</h2>
+        <p className="text-xs text-muted-foreground">
+          크롤러가 분류 없이 적재한 기존 유튜브 콘텐츠에 뉴스와 동일한 해시태그·관련 엔티티를 붙입니다. 신규 수집분은 자동 태깅됩니다.
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => void handleYoutubeTagging()}
+            disabled={isYoutubeTagging}
+            size="sm"
+            variant="outline"
+          >
+            {isYoutubeTagging ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />백필 중...</>
+            ) : (
+              <>유튜브 태깅 백필 실행</>
+            )}
+          </Button>
+        </div>
+        {youtubeTaggingResult && (
+          <p className="text-sm text-muted-foreground">
+            {youtubeTaggingResult.reason
+              ? youtubeTaggingResult.reason
+              : `후보 ${youtubeTaggingResult.candidates}건 중 ${youtubeTaggingResult.analyzed}건 백필 완료`}
           </p>
         )}
       </div>

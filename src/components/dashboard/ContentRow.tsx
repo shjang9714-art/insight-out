@@ -68,7 +68,6 @@ export default function ContentRow({
   const [expanded, setExpanded] = useState(false)
   const catStyle    = CATEGORY_STYLE[category] ?? 'bg-muted text-muted-foreground'
   const dateStr     = formatDate(publishedAt)
-  const isYoutube   = category === '유튜브'
   const tags        = keywords.slice(0, 5)
   const excerpt     = toExcerpt(summaryKo, bodyOriginal ?? null)
   const memberCount = clusterMembers?.length ?? 0
@@ -117,13 +116,9 @@ export default function ContentRow({
     <article className="group rounded-xl border border-border bg-card px-5 py-4 shadow-sm transition-all hover:border-brand-200 hover:shadow-md">
       {/* 메인 행: 본문 + 액션 */}
       <div className="flex w-full items-center gap-4">
-        {isYoutube ? (
-          body
-        ) : (
-          <Link href={`/dashboard/contents/${id}`} className="min-w-0 flex-1">
-            {body}
-          </Link>
-        )}
+        <Link href={`/dashboard/contents/${id}`} className="min-w-0 flex-1">
+          {body}
+        </Link>
 
         {/* 액션 */}
         <div className="shrink-0">

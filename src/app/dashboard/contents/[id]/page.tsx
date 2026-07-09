@@ -21,6 +21,7 @@ import FeedCarousel from '@/components/feed/FeedCarousel'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
 import PageContainer from '@/components/PageContainer'
 import { cn } from '@/lib/utils'
+import { extractVideoId } from '@/lib/youtube'
 
 export const dynamic = 'force-dynamic'
 
@@ -154,9 +155,12 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
   const content = data as unknown as ContentDetail
 
-  // ── 리포트(file_path) vs 뉴스(original_url) 분기 ─────────────────────────
+  // ── 리포트(file_path) vs 뉴스(original_url) vs 유튜브(임베드) 분기(252) ───────
   const isReport = Boolean(content.file_path)
+  const isYoutube = content.category === '유튜브'
+  const youtubeVideoId = isYoutube ? extractVideoId(content.original_url) : null
   const hasKoreanTranslation =
+    !isYoutube &&
     content.original_language === 'en' &&
     Boolean(content.body_translated_ko)
 
@@ -340,14 +344,49 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      원문 보기
+                      {isYoutube ? 'YouTube에서 보기' : '원문 보기'}
                     </a>
                   )
                 )}
               </>
             }
           >
-            {isReport ? (
+            {isYoutube ? (
+              <>
+                {youtubeVideoId ? (
+                  <div className="mb-6 aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
+                    <iframe
+                      src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}`}
+                      title={content.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                      loading="lazy"
+                      className="h-full w-full"
+                    />
+                  </div>
+                ) : (
+                  <div className="mb-6 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center">
+                    <p className="text-sm text-muted-foreground">이 영상은 인앱에서 재생할 수 없습니다.</p>
+                    {content.original_url && (
+                      <a
+                        href={`/api/contents/${content.id}/source`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        YouTube에서 보기
+                      </a>
+                    )}
+                  </div>
+                )}
+                {content.summary_ko && (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {content.summary_ko}
+                  </p>
+                )}
+              </>
+            ) : isReport ? (
               <>
                 {content.summary_ko && (
                   <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
@@ -424,7 +463,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
             {/* 아카이빙 담기 */}
             <ArchiveButton contentId={content.id} />
 
-            {/* 뉴스에만 원문 보기 링크 표시 */}
+            {/* 리포트 외(뉴스·유튜브)엔 원문 보기 링크 표시 */}
             {!isReport && content.original_url && (
               linkDead ? (
                 <span
@@ -442,7 +481,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                   className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  원문 보기
+                  {isYoutube ? 'YouTube에서 보기' : '원문 보기'}
                 </a>
               )
             )}

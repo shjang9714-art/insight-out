@@ -124,6 +124,54 @@ async function tagContent(
   }
 }
 
+/**
+ * 유튜브 콘텐츠 분류·엔티티 태깅(252) — 뉴스 파이프라인의 matchKeywordGroups·
+ * content_entities 링킹을 제목 기준으로 재사용(본문 없음). 크롤러·백필 공용.
+ * SQL 미적용(42703)·엔티티 없음 등은 모두 graceful — 실패해도 예외 전파 안 함.
+ */
+export async function tagYoutubeContent(
+  admin: SupabaseClient,
+  contentId: string,
+  title: string,
+  groups: ScoringGroup[],
+  aliasMap: Map<string, string>
+): Promise<void> {
+  const matchedTags = matchKeywordGroups(title, '', groups)
+  try {
+    const { error: tagErr } = await admin
+      .from('contents')
+      .update({ matched_groups: matchedTags.groups, matched_keywords: matchedTags.keywords.slice(0, MAX_MERGED_TAGS) })
+      .eq('id', contentId)
+    if (tagErr) console.error('[크롤러] 유튜브 매칭 태그 적재 실패(컬럼 미적용 가능):', tagErr.message)
+  } catch (e) {
+    console.error('[크롤러] 유튜브 매칭 태그 적재 실패(컬럼 미적용 가능):', e)
+  }
+
+  try {
+    if (aliasMap.size > 0 && matchedTags.keywords.length > 0) {
+      const entityIds = [...new Set(
+        matchedTags.keywords
+          .map(kw => aliasMap.get(kw.toLowerCase()))
+          .filter((id): id is string => id !== undefined)
+      )]
+      if (entityIds.length > 0) {
+        const entityRows = entityIds.map(entity_id => ({
+          content_id: contentId,
+          entity_id,
+          source: 'rule',
+          score: 1.0,
+        }))
+        const { error: entErr } = await admin
+          .from('content_entities')
+          .upsert(entityRows, { onConflict: 'content_id,entity_id', ignoreDuplicates: true })
+        if (entErr) console.error('[크롤러] 유튜브 content_entities 적재 실패(SQL 99 미적용 가능):', entErr.message)
+      }
+    }
+  } catch (e) {
+    console.error('[크롤러] 유튜브 content_entities 적재 실패(SQL 99 미적용 가능):', e)
+  }
+}
+
 /** 소스별 크롤 결과 */
 export interface SourceCrawlResult {
   source_id: string
@@ -687,10 +735,14 @@ async function crawlOne(
  * YouTube 채널 소스 1개 수집 — youtube_videos 에 멱등 적재.
  * - video_id 유니크 제약(23505) = 중복, 그 외 오류 = partial.
  * - since 필터 없음(video_id 유니크로 멱등 보장).
+ * - 252: contents mirror 적재 후 뉴스와 동일한 분류(matched_groups/keywords)·
+ *   엔티티 링킹(content_entities)을 제목 기준으로 적용(본문 없음 → 제목만 매칭).
  */
 async function crawlYoutube(
   admin: SupabaseClient,
-  source: Source
+  source: Source,
+  groups: ScoringGroup[],
+  aliasMap: Map<string, string>
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -738,7 +790,7 @@ async function crawlYoutube(
           counts.inserted++
         }
         // contents 테이블에도 mirror insert (어드민 콘텐츠 관리 통합)
-        const { error: contentMirrorError } = await admin
+        const { data: mirrorRows, error: contentMirrorError } = await admin
           .from('contents')
           .insert({
             category:          '유튜브',
@@ -752,8 +804,13 @@ async function crawlYoutube(
             original_language: 'ko',
             status:            'published',
           })
+          .select('id')
         if (contentMirrorError && contentMirrorError.code !== '23505') {
           console.error(`[크롤러] contents mirror insert 오류 (${item.videoId}):`, contentMirrorError.message)
+        }
+        const mirrorId = mirrorRows?.[0]?.id as string | undefined
+        if (mirrorId) {
+          await tagYoutubeContent(admin, mirrorId, item.title, groups, aliasMap)
         }
       } catch (itemErr) {
         console.error('[크롤러] 유튜브 아이템 처리 오류:', itemErr)
@@ -1171,7 +1228,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const results = await Promise.allSettled(
     dueSources.map(s =>
       s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s)
+        ? crawlYoutube(admin, s, groups, aliasMap)
         : crawlOne(
             admin,
             s,

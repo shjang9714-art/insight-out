@@ -55,7 +55,6 @@ export default function ContentListCard({
 }: ContentListCardProps) {
   const [expanded, setExpanded] = useState(false)
   const dateStr     = formatDate(publishedAt)
-  const isYoutube   = category === '유튜브'
   const memberCount = clusterMembers?.length ?? 0
 
   const inner = (
@@ -179,10 +178,7 @@ export default function ContentListCard({
   const cardClass =
     'group flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
 
-  if (isYoutube) {
-    return <article className={cardClass}>{inner}</article>
-  }
-
+  // 252 — 유튜브도 인앱 상세로(새 탭 이탈 방지). "원문" 버튼은 위 풋터에서 별도 제공.
   return (
     <Link href={`/dashboard/contents/${id}`} className={cardClass}>
       <article className="h-full">{inner}</article>
