@@ -41,6 +41,10 @@ const MAX_SEARCH_SEEDS = 30
 const googleNewsRss = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=ko&gl=KR&ceid=KR:ko`
 
+// ── 회사 seed 검색 수집(259) 상수 ───────────────────────────────────────
+const MAX_COMPANY_SEEDS = 120
+const COMPANY_SEARCH_BUDGET_MS = 20_000
+
 interface TranslationBudget {
   remaining: number
 }
@@ -901,6 +905,104 @@ async function crawlKeywordSearch(
   return { counts, hadError }
 }
 
+/** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
+interface CuratedCompanyRow {
+  name: string
+  aliases: string[]
+}
+
+/** 2자 이하 영문 약어(예: MS·KB)는 오탐 유발이 커서 단독 seed 로 쓰지 않음. */
+function isGenericAlias(alias: string): boolean {
+  return alias.length <= 2 && /^[a-zA-Z]+$/.test(alias)
+}
+
+/** curated_companies name + aliases 합집합(dedup) → 회사 seed 목록, 상한 적용. */
+function buildCompanySeeds(companies: CuratedCompanyRow[]): string[] {
+  const seeds = new Set<string>()
+  for (const c of companies) {
+    if (c.name) seeds.add(c.name)
+    for (const alias of c.aliases ?? []) {
+      if (alias && !isGenericAlias(alias)) seeds.add(alias)
+    }
+  }
+  return [...seeds].slice(0, MAX_COMPANY_SEEDS)
+}
+
+/**
+ * 날짜 기반 회전 — seed 전량이 1회차 시간 예산(COMPANY_SEARCH_BUDGET_MS)을 넘으면
+ * 매일 시작 지점을 옮겨 장기적으로 전체 seed 가 고르게 커버되게 한다.
+ */
+function rotateSeedsForToday(seeds: string[]): string[] {
+  if (seeds.length === 0) return seeds
+  const dayIndex = Math.floor(Date.now() / 86_400_000)
+  const offset = dayIndex % seeds.length
+  return [...seeds.slice(offset), ...seeds.slice(0, offset)]
+}
+
+/**
+ * 회사명 타깃 뉴스 수집(259) — curated_companies(253)의 name+aliases 를 Google News RSS
+ * 검색 seed 로 사용, crawlKeywordSearch 와 동일 파이프라인(processCrawlItem)을 재사용한다.
+ * - 니치 회사(기사 자체가 드묾)의 코퍼스를 채워 254/258 회사 인사이트 생성이 기사를 확보하게 한다.
+ * - budgetMs 초과 시 남은 seed 는 건너뜀 — 크래시 없음, 다음 회차에 rotateSeedsForToday 로 이어감.
+ */
+async function crawlCompanySearch(
+  admin: SupabaseClient,
+  seeds: string[],
+  keywords: CrawlKeyword[],
+  groups: ScoringGroup[],
+  translationBudget: TranslationBudget,
+  summarizeBudget: TranslationBudget,
+  classifyBudget: TranslationBudget,
+  aliasMap: Map<string, string>,
+  issueList: IssueMatchDef[],
+  exclusionRules: ExclusionRule[],
+  exclusionHits: Map<string, number>,
+  minBodyLength: number,
+  budgetMs: number
+): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number }> {
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  let hadError = false
+  let processedSeeds = 0
+  const deadline = Date.now() + budgetMs
+  const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
+  const adapter = getAdapter('news_site')!
+  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1 }
+
+  for (const seed of seeds) {
+    if (Date.now() >= deadline) break
+    try {
+      // news-site 어댑터 재사용: rss_url 만 실제로 사용됨
+      const syntheticSource = {
+        rss_url: googleNewsRss(seed),
+        name: `Google News(회사): ${seed}`,
+      } as unknown as Source
+
+      const rawItems = await withRetry(
+        () => adapter.fetch(syntheticSource, since),
+        3,
+        [500, 1000, 2000]
+      )
+      counts.fetched += rawItems.length
+      processedSeeds++
+
+      for (const item of rawItems) {
+        const result = await processCrawlItem(
+          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+        )
+        if (result.partial) hadError = true
+      }
+    } catch (err) {
+      console.error(
+        `[크롤러] 회사 seed 검색 오류 (seed: "${seed}"):`,
+        err instanceof Error ? err.message : String(err)
+      )
+      hadError = true
+    }
+  }
+
+  return { counts, hadError, processedSeeds }
+}
+
 /** keyword_groups DB 행 — 게이트·태깅·시그널용 */
 interface KeywordGroupRow {
   name: string
@@ -1187,6 +1289,24 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   // 제외 규칙 hit 집계(194) — 런 단위 누적, 종료 후 배치 flush(아이템별 write 없음)
   const exclusionHits = new Map<string, number>()
 
+  // 회사 seed 목록(259) — curated_companies(253) 기반, SQL 미적용(42P01) 시 빈 배열로 격리(크롤 무중단)
+  let companySeeds: string[] = []
+  try {
+    const companyResult = await admin
+      .from('curated_companies')
+      .select('name, aliases')
+      .eq('is_active', true)
+    if (companyResult.error) {
+      console.warn('[크롤러] curated_companies 조회 실패 (SQL 253 미적용 가능), 회사 seed 검색 skip:', companyResult.error.message)
+    } else {
+      companySeeds = rotateSeedsForToday(
+        buildCompanySeeds((companyResult.data ?? []) as CuratedCompanyRow[])
+      )
+    }
+  } catch (e) {
+    console.warn('[크롤러] curated_companies 로드 실패, 회사 seed 검색 skip:', e)
+  }
+
   // 본문 최소 길이(221) — crawl_settings 단일행, SQL 미적용(42P01) 시 기본값으로 격리(크롤 무중단)
   let minBodyLength = DEFAULT_MIN_BODY_LENGTH
   try {
@@ -1314,6 +1434,29 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       rejected:  kwResult.counts.rejected,
     })
     if (!kwResult.hadError) successCount++
+  }
+
+  // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds 지정) 시 skip.
+  if (!options.sourceIds?.length && companySeeds.length > 0) {
+    console.log(`[크롤러] 회사 seed 수집 시작: ${companySeeds.length}개 시드(날짜 회전 적용)`)
+    const companyResult = await crawlCompanySearch(
+      admin, companySeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS
+    )
+    totalFetched    += companyResult.counts.fetched
+    totalInserted   += companyResult.counts.inserted
+    totalDuplicates += companyResult.counts.duplicate
+    totalRejected   += companyResult.counts.rejected
+    totalHeld       += companyResult.counts.held
+    details.push({
+      source:    'Google News 회사 seed',
+      status:    companyResult.hadError ? 'partial' : 'success',
+      fetched:   companyResult.counts.fetched,
+      inserted:  companyResult.counts.inserted,
+      duplicate: companyResult.counts.duplicate,
+      rejected:  companyResult.counts.rejected,
+    })
+    if (!companyResult.hadError) successCount++
+    console.log(`[크롤러] 회사 seed 수집 완료: ${companyResult.processedSeeds}/${companySeeds.length}개 시드 처리`)
   }
 
   // 제외 규칙 hit 배치 flush(194) — 런당 1콜, SQL 미적용(RPC 없음) 시 graceful skip
