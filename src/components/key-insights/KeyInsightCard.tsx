@@ -35,6 +35,15 @@ export interface KeyInsightEditableFields {
   source_url: string | null
 }
 
+// 저장된 시사점 앞머리의 "LG유플러스는/LGU+는/LG유플러스 관점에서" 류 도입 문구를 렌더 시 제거.
+// 이미 게시된 카드는 텍스트에 그대로 남아있으므로(과거 배치 재생성 없이) 표시 단계에서 스트립.
+const IMPLICATION_LEAD_RE = /^\s*(?:LG\s?U\+|LG\s?유플러스)\s*(?:는|의|관점에서는?)?[,:]?\s*/i
+
+function stripImplicationLead(text: string): string {
+  const stripped = text.replace(IMPLICATION_LEAD_RE, '')
+  return stripped.trim() ? stripped : text
+}
+
 function editableFieldsFromCard(card: KeyInsightRow): KeyInsightEditableFields {
   return {
     headline: card.headline,
@@ -288,7 +297,7 @@ export default function KeyInsightCard({
 
           {card.implication && (
             <p className="text-sm text-foreground leading-relaxed border-l-2 border-brand-600/40 pl-3">
-              💡 {card.implication}
+              💡 {stripImplicationLead(card.implication)}
             </p>
           )}
 

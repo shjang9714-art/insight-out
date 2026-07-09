@@ -39,10 +39,17 @@ export default async function KeyInsightHomeHighlights() {
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
-      {/* 마스트헤드 — 사내 전략 저널 톤 */}
+      {/* 마스트헤드 — 사내 전략 저널 톤. "보러가기" 링크는 여기 1개만(카드별 중복 제거). */}
       <div className="mb-5 border-b-2 border-foreground/80 pb-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">주목하세요, 핵심 Insight</h2>
+          <h2 className="text-xl font-semibold text-foreground">주목하세요, 핵심 Insight</h2>
+          <Link
+            href="/dashboard/issues?view=brief"
+            className="group inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-brand-700"
+          >
+            핵심 Insight 보러가기
+            <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </Link>
         </div>
         <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-700">
           LG U+ Strategy Brief
@@ -76,10 +83,6 @@ export default async function KeyInsightHomeHighlights() {
               <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">
                 {card.summary_ko}
               </p>
-              <span className="mt-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground transition-colors group-hover:text-brand-700">
-                핵심 Insight 보러가기
-                <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </span>
             </Link>
           </li>
         ))}
