@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Insight Out — 로그인 (프리미엄 목업)</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet">
+<style>
+  :root{
+    --ink:#141118;
+    --ink-soft:#5b5560;
+    --amber:#F5B301;
+    --amber-deep:#E89A00;
+    --magenta:#E0338A;
+    --magenta-deep:#B8256F;
+    --card:#ffffff;
+    --bg:#F4F2F7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Pretendard',system-ui,-apple-system,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- animated aurora background ---------- */
+  .aurora{position:fixed;inset:0;overflow:hidden;z-index:0;filter:blur(0.5px)}
+  .blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.55;will-change:transform}
+  .b1{width:46vw;height:46vw;left:-8vw;top:-10vw;
+      background:radial-gradient(circle at 30% 30%,#FFD37A,transparent 70%);
+      animation:drift1 18s ease-in-out infinite}
+  .b2{width:42vw;height:42vw;right:-10vw;top:-6vw;
+      background:radial-gradient(circle at 60% 40%,#F7A8D0,transparent 70%);
+      animation:drift2 22s ease-in-out infinite}
+  .b3{width:50vw;height:50vw;left:10vw;bottom:-24vw;
+      background:radial-gradient(circle at 50% 50%,#C9B8F0,transparent 70%);
+      animation:drift3 26s ease-in-out infinite}
+  @keyframes drift1{50%{transform:translate(6vw,4vw) scale(1.12)}}
+  @keyframes drift2{50%{transform:translate(-5vw,6vw) scale(1.08)}}
+  @keyframes drift3{50%{transform:translate(4vw,-5vw) scale(1.1)}}
+
+  /* faint floating particles (antigravity vibe) */
+  #spark{position:fixed;inset:0;z-index:1;pointer-events:none}
+
+  /* ---------- layout ---------- */
+  .stage{position:relative;z-index:2;min-height:100%;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:6px;padding:40px 24px}
+
+  .head{text-align:center;opacity:0;transform:translateY(14px);
+    animation:rise .9s .1s cubic-bezier(.2,.7,.2,1) forwards}
+  .title{font-size:28px;font-weight:800;letter-spacing:-.02em}
+  .sub{margin-top:8px;font-size:16px;font-style:italic;color:var(--ink-soft);
+    letter-spacing:.01em}
+
+  /* ---------- logo bulb ---------- */
+  .bulbwrap{margin:22px 0 6px;opacity:0;transform:scale(.9);
+    animation:pop 1s .35s cubic-bezier(.2,.8,.2,1) forwards;
+    position:relative;width:132px;height:150px}
+  .halo{position:absolute;inset:-30px;border-radius:50%;
+    background:radial-gradient(circle,rgba(245,179,1,.38),transparent 62%);
+    animation:pulse 3.2s ease-in-out infinite}
+  .bulb{position:absolute;left:26px;top:8px;width:80px;height:80px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#FFE07A,#F5B301 55%,#E89A00);
+    box-shadow:0 0 34px rgba(245,179,1,.6),inset 0 -6px 14px rgba(200,120,0,.35);
+    animation:float 4.5s ease-in-out infinite}
+  .filament{position:absolute;left:47px;top:34px;width:38px;height:30px;border-radius:50%;
+    border:3px solid rgba(255,255,255,.65);border-bottom:none;opacity:.8}
+  .base{position:absolute;left:44px;top:82px;width:44px;height:34px;border-radius:0 0 10px 10px;
+    background:linear-gradient(180deg,#E0338A,#B8256F);
+    box-shadow:0 6px 16px rgba(184,37,111,.4);animation:float 4.5s ease-in-out infinite}
+  .base::before,.base::after{content:'';position:absolute;left:4px;right:4px;height:3px;
+    background:rgba(255,255,255,.45);border-radius:2px}
+  .base::before{top:9px}.base::after{top:18px}
+  .wordmark{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+    font-size:12px;font-weight:800;letter-spacing:.28em;color:var(--magenta-deep);
+    white-space:nowrap}
+
+  .prompt{margin-top:20px;font-size:15px;color:var(--ink-soft);opacity:0;
+    animation:fade 1s .7s forwards}
+
+  /* ---------- card ---------- */
+  .card{margin-top:26px;width:min(400px,90vw);background:var(--card);
+    border:1px solid rgba(20,17,24,.06);border-radius:22px;padding:30px 28px;
+    box-shadow:0 24px 60px -20px rgba(88,40,90,.28),0 4px 14px rgba(20,17,24,.05);
+    opacity:0;transform:translateY(18px);
+    animation:rise 1s .55s cubic-bezier(.2,.7,.2,1) forwards}
+
+  .gbtn{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;
+    padding:16px;border:none;border-radius:14px;cursor:pointer;
+    font-family:inherit;font-size:16px;font-weight:700;color:#fff;
+    background:linear-gradient(135deg,#2b2530,#141118);
+    box-shadow:0 10px 24px -8px rgba(20,17,24,.5);
+    transition:transform .18s ease,box-shadow .18s ease;position:relative;overflow:hidden}
+  .gbtn:hover{transform:translateY(-2px);box-shadow:0 16px 30px -8px rgba(20,17,24,.55)}
+  .gbtn:active{transform:translateY(0)}
+  .gbtn .g{background:#fff;width:26px;height:26px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;flex:0 0 26px}
+  .gbtn .sheen{position:absolute;top:0;left:-60%;width:40%;height:100%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.22),transparent);
+    transform:skewX(-18deg);animation:sheen 4.5s ease-in-out infinite}
+
+  .note{margin-top:16px;text-align:center;font-size:12.5px;color:#9a939f;line-height:1.6}
+  .note b{color:var(--magenta-deep);font-weight:700}
+
+  .flabel{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:8px}
+  .finput{width:100%;padding:14px 16px;border:1.5px solid rgba(20,17,24,.12);border-radius:12px;
+    font-family:inherit;font-size:15px;color:var(--ink);background:#fbfafc;margin-bottom:14px;
+    transition:border-color .18s,box-shadow .18s;outline:none}
+  .finput::placeholder{color:#b3adba}
+  .finput:focus{border-color:var(--magenta);box-shadow:0 0 0 3px rgba(224,51,138,.12);background:#fff}
+  .steptag{font-size:10.5px;font-weight:800;letter-spacing:.12em;color:#b3adba;
+    text-transform:uppercase;margin-bottom:14px}
+  .otpwrap{display:flex;gap:8px;justify-content:space-between;margin-bottom:16px}
+  .otp{flex:1;aspect-ratio:1/1.15;display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:700;color:var(--ink);background:#fbfafc;
+    border:1.5px solid rgba(20,17,24,.1);border-radius:11px}
+  .otp.on{border-color:var(--magenta);box-shadow:0 0 0 3px rgba(224,51,138,.12);color:#b3adba;background:#fff}
+
+  .foot{margin-top:26px;font-size:12px;color:#a49daa;letter-spacing:.02em;opacity:0;
+    animation:fade 1s 1s forwards}
+
+  /* ---------- keyframes ---------- */
+  @keyframes rise{to{opacity:1;transform:translateY(0)}}
+  @keyframes pop{to{opacity:1;transform:scale(1)}}
+  @keyframes fade{to{opacity:1}}
+  @keyframes float{50%{transform:translateY(-7px)}}
+  @keyframes pulse{50%{opacity:.55;transform:scale(1.08)}}
+  @keyframes sheen{0%,60%{left:-60%}100%{left:130%}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+  <div class="aurora">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  </div>
+  <canvas id="spark"></canvas>
+
+  <main class="stage">
+    <div class="head">
+      <div class="title">흩어진 인텔리전스를 하나의 흐름으로</div>
+      <div class="sub">Intelligence in. Insight out.</div>
+    </div>
+
+    <div class="bulbwrap">
+      <div class="halo"></div>
+      <div class="bulb"></div><div class="filament"></div>
+      <div class="base"></div>
+      <div class="wordmark">INSIGHT&nbsp;&nbsp;OUT</div>
+    </div>
+
+    <div class="prompt">계정에 로그인하세요</div>
+
+    <div class="card">
+      <label class="flabel">회사 이메일</label>
+      <input class="finput" type="email" placeholder="name@lguplus.co.kr" value="">
+      <button class="gbtn">
+        <span>인증 코드 받기</span>
+        <span class="sheen"></span>
+      </button>
+      <div class="note">
+        <b>사내 임직원</b> 전용 · <b>@lguplus.co.kr</b> 이메일로 6자리 인증 코드를 보내드립니다
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;animation-delay:.75s">
+      <div class="steptag">다음 단계 미리보기</div>
+      <label class="flabel">인증 코드</label>
+      <div class="otpwrap">
+        <span class="otp">2</span><span class="otp">9</span><span class="otp">4</span>
+        <span class="otp">1</span><span class="otp">0</span><span class="otp on">_</span>
+      </div>
+      <button class="gbtn"><span>확인</span><span class="sheen"></span></button>
+      <div class="note">name@lguplus.co.kr로 보낸 코드 입력 · <b>코드 재전송</b> · 이메일 변경</div>
+    </div>
+
+    <div class="foot">© 2026 Insight Out · Market Intelligence</div>
+  </main>
+
+<script>
+// subtle rising sparks — antigravity feel
+const c=document.getElementById('spark'),x=c.getContext('2d');
+let W,H,ps=[];
+function rs(){W=c.width=innerWidth;H=c.height=innerHeight}
+rs();addEventListener('resize',rs);
+for(let i=0;i<26;i++)ps.push({x:Math.random()*W,y:Math.random()*H,
+  r:Math.random()*2+.6,s:Math.random()*.3+.1,o:Math.random()*.4+.15});
+(function loop(){
+  x.clearRect(0,0,W,H);
+  for(const p of ps){
+    p.y-=p.s;if(p.y<-5){p.y=H+5;p.x=Math.random()*W}
+    x.beginPath();x.arc(p.x,p.y,p.r,0,7);
+    x.fillStyle='rgba(224,51,138,'+p.o+')';x.fill();
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

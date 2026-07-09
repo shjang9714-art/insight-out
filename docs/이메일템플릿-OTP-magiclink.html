@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Insight Out — OTP 인증 코드 이메일 템플릿
+  붙여넣는 위치: Supabase → Authentication → Email Templates → "Magic Link"
+    (signInWithOtp 는 Magic Link 템플릿 사용. {{ .Token }} 가 있어야 6자리 코드 표시)
+  Supabase 변수: {{ .Token }}=6자리 코드, {{ .Email }}=수신 이메일
+  ※ 한글 깨짐 방지: 위 <meta charset="utf-8"> 필수. 파일도 UTF-8로 저장.
+-->
+</head>
+<body style="margin:0;padding:0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2f7;margin:0;padding:32px 0;font-family:-apple-system,'Malgun Gothic','맑은 고딕',Arial,sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="440" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #eae7ee;">
+        <!-- 헤더 -->
+        <tr>
+          <td style="padding:28px 32px 8px;text-align:center;">
+            <div style="font-size:18px;font-weight:800;letter-spacing:.02em;color:#141118;">Insight&nbsp;Out</div>
+            <div style="height:3px;width:30px;background:#DB0078;border-radius:999px;margin:8px auto 0;"></div>
+          </td>
+        </tr>
+        <!-- 본문 -->
+        <tr>
+          <td style="padding:20px 32px 8px;text-align:center;">
+            <div style="font-size:16px;font-weight:700;color:#141118;">로그인 인증 코드</div>
+            <p style="font-size:13px;line-height:1.6;color:#5b5560;margin:10px 0 0;">
+              아래 6자리 코드를 로그인 화면에 입력해 주세요.
+            </p>
+          </td>
+        </tr>
+        <!-- 코드 -->
+        <tr>
+          <td style="padding:18px 32px;text-align:center;">
+            <div style="display:inline-block;background:#fbfafc;border:1.5px solid #e9e6ec;border-radius:12px;padding:16px 26px;">
+              <span style="font-size:30px;font-weight:800;letter-spacing:.32em;color:#141118;font-family:'Courier New',monospace;">{{ .Token }}</span>
+            </div>
+          </td>
+        </tr>
+        <!-- 안내 -->
+        <tr>
+          <td style="padding:4px 32px 24px;text-align:center;">
+            <p style="font-size:12px;line-height:1.7;color:#8b858f;margin:0;">
+              이 코드는 <strong style="color:#5b5560;">10분간</strong> 유효합니다.<br>
+              본인이 요청하지 않았다면 이 메일을 무시하세요.
+            </p>
+          </td>
+        </tr>
+        <!-- 푸터 -->
+        <tr>
+          <td style="background:#faf9fb;border-top:1px solid #eae7ee;padding:16px 32px;text-align:center;">
+            <p style="font-size:11px;color:#a49daa;margin:0;line-height:1.6;">
+              사내 임직원 전용 · Insight Out Market Intelligence<br>
+              {{ .Email }}
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
