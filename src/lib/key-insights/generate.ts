@@ -10,8 +10,11 @@ const MIN_CARDS = 8
 const MAX_CARDS = 10
 const URL_VERIFY_TIMEOUT_MS = 5000
 // 후보 풀이 크면(수십~수백 건) 무료 LLM 티어의 TPM 한도(예: groq 8,000)를 한 번의
-// 프롬프트로 넘겨버린다. 중요도순으로 이미 정렬돼 있으므로 상위 N건만 프롬프트에 싣는다.
-const MAX_CANDIDATES_IN_PROMPT = 40
+// 프롬프트로 넘겨버린다. 상위 N건만 프롬프트에 싣는다(호출 수는 그대로, 토큰만 증가).
+// candidates.ts 의 이슈 dedup 완화(2026-07-09)로 후보 풀이 52→101건으로 커졌는데
+// importance_score 가 실측상 거의 전부 동률(1)이라, 그 밑의 tie-break 정렬(아래
+// comparePromptOrder)과 짝을 이뤄야 우선 카테고리 후보가 40건 밖으로 밀리지 않는다.
+const MAX_CANDIDATES_IN_PROMPT = 60
 // "신선도 충족(NEW)" 기준 — 7일 창 전체가 아니라 그 안에서도 가장 최근 것만 NEW로 강조.
 const FRESH_DAYS = 3
 
@@ -58,16 +61,25 @@ function buildSystemPrompt(): string {
     '2. 각 후보에는 "1차 힌트 카테고리"가 참고로 붙어있다(키워드 매칭 기반이라 부정확할 수 있음) — ' +
     '실제 기사 내용 기준으로 7개 카테고리 중 가장 맞는 것을 네가 다시 판단해라. 7개 중 어디에도 맞지 않으면 그 후보는 선정하지 마라.\n' +
     '3. 카테고리당 최대 2건. 후보에 "언급 회사" 필드가 있으면 그 회사명으로 자사(LG유플러스)인지 ' +
-    '경쟁사(SKT/KT/SK브로드밴드)인지 판단해라 — 자사·경쟁사 동향과 사이버보안은 우선 편입한다.\n' +
-    '4. 같은 사안을 다루는 후보가 여럿이면(이미 대표 1건으로 정리돼 있지만 만약 겹쳐 보이면) 가장 근거가 확실한 1건만 선택한다.\n' +
-    '5. 해외 기사보다 국내 소식을 우선하되, 글로벌 빅테크·One LG 카테고리처럼 성격상 해외 소식이 자연스러운 경우는 예외.\n' +
-    '6. 각 카드는 다음을 작성한다:\n' +
+    '경쟁사(SKT/KT/SK브로드밴드)인지 판단해라.\n' +
+    '4. 우선 카테고리 최소 확보(칸 채우기가 아니라 "적격 후보가 있으면 반드시 편입"이다):\n' +
+    '   - 자사·통신사 동향, 사이버보안: 적격 후보가 있으면 각 최소 1건, 가능하면 2건 반드시 편입.\n' +
+    '   - AIDC·클라우드: 적격 후보가 있으면 최소 1건 — 국내·자사 연관 구축/투자/수주를 범용 시황보다 우선.\n' +
+    '5. 배제 대상(적격 후보가 없다고 해서 아래 유형으로 칸을 채우지 마라): 벤더 제품 출시·기능 소개 블로그' +
+    '(단, 통신·B2B 시장 판도에 실질적 시사점이 있으면 예외), 범용 시황·전망 오피니언, 행사·실험·수상·인사성 소식, 순수 소비자 AI 앱.\n' +
+    '6. 적격(우선) 기준: 자사·경쟁사 통신사의 실제 사업 움직임(수주·제휴·투자·M&A·조직개편), ' +
+    '국내 AIDC/클라우드 구축·투자·수주, 국내 보안 사고·규제·수주, 정부의 AI·데이터센터·통신 B2B 정책.\n' +
+    '7. 충돌 처리: 우선 카테고리라도 후보가 전부 5번 배제 대상급으로 약하면 억지로 넣지 말고 그 카테고리는 비워라 ' +
+    '(카드가 8건 미만이 되어도 좋다). 품질이 칸 채우기보다 우선이다.\n' +
+    '8. 같은 사안을 다루는 후보가 여럿이면(이미 대표 1건으로 정리돼 있지만 만약 겹쳐 보이면) 가장 근거가 확실한 1건만 선택한다.\n' +
+    '9. 해외 기사보다 국내 소식을 우선하되, 글로벌 빅테크·One LG 카테고리처럼 성격상 해외 소식이 자연스러운 경우는 예외.\n' +
+    '10. 각 카드는 다음을 작성한다:\n' +
     '   - summary_ko: 핵심요약 정확히 2문장, 한국어.\n' +
     '   - implication: LG유플러스 관점 시사점 1~2문장 — 이 소식이 당사에 기회/위협인지, 무엇을 준비해야 하는지.\n' +
     '   - related_past: 후보에 "참고용 과거기사"가 딸려 있으면, 그중 진짜 관련 있는 것만 최대 2건 골라 ' +
     '{content_id, reason}으로 적는다. reason은 "왜 함께 보면 좋은지" 1문장. 관계가 억지스러우면 아예 넣지 마라(빈 배열 허용).\n' +
-    '7. 입력에 없는 사실·수치·인용을 창작하지 않는다.\n' +
-    '8. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '11. 입력에 없는 사실·수치·인용을 창작하지 않는다.\n' +
+    '12. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
     '출력 스키마:\n' +
     '{"cards":[{"content_id":"<입력 id>","category":"<7개 중 하나>","summary_ko":"...","implication":"...",' +
     '"related_past":[{"content_id":"<그 후보의 과거기사 id>","reason":"..."}]}]}'
@@ -240,6 +252,44 @@ async function verifyUrls(cards: SavedKeyInsightCard[]): Promise<void> {
   )
 }
 
+// ─── 프롬프트 후보 정렬(tie-break) ────────────────────────────────────────────
+// importance_score 동률(실측상 대다수 1)일 때 정렬이 DB 반환 순서(사실상 무작위)에
+// 의존해, 우선 카테고리 후보가 컷 밖으로 밀리는 사고가 반복됐다(2026-07-09 배치:
+// 랜섬웨어·강원 AI DC 실사례). candidates.ts 가 이미 후보 단계에서 판정해둔
+// suggestedCategory(자사 entity 매칭·사이버보안/AIDC matched_groups)를 재사용해
+// "값싼" 우선순위 신호로 쓴다 — 완벽한 분류가 아니어도 된다, 나머지 정밀도는
+// LLM 선정 프롬프트(§5) + 사람 검수가 잡는다.
+// 2026-07-09 개정: AIDC·클라우드를 Tier2 로 추가(자사·보안보다는 아래, 나머지보다는 위).
+const PRIORITY_TIER1_CATEGORIES: ReadonlySet<KeyInsightCategory> = new Set(['자사·통신사 동향', '사이버보안'])
+const PRIORITY_TIER2_CATEGORIES: ReadonlySet<KeyInsightCategory> = new Set(['AIDC·클라우드'])
+
+/** 정렬 가중치 — Tier1(자사·통신사/사이버보안)=2, Tier2(AIDC·클라우드)=1, 그 외=0. */
+function priorityFlag(c: KeyInsightCandidate): number {
+  if (c.suggestedCategory !== null && PRIORITY_TIER1_CATEGORIES.has(c.suggestedCategory)) return 2
+  if (c.suggestedCategory !== null && PRIORITY_TIER2_CATEGORIES.has(c.suggestedCategory)) return 1
+  return 0
+}
+
+/**
+ * 프롬프트 투입 순서 정렬 — importance ↓ → priority_flag ↓ → published_at ↓ → content_id ↑.
+ * 마지막 content_id 키는 앞의 신호가 전부 동률일 때도 실행마다 순서가 바뀌지 않도록
+ * (재현성) 넣은 결정론적 tie-breaker다.
+ */
+function comparePromptOrder(a: KeyInsightCandidate, b: KeyInsightCandidate): number {
+  if (b.importanceScore !== a.importanceScore) return b.importanceScore - a.importanceScore
+
+  const priorityDiff = priorityFlag(b) - priorityFlag(a)
+  if (priorityDiff !== 0) return priorityDiff
+
+  const aPublished = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
+  const bPublished = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
+  if (bPublished !== aPublished) return bPublished - aPublished
+
+  if (a.contentId < b.contentId) return -1
+  if (a.contentId > b.contentId) return 1
+  return 0
+}
+
 // ─── 메인 함수 ────────────────────────────────────────────────────────────────
 
 export interface GenerateKeyInsightResult {
@@ -282,8 +332,9 @@ export async function generateKeyInsightBatch(opts?: { force?: boolean }): Promi
     return { ok: false, reason: '후보 없음(프리필터 통과분 0건)', weekOf, poolStats: pool.stats }
   }
 
-  // 중요도순 정렬(buildCandidatePool)을 그대로 활용해 상위 N건만 프롬프트에 태운다.
-  const promptCandidates = pool.candidates.slice(0, MAX_CANDIDATES_IN_PROMPT)
+  // importance_score 동률이 대다수라 buildCandidatePool 의 단일 키 정렬만으론 부족 —
+  // 다신호 tie-break(comparePromptOrder)로 재정렬 후 상위 N건만 프롬프트에 태운다.
+  const promptCandidates = [...pool.candidates].sort(comparePromptOrder).slice(0, MAX_CANDIDATES_IN_PROMPT)
   const candidateMap = new Map(promptCandidates.map((c) => [c.contentId, c]))
 
   const system = buildSystemPrompt()
