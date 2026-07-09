@@ -15,8 +15,8 @@ export const metadata: Metadata = {
  */
 export default function LoginPage() {
   return (
-    <main className="io-login relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-8 sm:px-8 lg:px-12 lg:py-10 xl:px-16">
-      <div className="grid w-full max-w-[1500px] items-center gap-10 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,460px)] lg:gap-16">
+    <main className="io-login relative flex min-h-screen w-full items-start justify-center overflow-hidden px-4 pt-4 pb-3 sm:px-8 lg:px-12 lg:pt-6 lg:pb-4 xl:px-16">
+      <div className="grid w-full max-w-[1500px] items-start gap-10 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,460px)] lg:gap-16">
         {/* ── 좌측 히어로 ── */}
         <section className="relative flex min-w-0 flex-col items-center text-center lg:items-start lg:text-left">
           <div className="relative z-10 max-w-2xl px-1">
@@ -36,10 +36,12 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* 전구 히어로 — 크게, 중심적으로. 데스크톱에선 컬럼보다 넓게(153%) 펼쳐
-              보라색 광류 밴드가 히어로 영역을 가득 채우게 한다. 캔버스 1.3배 확장에 맞춰
-              컨테이너도 1.3배 → 전구·구슬의 렌더 크기는 이전과 동일(이미지 가장자리 feather). */}
-          <div className="mx-auto mt-4 w-full max-w-[840px] lg:-mt-[28%] lg:-ml-[26%] lg:w-[153%] lg:max-w-none">
+          {/* 전구 히어로 — 크게, 중심적으로. 데스크톱에선 컬럼보다 넓게 펼쳐
+              보라색 광류 밴드가 히어로 영역을 가득 채우게 한다. 250: 1280×800·1440×900·
+              1536×864에서 세로 스크롤 0이 되도록 122%로 축소(aspect 고정 → 폭↓=높이↓)
+              + 위로 당김(-44%) 실측 튜닝(뷰포트 폭이 넓을수록 씬 폭도 커져 셋 중 가장
+              낮은 화면비인 1536×864가 기준값을 결정). */}
+          <div className="mx-auto mt-2 w-full max-w-[840px] lg:-mt-[44%] lg:-ml-[12%] lg:w-[122%] lg:max-w-none">
             <BulbScene />
           </div>
         </section>
@@ -48,7 +50,7 @@ export default function LoginPage() {
         <section className="w-full max-w-[460px] justify-self-center lg:justify-self-end">
           <Suspense
             fallback={
-              <div className="h-[620px] w-full rounded-[30px] border border-slate-200/70 bg-white shadow-[0_40px_90px_-30px_rgba(24,39,75,0.30)]" />
+              <div className="h-[560px] w-full rounded-[30px] border border-slate-200/70 bg-white shadow-[0_40px_90px_-30px_rgba(24,39,75,0.30)]" />
             }
           >
             <LoginCard />
