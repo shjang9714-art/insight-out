@@ -7,15 +7,15 @@ import { ArrowLeft } from 'lucide-react'
 
 interface BackLinkProps {
   className?: string
-  /** 브라우저 히스토리가 없을 때(새 탭 직접 진입 등) 갈 곳 — 목록 등 안전한 기본 경로 */
-  fallbackHref?: string
+  /** 브라우저 히스토리가 없을 때(새 탭 직접 진입 등) 갈 곳 — 이 페이지의 상위 맥락(목록/홈 등)을 명시적으로 지정 */
+  fallbackHref: string
 }
 
 /**
  * "이전으로" — 홈/트렌딩/검색 등 어디서 왔든 실제 브라우저 히스토리로 되돌아간다.
  * 직접 진입(히스토리 없음) 시에만 fallbackHref로 대체(죽은 버튼 방지).
  */
-export default function BackLink({ className, fallbackHref = '/dashboard/contents' }: BackLinkProps) {
+export default function BackLink({ className, fallbackHref }: BackLinkProps) {
   const router = useRouter()
   const [hasHistory, setHasHistory] = useState(false)
 
