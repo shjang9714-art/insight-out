@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>경쟁사(뉴스) 그룹 레이아웃 목업</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet">
+<style>
+  :root{
+    --ink:#141118; --ink-soft:#5b5560; --muted:#8b858f; --line:#e9e6ec; --card:#fff; --bg:#faf9fb;
+    --brand:#DB0078;
+    --crisis-bg:#FDECEC; --crisis-fg:#C0392B;      /* 위기 */
+    --chance-bg:#E8F1FE; --chance-fg:#1D63C4;      /* 기회 */
+    --watch-bg:#F1F0F3; --watch-fg:#6b6570;        /* 관망 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Pretendard',system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:28px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  .tabs{display:flex;gap:26px;justify-content:center;margin-bottom:22px;font-size:16px}
+  .tabs span{color:var(--muted)}
+  .tabs .on{color:var(--ink);font-weight:700;display:inline-flex;align-items:center;gap:7px}
+  .tabs .on::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--brand)}
+
+  .legend{display:flex;gap:14px;align-items:center;justify-content:flex-end;margin-bottom:16px;font-size:12px;color:var(--muted)}
+  .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:700}
+  .chip.crisis{background:var(--crisis-bg);color:var(--crisis-fg)}
+  .chip.chance{background:var(--chance-bg);color:var(--chance-fg)}
+  .chip.watch{background:var(--watch-bg);color:var(--watch-fg)}
+
+  /* 그룹 박스 */
+  .group{margin-bottom:22px;border:1px solid var(--line);border-radius:18px;background:var(--card);overflow:hidden}
+  .group-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#fcfbfd)}
+  .group-head h3{font-size:15px;font-weight:800;letter-spacing:-.01em}
+  .group-head .cnt{font-size:12px;color:var(--muted)}
+  .group-head .spacer{flex:1}
+  .group-head .mini{display:flex;gap:6px}
+
+  /* 그룹 내부 회사 카드: 가로 배치(넘치면 가로 스크롤) */
+  .row{display:flex;gap:12px;padding:16px 18px;overflow-x:auto;scroll-snap-type:x proximity}
+  .row::-webkit-scrollbar{height:7px}
+  .row::-webkit-scrollbar-thumb{background:#e0dce4;border-radius:4px}
+
+  .co{flex:0 0 288px;scroll-snap-align:start;border:1px solid var(--line);border-radius:13px;padding:13px 14px;background:#fff;transition:border-color .15s,box-shadow .15s}
+  .co:hover{border-color:#d9b8cb;box-shadow:0 4px 14px -6px rgba(120,40,90,.18)}
+  .co-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+  .co-name{font-size:14px;font-weight:800}
+  .co-chips{display:flex;gap:5px}
+  .art{display:block;font-size:12.5px;line-height:1.5;color:var(--ink-soft);padding:6px 0;border-top:1px dashed var(--line)}
+  .art:first-of-type{border-top:none}
+  .art .src{color:var(--muted);font-size:11px}
+  .more{margin-top:6px;font-size:11.5px;color:var(--brand);font-weight:600}
+
+  .note{margin-top:26px;padding:16px 18px;border:1px dashed var(--line);border-radius:14px;background:#fff;font-size:13px;color:var(--ink-soft);line-height:1.7}
+  .note b{color:var(--ink)}
+  h2.section{font-size:13px;color:var(--muted);font-weight:700;margin:30px 0 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="tabs"><span>관심기업</span><span class="on">경쟁사(뉴스)</span><span>경쟁사(동향)</span></div>
+
+  <div class="legend">
+    <span>LG U+ 관점:</span>
+    <span class="chip crisis">위기 3</span>
+    <span class="chip chance">기회 2</span>
+    <span class="chip watch">관망 5</span>
+  </div>
+
+  <!-- 통신 -->
+  <div class="group">
+    <div class="group-head">
+      <h3>통신</h3><span class="cnt">4개사 · 12건</span>
+      <span class="spacer"></span>
+      <span class="mini"><span class="chip crisis">위기 2</span><span class="chip chance">기회 1</span></span>
+    </div>
+    <div class="row">
+      <div class="co">
+        <div class="co-head"><span class="co-name">SKT</span>
+          <div class="co-chips"><span class="chip crisis">위기 1</span><span class="chip watch">관망 1</span></div></div>
+        <a class="art">SKT-KT 양자암호 기술 눈길… IBM '시스템 투' 관람객 몰려 <span class="src">· 동아일보 경제</span></a>
+        <a class="art">SKT, 엔터프라이즈 AI 사업 확대 <span class="src">· 디일렉</span></a>
+        <div class="more">기사 3건 더 →</div>
+      </div>
+      <div class="co">
+        <div class="co-head"><span class="co-name">KT</span>
+          <div class="co-chips"><span class="chip crisis">위기 1</span></div></div>
+        <a class="art">박윤영 KT, 5조 들여 1GW AIDC 구축… 신사업 '토큰 팩토리' 발표 <span class="src">· 디일렉</span></a>
+        <a class="art">SKB DC 떼고 SKT AI와 결합… AIDC 분사 밑그림 <span class="src">· Google News</span></a>
+        <div class="more">기사 4건 더 →</div>
+      </div>
+      <div class="co">
+        <div class="co-head"><span class="co-name">SK브로드밴드</span>
+          <div class="co-chips"><span class="chip chance">기회 1</span></div></div>
+        <a class="art">SKB 데이터센터 매각설… 사업 재편 관측 <span class="src">· Google News</span></a>
+        <div class="more">기사 1건 더 →</div>
+      </div>
+      <div class="co">
+        <div class="co-head"><span class="co-name">세종텔레콤</span>
+          <div class="co-chips"><span class="chip watch">관망 1</span></div></div>
+        <a class="art">세종텔레콤, 알뜰폰 요금제 개편 <span class="src">· 아이뉴스24</span></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 클라우드·플랫폼 -->
+  <div class="group">
+    <div class="group-head">
+      <h3>클라우드·플랫폼</h3><span class="cnt">3개사 · 7건</span>
+      <span class="spacer"></span>
+      <span class="mini"><span class="chip chance">기회 1</span><span class="chip watch">관망 3</span></span>
+    </div>
+    <div class="row">
+      <div class="co">
+        <div class="co-head"><span class="co-name">카카오엔터프라이즈</span>
+          <div class="co-chips"><span class="chip chance">기회 1</span></div></div>
+        <a class="art">'성과급 합의 불발' 카카오 노조, 오늘 '업무 로그아웃' <span class="src">· 동아일보 경제</span></a>
+        <div class="more">기사 2건 더 →</div>
+      </div>
+      <div class="co">
+        <div class="co-head"><span class="co-name">네이버클라우드</span>
+          <div class="co-chips"><span class="chip watch">관망 2</span></div></div>
+        <a class="art">네이버클라우드, 소버린 AI 인프라 확대 <span class="src">· 디지털데일리</span></a>
+        <div class="more">기사 2건 더 →</div>
+      </div>
+      <div class="co">
+        <div class="co-head"><span class="co-name">NHN Cloud</span>
+          <div class="co-chips"><span class="chip watch">관망 1</span></div></div>
+        <a class="art">NHN클라우드, 공공 SaaS 사업 수주 <span class="src">· 전자신문</span></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 빅테크 -->
+  <div class="group">
+    <div class="group-head">
+      <h3>빅테크</h3><span class="cnt">2개사 · 3건</span>
+      <span class="spacer"></span>
+      <span class="mini"><span class="chip crisis">위기 1</span></span>
+    </div>
+    <div class="row">
+      <div class="co">
+        <div class="co-head"><span class="co-name">AWS</span>
+          <div class="co-chips"><span class="chip crisis">위기 1</span></div></div>
+        <a class="art">AWS, 국내 리전 증설·엔터프라이즈 AI 공세 <span class="src">· ZDNet Korea</span></a>
+        <div class="more">기사 1건 더 →</div>
+      </div>
+      <div class="co">
+        <div class="co-head"><span class="co-name">Microsoft</span>
+          <div class="co-chips"><span class="chip watch">관망 1</span></div></div>
+        <a class="art">MS, Copilot 기업용 확대 <span class="src">· 블로터</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>레이아웃(확정)</b>: 통신/클라우드·플랫폼/빅테크 그룹 박스는 세로로 쌓고, <b>그룹 안 회사 카드는 가로 배치</b>(예: 통신 = SKT·KT·SKB·세종텔레콤 가로). 회사 많으면 가로 스크롤. 그룹 헤더에 사수·건수·위기/기회 요약.<br>
+    <b>라벨</b>: 긍정/부정 → <span class="chip crisis">위기</span> <span class="chip chance">기회</span> <span class="chip watch">관망</span> (LG U+ 관점).
+  </div>
+
+</div>
+</body>
+</html>
