@@ -44,15 +44,24 @@ interface RecommendedFeedProps {
   fallbackItems?: FeedItem[]
 }
 
+// 실제 ContentCard와 동일한 구조(커버 → 배지 → 태그 pill → 제목 2줄 → 메타)로
+// 스켈레톤을 구성 — 로딩→완료 전환 시 그리드↔스트립 레이아웃 점프 방지.
 function CardSkeleton() {
   return (
-    <div className="animate-pulse rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="aspect-[16/9] bg-muted" />
-      <div className="p-4 space-y-2">
-        <div className="h-4 w-16 rounded-full bg-muted" />
-        <div className="h-4 w-full rounded bg-muted" />
-        <div className="h-4 w-4/5 rounded bg-muted" />
-        <div className="h-3 w-1/3 rounded bg-muted" />
+    <div className="flex h-full flex-col rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="aspect-[16/9] animate-pulse bg-muted" />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <div className="h-5 w-12 animate-pulse rounded-full bg-muted" />
+          <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
+        </div>
+        <div className="mb-1.5 flex flex-wrap gap-1">
+          <div className="h-5 w-14 animate-pulse rounded-full bg-muted" />
+          <div className="h-5 w-10 animate-pulse rounded-full bg-muted" />
+        </div>
+        <div className="mb-1.5 h-4 w-full animate-pulse rounded bg-muted" />
+        <div className="mb-2 h-4 w-4/5 animate-pulse rounded bg-muted" />
+        <div className="mt-auto h-3 w-1/3 animate-pulse rounded bg-muted" />
       </div>
     </div>
   )
@@ -174,8 +183,15 @@ export default function RecommendedFeed({
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => <CardSkeleton key={i} />)}
+        <div className="space-y-6">
+          {buildSlotMeta(fallbackTrending).map((meta) => (
+            <div key={meta.slot}>
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{meta.label}</h3>
+              <FeedCarousel cardHeight={196} autoplay={false}>
+                {Array.from({ length: meta.quota }).map((_, i) => <CardSkeleton key={i} />)}
+              </FeedCarousel>
+            </div>
+          ))}
         </div>
       ) : sections.length === 0 ? (
         fallbackItems.length > 0 ? (
