@@ -3,19 +3,19 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import EntityTabs from '@/components/entities/EntityTabs'
-import InsightCardsSectionClient, {
-  type InsightGroup,
-  type ContentMetaRecord,
-} from '@/components/analysis/InsightCardsSectionClient'
-import { tagTypeToBucket, type TagBucket } from '@/lib/tag-buckets'
 import PageContainer from '@/components/PageContainer'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
 import { getMajorCompaniesData } from '@/lib/entities/major-companies'
 import MajorCompanyGroups from '@/components/entities/MajorCompanyGroups'
+import {
+  getLatestPublishedCompetitorWeeklyReport,
+  getCompetitorWeeklyTimeline,
+} from '@/lib/competitor-weekly/query'
+import CompetitorWeeklyReport from '@/components/entities/CompetitorWeeklyReport'
+import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +28,6 @@ type SearchParams = Promise<{ view?: string }>
 
 const VALID_VIEWS = ['watchlist', 'competitor', 'trend'] as const
 
-const COMPETITOR_GROUP_ORDER = ['통신', '클라우드·플랫폼', '빅테크']
 type ViewId = typeof VALID_VIEWS[number]
 
 export default async function EntitiesPage({ searchParams }: { searchParams: SearchParams }) {
@@ -70,157 +69,13 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
   const { competitorCount, groups: competitorGroups, overallImpactDist } = competitorNews
   const COMPETITOR_SUMMARY_CAP = 6
 
-  // ─── 경쟁사(동향) 탭 ─────────────────────────────────────────────────────────
-  // 헤드라인분석(insight_cards) 카드를 competitor_group(통신/클라우드·플랫폼/빅테크)으로
-  // 재그룹핑해 재사용(224). 새 AI 생성 없음 — 기존 카드 재배치만.
-  const trendGroups: InsightGroup[] = []
-  const trendContentMap: Record<string, ContentMetaRecord> = {}
-  const trendBucketByTopic: Record<string, TagBucket> = {}
-  let hasAnyCompetitorGroup = false
-
-  if (view === 'trend') {
-    type EntityGroupRow = { id: string; canonical_name: string; competitor_group: string | null }
-    type AliasRow = { entity_id: string; alias: string }
-    type KgRow = { name: string; tag_type: string; include_patterns: string[] }
-
-    const [cardsRes, entitiesRes, aliasesRes, keywordGroupsRes] = await Promise.all([
-      supabase
-        .from('insight_cards')
-        .select('id, period_start, period_end, scope, topic, headline, implication, source_content_ids, citations, generated_at, status')
-        .eq('status', 'published')
-        .in('scope', ['industry', 'company'])
-        .order('period_start', { ascending: false })
-        .order('generated_at', { ascending: false })
-        .limit(80),
-      supabase
-        .from('entities')
-        .select('id, canonical_name, competitor_group')
-        .not('competitor_group', 'is', null),
-      supabase
-        .from('entity_aliases')
-        .select('entity_id, alias'),
-      supabase
-        .from('keyword_groups')
-        .select('name, tag_type, include_patterns')
-        .eq('is_active', true)
-        .limit(200),
-    ])
-
-    // competitor_group 컬럼 미적용(224 SQL 미실행, 42703) — graceful. 그룹 없음으로 처리.
-    if (entitiesRes.error?.code !== '42703') {
-      const groupByEntityId = new Map<string, string>()
-      const entityRows = (entitiesRes.data ?? []) as EntityGroupRow[]
-      for (const e of entityRows) {
-        if (e.competitor_group) groupByEntityId.set(e.id, e.competitor_group)
-      }
-
-      // 이름/별칭(lower) → competitor_group 맵
-      const nameToGroup = new Map<string, string>()
-      for (const e of entityRows) {
-        const grp = groupByEntityId.get(e.id)
-        if (grp) nameToGroup.set(e.canonical_name.toLowerCase(), grp)
-      }
-      for (const a of (aliasesRes.data ?? []) as AliasRow[]) {
-        const grp = groupByEntityId.get(a.entity_id)
-        if (grp) nameToGroup.set(a.alias.toLowerCase(), grp)
-      }
-      hasAnyCompetitorGroup = nameToGroup.size > 0
-
-      // 카드 topic → 그룹 매칭: 정확일치 우선, 부분포함은 길이 3+ 별칭만(짧은 별칭 오탐 방지, 224 §3)
-      function matchGroup(topic: string): string | null {
-        const t = topic.toLowerCase()
-        const exact = nameToGroup.get(t)
-        if (exact) return exact
-        for (const [name, grp] of nameToGroup) {
-          if (name.length >= 3 && (t.includes(name) || name.includes(t))) return grp
-        }
-        return null
-      }
-
-      const rawCards = ((cardsRes.data ?? []) as InsightCard[]).filter(c => c.topic)
-      const byGroup = new Map<string, InsightCard[]>()
-      for (const card of rawCards) {
-        const grp = matchGroup(card.topic)
-        if (!grp) continue
-        if (!byGroup.has(grp)) byGroup.set(grp, [])
-        byGroup.get(grp)!.push(card)
-      }
-
-      const orderedGroupNames = [
-        ...COMPETITOR_GROUP_ORDER.filter(g => byGroup.has(g)),
-        ...[...byGroup.keys()].filter(g => !COMPETITOR_GROUP_ORDER.includes(g)),
-      ]
-      for (const groupName of orderedGroupNames) {
-        trendGroups.push({ key: groupName, start: '', end: '', label: groupName, cards: byGroup.get(groupName)! })
-      }
-
-      // 토픽→버킷 매핑 (167 규칙, watchlist와 동일 방식)
-      const patternTagMap = new Map<string, string>()
-      for (const g of (keywordGroupsRes.data ?? []) as KgRow[]) {
-        const tagType = g.tag_type
-        const gNameLower = g.name.toLowerCase()
-        if (!patternTagMap.has(gNameLower) || patternTagMap.get(gNameLower) === 'industry') {
-          patternTagMap.set(gNameLower, tagType)
-        }
-        for (const pat of (g.include_patterns ?? [])) {
-          const lower = pat.toLowerCase()
-          const existing = patternTagMap.get(lower)
-          if (!existing || existing === 'industry') {
-            patternTagMap.set(lower, tagType)
-          }
-        }
-      }
-      for (const card of rawCards) {
-        if (byGroup.has(matchGroup(card.topic) ?? '')) {
-          const tagType = patternTagMap.get(card.topic.toLowerCase())
-          trendBucketByTopic[card.topic] = tagTypeToBucket(tagType)
-        }
-      }
-
-      // card_headline 보강 + contentMap (watchlist와 동일 방식, 224 §2-2-5)
-      if (trendGroups.length > 0) {
-        const allCards = trendGroups.flatMap(g => g.cards)
-        const allIds = new Set<string>()
-        for (const card of allCards) {
-          for (const id of card.source_content_ids) allIds.add(id)
-          for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
-        }
-
-        const [{ data: chData, error: chErr }, { data: contents }] = await Promise.all([
-          supabase
-            .from('insight_cards')
-            .select('id, card_headline')
-            .in('id', allCards.map(c => c.id)),
-          allIds.size > 0
-            ? supabase
-                .from('contents')
-                .select('id, title, category, matched_keywords, sources(name)')
-                .in('id', [...allIds])
-            : Promise.resolve({ data: [] as unknown[] }),
-        ])
-
-        if (!chErr && chData) {
-          const chMap = new Map(
-            (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
-          )
-          for (const card of allCards) {
-            const ch = chMap.get(card.id)
-            if (ch) card.card_headline = ch
-          }
-        }
-
-        for (const row of contents ?? []) {
-          const r = row as unknown as { id: string; title: string; category: string | null; matched_keywords: string[] | null; sources: { name: string } | null }
-          trendContentMap[r.id] = {
-            title: r.title,
-            category: r.category,
-            sourceName: r.sources?.name ?? null,
-            matchedKeywords: r.matched_keywords,
-          }
-        }
-      }
-    }
-  }
+  // ─── 경쟁사(동향) 탭 — 261: per-company 카드 나열 → 주간 종합 리포트로 전환(257 대체) ──
+  const [latestWeeklyReport, weeklyTimeline] = view === 'trend'
+    ? await Promise.all([
+        getLatestPublishedCompetitorWeeklyReport(supabase),
+        getCompetitorWeeklyTimeline(supabase, 12),
+      ])
+    : [null, []]
 
   return (
     <PageContainer>
@@ -298,27 +153,21 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         </div>
       )}
 
-      {/* 경쟁사(동향) 탭 */}
+      {/* 경쟁사(동향) 탭 — 261: 주간 종합 리포트(사업영역별 + 위기/기회 + 타임라인) */}
       {view === 'trend' && (
-        <div>
-          {trendGroups.length === 0 ? (
+        <div className="space-y-4">
+          {!latestWeeklyReport ? (
             <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-              <p className="text-sm font-medium text-foreground">
-                {!hasAnyCompetitorGroup ? '아직 등록된 경쟁사 그룹이 없습니다' : '경쟁사 동향 인사이트가 아직 없습니다'}
-              </p>
+              <p className="text-sm font-medium text-foreground">이번 주 경쟁 리포트 생성 대기</p>
               <p className="text-xs text-muted-foreground">
-                {!hasAnyCompetitorGroup
-                  ? '어드민 > 엔티티 관리에서 경쟁사 그룹(통신·클라우드/플랫폼·빅테크)을 지정하면 여기에 모아 보여드립니다.'
-                  : '등록된 경쟁사 관련 AI 인사이트가 생성되면 이곳에 표시됩니다.'}
+                매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합해 여기에 표시됩니다.
               </p>
             </div>
           ) : (
-            <InsightCardsSectionClient
-              groups={trendGroups}
-              contentMap={trendContentMap}
-              bucketByTopic={trendBucketByTopic}
-              boxed
-            />
+            <>
+              <CompetitorWeeklyReport report={latestWeeklyReport} />
+              <CompetitorWeeklyTimeline entries={weeklyTimeline} activeWeekStart={latestWeeklyReport.week_start} />
+            </>
           )}
         </div>
       )}

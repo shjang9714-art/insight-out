@@ -54,6 +54,8 @@ export default function InsightsAdminPage() {
   const [youtubeTaggingResult, setYoutubeTaggingResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
   const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
+  const [isGeneratingCompetitorWeekly, setIsGeneratingCompetitorWeekly] = useState(false)
+  const [competitorWeeklyResult, setCompetitorWeeklyResult] = useState<{ weekStart: string; weekEnd: string; status: string; sections: number; reason?: string } | null>(null)
   const [filterStatus, setFilterStatus] = useState<InsightCardStatus | 'all'>('all')
 
   async function fetchCards() {
@@ -187,6 +189,33 @@ export default function InsightsAdminPage() {
     }
   }
 
+  const handleGenerateCompetitorWeekly = async () => {
+    if (!window.confirm('최근 완결된 주(월~일)의 경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성하시겠습니까? (LLM 호출)')) return
+    setIsGeneratingCompetitorWeekly(true)
+    setCompetitorWeeklyResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/competitor-weekly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json() as { weekStart?: string; weekEnd?: string; status?: string; sections?: number; reason?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? '생성 실패')
+      setCompetitorWeeklyResult({
+        weekStart: data.weekStart ?? '',
+        weekEnd: data.weekEnd ?? '',
+        status: data.status ?? 'draft',
+        sections: data.sections ?? 0,
+        reason: data.reason,
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '주간 경쟁 리포트 생성에 실패했습니다.')
+    } finally {
+      setIsGeneratingCompetitorWeekly(false)
+    }
+  }
+
   const handleStatusChange = async (id: string, status: InsightCardStatus) => {
     setUpdatingId(id)
     try {
@@ -301,6 +330,35 @@ export default function InsightsAdminPage() {
             {companyResult.created > 0
               ? `${companyResult.created}개 카드 생성됨: ${companyResult.topics.join(', ')}`
               : '생성된 카드 없음 (워치리스트 없음 또는 기사 부족)'}
+          </p>
+        )}
+      </div>
+
+      {/* 주간 경쟁 리포트 생성 패널 (261) */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-foreground">주간 경쟁 리포트 생성</h2>
+        <p className="text-xs text-muted-foreground">
+          경쟁사(통신 3사 중심) 기사를 사업영역별(AIDC·AICC·통신B2B·보안·클라우드·IT 등)로 종합해 위기·기회를 판정합니다. 기본은 최근 완결된 주(월~일).
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => void handleGenerateCompetitorWeekly()}
+            disabled={isGeneratingCompetitorWeekly}
+            size="sm"
+            variant="outline"
+          >
+            {isGeneratingCompetitorWeekly ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
+            ) : (
+              <><Sparkles className="h-3.5 w-3.5 mr-1.5" />주간 경쟁 리포트 생성</>
+            )}
+          </Button>
+        </div>
+        {competitorWeeklyResult && (
+          <p className="text-sm text-muted-foreground">
+            {competitorWeeklyResult.status === 'published'
+              ? `${competitorWeeklyResult.weekStart} ~ ${competitorWeeklyResult.weekEnd} 발행됨 (사업영역 ${competitorWeeklyResult.sections}개)`
+              : competitorWeeklyResult.reason ?? '생성된 리포트 없음'}
           </p>
         )}
       </div>
