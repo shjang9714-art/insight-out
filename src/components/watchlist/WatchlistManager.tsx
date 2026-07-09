@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, X, Building2, Check } from 'lucide-react'
+import { X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const MAX_WATCHLIST = 20
@@ -10,11 +10,6 @@ interface WatchlistRow {
   id: string
   company: string
   entity_id: string | null
-}
-
-interface SearchResult {
-  id: string
-  canonical_name: string
 }
 
 interface CuratedGroup {
@@ -36,12 +31,10 @@ export default function WatchlistManager({ onChange }: Props) {
   const [items, setItems] = useState<WatchlistRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
-  const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [curatedGroups, setCuratedGroups] = useState<CuratedGroup[]>([])
   const [curatedCompanies, setCuratedCompanies] = useState<CuratedCompany[]>([])
+  const [curatedLoadFailed, setCuratedLoadFailed] = useState(false)
 
   // 최초 마운트 시 1회 로드(loaded 가드 — ArchiveButton 패턴)
   useEffect(() => {
@@ -92,35 +85,14 @@ export default function WatchlistManager({ onChange }: Props) {
       if (companiesRes.error) console.warn('[WatchlistManager] curated_companies 조회 실패:', companiesRes.error.message)
       if (!groupsRes.error) setCuratedGroups((groupsRes.data ?? []) as CuratedGroup[])
       if (!companiesRes.error) setCuratedCompanies((companiesRes.data ?? []) as CuratedCompany[])
+      // 260 — 큐레이션 선택 전용: 253 미적용·조회 실패 시 검색으로 되돌리지 않고 빈 상태 안내.
+      if (groupsRes.error || companiesRes.error) setCuratedLoadFailed(true)
 
       setLoaded(true)
       setLoading(false)
     }
     load()
   }, [loaded])
-
-  // 검색 디바운스 250ms
-  useEffect(() => {
-    const q = query.trim()
-    if (q.length < 1) return
-
-    const timer = setTimeout(() => {
-      const search = async () => {
-        setSearching(true)
-        try {
-          const res = await fetch(`/api/entities/search?q=${encodeURIComponent(q)}&type=company`)
-          const data = await res.json() as { entities?: SearchResult[] }
-          setResults(data.entities ?? [])
-        } catch {
-          setResults([])
-        } finally {
-          setSearching(false)
-        }
-      }
-      search()
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [query])
 
   async function insertWatchlist(company: string, entityId: string | null) {
     setError(null)
@@ -160,8 +132,6 @@ export default function WatchlistManager({ onChange }: Props) {
 
     const row = inserted.data as { id: string; company: string; entity_id?: string | null }
     setItems(prev => [...prev, { id: row.id, company: row.company, entity_id: row.entity_id ?? null }])
-    setQuery('')
-    setResults([])
     onChange?.()
   }
 
@@ -181,17 +151,16 @@ export default function WatchlistManager({ onChange }: Props) {
     else void insertWatchlist(name, null)
   }
 
-  const trimmedQuery = query.trim()
-  const exactMatch = results.some(r => r.canonical_name.toLowerCase() === trimmedQuery.toLowerCase())
+  const hasCurated = curatedGroups.length > 0 && curatedCompanies.length > 0
 
   return (
     <div className="space-y-3">
-      {/* 현재 목록 */}
+      {/* 260 — 내 주요 기업 요약(칩, 삭제 가능) */}
       <div className="flex flex-wrap gap-1.5 min-h-[42px] rounded-lg border border-border bg-background px-3 py-2">
         {loading ? (
           <span className="py-1 text-xs text-muted-foreground">불러오는 중...</span>
         ) : items.length === 0 ? (
-          <span className="py-1 text-xs text-muted-foreground/60">아직 등록된 관심기업이 없습니다.</span>
+          <span className="py-1 text-xs text-muted-foreground/60">그룹에서 회사를 선택하세요.</span>
         ) : (
           items.map(item => (
             <span
@@ -213,10 +182,10 @@ export default function WatchlistManager({ onChange }: Props) {
         )}
       </div>
 
-      {/* 그룹별 회사 선택(255) — curated_groups/curated_companies(253) 있을 때만 노출 */}
-      {curatedGroups.length > 0 && curatedCompanies.length > 0 && (
+      {/* 260 — 그룹별 회사 선택(큐레이션 전용, 자유 검색 없음) */}
+      {hasCurated ? (
         <div className="space-y-2.5 rounded-lg border border-border bg-background p-3">
-          <p className="text-xs font-medium text-muted-foreground">그룹별 회사에서 대표 기업 선택</p>
+          <p className="text-xs font-medium text-muted-foreground">그룹별 회사에서 주요 기업 선택</p>
           {curatedGroups.map(group => {
             const companiesInGroup = curatedCompanies.filter(c => c.groups.includes(group.key))
             if (companiesInGroup.length === 0) return null
@@ -248,62 +217,16 @@ export default function WatchlistManager({ onChange }: Props) {
             )
           })}
         </div>
+      ) : (
+        !loading && curatedLoadFailed && (
+          <div className="rounded-lg border border-dashed border-border p-3 text-center text-xs text-muted-foreground/60">
+            큐레이션 목록을 불러오지 못했습니다.
+          </div>
+        )
       )}
 
-      {/* 검색/추가 */}
-      <div className="relative">
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-brand-600/30">
-          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && trimmedQuery && !exactMatch) {
-                e.preventDefault()
-                insertWatchlist(trimmedQuery, null)
-              }
-            }}
-            placeholder="회사명 검색 (예: 삼성전자, KT, AWS)"
-            disabled={items.length >= MAX_WATCHLIST}
-            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
-          />
-        </div>
-
-        {trimmedQuery && (
-          <div className="absolute z-10 mt-1.5 w-full overflow-hidden rounded-lg border border-border bg-card shadow-md">
-            {searching ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">검색 중...</p>
-            ) : (
-              <>
-                {results.map(r => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => insertWatchlist(r.canonical_name, r.id)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-accent"
-                  >
-                    <Building2 className="h-3.5 w-3.5 shrink-0 text-brand-600" />
-                    {r.canonical_name}
-                  </button>
-                ))}
-                {!exactMatch && (
-                  <button
-                    type="button"
-                    onClick={() => insertWatchlist(trimmedQuery, null)}
-                    className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                  >
-                    &lsquo;{trimmedQuery}&rsquo; 직접 추가
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
       <p className="text-[11px] text-muted-foreground">
-        검색해서 추가하면 관련 기사를 더 정확히 모아줍니다 · 목록에 없으면 직접 추가 가능 · 최대 {MAX_WATCHLIST}개
+        그룹별 회사 목록에서 선택하면 기업동향·AI 인사이트에서 모아 보여드립니다 · 최대 {MAX_WATCHLIST}개
       </p>
 
       {error && <p className="text-xs text-red-500">{error}</p>}

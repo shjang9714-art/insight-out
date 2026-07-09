@@ -42,7 +42,7 @@ export default function WatchlistSettingsModal({ trigger, onChange }: Props) {
         <DialogHeader>
           <DialogTitle>주요 기업 설정</DialogTitle>
           <DialogDescription>
-            그룹별 회사 목록에서 대표 기업을 선택하거나, 검색해서 추가하면 기업동향·AI 인사이트에서 더 정확히 모아 보여드립니다.
+            그룹별 회사 목록에서 주요 기업을 선택하세요. 선택한 기업은 기업동향·AI 인사이트에서 모아 보여드립니다.
           </DialogDescription>
         </DialogHeader>
 
