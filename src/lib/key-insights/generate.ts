@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { llmComplete } from '@/lib/llm'
+import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, KEY_INSIGHT_CATEGORIES, type KeyInsightCandidate, type KeyInsightCategory } from '@/lib/key-insights/candidates'
 
@@ -44,6 +44,15 @@ function getWeekOf(now: Date): string {
   const d = new Date(Date.UTC(year, month - 1, day))
   d.setUTCDate(d.getUTCDate() - diffFromThursday)
   return d.toISOString().slice(0, 10)
+}
+
+/**
+ * KST 기준 오늘이 목요일인지 — §3-3 cron 요일 게이트용.
+ * Vercel Hobby 플랜은 요일 지정 cron 표현식이 안 먹혀 매일 도는 cron으로 등록하고,
+ * 라우트 내부에서 이 게이트로 목요일에만 실제 생성이 돌게 한다(기존 getKstDateParts 재사용).
+ */
+export function isThursdayKst(now: Date = new Date()): boolean {
+  return getKstDateParts(now).weekday === 4
 }
 
 // ─── 프롬프트 ─────────────────────────────────────────────────────────────────
@@ -296,6 +305,10 @@ function comparePromptOrder(a: KeyInsightCandidate, b: KeyInsightCandidate): num
 export interface GenerateKeyInsightResult {
   ok: boolean
   reason?: string
+  /** true 면 실패가 아니라 멱등/요일 게이트에 의한 정상 스킵(§3-3) — cron 응답 요약에 사용. */
+  skipped?: boolean
+  /** LLM 전량 실패 시 마지막 provider 실패 원인(재시도 후에도 실패한 사유, §3). */
+  errorReason?: string | null
   weekOf?: string
   savedCount?: number
   cards?: SavedKeyInsightCard[]
@@ -315,10 +328,10 @@ export async function generateKeyInsightBatch(opts?: { force?: boolean }): Promi
 
   const hasPublished = (existing ?? []).some((r) => r.status === 'published')
   if (hasPublished) {
-    return { ok: false, reason: '이번 주차 배치가 이미 게시됨', weekOf }
+    return { ok: false, skipped: true, reason: '이번 주차 배치가 이미 게시됨', weekOf }
   }
   if (existing && existing.length > 0 && !opts?.force) {
-    return { ok: false, reason: '이번 주차 배치가 이미 존재함(force 필요)', weekOf }
+    return { ok: false, skipped: true, reason: '이번 주차 배치가 이미 존재함(force 필요)', weekOf }
   }
   if (existing && existing.length > 0 && opts?.force) {
     // force 재생성 — 중복 삽입 대신 기존(미게시) 배치를 지우고 새로 채운다.
@@ -340,15 +353,26 @@ export async function generateKeyInsightBatch(opts?: { force?: boolean }): Promi
 
   const system = buildSystemPrompt()
   const user = buildUserPrompt(promptCandidates)
-  const raw = await llmComplete('key_insight', system, user)
+  // llmCompleteDetailed = llmComplete 와 동일한 재시도(completeWithRetry)·라우팅 경로를 타되,
+  // 전량 실패 시 마지막 provider 실패 사유까지 받아 배치 단위로 영속화(§3, 모닝브리핑 실패이력 반영).
+  const { text: raw, errorReason: llmErrorReason } = await llmCompleteDetailed('key_insight', system, user)
   if (!raw) {
-    return { ok: false, reason: 'LLM 응답 없음', weekOf, poolStats: pool.stats }
+    const failedAt = new Date().toISOString()
+    console.error(`[핵심Insight] ${failedAt} weekOf=${weekOf} LLM 전량 실패: ${llmErrorReason ?? '사유 미상'}`)
+    return {
+      ok: false,
+      reason: `LLM 응답 없음${llmErrorReason ? `(${llmErrorReason})` : ''}`,
+      errorReason: llmErrorReason,
+      weekOf,
+      poolStats: pool.stats,
+    }
   }
 
   const rawCards = parseCards(raw)
   const cards = validateAndBuildCards(rawCards, candidateMap)
 
   if (cards.length === 0) {
+    console.error(`[핵심Insight] ${new Date().toISOString()} weekOf=${weekOf} LLM 출력 검증 후 남은 카드 0건(환각 가드에 전량 걸림)`)
     return { ok: false, reason: 'LLM 출력 검증 후 남은 카드 0건', weekOf, poolStats: pool.stats }
   }
   if (cards.length < MIN_CARDS) {
@@ -377,6 +401,7 @@ export async function generateKeyInsightBatch(opts?: { force?: boolean }): Promi
 
   const { error: insertError } = await admin.from('key_insights').insert(rows)
   if (insertError) {
+    console.error(`[핵심Insight] ${new Date().toISOString()} weekOf=${weekOf} DB 저장 실패: ${insertError.message}`)
     return { ok: false, reason: `DB 저장 실패: ${insertError.message}`, weekOf, poolStats: pool.stats }
   }
 
