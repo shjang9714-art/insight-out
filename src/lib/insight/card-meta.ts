@@ -1,13 +1,16 @@
 export type Importance = 'high' | 'mid' | 'low'
 export type Relevance  = 'high' | 'mid' | 'low' | null
 
-// 223 — 인사이트 카드 제목/자세히 보기 클릭 시 이동할 상세 경로.
-// 근거 콘텐츠(source_content_ids → citations) 우선, 둘 다 없으면 토픽 타임라인 폴백.
+// 249 — 인사이트 카드 제목/카드 클릭 시 이동할 상세 경로 = 카드 자체 상세(핵심·시사점·근거).
+// 기존(223)엔 첫 근거 기사로 점프해 "기업 동향"이 기사 1건으로 축소되는 문제가 있었음.
+// id 없는 방어적 폴백만 근거 콘텐츠 → 토픽 타임라인.
 export function getCardDetailHref(card: {
+  id?: string
   topic: string
   source_content_ids: string[]
   citations: { content_id: string }[]
 }): string {
+  if (card.id) return `/dashboard/insights/${card.id}`
   const contentId = card.source_content_ids?.[0] ?? card.citations?.[0]?.content_id
   return contentId
     ? `/dashboard/contents/${contentId}`

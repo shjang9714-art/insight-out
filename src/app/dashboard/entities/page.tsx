@@ -9,11 +9,12 @@ import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
-import { tagTypeToBucket, type TagBucket } from '@/lib/tag-buckets'
+import { tagTypeToBucket, BUCKET_CHIP_CLS, type TagBucket } from '@/lib/tag-buckets'
 import PageContainer from '@/components/PageContainer'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
+import { getCardDetailHref, computeImportance, IMPORTANCE_LABEL, IMPORTANCE_CLS } from '@/lib/insight/card-meta'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +31,11 @@ const COMPETITOR_GROUP_ORDER = ['통신', '클라우드·플랫폼', '빅테크'
 type ViewId = typeof VALID_VIEWS[number]
 
 const WATCHLIST_LIMIT = 20
+
+function formatShortPeriod(start: string, end: string): string {
+  const fmt = (d: Date) => `${d.getMonth() + 1}.${d.getDate()}`
+  return `${fmt(new Date(start))}~${fmt(new Date(end))}`
+}
 
 export default async function EntitiesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
@@ -55,8 +61,8 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
   const { data: { user } } = await supabase.auth.getUser()
 
   // ─── 관심기업 탭 ─────────────────────────────────────────────────────────
-  const companyInsightGroups: InsightGroup[] = []
-  const companyContentMap: Record<string, ContentMetaRecord> = {}
+  // 249: 기간 그룹핑 폐지 → 회사별 최신 카드 1개 그리드. 카드 클릭 시 상세(/dashboard/insights/[id]).
+  const companyCards: InsightCard[] = []
   const bucketByTopic: Record<string, TagBucket> = {}
   let watchlist: WatchlistItem[] = []
 
@@ -113,33 +119,28 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         return watchlistLower.some(e => lower === e || lower.includes(e) || e.includes(lower))
       }
 
-      const companyCards = rawCompanyCards.filter(c => c.topic && isWatched(c.topic)).slice(0, 12)
+      // 회사별 최신 카드 1개만 — 쿼리가 이미 period_start desc, generated_at desc 정렬이므로
+      // 회사(topic)별 첫 등장이 최신 카드. top-N 캡 없음(249 결정).
+      const matchedCards = rawCompanyCards.filter(c => c.topic && isWatched(c.topic))
+      const seenTopics = new Set<string>()
+      for (const card of matchedCards) {
+        const key = card.topic.toLowerCase()
+        if (seenTopics.has(key)) continue
+        seenTopics.add(key)
+        companyCards.push(card)
+      }
 
       for (const card of companyCards) {
         const tagType = patternTagMap.get(card.topic.toLowerCase())
         bucketByTopic[card.topic] = tagTypeToBucket(tagType)
       }
 
-      // card_headline 보강 + contentMap — 둘 다 companyCards 기반, 서로 독립 → 병렬화(231)
+      // card_headline 보강(그리드 카드 "핵심" 표시용) — 근거 콘텐츠는 상세 페이지에서 조회(249)
       if (companyCards.length > 0) {
-        const allIds = new Set<string>()
-        for (const card of companyCards) {
-          for (const id of card.source_content_ids) allIds.add(id)
-          for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
-        }
-
-        const [{ data: chData, error: chErr }, { data: contents }] = await Promise.all([
-          supabase
-            .from('insight_cards')
-            .select('id, card_headline')
-            .in('id', companyCards.map(c => c.id)),
-          allIds.size > 0
-            ? supabase
-                .from('contents')
-                .select('id, title, category, matched_keywords, sources(name)')
-                .in('id', [...allIds])
-            : Promise.resolve({ data: [] as unknown[] }),
-        ])
+        const { data: chData, error: chErr } = await supabase
+          .from('insight_cards')
+          .select('id, card_headline')
+          .in('id', companyCards.map(c => c.id))
 
         if (!chErr && chData) {
           const chMap = new Map(
@@ -150,27 +151,6 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
             if (ch) c.card_headline = ch
           }
         }
-
-        for (const row of contents ?? []) {
-          const r = row as unknown as { id: string; title: string; category: string | null; matched_keywords: string[] | null; sources: { name: string } | null }
-          companyContentMap[r.id] = {
-            title: r.title,
-            category: r.category,
-            sourceName: r.sources?.name ?? null,
-            matchedKeywords: r.matched_keywords,
-          }
-        }
-      }
-
-      const groupsMap = new Map<string, InsightCard[]>()
-      for (const card of companyCards) {
-        const key = `${card.period_start}|${card.period_end}`
-        if (!groupsMap.has(key)) groupsMap.set(key, [])
-        groupsMap.get(key)!.push(card)
-      }
-      for (const [key, gc] of groupsMap.entries()) {
-        const [start, end] = key.split('|')
-        companyInsightGroups.push({ key, start, end, cards: gc })
       }
     }
   }
@@ -359,10 +339,44 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
                 )}
               </p>
             </div>
-          ) : companyInsightGroups.length === 0 ? (
+          ) : companyCards.length === 0 ? (
             <p className="text-sm text-muted-foreground">관심 기업 인사이트가 아직 없습니다. (AI 생성·승인 후 표시)</p>
           ) : (
-            <InsightCardsSectionClient groups={companyInsightGroups} contentMap={companyContentMap} bucketByTopic={bucketByTopic} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {companyCards.map(card => {
+                const importance = computeImportance(card)
+                const evidenceCount = card.citations.length || card.source_content_ids.length
+                const bucket = bucketByTopic[card.topic] ?? '일반'
+                return (
+                  <Link
+                    key={card.id}
+                    href={getCardDetailHref(card)}
+                    className="rounded-xl border border-border bg-card p-5 space-y-3 hover:border-brand-200 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${BUCKET_CHIP_CLS[bucket]}`}>
+                        {card.topic}
+                      </span>
+                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${IMPORTANCE_CLS[importance]}`}>
+                        {IMPORTANCE_LABEL[importance]}
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">
+                      {card.card_headline ?? card.headline}
+                    </p>
+                    {card.implication && (
+                      <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                        {card.implication}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+                      <span>{formatShortPeriod(card.period_start, card.period_end)}</span>
+                      {evidenceCount > 0 && <span>근거 {evidenceCount}건</span>}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
           )}
         </div>
       )}
