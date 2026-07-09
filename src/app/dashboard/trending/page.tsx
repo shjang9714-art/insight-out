@@ -76,7 +76,7 @@ export default async function TrendingPage() {
 
       <div className="mb-6 flex items-center gap-2">
         <TrendingUp className="h-5 w-5 text-orange-500" />
-        <h1 className="text-lg font-bold text-foreground">실시간 급상승 전체 순위</h1>
+        <h1 className="text-xl font-bold text-foreground">실시간 급상승 전체 순위</h1>
       </div>
 
       {all.length === 0 ? (
