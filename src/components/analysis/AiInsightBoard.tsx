@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
@@ -100,12 +101,17 @@ export default function AiInsightBoard({
   totalByType,
   signalItems,
 }: AiInsightBoardProps) {
+  const router = useRouter()
+  const pathname = usePathname()
   const [view, setView] = useState<AiInsightViewId>(initialView)
 
   function handleTabChange(v: AiInsightViewId) {
     setView(v)
-    // 풀 네비게이션 없이 URL만 갱신 (공유·새로고침 대비)
-    history.replaceState(null, '', `?view=${v}`)
+    // Next 라우터 API로 갱신 — raw history.replaceState는 Next 내부 라우터 상태와
+    // 어긋나서, 하위 상세 페이지에서 "이전으로"(router.back()) 클릭 시 방금 있던
+    // 탭이 아니라 최초 서버 렌더 시점의 기본 탭(핵심 Insight)으로 복귀하는 문제가
+    // 있었음 (원인 확정, 2026-07-09). scroll: false로 기존과 동일하게 스크롤 유지.
+    router.replace(`${pathname}?view=${v}`, { scroll: false })
   }
 
   return (
