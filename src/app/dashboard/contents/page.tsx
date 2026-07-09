@@ -279,7 +279,10 @@ function ContentsContent() {
       if (value) p.set(key, value)
       else p.delete(key)
       if (key !== 'page') { p.delete('page'); startTransition(() => setPage(1)) }
-      router.push(`${pathname}?${p.toString()}`)
+      // 같은 목록 페이지 안에서의 필터 변경은 새 방문이 아니므로 replace —
+      // push로 쌓이면 하위 페이지(기사 등)에서 "이전으로" 눌렀을 때
+      // 실제 이전 페이지가 아니라 직전 필터 상태로만 한 칸씩 돌아가는 문제 발생
+      router.replace(`${pathname}?${p.toString()}`)
     },
     [router, pathname]
   )
@@ -607,7 +610,7 @@ function ContentsContent() {
               <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
             ))}
             <button
-              onClick={() => { setPage(1); router.push(pathname + (category ? `?category=${encodeURIComponent(category)}` : '')) }}
+              onClick={() => { setPage(1); router.replace(pathname + (category ? `?category=${encodeURIComponent(category)}` : '')) }}
               className="text-[11px] text-muted-foreground underline hover:text-foreground"
             >
               전체 초기화
