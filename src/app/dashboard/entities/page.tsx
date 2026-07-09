@@ -13,6 +13,7 @@ import InsightCardsSectionClient, {
 import { tagTypeToBucket, type TagBucket } from '@/lib/tag-buckets'
 import PageContainer from '@/components/PageContainer'
 import { cn } from '@/lib/utils'
+import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -464,12 +465,19 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
       {/* 관심기업 탭 */}
       {view === 'watchlist' && (
         <div>
+          {user && <WatchlistTabHeader />}
           {!user || watchlist.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
               <p className="text-sm font-medium text-foreground">아직 관심 기업이 없습니다</p>
               <p className="text-xs text-muted-foreground">
-                <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
-                에서 관심 기업을 설정하면 기업별 AI 인사이트가 여기 표시됩니다.
+                {user ? (
+                  '위 "관심기업 설정" 버튼으로 회사를 검색해 추가하면 기업별 AI 인사이트가 여기 표시됩니다.'
+                ) : (
+                  <>
+                    <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
+                    에서 관심 기업을 설정하면 기업별 AI 인사이트가 여기 표시됩니다.
+                  </>
+                )}
               </p>
             </div>
           ) : companyInsightGroups.length === 0 ? (

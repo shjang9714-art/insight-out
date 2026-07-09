@@ -893,7 +893,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               ctx.globalAlpha = 1
 
               // 렌즈 링
-              const lt: LensTarget = { names: [n.label], isCompetitor: n.isCompetitor }
+              const lt: LensTarget = { names: [n.label], isCompetitor: n.isCompetitor, entityId: n.id }
               if (
                 activeLensRef.current !== 'all' &&
                 matchesLens(activeLensRef.current, lensCtxRef.current, lt)

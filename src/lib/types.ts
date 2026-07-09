@@ -270,6 +270,8 @@ export interface WatchlistItem {
   user_id: string
   company: string
   created_at: string
+  /** entities FK — 검색으로 추가 시 연결, 수동 입력(미매칭)은 null(225) */
+  entity_id?: string | null
 }
 
 // ============================================================

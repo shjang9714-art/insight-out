@@ -10,13 +10,15 @@ export type LensKey = 'mine' | 'watch' | 'all'
 export interface LensContext {
   serviceIds: string[]
   serviceNames: string[]     // 담당 서비스명 (소문자 비교용)
-  watchlist: string[]        // user_watchlist.company lower-cased
+  watchlist: string[]        // user_watchlist.company lower-cased (문자열 폴백)
+  watchlistEntityIds: string[]  // user_watchlist.entity_id — 엔티티 연결(225, 정확 매칭용)
 }
 
 export interface LensTarget {
   serviceIds?: string[]      // 엔티티의 직접 service_id
   names?: string[]           // 매칭 후보 텍스트 (제목·canonical_name·키워드 등)
   isCompetitor?: boolean
+  entityId?: string          // 엔티티 자신의 id — 있으면 watchlistEntityIds와 정확 매칭(225)
 }
 
 // ─── 프리셋 상수 ───────────────────────────────────────────────────────────────
@@ -50,6 +52,8 @@ export function matchesLens(key: LensKey, ctx: LensContext, t: LensTarget): bool
 
   if (key === 'watch') {
     if (t.isCompetitor) return true
+    // 엔티티 FK 정확 매칭(225) — 있으면 우선, 문자열 오탐 없음
+    if (t.entityId && ctx.watchlistEntityIds.includes(t.entityId)) return true
     if (!ctx.watchlist.length || !t.names?.length) return false
     const lowerNames = t.names.map(n => n.toLowerCase())
     return ctx.watchlist.some(w =>
@@ -70,7 +74,7 @@ export function lensScore(key: LensKey, ctx: LensContext, t: LensTarget): number
 
 // ─── useLensContext (1회 fetch + 모듈 스코프 캐시) ─────────────────────────────
 
-const EMPTY_CTX: LensContext = { serviceIds: [], serviceNames: [], watchlist: [] }
+const EMPTY_CTX: LensContext = { serviceIds: [], serviceNames: [], watchlist: [], watchlistEntityIds: [] }
 
 let cachedCtx: LensContext | null = null
 let fetchPromise: Promise<LensContext> | null = null
@@ -87,7 +91,7 @@ async function loadLensContext(): Promise<LensContext> {
       .eq('user_id', user.id),
     supabase
       .from('user_watchlist')
-      .select('company')
+      .select('company, entity_id')
       .eq('user_id', user.id)
       .limit(20),
   ])
@@ -96,10 +100,26 @@ async function loadLensContext(): Promise<LensContext> {
   const rows = (servicesRes.data ?? []) as unknown as ServiceRow[]
   const serviceIds = rows.map(r => r.service_id)
   const serviceNames = rows.flatMap(r => r.services ? [r.services.name] : [])
-  const watchlist = ((watchlistRes.data ?? []) as { company: string }[])
-    .map(w => w.company.toLowerCase())
 
-  return { serviceIds, serviceNames, watchlist }
+  // entity_id 컬럼 미적용(225 SQL 전, 42703) — company만 재조회, graceful
+  let watchlistRows: { company: string; entity_id?: string | null }[]
+  if (watchlistRes.error?.code === '42703') {
+    const { data: fallback } = await supabase
+      .from('user_watchlist')
+      .select('company')
+      .eq('user_id', user.id)
+      .limit(20)
+    watchlistRows = (fallback ?? []) as { company: string }[]
+  } else {
+    watchlistRows = (watchlistRes.data ?? []) as { company: string; entity_id: string | null }[]
+  }
+
+  const watchlist = watchlistRows.map(w => w.company.toLowerCase())
+  const watchlistEntityIds = watchlistRows
+    .map(w => w.entity_id)
+    .filter((id): id is string => Boolean(id))
+
+  return { serviceIds, serviceNames, watchlist, watchlistEntityIds }
 }
 
 export function useLensContext(): LensContext {

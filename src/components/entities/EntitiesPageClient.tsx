@@ -83,6 +83,7 @@ export default function EntitiesPageClient({
           serviceIds: e.service_id ? [e.service_id] : undefined,
           names: [e.canonical_name],
           isCompetitor: e.is_competitor,
+          entityId: e.id,
         }
         const score   = lensScore(activeLens, ctx, target)
         const matched = matchesLens(activeLens, ctx, target)

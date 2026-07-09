@@ -22,8 +22,7 @@ import type {
   Service,
 } from '@/lib/types'
 import PageContainer from '@/components/PageContainer'
-
-const MAX_WATCHLIST = 20
+import WatchlistManager from '@/components/watchlist/WatchlistManager'
 
 const DEPARTMENTS: Department[] = [
   'Enterprise사업부문',
@@ -78,12 +77,6 @@ export default function MyPage() {
   })
   const [newsletterStatus, setNewsletterStatus] = useState<SaveStatus>('idle')
   const [newsletterError, setNewsletterError] = useState<string | null>(null)
-
-  // ── 관심업체 워치리스트 ────────────────────────────────────────────────
-  const [watchlist, setWatchlist]             = useState<string[]>([])
-  const [watchlistInput, setWatchlistInput]   = useState('')
-  const [watchlistStatus, setWatchlistStatus] = useState<SaveStatus>('idle')
-  const [watchlistError, setWatchlistError]   = useState<string | null>(null)
 
   // ── 북마크 ──────────────────────────────────────────────────────────────
   interface BookmarkWithItem {
@@ -146,7 +139,6 @@ export default function MyPage() {
         { data: sub },
         { data: bookmarksData },
         { data: archivesData },
-        { data: watchlistData },
       ] = await Promise.all([
         supabase.from('users').select('name, department, team, position, content_filter_mode').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
@@ -164,12 +156,6 @@ export default function MyPage() {
           .from('archives')
           .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
           .order('created_at', { ascending: false }),
-        supabase
-          .from('user_watchlist')
-          .select('company')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: true })
-          .limit(MAX_WATCHLIST),
       ])
 
       if (userRow) {
@@ -184,7 +170,6 @@ export default function MyPage() {
 
       if (allServices) setServices(allServices)
       if (userServices) setSelectedServiceIds(new Set(userServices.map((r) => r.service_id)))
-      if (watchlistData) setWatchlist(watchlistData.map(r => r.company))
       if (bookmarksData) setBookmarks(bookmarksData as unknown as BookmarkWithItem[])
       setBookmarksLoading(false)
       if (archivesData) setArchives(archivesData as unknown as ArchiveWithItems[])
@@ -332,50 +317,6 @@ export default function MyPage() {
     } catch (err) {
       setNewsletterError(err instanceof Error ? err.message : '오류가 발생했습니다.')
       setNewsletterStatus('error')
-    }
-  }
-
-  // ── 관심업체 핸들러 ────────────────────────────────────────────────────
-  const addWatchlistChip = (raw: string) => {
-    const company = raw.trim()
-    if (!company || watchlist.includes(company) || watchlist.length >= MAX_WATCHLIST) return
-    setWatchlist(prev => [...prev, company])
-    setWatchlistInput('')
-  }
-
-  const handleWatchlistKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addWatchlistChip(watchlistInput)
-    } else if (e.key === 'Backspace' && watchlistInput === '' && watchlist.length > 0) {
-      setWatchlist(prev => prev.slice(0, -1))
-    }
-  }
-
-  const handleWatchlistSave = async () => {
-    setWatchlistError(null)
-    setWatchlistStatus('saving')
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
-
-      const { error: delErr } = await supabase
-        .from('user_watchlist')
-        .delete()
-        .eq('user_id', user.id)
-      if (delErr) throw new Error(`삭제 실패: ${delErr.message}`)
-
-      if (watchlist.length > 0) {
-        const rows = watchlist.map(company => ({ user_id: user.id, company }))
-        const { error: insErr } = await supabase.from('user_watchlist').insert(rows)
-        if (insErr) throw new Error(`저장 실패: ${insErr.message}`)
-      }
-
-      setWatchlistStatus('saved')
-      setTimeout(() => setWatchlistStatus('idle'), 2500)
-    } catch (err) {
-      setWatchlistError(err instanceof Error ? err.message : '오류가 발생했습니다.')
-      setWatchlistStatus('error')
     }
   }
 
@@ -637,56 +578,12 @@ export default function MyPage() {
             <div>
               <h2 className="text-base font-semibold text-foreground">관심업체</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                동향을 추적할 업체명을 자유롭게 추가하세요. 기사 제목·요약에 그 이름이 잡히면 AI 분석 페이지에서 모아 보여줍니다.
+                동향을 추적할 업체를 검색해서 추가하세요. 검색 결과에 없으면 직접 추가할 수도 있습니다. AI 분석 페이지에서 모아 보여줍니다.
               </p>
             </div>
           </div>
 
-          {/* 칩 입력 박스 */}
-          <div className="flex flex-wrap gap-1.5 min-h-[42px] rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-brand-600/30">
-            {watchlist.map(company => (
-              <span
-                key={company}
-                className="inline-flex items-center gap-1 rounded-md bg-brand-600/10 px-2 py-0.5 text-xs font-medium text-brand-600"
-              >
-                {company}
-                <button
-                  type="button"
-                  onClick={() => setWatchlist(prev => prev.filter(c => c !== company))}
-                  className="ml-0.5 hover:text-brand-700"
-                  aria-label={`${company} 제거`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            <input
-              type="text"
-              value={watchlistInput}
-              onChange={e => setWatchlistInput(e.target.value)}
-              onKeyDown={handleWatchlistKeyDown}
-              onBlur={() => addWatchlistChip(watchlistInput)}
-              placeholder={watchlist.length === 0 ? 'Enter로 업체 추가 (예: 삼성전자, KT, AWS)' : ''}
-              disabled={watchlist.length >= MAX_WATCHLIST}
-              className="flex-1 min-w-[140px] bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
-            />
-          </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Enter 또는 포커스 이탈 시 추가 · Backspace로 마지막 항목 삭제 · 최대 {MAX_WATCHLIST}개
-          </p>
-
-          {watchlistError && (
-            <p className="mt-2 text-xs text-red-500">{watchlistError}</p>
-          )}
-
-          <Button
-            type="button"
-            onClick={() => void handleWatchlistSave()}
-            disabled={watchlistStatus === 'saving'}
-            className="mt-4 w-full h-10"
-          >
-            {watchlistStatus === 'saving' ? '저장 중...' : watchlistStatus === 'saved' ? '저장되었습니다!' : '관심업체 저장'}
-          </Button>
+          <WatchlistManager />
         </section>
 
         {/* 뉴스레터 설정 */}
