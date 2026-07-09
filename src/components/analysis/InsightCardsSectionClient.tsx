@@ -37,10 +37,12 @@ export interface ContentMetaRecord {
 }
 
 export interface InsightGroup {
-  key: string   // `${period_start}|${period_end}`
+  key: string   // `${period_start}|${period_end}` (기간 그룹) 또는 그룹명(라벨 그룹)
   start: string
   end: string
   cards: InsightCard[]
+  /** 있으면 기간(formatPeriod) 대신 이 라벨을 섹션 헤더로 — 시간축이 아닌 그룹(예: 경쟁사 동향의 competitor_group)용(224) */
+  label?: string
 }
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────────
@@ -225,19 +227,20 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
       )}
 
       <div className="space-y-8">
-        {visibleGroups.map(({ key, start, end, displayedCards, isLatest }) => (
-          <div key={key} className={cn(!isLatest && 'opacity-70')}>
+        {visibleGroups.map(({ key, start, end, label, displayedCards, isLatest }) => (
+          <div key={key} className={cn(!label && !isLatest && 'opacity-70')}>
             <div className="mb-3 flex items-center gap-3">
               <span className={cn(
                 'text-sm font-medium',
-                isLatest ? 'text-foreground' : 'text-muted-foreground'
+                label || isLatest ? 'text-foreground' : 'text-muted-foreground'
               )}>
-                {formatPeriod(start, end)}
+                {label ?? formatPeriod(start, end)}
               </span>
-              {isLatest && (
+              {label ? (
+                <span className="text-[11px] text-muted-foreground/60">{displayedCards.length}건</span>
+              ) : isLatest ? (
                 <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-brand-600/10 text-brand-600">최신</span>
-              )}
-              {!isLatest && (
+              ) : (
                 <span className="text-[11px] text-muted-foreground/60">이전 인사이트</span>
               )}
               <div className="flex-1 h-px bg-border" />

@@ -4,9 +4,9 @@ import { useSearchParams } from 'next/navigation'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 
 const TABS = [
-  { id: 'watchlist',  label: '관심기업', href: '/dashboard/entities?view=watchlist' },
-  { id: 'competitor', label: '경쟁사',   href: '/dashboard/entities?view=competitor' },
-  { id: 'briefing',   label: '브리핑',   href: '/dashboard/entities?view=briefing' },
+  { id: 'watchlist',  label: '관심기업',     href: '/dashboard/entities?view=watchlist' },
+  { id: 'competitor', label: '경쟁사(뉴스)', href: '/dashboard/entities?view=competitor' },
+  { id: 'trend',      label: '경쟁사(동향)', href: '/dashboard/entities?view=trend' },
 ]
 
 export default function EntityTabs() {

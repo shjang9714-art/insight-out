@@ -3,8 +3,6 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
-import { cn } from '@/lib/utils'
 import { getKstTodayStartIso } from '@/lib/date'
 import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
 import EntityTabs from '@/components/entities/EntityTabs'
@@ -24,7 +22,9 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ view?: string }>
 
-const VALID_VIEWS = ['watchlist', 'competitor', 'briefing'] as const
+const VALID_VIEWS = ['watchlist', 'competitor', 'trend'] as const
+
+const COMPETITOR_GROUP_ORDER = ['통신', '클라우드·플랫폼', '빅테크']
 type ViewId = typeof VALID_VIEWS[number]
 
 const WATCHLIST_LIMIT = 20
@@ -224,42 +224,154 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
     }
   }
 
-  // ─── 브리핑 탭 ───────────────────────────────────────────────────────────
-  interface BriefingRow {
-    entity_id: string
-    signal_count: number
-    content_count: number
-    signal_types: string[] | null
-    last_seen: string | null
-  }
-  interface BriefingEntityMeta {
-    id: string
-    canonical_name: string
-    entity_type: EntityType
-    is_competitor: boolean
-  }
+  // ─── 경쟁사(동향) 탭 ─────────────────────────────────────────────────────────
+  // 헤드라인분석(insight_cards) 카드를 competitor_group(통신/클라우드·플랫폼/빅테크)으로
+  // 재그룹핑해 재사용(224). 새 AI 생성 없음 — 기존 카드 재배치만.
+  const trendGroups: InsightGroup[] = []
+  const trendContentMap: Record<string, ContentMetaRecord> = {}
+  const trendBucketByTopic: Record<string, TagBucket> = {}
+  let hasAnyCompetitorGroup = false
 
-  const briefingRows: BriefingRow[] = []
-  const briefingEntityMap = new Map<string, BriefingEntityMeta>()
+  if (view === 'trend') {
+    type EntityGroupRow = { id: string; canonical_name: string; competitor_group: string | null }
+    type AliasRow = { entity_id: string; alias: string }
+    type KgRow = { name: string; tag_type: string; include_patterns: string[] }
 
-  if (view === 'briefing') {
-    const { data: summaryData } = await supabase
-      .from('entity_signal_summary')
-      .select('entity_id, signal_count, content_count, signal_types, last_seen')
-      .order('signal_count', { ascending: false })
-      .limit(30)
-
-    if (summaryData && summaryData.length > 0) {
-      briefingRows.push(...(summaryData as unknown as BriefingRow[]))
-
-      const eids = briefingRows.map(r => r.entity_id)
-      const { data: entData } = await supabase
+    const [cardsRes, entitiesRes, aliasesRes, keywordGroupsRes] = await Promise.all([
+      supabase
+        .from('insight_cards')
+        .select('id, period_start, period_end, scope, topic, headline, implication, source_content_ids, citations, generated_at, status')
+        .eq('status', 'published')
+        .in('scope', ['industry', 'company'])
+        .order('period_start', { ascending: false })
+        .order('generated_at', { ascending: false })
+        .limit(80),
+      supabase
         .from('entities')
-        .select('id, canonical_name, entity_type, is_competitor')
-        .in('id', eids)
+        .select('id, canonical_name, competitor_group')
+        .not('competitor_group', 'is', null),
+      supabase
+        .from('entity_aliases')
+        .select('entity_id, alias'),
+      supabase
+        .from('keyword_groups')
+        .select('name, tag_type, include_patterns')
+        .eq('is_active', true)
+        .limit(200),
+    ])
 
-      for (const e of (entData ?? []) as BriefingEntityMeta[]) {
-        briefingEntityMap.set(e.id, e)
+    // competitor_group 컬럼 미적용(224 SQL 미실행, 42703) — graceful. 그룹 없음으로 처리.
+    if (entitiesRes.error?.code !== '42703') {
+      const groupByEntityId = new Map<string, string>()
+      const entityRows = (entitiesRes.data ?? []) as EntityGroupRow[]
+      for (const e of entityRows) {
+        if (e.competitor_group) groupByEntityId.set(e.id, e.competitor_group)
+      }
+
+      // 이름/별칭(lower) → competitor_group 맵
+      const nameToGroup = new Map<string, string>()
+      for (const e of entityRows) {
+        const grp = groupByEntityId.get(e.id)
+        if (grp) nameToGroup.set(e.canonical_name.toLowerCase(), grp)
+      }
+      for (const a of (aliasesRes.data ?? []) as AliasRow[]) {
+        const grp = groupByEntityId.get(a.entity_id)
+        if (grp) nameToGroup.set(a.alias.toLowerCase(), grp)
+      }
+      hasAnyCompetitorGroup = nameToGroup.size > 0
+
+      // 카드 topic → 그룹 매칭: 정확일치 우선, 부분포함은 길이 3+ 별칭만(짧은 별칭 오탐 방지, 224 §3)
+      function matchGroup(topic: string): string | null {
+        const t = topic.toLowerCase()
+        const exact = nameToGroup.get(t)
+        if (exact) return exact
+        for (const [name, grp] of nameToGroup) {
+          if (name.length >= 3 && (t.includes(name) || name.includes(t))) return grp
+        }
+        return null
+      }
+
+      const rawCards = ((cardsRes.data ?? []) as InsightCard[]).filter(c => c.topic)
+      const byGroup = new Map<string, InsightCard[]>()
+      for (const card of rawCards) {
+        const grp = matchGroup(card.topic)
+        if (!grp) continue
+        if (!byGroup.has(grp)) byGroup.set(grp, [])
+        byGroup.get(grp)!.push(card)
+      }
+
+      const orderedGroupNames = [
+        ...COMPETITOR_GROUP_ORDER.filter(g => byGroup.has(g)),
+        ...[...byGroup.keys()].filter(g => !COMPETITOR_GROUP_ORDER.includes(g)),
+      ]
+      for (const groupName of orderedGroupNames) {
+        trendGroups.push({ key: groupName, start: '', end: '', label: groupName, cards: byGroup.get(groupName)! })
+      }
+
+      // 토픽→버킷 매핑 (167 규칙, watchlist와 동일 방식)
+      const patternTagMap = new Map<string, string>()
+      for (const g of (keywordGroupsRes.data ?? []) as KgRow[]) {
+        const tagType = g.tag_type
+        const gNameLower = g.name.toLowerCase()
+        if (!patternTagMap.has(gNameLower) || patternTagMap.get(gNameLower) === 'industry') {
+          patternTagMap.set(gNameLower, tagType)
+        }
+        for (const pat of (g.include_patterns ?? [])) {
+          const lower = pat.toLowerCase()
+          const existing = patternTagMap.get(lower)
+          if (!existing || existing === 'industry') {
+            patternTagMap.set(lower, tagType)
+          }
+        }
+      }
+      for (const card of rawCards) {
+        if (byGroup.has(matchGroup(card.topic) ?? '')) {
+          const tagType = patternTagMap.get(card.topic.toLowerCase())
+          trendBucketByTopic[card.topic] = tagTypeToBucket(tagType)
+        }
+      }
+
+      // card_headline 보강 + contentMap (watchlist와 동일 방식, 224 §2-2-5)
+      if (trendGroups.length > 0) {
+        const allCards = trendGroups.flatMap(g => g.cards)
+        const allIds = new Set<string>()
+        for (const card of allCards) {
+          for (const id of card.source_content_ids) allIds.add(id)
+          for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
+        }
+
+        const [{ data: chData, error: chErr }, { data: contents }] = await Promise.all([
+          supabase
+            .from('insight_cards')
+            .select('id, card_headline')
+            .in('id', allCards.map(c => c.id)),
+          allIds.size > 0
+            ? supabase
+                .from('contents')
+                .select('id, title, category, matched_keywords, sources(name)')
+                .in('id', [...allIds])
+            : Promise.resolve({ data: [] as unknown[] }),
+        ])
+
+        if (!chErr && chData) {
+          const chMap = new Map(
+            (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
+          )
+          for (const card of allCards) {
+            const ch = chMap.get(card.id)
+            if (ch) card.card_headline = ch
+          }
+        }
+
+        for (const row of contents ?? []) {
+          const r = row as unknown as { id: string; title: string; category: string | null; matched_keywords: string[] | null; sources: { name: string } | null }
+          trendContentMap[r.id] = {
+            title: r.title,
+            category: r.category,
+            sourceName: r.sources?.name ?? null,
+            matchedKeywords: r.matched_keywords,
+          }
+        }
       }
     }
   }
@@ -353,67 +465,26 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         </div>
       )}
 
-      {/* 브리핑 탭 */}
-      {view === 'briefing' && (
+      {/* 경쟁사(동향) 탭 */}
+      {view === 'trend' && (
         <div>
-          {briefingRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              시그널 데이터가 있는 엔티티가 없습니다.
+          {trendGroups.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
+              <p className="text-sm font-medium text-foreground">
+                {!hasAnyCompetitorGroup ? '아직 등록된 경쟁사 그룹이 없습니다' : '경쟁사 동향 인사이트가 아직 없습니다'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {!hasAnyCompetitorGroup
+                  ? '어드민 > 엔티티 관리에서 경쟁사 그룹(통신·클라우드/플랫폼·빅테크)을 지정하면 여기에 모아 보여드립니다.'
+                  : '등록된 경쟁사 관련 AI 인사이트가 생성되면 이곳에 표시됩니다.'}
+              </p>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {briefingRows.map(row => {
-                const ent = briefingEntityMap.get(row.entity_id)
-                if (!ent) return null
-                const typeLabel = ENTITY_TYPE_LABEL[ent.entity_type]
-                const displayDate = row.last_seen
-                  ? new Date(row.last_seen).toLocaleDateString('ko-KR', {
-                      timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
-                    })
-                  : null
-                const topSignals = (row.signal_types ?? []).slice(0, 3)
-                return (
-                  <Link
-                    key={row.entity_id}
-                    href={`/dashboard/entities/${row.entity_id}`}
-                    className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="text-sm font-semibold text-foreground leading-snug line-clamp-1">
-                        {ent.canonical_name}
-                      </span>
-                      <span className={cn(
-                        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                        ent.is_competitor && ent.entity_type === 'company'
-                          ? 'border-red-200 bg-red-50 text-red-700'
-                          : 'border-border bg-muted text-muted-foreground'
-                      )}>
-                        {typeLabel}
-                      </span>
-                    </div>
-
-                    {topSignals.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1">
-                        {topSignals.map(sig => (
-                          <span
-                            key={sig}
-                            className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
-                          >
-                            {sig}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                      <span>시그널 {row.signal_count.toLocaleString()}건</span>
-                      <span>콘텐츠 {row.content_count.toLocaleString()}건</span>
-                      {displayDate && <span className="ml-auto">{displayDate}</span>}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
+            <InsightCardsSectionClient
+              groups={trendGroups}
+              contentMap={trendContentMap}
+              bucketByTopic={trendBucketByTopic}
+            />
           )}
         </div>
       )}

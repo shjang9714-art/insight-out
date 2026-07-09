@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
-import type { EntityType } from '@/lib/types'
+import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
 import InsightBriefCard from '@/components/analysis/InsightBriefCard'
@@ -35,7 +35,19 @@ export interface TopicTrend {
   changePct: number | null
 }
 
-export type AiInsightViewId = 'brief' | 'headline' | 'trending' | 'issues' | 'graph'
+export type AiInsightViewId = 'brief' | 'headline' | 'trending' | 'issues' | 'graph' | 'keyword'
+
+/** 엔티티별 시그널 요약 — 구 기업동향 브리핑(224에서 제거)을 옮겨옴(224B). */
+export interface SignalItem {
+  entityId: string
+  name: string
+  entityType: EntityType
+  isCompetitor: boolean
+  signalCount: number
+  contentCount: number
+  signalTypes: string[]
+  lastSeen: string | null
+}
 
 export interface AiInsightBoardProps {
   initialView: AiInsightViewId
@@ -57,6 +69,7 @@ export interface AiInsightBoardProps {
   }[]
   initialCenter: EntitySummary | null
   totalByType: Record<string, number>
+  signalItems: SignalItem[]
 }
 
 // ─── 하위 카테고리 탭 ──────────────────────────────────────────────────────────
@@ -67,6 +80,7 @@ const TABS: { id: AiInsightViewId; label: string }[] = [
   { id: 'trending', label: '뜨는 토픽' },
   { id: 'issues',   label: '이슈 타임라인' },
   { id: 'graph',    label: '관계지도' },
+  { id: 'keyword',  label: '키워드 분석' },
 ]
 
 // ─── 보드 ──────────────────────────────────────────────────────────────────────
@@ -84,6 +98,7 @@ export default function AiInsightBoard({
   allEntities,
   initialCenter,
   totalByType,
+  signalItems,
 }: AiInsightBoardProps) {
   const [view, setView] = useState<AiInsightViewId>(initialView)
 
@@ -201,6 +216,70 @@ export default function AiInsightBoard({
           totalByType={totalByType}
           showLensSwitcher={false}
         />
+      )}
+
+      {/* 키워드 분석 — 엔티티별 시그널 요약(구 기업동향 브리핑, 224B) */}
+      {view === 'keyword' && (
+        <section>
+          <p className="mb-4 text-xs text-muted-foreground">엔티티별 시그널 요약 — 신호가 많은 순</p>
+          {signalItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              시그널 데이터가 있는 엔티티가 없습니다.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {signalItems.map(item => {
+                const typeLabel = ENTITY_TYPE_LABEL[item.entityType]
+                const displayDate = item.lastSeen
+                  ? new Date(item.lastSeen).toLocaleDateString('ko-KR', {
+                      timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
+                    })
+                  : null
+                const topSignals = item.signalTypes.slice(0, 3)
+                return (
+                  <Link
+                    key={item.entityId}
+                    href={`/dashboard/entities/${item.entityId}`}
+                    className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-sm font-semibold text-foreground leading-snug line-clamp-1">
+                        {item.name}
+                      </span>
+                      <span className={cn(
+                        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                        item.isCompetitor && item.entityType === 'company'
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : 'border-border bg-muted text-muted-foreground'
+                      )}>
+                        {typeLabel}
+                      </span>
+                    </div>
+
+                    {topSignals.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {topSignals.map(sig => (
+                          <span
+                            key={sig}
+                            className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+                          >
+                            {sig}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <span>시그널 {item.signalCount.toLocaleString()}건</span>
+                      <span>콘텐츠 {item.contentCount.toLocaleString()}건</span>
+                      {displayDate && <span className="ml-auto">{displayDate}</span>}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </section>
       )}
     </div>
   )

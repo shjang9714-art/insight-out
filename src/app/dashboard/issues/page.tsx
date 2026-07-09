@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ view?: string }>
 
-const VALID_VIEWS = ['brief', 'headline', 'trending', 'issues', 'graph'] as const
+const VALID_VIEWS = ['brief', 'headline', 'trending', 'issues', 'graph', 'keyword'] as const
 type ViewId = typeof VALID_VIEWS[number]
 
 export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {

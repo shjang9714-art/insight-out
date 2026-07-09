@@ -11,7 +11,7 @@ import {
   RISK_VOCAB,
   type BriefInput,
 } from '@/lib/briefing/insight-brief'
-import AiInsightBoard, { type TopicTrend } from '@/components/analysis/AiInsightBoard'
+import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
 
 const WATCHLIST_LIMIT = 20
 
@@ -70,7 +70,7 @@ function computeTrendingTopics(
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
-export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief' | 'headline' | 'trending' | 'issues' | 'graph' }) {
+export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief' | 'headline' | 'trending' | 'issues' | 'graph' | 'keyword' }) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -94,7 +94,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -133,6 +133,11 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       .select('id, canonical_name, entity_type, is_competitor, mention_count, description')
       .order('mention_count', { ascending: false })
       .limit(500),
+    supabase
+      .from('entity_signal_summary')
+      .select('entity_id, signal_count, content_count, signal_types, last_seen')
+      .order('signal_count', { ascending: false })
+      .limit(30),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
@@ -153,6 +158,44 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const totalByType: Record<string, number> = { 전체: allEntities.length }
   for (const type of Object.keys(ENTITY_TYPE_LABEL) as EntityType[]) {
     totalByType[type] = allEntities.filter((e) => e.entity_type === type).length
+  }
+
+  // ─── 키워드 분석(구 기업동향 브리핑, 224B) — entity_signal_summary + entities 조인 ──────
+  type SignalRow = {
+    entity_id: string
+    signal_count: number
+    content_count: number
+    signal_types: string[] | null
+    last_seen: string | null
+  }
+  const signalRows = (signalSummaryRes.data ?? []) as SignalRow[]
+  const signalItems: SignalItem[] = []
+  if (signalRows.length > 0) {
+    const eids = signalRows.map(r => r.entity_id)
+    const { data: signalEntData } = await supabase
+      .from('entities')
+      .select('id, canonical_name, entity_type, is_competitor')
+      .in('id', eids)
+
+    type SignalEntityMeta = { id: string; canonical_name: string; entity_type: EntityType; is_competitor: boolean }
+    const signalEntityMap = new Map<string, SignalEntityMeta>(
+      ((signalEntData ?? []) as SignalEntityMeta[]).map(e => [e.id, e])
+    )
+
+    for (const row of signalRows) {
+      const meta = signalEntityMap.get(row.entity_id)
+      if (!meta) continue
+      signalItems.push({
+        entityId: row.entity_id,
+        name: meta.canonical_name,
+        entityType: meta.entity_type,
+        isCompetitor: meta.is_competitor,
+        signalCount: row.signal_count,
+        contentCount: row.content_count,
+        signalTypes: row.signal_types ?? [],
+        lastSeen: row.last_seen,
+      })
+    }
   }
 
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
@@ -326,6 +369,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       allEntities={allEntities}
       initialCenter={initialCenter}
       totalByType={totalByType}
+      signalItems={signalItems}
     />
   )
 }

@@ -27,6 +27,13 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
 const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'policy', 'industry']
+/** 경쟁사(동향, 224) 그룹 — 자유 텍스트 허용, 이 3개는 추천값(datalist)만 */
+const COMPETITOR_GROUP_SUGGESTIONS = ['통신', '클라우드·플랫폼', '빅테크']
+
+const ENTITY_SELECT_WITH_GROUP =
+  'id, canonical_name, entity_type, description, is_competitor, service_id, mention_count, competitor_group'
+const ENTITY_SELECT_NO_GROUP =
+  'id, canonical_name, entity_type, description, is_competitor, service_id, mention_count'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +45,8 @@ interface EntityRow {
   is_competitor: boolean
   service_id: string | null
   mention_count: number
+  /** 224 SQL 미적용 시 셀렉트에서 제외되어 undefined일 수 있음 */
+  competitor_group?: string | null
 }
 
 interface ServiceRow {
@@ -57,14 +66,16 @@ interface EntityForm {
   description: string
   is_competitor: boolean
   service_id: string
+  competitor_group: string
 }
 
 const FORM_INIT: EntityForm = {
-  canonical_name: '',
-  entity_type:    'company',
-  description:    '',
-  is_competitor:  false,
-  service_id:     '',
+  canonical_name:   '',
+  entity_type:      'company',
+  description:      '',
+  is_competitor:    false,
+  service_id:       '',
+  competitor_group: '',
 }
 
 // ─── 동의어 칩 입력 ─────────────────────────────────────────────────────────
@@ -141,6 +152,8 @@ export default function EntityManager() {
   const [isLoading,     setIsLoading]     = useState(true)
   const [error,         setError]         = useState<string | null>(null)
   const [filterType,    setFilterType]    = useState<EntityType | 'all'>('all')
+  // 224 SQL(entities.competitor_group) 미적용 시 false — graceful degrade(필드 숨김·저장 시 제외)
+  const [groupSupported, setGroupSupported] = useState(true)
   const [searchQuery,   setSearchQuery]   = useState('')
   const [searchResults, setSearchResults] = useState<EntityRow[] | null>(null)
   const [isSearching,   setIsSearching]   = useState(false)
@@ -180,11 +193,25 @@ export default function EntityManager() {
 
   // ── 초기 로드 ─────────────────────────────────────────────────────────────
 
-  async function loadEntities() {
-    const { data, error: err } = await supabase
+  /** competitor_group 포함 셀렉트 우선 시도, 컬럼 미존재(42703, 224 SQL 미적용)면 제외하고 재시도(graceful). */
+  async function fetchEntitiesGraceful() {
+    const withGroup = await supabase
       .from('entities')
-      .select('id, canonical_name, entity_type, description, is_competitor, service_id, mention_count')
+      .select(ENTITY_SELECT_WITH_GROUP)
       .order('mention_count', { ascending: false })
+    if (!withGroup.error) return { data: withGroup.data, error: null, groupSupported: true }
+    if (withGroup.error.code !== '42703') return { data: null, error: withGroup.error, groupSupported: true }
+
+    const fallback = await supabase
+      .from('entities')
+      .select(ENTITY_SELECT_NO_GROUP)
+      .order('mention_count', { ascending: false })
+    return { data: fallback.data, error: fallback.error, groupSupported: false }
+  }
+
+  async function loadEntities() {
+    const { data, error: err, groupSupported } = await fetchEntitiesGraceful()
+    setGroupSupported(groupSupported)
     if (err) {
       setError(`엔티티 목록 로드 실패: ${err.message}`)
     } else {
@@ -196,12 +223,10 @@ export default function EntityManager() {
     const init = async () => {
       setIsLoading(true)
       const [entRes, svcRes] = await Promise.all([
-        supabase
-          .from('entities')
-          .select('id, canonical_name, entity_type, description, is_competitor, service_id, mention_count')
-          .order('mention_count', { ascending: false }),
+        fetchEntitiesGraceful(),
         supabase.from('services').select('id, name').order('name'),
       ])
+      setGroupSupported(entRes.groupSupported)
       if (entRes.error) {
         setError(`엔티티 목록 로드 실패: ${entRes.error.message}`)
       } else {
@@ -266,11 +291,12 @@ export default function EntityManager() {
 
   function openEdit(entity: EntityRow) {
     setForm({
-      canonical_name: entity.canonical_name,
-      entity_type:    entity.entity_type,
-      description:    entity.description ?? '',
-      is_competitor:  entity.is_competitor,
-      service_id:     entity.service_id ?? '',
+      canonical_name:   entity.canonical_name,
+      entity_type:      entity.entity_type,
+      description:      entity.description ?? '',
+      is_competitor:    entity.is_competitor,
+      service_id:       entity.service_id ?? '',
+      competitor_group: entity.competitor_group ?? '',
     })
     setEditingId(entity.id)
     setFormError(null)
@@ -292,12 +318,16 @@ export default function EntityManager() {
 
     setIsSaving(true)
     try {
+      const competitorGroup = form.competitor_group.trim() || null
       const payload = {
         canonical_name: form.canonical_name.trim(),
         entity_type:    form.entity_type,
         description:    form.description.trim() || null,
-        is_competitor:  form.is_competitor,
+        // 그룹 지정 시 경쟁사 자동 체크(224 §2-4) — 수동 체크 해제도 유지
+        is_competitor:  form.is_competitor || Boolean(competitorGroup),
         service_id:     form.service_id || null,
+        // 224 SQL 미적용 시 컬럼 자체가 없어 payload에 넣으면 저장이 실패하므로 제외(graceful)
+        ...(groupSupported ? { competitor_group: competitorGroup } : {}),
       }
 
       if (editingId) {
@@ -879,6 +909,24 @@ export default function EntityManager() {
                   </label>
                 </div>
               </div>
+              {groupSupported && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="ent-competitor-group">
+                    경쟁사 그룹(동향){' '}
+                    <span className="text-xs font-normal text-muted-foreground">(선택, 자유 입력 — 지정 시 경쟁사 자동 체크)</span>
+                  </Label>
+                  <Input
+                    id="ent-competitor-group"
+                    list="competitor-group-suggestions"
+                    value={form.competitor_group}
+                    onChange={(e) => setForm(p => ({ ...p, competitor_group: e.target.value }))}
+                    placeholder="예: 통신 / 클라우드·플랫폼 / 빅테크"
+                  />
+                  <datalist id="competitor-group-suggestions">
+                    {COMPETITOR_GROUP_SUGGESTIONS.map(g => <option key={g} value={g} />)}
+                  </datalist>
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-1">
                 <Button type="button" variant="outline" onClick={closeForm}>취소</Button>
                 <Button type="submit" disabled={isSaving}>
@@ -1111,9 +1159,14 @@ export default function EntityManager() {
                     {entity.mention_count}
                   </td>
                   <td className="px-4 py-3">
-                    {entity.is_competitor && (
-                      <StatusBadge tone="negative" label="경쟁사" />
-                    )}
+                    <div className="flex flex-wrap items-center gap-1">
+                      {entity.is_competitor && (
+                        <StatusBadge tone="negative" label="경쟁사" />
+                      )}
+                      {entity.competitor_group && (
+                        <StatusBadge tone="neutral" label={entity.competitor_group} />
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-0.5">
