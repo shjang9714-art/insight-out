@@ -6,11 +6,7 @@ import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { tagTypeToBucket, type KeywordItem } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
-import {
-  buildRuleBrief,
-  RISK_VOCAB,
-  type BriefInput,
-} from '@/lib/briefing/insight-brief'
+import type { KeyInsightRow } from '@/lib/key-insights/types'
 import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
 
 const WATCHLIST_LIMIT = 20
@@ -94,7 +90,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, keyInsightRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -138,6 +134,15 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       .select('entity_id, signal_count, content_count, signal_types, last_seen')
       .order('signal_count', { ascending: false })
       .limit(30),
+    // "핵심 Insight" 탭(§2-2) — 게시된 전 주차. 주차 수가 적어 한 번에 받아 최신 주차만 초기 표시,
+    // 나머지는 KeyInsightArchive 가 주차 선택 시 /api/key-insights 로 지연 조회.
+    supabase
+      .from('key_insights')
+      .select('*')
+      .eq('status', 'published')
+      .order('week_of', { ascending: false })
+      .order('display_order', { ascending: true, nullsFirst: false })
+      .limit(500),
   ])
 
   const cards = (insightRes.data ?? []) as InsightCard[]
@@ -336,29 +341,21 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const fallingKws = classifiedKeywords.filter(k => k.direction === '▽').slice(0, 2)
   const kwStrip    = [...risingKws, ...fallingKws]
 
-  // ─── 브리핑 규칙 기반 즉시 생성 (LLM 동기 경로 제거) ─────────────────────
-  const risingKwNames = classifiedKeywords.filter(k => k.direction === '▲').map(k => k.name)
-  const watchlistHits = watchlist
-    .filter(w => risingKwNames.some(kw => {
-      const kl = kw.toLowerCase(); const wl = w.company.toLowerCase()
-      return kl === wl || kl.includes(wl) || wl.includes(kl)
-    }))
-    .map(w => {
-      const matchedKw = risingKwNames.find(kw => {
-        const kl = kw.toLowerCase(); const wl = w.company.toLowerCase()
-        return kl === wl || kl.includes(wl) || wl.includes(kl)
-      })
-      return { company: w.company, count: kwCurFreq[matchedKw ?? ''] ?? 1 }
-    })
-  const riskKeywords = risingKwNames.filter(kw => RISK_VOCAB.some(r => kw.includes(r)))
-  const briefInput: BriefInput = { trendingTopics, risingKeywords: risingKwNames, watchlistHits, riskKeywords }
-  const brief = buildRuleBrief(briefInput)
+  // ─── "핵심 Insight" 탭(§2-2) — 게시된 전 주차에서 주차 목록·최신 주차 카드 도출 ──
+  const keyInsightRows = (keyInsightRes.data ?? []) as KeyInsightRow[]
+  const keyInsightWeeks = [...new Set(keyInsightRows.map(r => r.week_of))]
+  const keyInsightWeekOf = keyInsightWeeks[0] ?? null
+  const keyInsightCards = keyInsightWeekOf
+    ? keyInsightRows.filter(r => r.week_of === keyInsightWeekOf)
+    : []
 
   // ─── 클라이언트 보드에 데이터 props 위임 ─────────────────────────────────
   return (
     <AiInsightBoard
       initialView={view}
-      brief={brief}
+      keyInsightWeeks={keyInsightWeeks}
+      keyInsightWeekOf={keyInsightWeekOf}
+      keyInsightCards={keyInsightCards}
       insightGroups={insightGroups}
       contentMap={contentMapRecord}
       trendingTopics={trendingTopics}

@@ -6,7 +6,8 @@ import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
-import InsightBriefCard from '@/components/analysis/InsightBriefCard'
+import KeyInsightArchive from '@/components/key-insights/KeyInsightArchive'
+import type { KeyInsightRow } from '@/lib/key-insights/types'
 import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
@@ -18,15 +19,6 @@ import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
-
-// InsightBrief 인라인 정의 — server-only 모듈 import 회피
-interface InsightBrief {
-  keyChanges: string[]
-  risks: string[]
-  keywords: string[]
-  myImplication: string | null
-  source: 'rule' | 'llm'
-}
 
 export interface TopicTrend {
   group: string
@@ -51,7 +43,9 @@ export interface SignalItem {
 
 export interface AiInsightBoardProps {
   initialView: AiInsightViewId
-  brief: InsightBrief
+  keyInsightWeeks: string[]
+  keyInsightWeekOf: string | null
+  keyInsightCards: KeyInsightRow[]
   insightGroups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
   trendingTopics: TopicTrend[]
@@ -89,7 +83,9 @@ const VALID_VIEW_IDS: readonly AiInsightViewId[] = TABS.map(t => t.id)
 
 export default function AiInsightBoard({
   initialView,
-  brief,
+  keyInsightWeeks,
+  keyInsightWeekOf,
+  keyInsightCards,
   insightGroups,
   contentMap,
   trendingTopics,
@@ -130,8 +126,14 @@ export default function AiInsightBoard({
         <ScopeFilter />
       </div>
 
-      {/* 브리핑 요약 */}
-      {view === 'brief' && <InsightBriefCard brief={brief} />}
+      {/* 핵심 Insight — 주간 배치 아카이브(§2-2) */}
+      {view === 'brief' && (
+        <KeyInsightArchive
+          initialWeeks={keyInsightWeeks}
+          initialWeekOf={keyInsightWeekOf}
+          initialCards={keyInsightCards}
+        />
+      )}
 
       {/* 헤드라인 분석 */}
       {view === 'headline' && (
