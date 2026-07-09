@@ -3,18 +3,19 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import type { InsightCard, InsightCardCitation, WatchlistItem } from '@/lib/types'
+import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import EntityTabs from '@/components/entities/EntityTabs'
 import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
 } from '@/components/analysis/InsightCardsSectionClient'
-import { tagTypeToBucket, BUCKET_CHIP_CLS, type TagBucket } from '@/lib/tag-buckets'
+import { tagTypeToBucket, type TagBucket } from '@/lib/tag-buckets'
 import PageContainer from '@/components/PageContainer'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
-import { getCardDetailHref, computeImportance, IMPORTANCE_LABEL, IMPORTANCE_CLS } from '@/lib/insight/card-meta'
+import { getMajorCompaniesData } from '@/lib/entities/major-companies'
+import MajorCompanyGroups from '@/components/entities/MajorCompanyGroups'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,13 +30,6 @@ const VALID_VIEWS = ['watchlist', 'competitor', 'trend'] as const
 
 const COMPETITOR_GROUP_ORDER = ['통신', '클라우드·플랫폼', '빅테크']
 type ViewId = typeof VALID_VIEWS[number]
-
-const WATCHLIST_LIMIT = 20
-
-function formatShortPeriod(start: string, end: string): string {
-  const fmt = (d: Date) => `${d.getMonth() + 1}.${d.getDate()}`
-  return `${fmt(new Date(start))}~${fmt(new Date(end))}`
-}
 
 export default async function EntitiesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
@@ -60,100 +54,13 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // ─── 관심기업 탭 ─────────────────────────────────────────────────────────
-  // 249: 기간 그룹핑 폐지 → 회사별 최신 카드 1개 그리드. 카드 클릭 시 상세(/dashboard/insights/[id]).
-  const companyCards: InsightCard[] = []
-  const bucketByTopic: Record<string, TagBucket> = {}
-  let watchlist: WatchlistItem[] = []
-
-  if (view === 'watchlist') {
-    const [watchlistRes, companyCardsRes, keywordGroupsRes] = await Promise.all([
-      user
-        ? supabase
-            .from('user_watchlist')
-            .select('id, user_id, company, created_at')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: true })
-            .limit(WATCHLIST_LIMIT)
-        : Promise.resolve({ data: [], error: null }),
-      supabase
-        .from('insight_cards')
-        .select('id, period_start, period_end, scope, topic, headline, implication, source_content_ids, citations, generated_at, status')
-        .eq('status', 'published')
-        .eq('scope', 'company')
-        .order('period_start', { ascending: false })
-        .order('generated_at', { ascending: false })
-        .limit(60),
-      supabase
-        .from('keyword_groups')
-        .select('name, tag_type, include_patterns')
-        .eq('is_active', true)
-        .limit(200),
-    ])
-
-    watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
-    const rawCompanyCards = (companyCardsRes.data ?? []) as InsightCard[]
-
-    // ─── 토픽→버킷 매핑 (167 규칙 재사용) ────────────────────────────────────
-    type KgRow = { name: string; tag_type: string; include_patterns: string[] }
-    const patternTagMap = new Map<string, string>()
-    for (const g of (keywordGroupsRes.data ?? []) as KgRow[]) {
-      const tagType = g.tag_type
-      const gNameLower = g.name.toLowerCase()
-      if (!patternTagMap.has(gNameLower) || patternTagMap.get(gNameLower) === 'industry') {
-        patternTagMap.set(gNameLower, tagType)
-      }
-      for (const pat of (g.include_patterns ?? [])) {
-        const lower = pat.toLowerCase()
-        const existing = patternTagMap.get(lower)
-        if (!existing || existing === 'industry') {
-          patternTagMap.set(lower, tagType)
-        }
-      }
-    }
-
-    if (watchlist.length > 0) {
-      const watchlistLower = watchlist.map(w => w.company.toLowerCase())
-      const isWatched = (name: string) => {
-        const lower = name.toLowerCase()
-        return watchlistLower.some(e => lower === e || lower.includes(e) || e.includes(lower))
-      }
-
-      // 회사별 최신 카드 1개만 — 쿼리가 이미 period_start desc, generated_at desc 정렬이므로
-      // 회사(topic)별 첫 등장이 최신 카드. top-N 캡 없음(249 결정).
-      const matchedCards = rawCompanyCards.filter(c => c.topic && isWatched(c.topic))
-      const seenTopics = new Set<string>()
-      for (const card of matchedCards) {
-        const key = card.topic.toLowerCase()
-        if (seenTopics.has(key)) continue
-        seenTopics.add(key)
-        companyCards.push(card)
-      }
-
-      for (const card of companyCards) {
-        const tagType = patternTagMap.get(card.topic.toLowerCase())
-        bucketByTopic[card.topic] = tagTypeToBucket(tagType)
-      }
-
-      // card_headline 보강(그리드 카드 "핵심" 표시용) — 근거 콘텐츠는 상세 페이지에서 조회(249)
-      if (companyCards.length > 0) {
-        const { data: chData, error: chErr } = await supabase
-          .from('insight_cards')
-          .select('id, card_headline')
-          .in('id', companyCards.map(c => c.id))
-
-        if (!chErr && chData) {
-          const chMap = new Map(
-            (chData as { id: string; card_headline: string | null }[]).map(r => [r.id, r.card_headline])
-          )
-          for (const c of companyCards) {
-            const ch = chMap.get(c.id)
-            if (ch) c.card_headline = ch
-          }
-        }
-      }
-    }
-  }
+  // ─── 주요 기업 탭 ─────────────────────────────────────────────────────────
+  // 255: curated_groups/curated_companies(253) 기반 계층(7그룹 → 대표 3~5 → 전체보기).
+  const majorCompanies = view === 'watchlist'
+    ? await getMajorCompaniesData(supabase, { userId: user?.id })
+    : { groups: [], curatedApplied: true }
+  const { groups: majorGroups, curatedApplied } = majorCompanies
+  const MAJOR_REP_COUNT = 5
 
   // ─── 경쟁사 최근 뉴스 탭 ─────────────────────────────────────────────────
   // 데이터 조립은 lib/entities/competitor-news.ts 공유 헬퍼(245) — 전체 페이지와 동일 로직.
@@ -321,62 +228,26 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         <EntityTabs />
       </Suspense>
 
-      {/* 관심기업 탭 */}
+      {/* 주요 기업 탭 */}
       {view === 'watchlist' && (
         <div>
           {user && <WatchlistTabHeader />}
-          {!user || watchlist.length === 0 ? (
+          {!curatedApplied ? (
             <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-              <p className="text-sm font-medium text-foreground">아직 관심 기업이 없습니다</p>
-              <p className="text-xs text-muted-foreground">
-                {user ? (
-                  '위 "관심기업 설정" 버튼으로 회사를 검색해 추가하면 기업별 AI 인사이트가 여기 표시됩니다.'
-                ) : (
-                  <>
-                    <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">마이페이지</Link>
-                    에서 관심 기업을 설정하면 기업별 AI 인사이트가 여기 표시됩니다.
-                  </>
-                )}
-              </p>
+              <p className="text-sm font-medium text-foreground">주요 기업 데이터 준비 중입니다</p>
+              <p className="text-xs text-muted-foreground">큐레이션 그룹·기업 목록이 곧 반영됩니다.</p>
             </div>
-          ) : companyCards.length === 0 ? (
-            <p className="text-sm text-muted-foreground">관심 기업 인사이트가 아직 없습니다. (AI 생성·승인 후 표시)</p>
+          ) : majorGroups.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
+              <p className="text-sm font-medium text-foreground">주요 기업 동향이 아직 없습니다</p>
+              <p className="text-xs text-muted-foreground">AI 생성·승인 후 이곳에 표시됩니다.</p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {companyCards.map(card => {
-                const importance = computeImportance(card)
-                const evidenceCount = card.citations.length || card.source_content_ids.length
-                const bucket = bucketByTopic[card.topic] ?? '일반'
-                return (
-                  <Link
-                    key={card.id}
-                    href={getCardDetailHref(card)}
-                    className="rounded-xl border border-border bg-card p-5 space-y-3 hover:border-brand-200 transition-colors"
-                  >
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${BUCKET_CHIP_CLS[bucket]}`}>
-                        {card.topic}
-                      </span>
-                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${IMPORTANCE_CLS[importance]}`}>
-                        {IMPORTANCE_LABEL[importance]}
-                      </span>
-                    </div>
-                    <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">
-                      {card.card_headline ?? card.headline}
-                    </p>
-                    {card.implication && (
-                      <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                        {card.implication}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
-                      <span>{formatShortPeriod(card.period_start, card.period_end)}</span>
-                      {evidenceCount > 0 && <span>근거 {evidenceCount}건</span>}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
+            <MajorCompanyGroups
+              groups={majorGroups}
+              repCount={MAJOR_REP_COUNT}
+              seeAllHrefBase="/dashboard/entities/major"
+            />
           )}
         </div>
       )}

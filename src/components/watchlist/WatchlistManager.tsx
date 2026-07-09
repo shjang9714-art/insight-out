@@ -17,6 +17,16 @@ interface SearchResult {
   canonical_name: string
 }
 
+interface CuratedGroup {
+  key: string
+  label: string
+}
+
+interface CuratedCompany {
+  name: string
+  groups: string[]
+}
+
 interface Props {
   /** 추가·삭제 등 목록이 바뀔 때마다 호출 — 호출부(서버 컴포넌트 등) 갱신용 */
   onChange?: () => void
@@ -30,6 +40,8 @@ export default function WatchlistManager({ onChange }: Props) {
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [curatedGroups, setCuratedGroups] = useState<CuratedGroup[]>([])
+  const [curatedCompanies, setCuratedCompanies] = useState<CuratedCompany[]>([])
 
   // 최초 마운트 시 1회 로드(loaded 가드 — ArchiveButton 패턴)
   useEffect(() => {
@@ -60,6 +72,26 @@ export default function WatchlistManager({ onChange }: Props) {
       } else {
         setItems((data ?? []) as WatchlistRow[])
       }
+
+      // 255 — curated_groups/curated_companies(253) 있으면 그룹별 선택 UI 노출, 없으면 graceful 숨김
+      const [groupsRes, companiesRes] = await Promise.all([
+        supabase
+          .from('curated_groups')
+          .select('key, label')
+          .eq('kind', 'watchlist')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('curated_companies')
+          .select('name, groups')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true }),
+      ])
+      if (!groupsRes.error && !companiesRes.error) {
+        setCuratedGroups((groupsRes.data ?? []) as CuratedGroup[])
+        setCuratedCompanies((companiesRes.data ?? []) as CuratedCompany[])
+      }
+
       setLoaded(true)
       setLoading(false)
     }
@@ -141,6 +173,13 @@ export default function WatchlistManager({ onChange }: Props) {
     onChange?.()
   }
 
+  /** curated 회사 칩 토글 — 이미 선택돼 있으면 삭제, 아니면 추가(255) */
+  function toggleCurated(name: string) {
+    const existing = items.find(i => i.company.toLowerCase() === name.toLowerCase())
+    if (existing) void handleDelete(existing.id)
+    else void insertWatchlist(name, null)
+  }
+
   const trimmedQuery = query.trim()
   const exactMatch = results.some(r => r.canonical_name.toLowerCase() === trimmedQuery.toLowerCase())
 
@@ -172,6 +211,43 @@ export default function WatchlistManager({ onChange }: Props) {
           ))
         )}
       </div>
+
+      {/* 그룹별 회사 선택(255) — curated_groups/curated_companies(253) 있을 때만 노출 */}
+      {curatedGroups.length > 0 && curatedCompanies.length > 0 && (
+        <div className="space-y-2.5 rounded-lg border border-border bg-background p-3">
+          <p className="text-xs font-medium text-muted-foreground">그룹별 회사에서 대표 기업 선택</p>
+          {curatedGroups.map(group => {
+            const companiesInGroup = curatedCompanies.filter(c => c.groups.includes(group.key))
+            if (companiesInGroup.length === 0) return null
+            return (
+              <div key={group.key} className="space-y-1">
+                <p className="text-[11px] text-muted-foreground/70">{group.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {companiesInGroup.map(company => {
+                    const isSelected = items.some(i => i.company.toLowerCase() === company.name.toLowerCase())
+                    return (
+                      <button
+                        key={company.name}
+                        type="button"
+                        onClick={() => toggleCurated(company.name)}
+                        disabled={!isSelected && items.length >= MAX_WATCHLIST}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${
+                          isSelected
+                            ? 'border-brand-600 bg-brand-600/10 text-brand-600'
+                            : 'border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'
+                        }`}
+                      >
+                        {isSelected && <Check className="mr-1 inline h-2.5 w-2.5" />}
+                        {company.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* 검색/추가 */}
       <div className="relative">

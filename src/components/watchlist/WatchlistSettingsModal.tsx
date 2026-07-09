@@ -16,7 +16,7 @@ import {
 import WatchlistManager from './WatchlistManager'
 
 interface Props {
-  /** 트리거 커스텀 — 없으면 기본 "관심기업 설정" 버튼 */
+  /** 트리거 커스텀 — 없으면 기본 "주요 기업 설정" 버튼 */
   trigger?: ReactNode
   /** 추가·삭제 시 호출 — 호출부(서버 컴포넌트) 갱신용 */
   onChange?: () => void
@@ -32,14 +32,14 @@ export default function WatchlistSettingsModal({ trigger, onChange }: Props) {
         {trigger ?? (
           <Button type="button" variant="outline" size="sm">
             <Building2 className="mr-1.5 h-3.5 w-3.5" />
-            관심기업 설정
+            주요 기업 설정
           </Button>
         )}
       </DialogTrigger>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>관심기업 설정</DialogTitle>
+          <DialogTitle>주요 기업 설정</DialogTitle>
           <DialogDescription>
             검색해서 추가하면 기업동향·AI 인사이트에서 더 정확히 모아 보여드립니다.
           </DialogDescription>

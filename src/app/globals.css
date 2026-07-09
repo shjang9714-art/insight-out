@@ -534,3 +534,28 @@
   .io-login .io-glow-pulse { animation: none; opacity: .35; }
   .io-login .io-twinkle { animation: none; opacity: .5; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 주요 기업 골드 반짝 테두리 (255) — 이슈 중요도 high 카드용 형광펜 느낌 테두리.
+ * ───────────────────────────────────────────────────────────────────────── */
+.io-gold-glow {
+  position: relative;
+}
+.io-gold-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  background: linear-gradient(120deg, #f5b301, #ffe07a, #f5b301);
+  background-size: 200% 200%;
+  z-index: -1;
+  animation: ioGoldShift 3s ease infinite;
+  filter: blur(.3px);
+}
+@keyframes ioGoldShift {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-gold-glow::before { animation: none; }
+}
