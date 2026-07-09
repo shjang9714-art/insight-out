@@ -5,11 +5,12 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
 import Image from 'next/image'
-import { ExternalLink, ArrowLeft, Download, FileText } from 'lucide-react'
+import { ExternalLink, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
+import BackLink from '@/components/contents/BackLink'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
@@ -215,13 +216,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
       {/* 뒤로가기 */}
       <div className="mb-6">
-        <Link
-          href="/dashboard/contents"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          목록으로
-        </Link>
+        <BackLink className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600" />
       </div>
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
@@ -414,13 +409,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
 
         {/* 하단 액션 */}
         <div className="mt-10 flex items-center justify-between border-t border-border pt-6">
-          <Link
-            href="/dashboard/contents"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            목록으로
-          </Link>
+          <BackLink className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600" />
 
           <div className="flex items-center gap-2">
             {/* 북마크 저장 */}
