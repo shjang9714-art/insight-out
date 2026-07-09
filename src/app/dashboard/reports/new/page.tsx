@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, FileText, Search, Loader2, CheckSquare, Square } from 'lucide-react'
+import { FileText, Search, Loader2, CheckSquare, Square } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import type { AiReportType } from '@/lib/types'
 import PageContainer from '@/components/PageContainer'
+import BackLink from '@/components/BackLink'
 
 const REPORT_TYPES: AiReportType[] = ['시장동향', '경쟁사분석', '키워드분석', '서비스리포트', '자유주제']
 
@@ -130,13 +130,10 @@ function WorkbenchForm() {
 
   return (
     <PageContainer variant="reading">
-      <Link
-        href="/dashboard/reports"
+      <BackLink
+        fallbackHref="/dashboard/reports"
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        전략보고서로
-      </Link>
+      />
 
       <div className="mb-8">
         <h1 className="text-lg font-semibold text-foreground">새 보고서 만들기</h1>

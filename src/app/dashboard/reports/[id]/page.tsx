@@ -3,12 +3,13 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ArrowLeft, ExternalLink, FileText } from 'lucide-react'
+import { ExternalLink, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
 import ReportEditor from '@/components/reports/ReportEditor'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
 import PrintButton from '@/components/reports/PrintButton'
+import BackLink from '@/components/BackLink'
 import PageContainer from '@/components/PageContainer'
 
 export const dynamic = 'force-dynamic'
@@ -114,13 +115,10 @@ export default async function ReportDetailPage({ params }: PageProps) {
     <PageContainer variant="reading" className="print:px-0 print:py-0 print:max-w-none">
       {/* 뒤로 + PDF 버튼 */}
       <div className="print:hidden mb-6 flex items-center justify-between">
-        <Link
-          href="/dashboard/reports"
+        <BackLink
+          fallbackHref="/dashboard/reports"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          전략보고서로
-        </Link>
+        />
         <PrintButton />
       </div>
 

@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import BackLink from '@/components/BackLink'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ArrowLeft, Network } from 'lucide-react'
+import { Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, CONTENT_CATEGORY_LABEL, type EntityType, type ContentCategory } from '@/lib/types'
 import EntityEventTimeline, {
@@ -371,13 +372,10 @@ export default async function EntityDetailPage({ params }: PageProps) {
 
       {/* 뒤로가기 */}
       <div className="mb-6">
-        <Link
-          href="/dashboard/entities"
+        <BackLink
+          fallbackHref="/dashboard/entities"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          관계지도
-        </Link>
+        />
       </div>
 
       {/* 헤더 */}

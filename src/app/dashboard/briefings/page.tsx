@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ChevronLeft } from 'lucide-react'
 import BriefingArchive from '@/components/dashboard/BriefingArchive'
 import PageContainer from '@/components/PageContainer'
+import BackLink from '@/components/BackLink'
 
 export const metadata: Metadata = {
   title: '지난 브리핑 | Insight Out',
@@ -38,13 +37,10 @@ export default async function BriefingsPage() {
   return (
     <PageContainer className="py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
-        <Link
-          href="/dashboard"
+        <BackLink
+          fallbackHref="/dashboard"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          대시보드로 돌아가기
-        </Link>
+        />
         <h1 className="mt-3 text-xl font-bold text-foreground">지난 브리핑</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           공개된 모닝브리핑을 다시 듣고 스크립트를 확인하세요.

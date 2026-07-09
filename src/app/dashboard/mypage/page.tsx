@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import BackLink from '@/components/BackLink'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,7 +50,6 @@ interface NewsletterForm {
 }
 
 export default function MyPage() {
-  const router = useRouter()
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
@@ -405,16 +404,10 @@ export default function MyPage() {
   return (
     <PageContainer variant="reading">
       <div className="mb-8">
-        <button
-          type="button"
-          onClick={() => router.push('/dashboard')}
+        <BackLink
+          fallbackHref="/dashboard"
           className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-600 transition-colors"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          대시보드로 돌아가기
-        </button>
+        />
         <h1 className="text-xl font-bold text-foreground">마이페이지</h1>
         <p className="mt-1 text-sm text-muted-foreground">{authEmail}</p>
       </div>

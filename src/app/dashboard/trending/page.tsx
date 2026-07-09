@@ -6,7 +6,7 @@ import PageContainer from '@/components/PageContainer'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import { fetchTrendingEvents, TRENDING_LIMIT } from '@/lib/issues/trending'
 import IssueRankTicker, { type TickerIssue } from '@/components/dashboard/IssueRankTicker'
-import BackLink from '@/components/contents/BackLink'
+import BackLink from '@/components/BackLink'
 
 export const dynamic = 'force-dynamic'
 

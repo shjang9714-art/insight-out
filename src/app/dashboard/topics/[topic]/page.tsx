@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import BackLink from '@/components/BackLink'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ArrowLeft, Clock } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PageContainer from '@/components/PageContainer'
 
@@ -117,13 +118,10 @@ export default async function TopicTimelinePage({ params }: PageProps) {
     <PageContainer className="py-8 sm:px-6 lg:px-8">
       {/* 뒤로가기 */}
       <div className="mb-6">
-        <Link
-          href="/dashboard/issues"
+        <BackLink
+          fallbackHref="/dashboard/issues"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          AI 인사이트로
-        </Link>
+        />
       </div>
 
       {/* 헤더 */}

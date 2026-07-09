@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import BackLink from '@/components/BackLink'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ArrowLeft, Radar } from 'lucide-react'
+import { Radar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
@@ -379,13 +380,10 @@ export default async function IssueDetailPage({ params }: PageProps) {
     <PageContainer className="py-8 sm:px-6 lg:px-8">
       {/* 뒤로가기 */}
       <div className="mb-6">
-        <Link
-          href="/dashboard"
+        <BackLink
+          fallbackHref="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          홈으로
-        </Link>
+        />
       </div>
 
       {/* 헤더 */}

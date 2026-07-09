@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
+import BackLink from '@/components/BackLink'
 import type { Metadata } from 'next'
-import { ArrowLeft, ExternalLink, Download, FileText } from 'lucide-react'
+import { ExternalLink, Download, FileText } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
@@ -151,13 +151,10 @@ export default async function AdminContentDetailPage({ params }: PageProps) {
     <div className="mx-auto max-w-6xl">
       {/* 뒤로가기 */}
       <div className="mb-6">
-        <Link
-          href="/admin/contents"
+        <BackLink
+          fallbackHref="/admin/contents"
           className="inline-flex items-center gap-1.5 admin-caption text-muted-foreground transition-colors hover:text-brand-600"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          콘텐츠 관리
-        </Link>
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
