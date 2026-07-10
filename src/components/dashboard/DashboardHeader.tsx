@@ -21,6 +21,14 @@ export const NAV_TABS = [
   { label: '전략보고서', href: '/dashboard/reports',  exact: false },
 ]
 
+// 관리자 전용 '실험실' 퀵링크 — AI인사이트 페이지의 실험적 하위탭(AiInsightBoard.tsx의
+// LAB_TABS와 대응)으로 바로 이동. 라벨/href만 필요해 그쪽 타입에 의존하지 않고 여기서 별도 정의.
+const LAB_QUICK_LINKS = [
+  { id: 'headline', label: '헤드라인 분석' },
+  { id: 'trending', label: '뜨는 토픽' },
+  { id: 'issues',   label: '이슈 타임라인' },
+]
+
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
   return pathname === href || pathname.startsWith(href + '/')
@@ -98,6 +106,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   const [showNotifications, setShowNotifications] = useState(false)
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
+  const [isAdmin, setIsAdmin]       = useState(false)
   const [notifications, setNotifications] = useState<NotifItem[]>([])
   const [readIds, setReadIds]       = useState<Set<string>>(new Set())
   const [todayCount, setTodayCount] = useState(0)
@@ -113,12 +122,15 @@ export default function DashboardHeader({ onMenuClick }: Props) {
       if (!user) { setUserName(''); return }
       supabase
         .from('users')
-        .select('name, team')
+        .select('name, team, role')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
           setUserName(data?.name ?? '')
           if (data?.team) setUserTeam(data.team)
+          // 실험실(관리자 전용) 5탭줄 노출 판정용 — AiInsightBoard.tsx의 서버측
+          // isAdmin 계산(users.role === 'admin')과 동일 기준
+          setIsAdmin(data?.role === 'admin')
         })
     })
   }, [])
@@ -333,6 +345,31 @@ export default function DashboardHeader({ onMenuClick }: Props) {
               </Link>
             )
           })}
+
+          {/* 실험실 — 관리자 전용. ml-auto로 우측 끝에 배치해 상단 바의 프로필 열과
+              같은 max-w-6xl 컨테이너·패딩을 공유하며 자동으로 열이 맞음. (2026-07-10,
+              기존에는 AiInsightBoard.tsx 안 L2 탭 영역에 있던 것을 여기로 이동) */}
+          {isAdmin && (
+            <div className="ml-auto flex items-center gap-3">
+              <span className="shrink-0 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                실험실
+              </span>
+              {LAB_QUICK_LINKS.map((tab) => {
+                const active = pathname.startsWith('/dashboard/issues') && searchParams.get('view') === tab.id
+                return (
+                  <Link
+                    key={tab.id}
+                    href={`/dashboard/issues?view=${tab.id}`}
+                    className={`text-xs transition-colors ${
+                      active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
         </div>
       </nav>
     </header>

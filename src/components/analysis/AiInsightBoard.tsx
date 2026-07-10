@@ -130,19 +130,10 @@ export default function AiInsightBoard({
   return (
     <div className="space-y-6">
       {/* 하위 카테고리 탭 — L1 그룹 폭(--nav-group-w) 기준 좌측블록 안에서 center → L1 중앙 아래 정렬(233) */}
-      <div className="-mt-3 w-[var(--nav-group-w)] space-y-1.5">
-        {/* 항상 노출되는 3개 */}
+      {/* 실험실(관리자 전용)은 DashboardHeader.tsx의 5탭 네비 줄로 이동(2026-07-10) —
+          여기서는 항상 노출되는 3개 탭만 렌더링 */}
+      <div className="-mt-3 w-[var(--nav-group-w)]">
         <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} className="w-full" />
-
-        {/* 실험실 — 관리자만. 숨긴 하위탭을 추후 재활용 위해 보존 */}
-        {isAdmin && (
-          <div className="flex items-center justify-center gap-2">
-            <span className="shrink-0 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              실험실
-            </span>
-            <InsightViewTabs items={LAB_TABS} value={view} onChange={handleTabChange} />
-          </div>
-        )}
       </div>
 
       {/* 범위 필터 (전체/내 관심사) */}
