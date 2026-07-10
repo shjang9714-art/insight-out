@@ -35,7 +35,7 @@ export default function GlobalError({
         }}
       >
         <h1 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 0.5rem' }}>
-          콘텐츠 준비중
+          콘텐츠 준비중...
         </h1>
         <p style={{ fontSize: '0.875rem', color: '#6b7280', maxWidth: '28rem', lineHeight: 1.6 }}>
           일시적인 문제로 화면을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
