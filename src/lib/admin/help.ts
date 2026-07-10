@@ -96,3 +96,10 @@ export const YOUTUBE_TAGGING_HELP: AdminHelpCopy = {
   service: '유튜브 카드·상세의 해시태그·관련 콘텐츠에 반영됩니다.',
   ops: '신규 수집분은 자동 태깅되므로, 이 실행은 과거 적재분에만 필요합니다.',
 }
+
+export const YOUTUBE_SUMMARY_HELP: AdminHelpCopy = {
+  title: '유튜브 요약 생성',
+  what: '요약 없는 유튜브에 제목·채널(추후 자막) 기반 요약을 생성합니다.',
+  service: '유튜브 상세의 "주요 내용"에 노출됩니다.',
+  ops: '신규 수집분은 수집 시 1회 자동 생성되므로, 이 실행은 과거 적재분에만 필요합니다.',
+}

@@ -17,7 +17,7 @@ import {
   TRANSLATION_SEPARATOR,
   translateToKorean,
 } from '@/lib/translate'
-import { summarizeKo } from './summarize'
+import { summarizeKo, summarizeYoutubeKo } from './summarize'
 import { classifyRelevance } from './classify'
 import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
@@ -746,7 +746,8 @@ async function crawlYoutube(
   admin: SupabaseClient,
   source: Source,
   groups: ScoringGroup[],
-  aliasMap: Map<string, string>
+  aliasMap: Map<string, string>,
+  summarizeBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -815,6 +816,23 @@ async function crawlYoutube(
         const mirrorId = mirrorRows?.[0]?.id as string | undefined
         if (mirrorId) {
           await tagYoutubeContent(admin, mirrorId, item.title, groups, aliasMap)
+
+          // 유튜브 요약 1회 생성(266) — summary_ko 있으면 스킵(멱등), budget 소진 시 스킵(다음 백필에서 재시도)
+          if (summarizeBudget.remaining > 0) {
+            summarizeBudget.remaining--
+            try {
+              const summary = await summarizeYoutubeKo(item.title, feedTitle)
+              if (summary) {
+                const { error: sumErr } = await admin
+                  .from('contents')
+                  .update({ summary_ko: summary })
+                  .eq('id', mirrorId)
+                if (sumErr) console.error('[크롤러] 유튜브 요약 적재 실패:', sumErr.message)
+              }
+            } catch (e) {
+              console.error('[크롤러] 유튜브 요약 생성 실패:', e)
+            }
+          }
         }
       } catch (itemErr) {
         console.error('[크롤러] 유튜브 아이템 처리 오류:', itemErr)
@@ -1348,7 +1366,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const results = await Promise.allSettled(
     dueSources.map(s =>
       s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap)
+        ? crawlYoutube(admin, s, groups, aliasMap, summarizeBudget)
         : crawlOne(
             admin,
             s,

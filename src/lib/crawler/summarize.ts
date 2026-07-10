@@ -24,3 +24,25 @@ export async function summarizeKo(titleKo: string, bodyKo: string): Promise<stri
     return null
   }
 }
+
+const YOUTUBE_SYSTEM_PROMPT =
+  '당신은 B2B 텔레콤/엔터프라이즈 시장 정보 분석가다. ' +
+  '입력된 유튜브 영상의 제목과 채널명만으로 이 영상의 핵심 내용을 한국어 3~5줄로 추정 요약하라. ' +
+  '자막 없이 제목 기반 추정임을 감안해 과장 없이 작성하라. 요약문만 출력(머리말·따옴표·목록 금지).'
+
+/**
+ * 유튜브는 본문이 없어 제목+채널명만으로 추정 요약한다(266).
+ * 수집/백필 시점에 1회 호출 — 사용자 클릭 경로에서는 호출하지 않는다.
+ */
+export async function summarizeYoutubeKo(title: string, channelName: string | null): Promise<string | null> {
+  try {
+    const user = `제목: ${title}${channelName ? `\n채널: ${channelName}` : ''}`
+    const out = await llmComplete('summarize', YOUTUBE_SYSTEM_PROMPT, user)
+    if (!out) return null
+    const trimmed = out.trim()
+    return trimmed || null
+  } catch (e) {
+    console.error('[요약] 유튜브 요약 생성 실패:', e)
+    return null
+  }
+}

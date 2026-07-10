@@ -26,6 +26,7 @@ import {
   SENTIMENT_HELP,
   LGU_IMPACT_HELP,
   YOUTUBE_TAGGING_HELP,
+  YOUTUBE_SUMMARY_HELP,
 } from '@/lib/admin/help'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ export default function InsightsAdminPage() {
   const [lguImpactResult, setLguImpactResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isYoutubeTagging, setIsYoutubeTagging] = useState(false)
   const [youtubeTaggingResult, setYoutubeTaggingResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
+  const [isYoutubeSummary, setIsYoutubeSummary] = useState(false)
+  const [youtubeSummaryResult, setYoutubeSummaryResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
   const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
   const [isGeneratingCompetitorWeekly, setIsGeneratingCompetitorWeekly] = useState(false)
@@ -173,6 +176,27 @@ export default function InsightsAdminPage() {
       setError(e instanceof Error ? e.message : '유튜브 태깅 백필에 실패했습니다.')
     } finally {
       setIsYoutubeTagging(false)
+    }
+  }
+
+  const handleYoutubeSummary = async () => {
+    if (!window.confirm('요약 없는 유튜브 콘텐츠(최대 50건)에 제목·채널 기반 요약을 생성하시겠습니까? (LLM 호출)')) return
+    setIsYoutubeSummary(true)
+    setYoutubeSummaryResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/youtube-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? '유튜브 요약 생성 실패')
+      setYoutubeSummaryResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '유튜브 요약 생성에 실패했습니다.')
+    } finally {
+      setIsYoutubeSummary(false)
     }
   }
 
@@ -467,6 +491,38 @@ export default function InsightsAdminPage() {
             {youtubeTaggingResult.reason
               ? youtubeTaggingResult.reason
               : `후보 ${youtubeTaggingResult.candidates}건 중 ${youtubeTaggingResult.analyzed}건 백필 완료`}
+          </p>
+        )}
+      </div>
+
+      {/* 유튜브 요약 생성 패널 (266) */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-foreground">유튜브 요약 생성</h2>
+          <InfoHelp copy={YOUTUBE_SUMMARY_HELP} />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          요약(주요 내용) 없는 유튜브에 제목·채널 기반 요약을 생성합니다. 신규 수집분은 수집 시 자동 생성됩니다.
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            onClick={() => void handleYoutubeSummary()}
+            disabled={isYoutubeSummary}
+            size="sm"
+            variant="outline"
+          >
+            {isYoutubeSummary ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
+            ) : (
+              <>유튜브 요약 생성 실행</>
+            )}
+          </Button>
+        </div>
+        {youtubeSummaryResult && (
+          <p className="text-sm text-muted-foreground">
+            {youtubeSummaryResult.reason
+              ? youtubeSummaryResult.reason
+              : `후보 ${youtubeSummaryResult.candidates}건 중 ${youtubeSummaryResult.analyzed}건 생성 완료`}
           </p>
         )}
       </div>
