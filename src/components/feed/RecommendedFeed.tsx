@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ContentCard from '@/components/dashboard/ContentCard'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
+import { coverUrlFor } from '@/lib/contents/topic-cover'
 import { type ContentCategory } from '@/lib/types'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
 import EditPreferencesButton from './EditPreferencesButton'
@@ -193,7 +194,7 @@ export default function RecommendedFeed({
                   category={item.category}
                   sourceName={item.sources?.name ?? null}
                   publishedAt={item.published_at}
-                  thumbnailUrl={null}
+                  thumbnailUrl={coverUrlFor(item)}
                   href={item.category === '유튜브' ? null : undefined}
                   keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                 />
@@ -223,7 +224,7 @@ export default function RecommendedFeed({
                     category={item.category}
                     sourceName={item.sources?.name ?? null}
                     publishedAt={item.published_at}
-                    thumbnailUrl={null}
+                    thumbnailUrl={coverUrlFor(item)}
                     href={item.category === '유튜브' ? null : undefined}
                     keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   />

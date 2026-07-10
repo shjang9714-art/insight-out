@@ -16,6 +16,7 @@ import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
+import { coverUrlFor } from '@/lib/contents/topic-cover'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -635,7 +636,7 @@ function ContentsContent() {
                           category="유튜브"
                           sourceName={item.sources?.name ?? item.author ?? null}
                           publishedAt={displayDate(item, sortByCollected)}
-                          thumbnailUrl={item.thumbnail_url ?? null}
+                          thumbnailUrl={coverUrlFor(item)}
                           externalHref={item.original_url}
                           keywords={item.matched_keywords ?? []}
                         />
@@ -658,7 +659,7 @@ function ContentsContent() {
                           sourceName={item.sources?.name ?? null}
                           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                           clusterMembers={members.length > 0 ? members : undefined}
-                          thumbnailUrl={item.thumbnail_url}
+                          thumbnailUrl={coverUrlFor(item)}
                         />
                       ))}
                     </div>
@@ -698,7 +699,7 @@ function ContentsContent() {
                   category="유튜브"
                   sourceName={item.sources?.name ?? item.author ?? null}
                   publishedAt={displayDate(item, sortByCollected)}
-                  thumbnailUrl={item.thumbnail_url ?? null}
+                  thumbnailUrl={coverUrlFor(item)}
                   externalHref={item.original_url}
                   keywords={item.matched_keywords ?? []}
                 />
@@ -721,7 +722,7 @@ function ContentsContent() {
                   sourceName={item.sources?.name ?? null}
                   tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   clusterMembers={members.length > 0 ? members : undefined}
-                  thumbnailUrl={item.thumbnail_url}
+                  thumbnailUrl={coverUrlFor(item)}
                 />
               ))}
             </div>

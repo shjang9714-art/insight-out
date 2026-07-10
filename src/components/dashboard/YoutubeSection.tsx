@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import ContentCard from '@/components/dashboard/ContentCard'
+import { coverUrlFor } from '@/lib/contents/topic-cover'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ interface VideoRow {
   summary_ko: string | null
   original_url: string | null
   thumbnail_url: string | null
+  matched_groups: string[] | null
   matched_keywords: string[] | null
   published_at: string | null
   sources: { name: string } | null
@@ -37,7 +39,7 @@ export default async function YoutubeSection() {
 
   const { data: rawVideos } = await supabase
     .from('contents')
-    .select('id, title, summary_ko, original_url, thumbnail_url, matched_keywords, published_at, sources(name)')
+    .select('id, title, summary_ko, original_url, thumbnail_url, matched_groups, matched_keywords, published_at, sources(name)')
     .eq('category', '유튜브')
     .eq('status', 'published')
     .order('published_at', { ascending: false, nullsFirst: false })
@@ -77,7 +79,7 @@ export default async function YoutubeSection() {
             category="유튜브"
             sourceName={video.sources?.name ?? null}
             publishedAt={video.published_at}
-            thumbnailUrl={video.thumbnail_url ?? null}
+            thumbnailUrl={coverUrlFor({ ...video, category: '유튜브' })}
             externalHref={video.original_url}
             keywords={video.matched_keywords ?? []}
           />
