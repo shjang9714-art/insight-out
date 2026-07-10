@@ -64,20 +64,27 @@ export interface AiInsightBoardProps {
   initialCenter: EntitySummary | null
   totalByType: Record<string, number>
   signalItems: SignalItem[]
+  isAdmin: boolean
 }
 
 // ─── 하위 카테고리 탭 ──────────────────────────────────────────────────────────
 
-const TABS: { id: AiInsightViewId; label: string }[] = [
-  { id: 'brief',    label: '핵심 Insight' },
+// 사용자에게 항상 보이는 하위 카테고리 (요청 순서 고정)
+const PRIMARY_TABS: { id: AiInsightViewId; label: string }[] = [
+  { id: 'brief',   label: '핵심 인사이트' },
+  { id: 'keyword', label: '키워드 분석' },
+  { id: 'graph',   label: '관계지도' },
+]
+
+// 관리자 전용 '실험실' — 일반 사용자에게 숨김. 추후 다른 서비스 구상 시 재활용.
+const LAB_TABS: { id: AiInsightViewId; label: string }[] = [
   { id: 'headline', label: '헤드라인 분석' },
   { id: 'trending', label: '뜨는 토픽' },
   { id: 'issues',   label: '이슈 타임라인' },
-  { id: 'graph',    label: '관계지도' },
-  { id: 'keyword',  label: '키워드 분석' },
 ]
 
-const VALID_VIEW_IDS: readonly AiInsightViewId[] = TABS.map(t => t.id)
+const LAB_VIEW_IDS: readonly AiInsightViewId[] = LAB_TABS.map(t => t.id)
+const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS].map(t => t.id)
 
 // ─── 보드 ──────────────────────────────────────────────────────────────────────
 
@@ -97,6 +104,7 @@ export default function AiInsightBoard({
   initialCenter,
   totalByType,
   signalItems,
+  isAdmin,
 }: AiInsightBoardProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -108,9 +116,12 @@ export default function AiInsightBoard({
   // 무관하게 항상 브라우저의 실제 현재 URL과 동기화되므로 이 문제가 구조적으로
   // 재발할 수 없다. (원인 확정 2차, 2026-07-09)
   const rawView = searchParams.get('view')
-  const view: AiInsightViewId = VALID_VIEW_IDS.includes(rawView as AiInsightViewId)
+  let resolvedView: AiInsightViewId = VALID_VIEW_IDS.includes(rawView as AiInsightViewId)
     ? (rawView as AiInsightViewId)
     : initialView
+  // 실험실(관리자 전용) 뷰는 비관리자에게 노출 금지 → 기본 탭으로 폴백
+  if (!isAdmin && LAB_VIEW_IDS.includes(resolvedView)) resolvedView = 'brief'
+  const view = resolvedView
 
   function handleTabChange(v: AiInsightViewId) {
     router.replace(`${pathname}?view=${v}`, { scroll: false })
@@ -119,7 +130,20 @@ export default function AiInsightBoard({
   return (
     <div className="space-y-6">
       {/* 하위 카테고리 탭 — L1 그룹 폭(--nav-group-w) 기준 좌측블록 안에서 center → L1 중앙 아래 정렬(233) */}
-      <InsightViewTabs items={TABS} value={view} onChange={handleTabChange} className="-mt-3 w-[var(--nav-group-w)]" />
+      <div className="-mt-3 w-[var(--nav-group-w)] space-y-1.5">
+        {/* 항상 노출되는 3개 */}
+        <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} className="w-full" />
+
+        {/* 실험실 — 관리자만. 숨긴 하위탭을 추후 재활용 위해 보존 */}
+        {isAdmin && (
+          <div className="flex items-center justify-center gap-2">
+            <span className="shrink-0 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              실험실
+            </span>
+            <InsightViewTabs items={LAB_TABS} value={view} onChange={handleTabChange} />
+          </div>
+        )}
+      </div>
 
       {/* 범위 필터 (전체/내 관심사) */}
       <div className="flex justify-end">

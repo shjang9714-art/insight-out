@@ -39,7 +39,7 @@ export default function InsightViewTabs<T extends string>({
       {items.map((item) => {
         const active = item.id === value
         const cls = cn(
-          'inline-flex items-center gap-1.5 pt-2 pb-1 text-[15px] transition-colors',
+          'inline-flex items-center gap-1.5 whitespace-nowrap pt-2 pb-1 text-[15px] transition-colors',
           active
             ? 'font-medium text-foreground'
             : 'text-muted-foreground hover:text-foreground'

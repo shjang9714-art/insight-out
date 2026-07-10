@@ -90,7 +90,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, keyInsightRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, keyInsightRes, profileRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -143,7 +143,13 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       .order('week_of', { ascending: false })
       .order('display_order', { ascending: true, nullsFirst: false })
       .limit(500),
+    // 관리자 여부 — 숨긴 하위탭('실험실') 노출 판정용
+    user
+      ? supabase.from('users').select('role').eq('id', user.id).single()
+      : Promise.resolve({ data: null as { role: string } | null }),
   ])
+
+  const isAdmin = profileRes.data?.role === 'admin'
 
   const cards = (insightRes.data ?? []) as InsightCard[]
   const watchlist = (watchlistRes.data ?? []) as WatchlistItem[]
@@ -353,6 +359,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   return (
     <AiInsightBoard
       initialView={view}
+      isAdmin={isAdmin}
       keyInsightWeeks={keyInsightWeeks}
       keyInsightWeekOf={keyInsightWeekOf}
       keyInsightCards={keyInsightCards}
