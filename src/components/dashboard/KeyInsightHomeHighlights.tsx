@@ -1,13 +1,16 @@
 import Link from 'next/link'
 import { ArrowUpRight, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { getKstDateString } from '@/lib/date'
+import { computeRotationStart, pickRotatedCards } from '@/lib/key-insights/rotation'
 import type { KeyInsightRow } from '@/lib/key-insights/types'
 
 const HOME_CARD_LIMIT = 3
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
-// 홈 "주목하세요, 핵심 Insight" 3카드 — key_insights(published + featured 우선) 소스.
-// (구) briefings.highlights 기반 TodayBriefingHighlights 를 대체(§4, 2026-07-09).
+// 홈 "주목하세요, 핵심 Insight" 3카드 — key_insights(published) 소스, 그 주 풀 안에서
+// KST 날짜 기준 일일 로테이션(2026-07-10, [[지시서_20260710_홈핵심Insight-일일로테이션.md]]).
+// (구) briefings.highlights 기반 TodayBriefingHighlights 를 대체(2026-07-09).
 // 모닝브리핑 자체(스크립트·오디오·generateHighlights)는 이 교체와 무관 — 그대로 유지.
 
 export default async function KeyInsightHomeHighlights() {
@@ -24,18 +27,19 @@ export default async function KeyInsightHomeHighlights() {
   const weekOf = weekRows?.[0]?.week_of as string | undefined
   if (!weekOf) return null
 
-  // featured 우선, 부족하면 display_order 상위로 채움(§3 폴백)
+  // 그 주 published 풀 전량(로테이션 대상) — display_order 순으로 받아 그 순서 위에서 윈도우만 이동.
   const { data: rows } = await supabase
     .from('key_insights')
     .select('*')
     .eq('week_of', weekOf)
     .eq('status', 'published')
-    .order('is_featured', { ascending: false })
     .order('display_order', { ascending: true, nullsFirst: false })
-    .limit(HOME_CARD_LIMIT)
 
-  const cards = (rows ?? []) as KeyInsightRow[]
-  if (cards.length === 0) return null
+  const pool = (rows ?? []) as KeyInsightRow[]
+  if (pool.length === 0) return null
+
+  const start = computeRotationStart(weekOf, getKstDateString(), pool.length)
+  const cards = pickRotatedCards(pool, start, HOME_CARD_LIMIT)
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">

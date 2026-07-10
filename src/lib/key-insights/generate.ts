@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, KEY_INSIGHT_CATEGORIES, type KeyInsightCandidate, type KeyInsightCategory } from '@/lib/key-insights/candidates'
+import { getKstDateParts } from '@/lib/date'
 
 const MAX_PER_CATEGORY = 2
 const MIN_CARDS = 8
@@ -19,23 +20,7 @@ const MAX_CANDIDATES_IN_PROMPT = 60
 const FRESH_DAYS = 3
 
 // ─── KST 날짜 헬퍼 ──────────────────────────────────────────────────────────
-
-function getKstDateParts(date: Date): { year: number; month: number; day: number; weekday: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short',
-  }).formatToParts(date)
-  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-  return {
-    year: Number(parts.find((p) => p.type === 'year')?.value),
-    month: Number(parts.find((p) => p.type === 'month')?.value),
-    day: Number(parts.find((p) => p.type === 'day')?.value),
-    weekday: weekdayMap[parts.find((p) => p.type === 'weekday')?.value ?? 'Sun'],
-  }
-}
+// getKstDateParts 자체는 @/lib/date 공용 유틸(중복 구현 금지) — 홈 로테이션(2026-07-10)도 재사용.
 
 /** 배치 주차 시작일(가장 가까운 목요일, KST) — 'YYYY-MM-DD'. */
 function getWeekOf(now: Date): string {
