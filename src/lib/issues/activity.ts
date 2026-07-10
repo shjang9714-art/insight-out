@@ -172,8 +172,9 @@ export async function fetchIssueActivity(supabase: SupabaseClient): Promise<Issu
   if (issueIds.length > 0) {
     const { data: actData } = await supabase
       .from('issue_contents')
-      .select('issue_id, contents!inner(collected_at, sentiment, matched_keywords)')
+      .select('issue_id, contents!inner(collected_at, sentiment, matched_keywords, status)')
       .in('issue_id', issueIds)
+      .eq('contents.status', 'published')   // 검토대기·반려 콘텐츠 제외(뷰와 동일 정책)
       .limit(5000)
     activityRows = (actData ?? []) as unknown as ActivityRow[]
   }
