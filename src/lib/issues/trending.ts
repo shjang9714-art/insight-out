@@ -325,6 +325,6 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
  */
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEvents,
-  ['trending-events-v1'],
+  ['trending-events-v2'],
   { revalidate: CACHE_REVALIDATE_SECONDS },
 )
