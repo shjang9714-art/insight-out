@@ -227,7 +227,6 @@ function ContentsContent() {
   const [groupByDay, setGroupByDay]   = useState(false)
   // null = 카테고리 미선택(전체 출처 노출)
   const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
-  const [catCounts, setCatCounts] = useState<Record<string, number>>({})
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
   useEffect(() => {
@@ -240,30 +239,6 @@ function ContentsContent() {
       router.replace(`${pathname}?category=뉴스`)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // 소스타입별 총 건수 집계 (1회)
-  useEffect(() => {
-    const supabase = createClient()
-    supabase
-      .from('contents')
-      .select('category')
-      .eq('status', 'published')
-      .then(({ data }) => {
-        if (!data) return
-        const counts: Record<string, number> = {}
-        for (const row of data) {
-          const cat = row.category as string
-          counts[cat] = (counts[cat] ?? 0) + 1
-        }
-        // 표시 카테고리별로 합산
-        const display: Record<string, number> = {}
-        display['뉴스']      = counts['뉴스'] ?? 0
-        display['유튜브']    = counts['유튜브'] ?? 0
-        display['웹인사이트'] = (counts['웹인사이트'] ?? 0) + (counts['오피니언'] ?? 0)
-        display['리서치']    = (counts['리포트'] ?? 0) + (counts['가트너'] ?? 0) + (counts['KRG'] ?? 0)
-        setCatCounts(display)
-      })
   }, [])
 
   const handleViewChange = (v: ContentView) => {
@@ -492,7 +467,6 @@ function ContentsContent() {
           items={CONTENT_SOURCE_TABS.map((tab) => ({
             id: tab.value,
             label: tab.label,
-            count: catCounts[tab.value],
           }))}
           value={activeSourceTab}
           onChange={(v) => updateParam('category', v)}
