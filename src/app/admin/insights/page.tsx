@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Sparkles, RefreshCw, Loader2, ExternalLink, CheckCircle2, Archive, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -19,15 +18,7 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import InfoHelp from '@/components/admin/ui/InfoHelp'
 import { INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
-import {
-  INSIGHT_GENERATION_HELP,
-  COMPANY_INSIGHT_HELP,
-  COMPETITOR_WEEKLY_HELP,
-  SENTIMENT_HELP,
-  LGU_IMPACT_HELP,
-  YOUTUBE_TAGGING_HELP,
-  YOUTUBE_SUMMARY_HELP,
-} from '@/lib/admin/help'
+import { INSIGHT_GENERATION_HELP, COMPANY_INSIGHT_HELP } from '@/lib/admin/help'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
 
@@ -47,6 +38,8 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
+// 279 — 인사이트 카드 전용(슬림). 논조/위기·기회/유튜브 백필 잡은 /admin/ai-jobs,
+// 경쟁사 주간 리포트는 /admin/competitor-weekly 로 이동됨.
 
 export default function InsightsAdminPage() {
   const [cards, setCards] = useState<InsightCard[]>([])
@@ -56,18 +49,8 @@ export default function InsightsAdminPage() {
   const [generateDays, setGenerateDays] = useState('7')
   const [generateResult, setGenerateResult] = useState<{ created: number; topics: string[] } | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
-  const [isSentiment, setIsSentiment] = useState(false)
-  const [sentimentResult, setSentimentResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
-  const [isLguImpact, setIsLguImpact] = useState(false)
-  const [lguImpactResult, setLguImpactResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
-  const [isYoutubeTagging, setIsYoutubeTagging] = useState(false)
-  const [youtubeTaggingResult, setYoutubeTaggingResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
-  const [isYoutubeSummary, setIsYoutubeSummary] = useState(false)
-  const [youtubeSummaryResult, setYoutubeSummaryResult] = useState<{ analyzed: number; candidates: number; reason?: string } | null>(null)
   const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
   const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
-  const [isGeneratingCompetitorWeekly, setIsGeneratingCompetitorWeekly] = useState(false)
-  const [competitorWeeklyResult, setCompetitorWeeklyResult] = useState<{ weekStart: string; weekEnd: string; status: string; sections: number; reason?: string } | null>(null)
   const [filterStatus, setFilterStatus] = useState<InsightCardStatus | 'all'>('all')
 
   async function fetchCards() {
@@ -87,7 +70,7 @@ export default function InsightsAdminPage() {
   useEffect(() => {
     const init = async () => { await fetchCards() }
     void init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const refresh = () => {
     setIsLoading(true)
@@ -116,90 +99,6 @@ export default function InsightsAdminPage() {
     }
   }
 
-  const handleSentiment = async () => {
-    if (!window.confirm('최근 14일 추적 기업·이슈 기사(최대 40건)의 논조를 LLM으로 분석하시겠습니까?')) return
-    setIsSentiment(true)
-    setSentimentResult(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/sentiment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? '논조 분석 실패')
-      setSentimentResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '논조 분석에 실패했습니다.')
-    } finally {
-      setIsSentiment(false)
-    }
-  }
-
-  const handleLguImpact = async () => {
-    if (!window.confirm('최근 14일 경쟁사 기사(최대 40건)를 LG U+ 관점 위기·기회로 분석하시겠습니까?')) return
-    setIsLguImpact(true)
-    setLguImpactResult(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/lgu-impact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? '위기·기회 분석 실패')
-      setLguImpactResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '위기·기회 분석에 실패했습니다.')
-    } finally {
-      setIsLguImpact(false)
-    }
-  }
-
-  const handleYoutubeTagging = async () => {
-    if (!window.confirm('기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 백필하시겠습니까?')) return
-    setIsYoutubeTagging(true)
-    setYoutubeTaggingResult(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/youtube-tagging', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? '유튜브 태깅 백필 실패')
-      setYoutubeTaggingResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '유튜브 태깅 백필에 실패했습니다.')
-    } finally {
-      setIsYoutubeTagging(false)
-    }
-  }
-
-  const handleYoutubeSummary = async () => {
-    if (!window.confirm('요약 없는 유튜브 콘텐츠(최대 50건)에 제목·채널 기반 요약을 생성하시겠습니까? (LLM 호출)')) return
-    setIsYoutubeSummary(true)
-    setYoutubeSummaryResult(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/youtube-summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? '유튜브 요약 생성 실패')
-      setYoutubeSummaryResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '유튜브 요약 생성에 실패했습니다.')
-    } finally {
-      setIsYoutubeSummary(false)
-    }
-  }
-
   const handleGenerateCompany = async () => {
     if (!window.confirm('워치리스트 업체별 AI 동향 카드를 생성하시겠습니까? (LLM 호출)')) return
     setIsGeneratingCompany(true)
@@ -219,33 +118,6 @@ export default function InsightsAdminPage() {
       setError(e instanceof Error ? e.message : '관심업체 카드 생성에 실패했습니다.')
     } finally {
       setIsGeneratingCompany(false)
-    }
-  }
-
-  const handleGenerateCompetitorWeekly = async () => {
-    if (!window.confirm('최근 완결된 주(월~일)의 경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성하시겠습니까? (LLM 호출)')) return
-    setIsGeneratingCompetitorWeekly(true)
-    setCompetitorWeeklyResult(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/competitor-weekly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json() as { weekStart?: string; weekEnd?: string; status?: string; sections?: number; reason?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? '생성 실패')
-      setCompetitorWeeklyResult({
-        weekStart: data.weekStart ?? '',
-        weekEnd: data.weekEnd ?? '',
-        status: data.status ?? 'draft',
-        sections: data.sections ?? 0,
-        reason: data.reason,
-      })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '주간 경쟁 리포트 생성에 실패했습니다.')
-    } finally {
-      setIsGeneratingCompetitorWeekly(false)
     }
   }
 
@@ -369,160 +241,6 @@ export default function InsightsAdminPage() {
             {companyResult.created > 0
               ? `${companyResult.created}개 카드 생성됨: ${companyResult.topics.join(', ')}`
               : '생성된 카드 없음 (워치리스트 없음 또는 기사 부족)'}
-          </p>
-        )}
-      </div>
-
-      {/* 주간 경쟁 리포트 생성 패널 (261) */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-sm font-semibold text-foreground">주간 경쟁 리포트 생성</h2>
-          <InfoHelp copy={COMPETITOR_WEEKLY_HELP} />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          경쟁사(통신 3사 중심) 기사를 사업영역별(AIDC·AICC·통신B2B·보안·클라우드·IT 등)로 종합해 위기·기회를 판정합니다. 기본은 최근 완결된 주(월~일).
-        </p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            onClick={() => void handleGenerateCompetitorWeekly()}
-            disabled={isGeneratingCompetitorWeekly}
-            size="sm"
-            variant="outline"
-          >
-            {isGeneratingCompetitorWeekly ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
-            ) : (
-              <><Sparkles className="h-3.5 w-3.5 mr-1.5" />주간 경쟁 리포트 생성</>
-            )}
-          </Button>
-        </div>
-        {competitorWeeklyResult && (
-          <p className="text-sm text-muted-foreground">
-            {competitorWeeklyResult.status === 'published'
-              ? `${competitorWeeklyResult.weekStart} ~ ${competitorWeeklyResult.weekEnd} 발행됨 (사업영역 ${competitorWeeklyResult.sections}개)`
-              : competitorWeeklyResult.reason ?? '생성된 리포트 없음'}
-          </p>
-        )}
-      </div>
-
-      {/* 논조 분석 패널 */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-sm font-semibold text-foreground">논조 분석 (이슈·기업 기사)</h2>
-          <InfoHelp copy={SENTIMENT_HELP} />
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            onClick={() => void handleSentiment()}
-            disabled={isSentiment}
-            size="sm"
-            variant="outline"
-          >
-            {isSentiment ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />분석 중...</>
-            ) : (
-              <>논조 분석 실행</>
-            )}
-          </Button>
-        </div>
-        {sentimentResult && (
-          <p className="text-sm text-muted-foreground">
-            {sentimentResult.reason
-              ? sentimentResult.reason
-              : `후보 ${sentimentResult.candidates}건 중 ${sentimentResult.analyzed}건 분석 완료`}
-          </p>
-        )}
-      </div>
-
-      {/* 위기·기회 분석 패널 */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-sm font-semibold text-foreground">위기·기회 분석 (경쟁사 기사, LG U+ 관점)</h2>
-          <InfoHelp copy={LGU_IMPACT_HELP} />
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            onClick={() => void handleLguImpact()}
-            disabled={isLguImpact}
-            size="sm"
-            variant="outline"
-          >
-            {isLguImpact ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />분석 중...</>
-            ) : (
-              <>위기·기회 분석 실행</>
-            )}
-          </Button>
-        </div>
-        {lguImpactResult && (
-          <p className="text-sm text-muted-foreground">
-            {lguImpactResult.reason
-              ? lguImpactResult.reason
-              : `후보 ${lguImpactResult.candidates}건 중 ${lguImpactResult.analyzed}건 분석 완료`}
-          </p>
-        )}
-      </div>
-
-      {/* 유튜브 태깅 백필 패널 (252) */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-sm font-semibold text-foreground">유튜브 해시태그·엔티티 백필</h2>
-          <InfoHelp copy={YOUTUBE_TAGGING_HELP} />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          크롤러가 분류 없이 적재한 기존 유튜브 콘텐츠에 뉴스와 동일한 해시태그·관련 엔티티를 붙입니다. 신규 수집분은 자동 태깅됩니다.
-        </p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            onClick={() => void handleYoutubeTagging()}
-            disabled={isYoutubeTagging}
-            size="sm"
-            variant="outline"
-          >
-            {isYoutubeTagging ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />백필 중...</>
-            ) : (
-              <>유튜브 태깅 백필 실행</>
-            )}
-          </Button>
-        </div>
-        {youtubeTaggingResult && (
-          <p className="text-sm text-muted-foreground">
-            {youtubeTaggingResult.reason
-              ? youtubeTaggingResult.reason
-              : `후보 ${youtubeTaggingResult.candidates}건 중 ${youtubeTaggingResult.analyzed}건 백필 완료`}
-          </p>
-        )}
-      </div>
-
-      {/* 유튜브 요약 생성 패널 (266) */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-sm font-semibold text-foreground">유튜브 요약 생성</h2>
-          <InfoHelp copy={YOUTUBE_SUMMARY_HELP} />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          요약(주요 내용) 없는 유튜브에 제목·채널 기반 요약을 생성합니다. 신규 수집분은 수집 시 자동 생성됩니다.
-        </p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            onClick={() => void handleYoutubeSummary()}
-            disabled={isYoutubeSummary}
-            size="sm"
-            variant="outline"
-          >
-            {isYoutubeSummary ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
-            ) : (
-              <>유튜브 요약 생성 실행</>
-            )}
-          </Button>
-        </div>
-        {youtubeSummaryResult && (
-          <p className="text-sm text-muted-foreground">
-            {youtubeSummaryResult.reason
-              ? youtubeSummaryResult.reason
-              : `후보 ${youtubeSummaryResult.candidates}건 중 ${youtubeSummaryResult.analyzed}건 생성 완료`}
           </p>
         )}
       </div>

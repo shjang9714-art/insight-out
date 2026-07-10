@@ -18,8 +18,10 @@ import {
   ClipboardList,
   Ban,
   Settings,
-  Database,
   Star,
+  Wrench,
+  TrendingUp,
+  ShieldAlert,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -94,12 +96,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         icon: FilePlus,
       },
       {
-        href: '/admin/content-data',
-        label: '콘텐츠 데이터 보강',
-        description: '본문, 썸네일, 시그널, URL, 클러스터 등 콘텐츠 메타데이터를 보강합니다.',
-        icon: Database,
-      },
-      {
         href: '/admin/keywords',
         label: '키워드',
         description: '콘텐츠 서비스/카테고리 분류 기준 키워드를 관리합니다.',
@@ -135,7 +131,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '번역 공급자 상태와 번역 사용량을 확인합니다.',
         icon: Languages,
       },
-      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 프롬프트 관리, AI 작업 모니터 — ADMIN_RESTRUCTURE_PLAN.md 참고
+      {
+        href: '/admin/ai-jobs',
+        label: 'AI 작업 관리',
+        description: '논조·위기기회 분석, 유튜브 태깅·요약, 데이터 백필 등 AI/일괄 작업을 실행합니다.',
+        icon: Wrench,
+      },
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 프롬프트 관리 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],
   },
   {
@@ -159,7 +161,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '주간 핵심 Insight를 검수, 편집, 발행합니다.',
         icon: Star,
       },
-      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 전략리서치, 경쟁사주간 — ADMIN_RESTRUCTURE_PLAN.md 참고
+      {
+        href: '/admin/competitor-weekly',
+        label: '경쟁사 주간 리포트',
+        description: '경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성·확인합니다.',
+        icon: TrendingUp,
+      },
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 전략리서치 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],
   },
   {
@@ -200,8 +208,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '홈 화면 섹션, 어드민 화면 설정, 수집 설정 등 시스템 설정을 관리합니다.',
         icon: Settings,
       },
+      {
+        href: '/admin/maintenance',
+        label: '시스템 유지보수',
+        description: '되돌릴 수 없는 수집 데이터 삭제·초기화 작업을 관리합니다.',
+        icon: ShieldAlert,
+      },
       // Phase 2/3 후보(신규 route 아님, 문서 TODO): 작업 모니터, 장애로그, 소스품질, 수집설정,
-      // 홈구성, 서비스카탈로그, 유지보수 — ADMIN_RESTRUCTURE_PLAN.md 참고
+      // 홈구성, 서비스카탈로그 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],
   },
 ]
