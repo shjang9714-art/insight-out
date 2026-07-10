@@ -1,19 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCachedUser } from '@/lib/supabase/cached-user'
-import {
-  getFeedOnboardingStatus,
-  getUserPreferenceKeywordIds,
-  getUserPrimaryServiceId,
-} from '@/lib/preferences'
+import { getFeedOnboardingStatus, getUserFeedCategories } from '@/lib/preferences'
 import { isB2BRelevant } from '@/lib/feed-blocklist'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
-import OnboardingKeywordPicker from './OnboardingKeywordPicker'
+import OnboardingCategoryPrompt from './OnboardingCategoryPrompt'
 import RecommendedFeed, { type FeedItem } from './RecommendedFeed'
-
-interface ServiceRow {
-  id: string
-  name: string
-}
 
 const FALLBACK_SELECT =
   'id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords'
@@ -29,22 +20,16 @@ export default async function FeedSlot() {
   const user = await getCachedUser()
   if (!user) return null // 미들웨어가 비로그인 접근을 막지만, 타입 안전성을 위해 가드
 
-  // 1차 병렬: 서로 독립 — status==='new'면 services만 필요해 조기 반환.
-  const [{ data: servicesData }, status] = await Promise.all([
-    supabase.from('services').select('id, name').order('order'),
-    getFeedOnboardingStatus(supabase, user.id),
-  ])
-  const services = (servicesData ?? []) as ServiceRow[]
+  const status = await getFeedOnboardingStatus(supabase, user.id)
 
   if (status === 'new') {
-    return <OnboardingKeywordPicker services={services} mode="onboarding" />
+    return <OnboardingCategoryPrompt />
   }
 
-  // 2차 병렬: keywordIds/primaryServiceId/폴백 콘텐츠는 서로 독립.
+  // 카테고리 프리필 + 폴백 콘텐츠는 서로 독립 — 병렬.
   const fbRecentSince = recentSinceISO(5)
-  const [keywordIds, primaryServiceId, { data: fbRaw }] = await Promise.all([
-    getUserPreferenceKeywordIds(supabase, user.id),
-    getUserPrimaryServiceId(supabase, user.id),
+  const [categoryKeys, { data: fbRaw }] = await Promise.all([
+    getUserFeedCategories(supabase, user.id),
     supabase
       .from('contents')
       .select(FALLBACK_SELECT)
@@ -55,29 +40,15 @@ export default async function FeedSlot() {
       .limit(18),
   ])
 
-  // 3차: keywordRows는 keywordIds 의존 — 순차 유지.
-  let keywordNameById: Record<string, string> = {}
-  if (keywordIds.length > 0) {
-    const { data: keywordRows } = await supabase
-      .from('keywords')
-      .select('id, name')
-      .in('id', keywordIds)
-    keywordNameById = Object.fromEntries(
-      ((keywordRows ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name])
-    )
-  }
-
-  const fbFiltered = ((fbRaw ?? []) as unknown as FeedItem[])
-    .filter((c) => isB2BRelevant(c.title, c.summary_ko))
+  const fbFiltered = ((fbRaw ?? []) as unknown as FeedItem[]).filter((c) =>
+    isB2BRelevant(c.title, c.summary_ko)
+  )
   const fallbackItems = dedupSimilarItems(fbFiltered).slice(0, 6)
 
   return (
     <RecommendedFeed
-      services={services}
       fallbackTrending={status === 'skipped'}
-      initialServiceId={primaryServiceId}
-      initialKeywordIds={keywordIds}
-      initialKeywordMap={keywordNameById}
+      initialCategoryKeys={categoryKeys}
       fallbackItems={fallbackItems}
     />
   )

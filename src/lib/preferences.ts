@@ -1,62 +1,45 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { sanitizeCategoryKeys } from '@/lib/feed/categories'
 
 export type FeedOnboardingStatus = 'new' | 'skipped' | 'existing'
 
-export const MIN_ONBOARDING_KEYWORDS = 3
-export const MAX_ONBOARDING_KEYWORDS = 10
-
 /**
  * 홈 피드 슬롯 상태 판정.
- * 우선순위: 기존(선호 1건 이상) → 스킵(skipped=true) → 신규.
- * user_preferences 적재 자체가 "사용자가 명시적으로 선택했다"는 가장 강한 신호이므로
+ * 우선순위: 기존(카테고리 1개 이상 선택) → 스킵(skipped=true) → 신규.
+ * feed_categories 적재 자체가 "사용자가 명시적으로 선택했다"는 가장 강한 신호이므로
  * skipped 플래그보다 우선한다. bootstrap이 skipped 리셋에 실패해도(네트워크 오류 등)
- * 키워드는 이미 저장됐으므로 'existing'으로 정상 분기된다.
+ * 카테고리는 이미 저장됐으므로 'existing'으로 정상 분기된다.
  */
 export async function getFeedOnboardingStatus(
   supabase: SupabaseClient,
   userId: string
 ): Promise<FeedOnboardingStatus> {
-  const [{ data: userRow }, { count }] = await Promise.all([
-    supabase.from('users').select('feed_onboarding_skipped').eq('id', userId).single(),
-    supabase
-      .from('user_preferences')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId),
-  ])
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('feed_onboarding_skipped, feed_categories')
+    .eq('id', userId)
+    .single()
 
-  const skipped = (userRow as { feed_onboarding_skipped: boolean } | null)?.feed_onboarding_skipped ?? false
-  const preferenceCount = count ?? 0
+  const row = userRow as { feed_onboarding_skipped: boolean; feed_categories: string[] } | null
+  const skipped = row?.feed_onboarding_skipped ?? false
+  const categoryCount = row?.feed_categories?.length ?? 0
 
-  if (preferenceCount >= 1) return 'existing'
+  if (categoryCount >= 1) return 'existing'
   if (skipped) return 'skipped'
   return 'new'
 }
 
-/** 현재 사용자의 키워드 선호(user_preferences) id 목록. 편집 진입 시 프리필용. */
-export async function getUserPreferenceKeywordIds(
+/** 현재 사용자가 선택한 추천 카테고리 키 목록. 편집 진입 시 프리필용. */
+export async function getUserFeedCategories(
   supabase: SupabaseClient,
   userId: string
 ): Promise<string[]> {
   const { data } = await supabase
-    .from('user_preferences')
-    .select('keyword_id')
-    .eq('user_id', userId)
+    .from('users')
+    .select('feed_categories')
+    .eq('id', userId)
+    .single()
 
-  return ((data ?? []) as { keyword_id: string }[]).map((row) => row.keyword_id)
-}
-
-/** 가중치가 가장 높은 서비스 선호(user_service_prefs) 1건. 편집 진입 시 활성 탭 프리필용. */
-export async function getUserPrimaryServiceId(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<string | null> {
-  const { data } = await supabase
-    .from('user_service_prefs')
-    .select('service_id')
-    .eq('user_id', userId)
-    .order('weight', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  return (data as { service_id: string } | null)?.service_id ?? null
+  const keys = (data as { feed_categories: string[] } | null)?.feed_categories ?? []
+  return sanitizeCategoryKeys(keys)
 }

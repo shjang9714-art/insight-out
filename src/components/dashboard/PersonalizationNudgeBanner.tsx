@@ -6,10 +6,10 @@ import { Sparkles, X } from 'lucide-react'
 const DISMISS_KEY = 'io:personalize-nudge-dismissed'
 
 export default function PersonalizationNudgeBanner({
-  noService,
+  noCategories,
   noWatchlist,
 }: {
-  noService: boolean
+  noCategories: boolean
   noWatchlist: boolean
 }) {
   const [dismissed, setDismissed] = useState(() => {
@@ -19,8 +19,8 @@ export default function PersonalizationNudgeBanner({
   if (dismissed) return null
 
   const missing =
-    noService && noWatchlist ? '담당 서비스와 관심 기업'
-    : noService ? '담당 서비스'
+    noCategories && noWatchlist ? '관심 카테고리와 관심 기업'
+    : noCategories ? '관심 카테고리'
     : '관심 기업'
 
   const handleDismiss = () => {

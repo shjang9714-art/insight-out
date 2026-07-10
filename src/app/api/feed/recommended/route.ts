@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { isB2BRelevant } from '@/lib/feed-blocklist'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
+import { hashtagsForCategories } from '@/lib/feed/categories'
 
 const CONTENT_SELECT =
   'id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords'
@@ -50,9 +51,27 @@ export async function GET(req: NextRequest) {
   const RECENT_DAYS = 5
   const recentSince = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
+  // 사용자가 고른 카테고리 → 해시태그로 펼쳐 RPC 매칭에 전달
+  // (personalized/explore 만 사용, trending/editor 는 무시)
+  let hashtags: string[] = []
+  if (slot === 'personalized' || slot === 'explore') {
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('feed_categories')
+      .eq('id', user.id)
+      .single()
+    const categoryKeys = (userRow as { feed_categories: string[] } | null)?.feed_categories ?? []
+    hashtags = hashtagsForCategories(categoryKeys)
+    // personalized 인데 선택 카테고리가 없으면 매칭 대상이 없어 빈 결과
+    if (slot === 'personalized' && hashtags.length === 0) {
+      return NextResponse.json({ slot, items: [] })
+    }
+  }
+
   const { data: ranked, error: rpcError } = await supabase.rpc('get_recommended_feed', {
     p_user_id: user.id,
     p_slot: slot,
+    p_hashtags: hashtags,
     p_limit: fetchLimit,
   })
 

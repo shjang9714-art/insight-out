@@ -7,13 +7,8 @@ import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { type ContentCategory } from '@/lib/types'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
 import EditPreferencesButton from './EditPreferencesButton'
-import OnboardingKeywordPicker from './OnboardingKeywordPicker'
+import FeedCategoryModal from './FeedCategoryModal'
 import FeedCarousel from './FeedCarousel'
-
-interface ServiceOption {
-  id: string
-  name: string
-}
 
 export interface FeedItem {
   id: string
@@ -36,11 +31,8 @@ interface Section {
 }
 
 interface RecommendedFeedProps {
-  services: ServiceOption[]
   fallbackTrending: boolean
-  initialServiceId: string | null
-  initialKeywordIds: string[]
-  initialKeywordMap: Record<string, string>
+  initialCategoryKeys: string[]
   fallbackItems?: FeedItem[]
 }
 
@@ -84,15 +76,12 @@ function buildSlotMeta(fallbackTrending: boolean): { slot: Section['slot']; labe
 }
 
 export default function RecommendedFeed({
-  services,
   fallbackTrending,
-  initialServiceId,
-  initialKeywordIds,
-  initialKeywordMap,
+  initialCategoryKeys,
   fallbackItems = [],
 }: RecommendedFeedProps) {
   const router = useRouter()
-  const [mode, setMode] = useState<'feed' | 'edit'>('feed')
+  const [editOpen, setEditOpen] = useState(false)
   const [sections, setSections] = useState<Section[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
@@ -104,31 +93,36 @@ export default function RecommendedFeed({
       setIsLoading(true)
       const slotMeta = buildSlotMeta(fallbackTrending)
 
+      // 2·3순위 슬롯이 quota를 못 채울 경우를 대비한 여유분(이론상 최대 부족분 =
+      // 2·3순위 quota 합)을 1순위 슬롯 요청에 처음부터 포함시킨다. 기존에는 부족분이
+      // 생길 때마다 1순위 슬롯에 순차 왕복을 한 번 더 보냈는데(에디터픽처럼 원천적으로
+      // 빈도 낮은 슬롯에서 드물지 않게 발생), 그때마다 왕복 1회만큼 로딩이 느려졌음 —
+      // 처음부터 여유분을 병렬 요청에 포함시켜 추가 왕복 자체를 없앤다. (2026-07-10)
+      const backfillBuffer = slotMeta.slice(1).reduce((sum, m) => sum + m.quota, 0)
+
       const results = await Promise.all(
-        slotMeta.map((meta) =>
-          fetch(`/api/feed/recommended?slot=${meta.slot}&limit=${meta.quota}`)
+        slotMeta.map((meta, i) =>
+          fetch(`/api/feed/recommended?slot=${meta.slot}&limit=${i === 0 ? meta.quota + backfillBuffer : meta.quota}`)
             .then((res) => res.json())
             .catch(() => ({ items: [] }))
         )
       )
 
+      const dominantAll = (results[0]?.items ?? []) as FeedItem[]
       const built: Section[] = slotMeta.map((meta, i) => ({
         ...meta,
-        items: (results[i]?.items ?? []) as FeedItem[],
+        items: i === 0 ? dominantAll.slice(0, meta.quota) : ((results[i]?.items ?? []) as FeedItem[]),
       }))
 
-      // 빈 슬롯(예: editor 0건)은 1순위(dominant) 슬롯에서 보충
+      // 빈 슬롯(예: editor 0건)은 1차 요청에 이미 확보해둔 1순위 여유분(dominantAll)에서
+      // 보충 — 추가 네트워크 왕복 없음
       const shortfall = built
         .slice(1)
         .reduce((sum, section) => sum + Math.max(0, section.quota - section.items.length), 0)
 
       if (shortfall > 0) {
-        const dominant = slotMeta[0]
-        const res = await fetch(`/api/feed/recommended?slot=${dominant.slot}&limit=${dominant.quota + shortfall}`)
-          .then((r) => r.json())
-          .catch(() => ({ items: [] }))
         const existingIds = new Set(built[0].items.map((item) => item.id))
-        const extra = ((res.items ?? []) as FeedItem[]).filter((item) => !existingIds.has(item.id)).slice(0, shortfall)
+        const extra = dominantAll.filter((item) => !existingIds.has(item.id)).slice(0, shortfall)
         built[0] = { ...built[0], items: [...built[0].items, ...extra] }
       }
 
@@ -152,33 +146,25 @@ export default function RecommendedFeed({
     }
   }, [fallbackTrending, reloadKey])
 
-  if (mode === 'edit') {
-    return (
-      <OnboardingKeywordPicker
-        services={services}
-        mode="edit"
-        initialServiceId={initialServiceId}
-        initialKeywordIds={initialKeywordIds}
-        initialKeywordMap={initialKeywordMap}
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <FeedCategoryModal
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        initialCategoryKeys={initialCategoryKeys}
         onSaved={() => {
-          setMode('feed')
+          setEditOpen(false)
           router.refresh()
           setReloadKey((k) => k + 1)
         }}
-        onCancel={() => setMode('feed')}
       />
-    )
-  }
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">
           {fallbackTrending ? '지금 화제가 되는 콘텐츠' : '맞춤 추천 피드'}
         </h2>
         <EditPreferencesButton
           label={fallbackTrending ? '관심사 설정하기' : '관심사 눌러 추천받기'}
-          onClick={() => setMode('edit')}
+          onClick={() => setEditOpen(true)}
         />
       </div>
 
