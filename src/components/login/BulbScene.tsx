@@ -7,9 +7,9 @@ import Image from 'next/image'
  * 구성(목업과 동일):
  * - 전구 asset: 목업 베이스 이미지에서 전구 주변(광류·글로우 포함)을 분리한
  *   `/brand/login-bulb-scene.png` (원본 좌표 x40-845 / y455-958 크롭 후 미러+블러로
- *   좌308·우343·상303·하281 확장, 가장자리 feather → 1456×1087. 전구·구슬 픽셀
+ *   좌490·우525·상403·하384 확장, 가장자리 feather → 1820×1290. 전구·구슬 픽셀
  *   크기는 원본 그대로, 주변 필드만 확장).
- * - 오버레이 SVG: viewBox 를 확장 크롭과 동일한 "-268 152 1456 1087" 으로 잡아
+ * - 오버레이 SVG: viewBox 를 확장 크롭과 동일한 "-450 52 1820 1290" 으로 잡아
  *   목업의 path·orb·comet·twinkle 좌표를 변환 없이 그대로 사용한다.
  *   목업처럼 mix-blend-mode:screen 으로 이미지 위에 얹는다.
  * - ① bulb aura(glowPulse) ② flow guide line 11개(gold/pink)
@@ -22,14 +22,14 @@ import Image from 'next/image'
  */
 export function BulbScene() {
   return (
-    <div className="io-anim-layer relative mx-auto aspect-[1456/1087] w-full">
+    <div className="io-anim-layer relative mx-auto aspect-[1820/1290] w-full">
       {/* 전구 asset — 목업 이미지의 전구 영역 분리본 */}
       <Image
         src="/brand/login-bulb-scene.png"
         alt=""
         aria-hidden="true"
-        width={1456}
-        height={1087}
+        width={1820}
+        height={1290}
         priority
         className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none object-cover"
       />
@@ -37,7 +37,7 @@ export function BulbScene() {
       {/* 목업 v3 오버레이 — 원본 좌표 그대로, screen 블렌드 */}
       <svg
         className="absolute inset-0 z-10 h-full w-full overflow-visible mix-blend-screen"
-        viewBox="-268 152 1456 1087"
+        viewBox="-450 52 1820 1290"
         fill="none"
         aria-hidden="true"
         focusable="false"
