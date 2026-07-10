@@ -22,6 +22,9 @@ import {
   Wrench,
   TrendingUp,
   ShieldAlert,
+  Filter,
+  Gauge,
+  LayoutTemplate,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -77,6 +80,18 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '제외 규칙',
         description: '수집 제외 도메인, 키워드, URL 규칙을 관리합니다.',
         icon: Ban,
+      },
+      {
+        href: '/admin/source-quality',
+        label: '소스 품질',
+        description: '소스별 수집 상태·품질 지표를 확인하고 크롤을 실행합니다.',
+        icon: Gauge,
+      },
+      {
+        href: '/admin/crawl-settings',
+        label: '수집 설정',
+        description: '크롤 수집 시 적용되는 품질 기준(최소 본문 길이)을 조정합니다.',
+        icon: Filter,
       },
     ],
   },
@@ -205,8 +220,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       {
         href: '/admin/settings',
         label: '시스템 설정',
-        description: '홈 화면 섹션, 어드민 화면 설정, 수집 설정 등 시스템 설정을 관리합니다.',
+        description: '어드민 콘솔 화면 테마·폰트·색상을 설정합니다.',
         icon: Settings,
+      },
+      {
+        href: '/admin/homepage-sections',
+        label: '홈 화면 구성',
+        description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.',
+        icon: LayoutTemplate,
       },
       {
         href: '/admin/maintenance',
@@ -214,8 +235,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '되돌릴 수 없는 수집 데이터 삭제·초기화 작업을 관리합니다.',
         icon: ShieldAlert,
       },
-      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 작업 모니터, 장애로그, 소스품질, 수집설정,
-      // 홈구성, 서비스카탈로그 — ADMIN_RESTRUCTURE_PLAN.md 참고
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 작업 모니터, 장애로그, 서비스카탈로그 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],
   },
 ]
