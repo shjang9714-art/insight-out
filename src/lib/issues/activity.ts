@@ -45,6 +45,22 @@ export function getKstTodayStartMs(): number {
   return Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 60 * 60 * 1000
 }
 
+// ─── 종합 랭킹 점수 ──────────────────────────────────────────────────────────
+// 신규(changePct=null)를 무한대로 최상단에 두던 방식을 폐기하고, 세 신호를 합산한다.
+//  ① 볼륨   — 이번 주 실제 기사 수(log 완화). 1~2건짜리 신규가 톱을 먹지 못하게.
+//  ② 관련도 — 누적 매칭 기사 수(log). 플랫폼이 꾸준히 다루는 '중심' 이슈일수록 가점.
+//             (issues 테이블에 테마 컬럼이 없어 '지속적으로 다뤄진 정도'를 관련도 프록시로 사용)
+//  ③ 속도   — 급증률. 신규는 무한대가 아닌 고정 가점(80)으로, 수치는 200%로 상한.
+//             표본이 작으면(이번 주 <5건) 속도 신뢰도를 낮춰 소표본 폭주를 억제.
+export function rankScore(c: IssueCard): number {
+  const volume     = Math.log1p(c.recentCount)                       // 볼륨
+  const relevance  = Math.log1p(c.total)                             // 관련도(중심성)
+  const rawVel     = c.changePct === null ? 80 : Math.max(c.changePct, 0)
+  const velocity   = Math.min(rawVel, 200) / 100                     // 속도 0~2.0
+  const confidence = Math.min(c.recentCount, 5) / 5                  // 소표본 신뢰도 0.2~1.0
+  return volume * 1.0 + relevance * 0.6 + velocity * confidence * 1.2
+}
+
 // ─── 급상승 + 변화 감지 집계 (91 computeTrendingTopics 방식, KST 주 경계) ────
 
 export function computeIssueActivity(
@@ -134,10 +150,9 @@ export function computeIssueActivity(
   })
 
   return cards.sort((a, b) => {
-    const aScore = a.changePct === null ? Infinity : a.changePct
-    const bScore = b.changePct === null ? Infinity : b.changePct
-    if (bScore !== aScore) return bScore - aScore
-    return b.recentCount - a.recentCount
+    const s = rankScore(b) - rankScore(a)
+    if (s !== 0) return s
+    return b.recentCount - a.recentCount   // 동점: 이번 주 건수 많은 순
   })
 }
 
