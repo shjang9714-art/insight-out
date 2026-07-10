@@ -60,6 +60,8 @@ export default async function AdminPage() {
     trendRes, sourceRes,
     // 신규 — 오늘 할 일
     crawlFailedRes, crawlSourcesRes, pendingUsersRes,
+    // 신규 — 전체 사용자 수 KPI (278)
+    totalUsersRes,
     // 신규 — usage
     llmUsageRes, llmSettingsRes, transUsageRes, ttsUsageRes,
     // 신규 — 데이터 점등
@@ -99,6 +101,8 @@ export default async function AdminPage() {
     supabase.from('crawl_logs').select('source_id').in('status', ['failed', 'partial']).gte('started_at', yesterday).not('source_id', 'is', null),
     // 승인 대기 사용자 수 (193, approval_status 컬럼 없으면 error → graceful 생략)
     supabase.from('users').select('*', { count: 'exact', head: true }).eq('approval_status', 'pending'),
+    // 전체 사용자 수 (278)
+    supabase.from('users').select('*', { count: 'exact', head: true }),
     // LLM usage
     admin ? admin.from('llm_usage').select('provider, tokens').eq('period', period) : Promise.resolve({ data: [], error: null }),
     admin ? admin.from('llm_settings').select('provider, enabled, monthly_token_limit') : Promise.resolve({ data: [], error: null }),
@@ -318,6 +322,16 @@ export default async function AdminPage() {
               <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">사용자가 저장한 콘텐츠</p>
+          </Link>
+
+          {/* 전체 사용자 수 (278) */}
+          <Link href="/admin/users" className={KPI_CARD}>
+            <p className="admin-card-title text-muted-foreground">전체 사용자</p>
+            <p className="mt-3 flex items-baseline gap-1.5">
+              <span className="admin-metric-dashboard text-foreground">{(totalUsersRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">명</span>
+            </p>
+            <p className="mt-1 admin-caption text-muted-foreground">가입된 전체 사용자</p>
           </Link>
 
           {/* 활성 소스 */}

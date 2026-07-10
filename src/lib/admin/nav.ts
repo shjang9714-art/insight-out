@@ -36,173 +36,179 @@ export interface AdminNavGroup {
   items: AdminNavItem[]
 }
 
+// 지시서 278 — 어드민 IA v2 Phase 1: 8그룹 평탄화(기존 7그룹 + 하단 접이식 '시스템' 해체)
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
-    group: '개요',
+    group: '운영센터',
     items: [
       {
         href: '/admin',
-        label: '대시보드',
-        description: '콘텐츠 수집 현황과 운영 기능을 한곳에서 관리합니다.',
+        label: '운영 대시보드',
+        description: '전체 운영 현황, 사용자 수, 콘텐츠 상태, AI/발행 상태를 요약합니다.',
         icon: LayoutDashboard,
       },
-    ],
-  },
-  {
-    group: '콘텐츠',
-    items: [
       {
-        href: '/admin/contents',
-        label: '콘텐츠 관리',
-        description: '수집 콘텐츠 노출·숨김·삭제',
-        icon: Newspaper,
-      },
-      {
-        href: '/admin/upload',
-        label: '콘텐츠 추가',
-        description: '파일 업로드 또는 텍스트 붙여넣기',
-        icon: FilePlus,
-      },
-      {
-        href: '/admin/briefings',
-        label: '모닝브리핑',
-        description: '자동 생성 브리핑 관리',
-        icon: Sun,
+        href: '/admin/requests',
+        label: '운영 게시판',
+        description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.',
+        icon: ClipboardList,
       },
     ],
   },
   {
-    group: '수집',
+    group: '수집·크롤링',
     items: [
       {
         href: '/admin/sources',
         label: '소스 관리',
-        description: 'RSS와 수집 소스 설정',
+        description: '뉴스, 유튜브, 리포트 등 콘텐츠 수집 소스를 등록하고 관리합니다.',
         icon: Rss,
       },
       {
         href: '/admin/crawl-logs',
-        label: '크롤링 현황',
-        description: '자동 수집 결과와 오류 확인',
+        label: '크롤 실행 로그',
+        description: '소스별 크롤 성공/실패, 수집량, 중복, 오류를 확인합니다.',
         icon: ListChecks,
       },
       {
         href: '/admin/exclusion-rules',
         label: '제외 규칙',
-        description: '도메인·URL·제목 패턴 자동 보류/거부 규칙',
+        description: '수집 제외 도메인, 키워드, URL 규칙을 관리합니다.',
         icon: Ban,
       },
     ],
   },
   {
-    group: '분류 엔진',
+    group: '콘텐츠·분류',
     items: [
       {
+        href: '/admin/contents',
+        label: '콘텐츠 검수',
+        description: '수집·업로드된 콘텐츠의 상태, 품질, 발행 여부를 검수합니다.',
+        icon: Newspaper,
+      },
+      {
+        href: '/admin/upload',
+        label: '콘텐츠 추가',
+        description: '리포트 업로드, 텍스트 붙여넣기, URL 가져오기로 콘텐츠를 수동 등록합니다.',
+        icon: FilePlus,
+      },
+      {
+        href: '/admin/content-data',
+        label: '콘텐츠 데이터 보강',
+        description: '본문, 썸네일, 시그널, URL, 클러스터 등 콘텐츠 메타데이터를 보강합니다.',
+        icon: Database,
+      },
+      {
         href: '/admin/keywords',
-        label: '카테고리 분류기준',
-        description: '콘텐츠를 서비스·카테고리로 분류하는 기준 키워드',
+        label: '키워드',
+        description: '콘텐츠 서비스/카테고리 분류 기준 키워드를 관리합니다.',
         icon: Tags,
       },
       {
         href: '/admin/keyword-groups',
-        label: '수집 키워드',
-        description: '수집 관련도·검색어·시그널 기준',
+        label: '키워드 그룹·시그널 기준',
+        description: '수집 seed, 검색 seed, include/exclude pattern, 시그널 기준을 관리합니다.',
         icon: Network,
       },
       {
         href: '/admin/entities',
         label: '엔티티 사전',
-        description: '기업·기술·인물 등 엔티티 정규화·병합',
+        description: '기업, 조직, 인물 등 엔티티와 별칭, 정규화 기준을 관리합니다.',
         icon: Boxes,
       },
+      // Phase 3 후보(신규 route 아님, 문서 TODO): 큐레이션 기업 화면 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],
   },
   {
-    group: '이슈·인사이트',
+    group: 'AI 운영',
+    items: [
+      {
+        href: '/admin/llm',
+        label: 'LLM 관리',
+        description: 'LLM 공급자, 사용량, 모델, 라우팅 상태를 확인합니다.',
+        icon: Cpu,
+      },
+      {
+        href: '/admin/translation',
+        label: '번역 관리',
+        description: '번역 공급자 상태와 번역 사용량을 확인합니다.',
+        icon: Languages,
+      },
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 프롬프트 관리, AI 작업 모니터 — ADMIN_RESTRUCTURE_PLAN.md 참고
+    ],
+  },
+  {
+    group: '인사이트·리서치',
     items: [
       {
         href: '/admin/issues',
         label: '이슈 관리',
-        description: '이슈 생성·발행·콘텐츠 배정',
+        description: '주요 이슈 클러스터와 관련 콘텐츠 매칭을 관리합니다.',
         icon: Radar,
       },
       {
         href: '/admin/insights',
-        label: 'AI 인사이트',
-        description: 'AI 핵심 인사이트 카드 생성·검토·발행',
+        label: '인사이트 카드',
+        description: 'AI가 생성한 인사이트 카드의 생성, 검수, 발행 상태를 관리합니다.',
         icon: Sparkles,
       },
       {
         href: '/admin/key-insights',
-        label: '핵심 Insight 검수',
-        description: '"주목하세요, 핵심 Insight" 주간 카드 검수·편집·게시',
+        label: '핵심 Insight',
+        description: '주간 핵심 Insight를 검수, 편집, 발행합니다.',
         icon: Star,
       },
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 전략리서치, 경쟁사주간 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],
   },
   {
-    group: '연동·사용량',
+    group: '발행·구독',
     items: [
       {
-        href: '/admin/translation',
-        label: '번역',
-        description: '번역 연결 상태와 월간 사용량',
-        icon: Languages,
+        href: '/admin/briefings',
+        label: '모닝브리핑',
+        description: '데일리 브리핑, TTS 오디오, 하이라이트 생성 상태를 관리합니다.',
+        icon: Sun,
       },
-      {
-        href: '/admin/llm',
-        label: 'LLM 관리',
-        description: 'LLM 연동 현황·사용량·라우팅 관리',
-        icon: Cpu,
-      },
-    ],
-  },
-  {
-    group: '발행',
-    items: [
       {
         href: '/admin/newsletter',
         label: '뉴스레터',
-        description: '발송 설정·이력·수신자 관리',
+        description: '뉴스레터 발행, 설정, 수신자, 구독자, 발송 이력을 통합 관리합니다.',
         icon: Mail,
       },
     ],
   },
+  {
+    group: '사용자·분석',
+    items: [
+      {
+        href: '/admin/users',
+        label: '사용자 관리',
+        description: '사용자 승인 상태, 역할, 부서, 팀 정보를 관리합니다.',
+        icon: Users,
+      },
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 분석 — ADMIN_RESTRUCTURE_PLAN.md 참고
+    ],
+  },
+  {
+    group: '시스템 설정',
+    items: [
+      {
+        href: '/admin/settings',
+        label: '시스템 설정',
+        description: '홈 화면 섹션, 어드민 화면 설정, 수집 설정 등 시스템 설정을 관리합니다.',
+        icon: Settings,
+      },
+      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 작업 모니터, 장애로그, 소스품질, 수집설정,
+      // 홈구성, 서비스카탈로그, 유지보수 — ADMIN_RESTRUCTURE_PLAN.md 참고
+    ],
+  },
 ]
-
-export const ADMIN_NAV_BOTTOM: AdminNavGroup = {
-  group: '시스템',
-  items: [
-    {
-      href: '/admin/requests',
-      label: '운영 게시판',
-      description: 'SQL·인프라 요청과 핸드오프 추적',
-      icon: ClipboardList,
-    },
-    {
-      href: '/admin/users',
-      label: '사용자 관리',
-      description: '사용자 목록과 권한 관리',
-      icon: Users,
-    },
-    {
-      href: '/admin/content-data',
-      label: '콘텐츠 데이터 관리',
-      description: '풀본문·신호·URL 정규화·수집 데이터 삭제',
-      icon: Database,
-    },
-    {
-      href: '/admin/settings',
-      label: '시스템 설정',
-      description: '화면 테마·폰트·색상',
-      icon: Settings,
-    },
-  ],
-}
 
 /** pathname → nav 항목 조회. 정확 일치 우선, 없으면 최장 startsWith 매칭 */
 export function findAdminNavItem(pathname: string): AdminNavItem | null {
-  const all = [...ADMIN_NAV_GROUPS.flatMap(g => g.items), ...ADMIN_NAV_BOTTOM.items]
+  const all = ADMIN_NAV_GROUPS.flatMap(g => g.items)
   const exact = all.find(i => i.href === pathname)
   if (exact) return exact
   return all
