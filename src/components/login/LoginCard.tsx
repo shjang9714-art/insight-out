@@ -201,17 +201,9 @@ export function LoginCard() {
 
   return (
     <div className="w-full rounded-[30px] border border-slate-200/70 bg-white/95 p-8 shadow-[0_40px_90px_-30px_rgba(24,39,75,0.30)] backdrop-blur-sm sm:p-10">
-      {/* 카드 타이틀 — 텍스트 중앙 정렬 + 골드 언더바 */}
+      {/* 카드 타이틀 — 텍스트 중앙 정렬 */}
       <div className="mb-9 flex flex-col items-center">
-        <h1 className="text-[26px] font-extrabold tracking-tight text-slate-900">Insight Out</h1>
-        <span
-          aria-hidden="true"
-          className="mt-3.5 h-[3px] w-[30px] rounded-full"
-          style={{
-            background: 'linear-gradient(90deg, rgba(246,205,93,0), #e8b638 24%, #f6d36a 50%, #e8b638 76%, rgba(246,205,93,0))',
-            boxShadow: '0 2px 8px rgba(232,182,56,.32)',
-          }}
-        />
+        <h1 className="text-[26px] font-extrabold tracking-tight text-slate-900">인사이트 아웃</h1>
         <p className="mt-4 text-sm text-slate-500">
           {step === 'email' ? '사내 이메일로 로그인하세요' : '메일로 받은 인증 코드를 입력하세요'}
         </p>
