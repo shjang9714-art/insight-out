@@ -3,7 +3,6 @@ import FeedSlot from '@/components/feed/FeedSlot'
 import IssueSignals from '@/components/dashboard/IssueSignals'
 import KeyInsightHomeHighlights from '@/components/dashboard/KeyInsightHomeHighlights'
 import VisitDelta from '@/components/dashboard/VisitDelta'
-import PersonalizationNudge from '@/components/dashboard/PersonalizationNudge'
 import PageContainer from '@/components/PageContainer'
 import { getHomeSectionLayout } from '@/lib/home/layout'
 
@@ -27,11 +26,6 @@ function FeedSlotSkeleton() {
 
 /** 섹션 key → 렌더러. 각 섹션의 기존 Suspense·레이아웃 그대로 캡슐화. */
 const SECTION_RENDERERS: Record<string, () => ReactNode> = {
-  personalization_nudge: () => (
-    <Suspense fallback={null}>
-      <PersonalizationNudge />
-    </Suspense>
-  ),
   visit_delta: () => (
     <Suspense fallback={null}>
       <VisitDelta />
