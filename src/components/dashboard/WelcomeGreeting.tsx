@@ -1,5 +1,15 @@
+import { Nanum_Myeongjo } from 'next/font/google'
 import { createClient } from '@/lib/supabase/server'
 import { getKstHour } from '@/lib/date'
+import { cn } from '@/lib/utils'
+
+/** 메인 인사말 문구 전용 세리프 폰트. 레이아웃 전체 폰트(Pretendard)는 그대로 두고
+ *  이 컴포넌트의 메인 라인에만 국한해서 적용. */
+const nanumMyeongjo = Nanum_Myeongjo({
+  weight: '700',
+  subsets: ['latin'],
+  display: 'swap',
+})
 
 type GreetingPeriod = 'morning' | 'afternoon' | 'evening' | 'night'
 
@@ -75,7 +85,9 @@ export default async function WelcomeGreeting() {
 
   return (
     <div>
-      <p className="text-[26px] font-medium text-foreground">{phrase.main(name)}</p>
+      <p className={cn(nanumMyeongjo.className, 'text-[26px] font-bold text-foreground')}>
+        {phrase.main(name)}
+      </p>
       <p className="text-[15px] text-muted-foreground">{phrase.sub}</p>
     </div>
   )
