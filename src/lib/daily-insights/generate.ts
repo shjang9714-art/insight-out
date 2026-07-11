@@ -12,6 +12,10 @@ import type { DailyInsightPastArticle, DailyInsightSourceArticle } from '@/lib/d
 // 그룹 수 목표 2~3, 최소 1(§2 확정 사항). 그룹 내부는 프롬프트 크기 억제를 위해 상위 N건으로 캡.
 const MAX_GROUPS = 3
 const MAX_MEMBERS_PER_GROUP = 6
+// 분류된(①~⑦) 인사이트가 1개 이상이면 미분류(null) 버킷은 버린다 — 서로 무관한 기사를 억지
+// 헤드라인으로 묶는 "잡동사니" 방지(지시서 20260711 fast-follow §1). false 로 되돌리면 이전
+// 동작(미분류 버킷도 다른 버킷과 동일하게 경쟁)으로 복귀.
+const SUPPRESS_UNCATEGORIZED_WHEN_CATEGORIZED_EXISTS = true
 // 과거기사 6개월 컷오프(§3 확정 사항) — candidates.ts 의 pastArticles 는 날짜 하한이 없어 여기서 적용.
 const PAST_ARTICLE_MAX_AGE_DAYS = 180
 // "그날 발행 기사만" — candidates.ts 는 그대로 두고 windowDays 만 1로 좁혀 호출(§2 파라미터화).
@@ -27,6 +31,34 @@ interface CandidateGroup {
   members: KeyInsightCandidate[]
 }
 
+interface RankedBucket {
+  category: string | null
+  members: KeyInsightCandidate[]
+  count: number
+  topImportance: number
+}
+
+function rankBucket(category: string | null, members: KeyInsightCandidate[]): RankedBucket {
+  const sorted = [...members].sort((a, b) => b.importanceScore - a.importanceScore)
+  return {
+    category,
+    members: sorted.slice(0, MAX_MEMBERS_PER_GROUP),
+    count: members.length,
+    topImportance: sorted[0]?.importanceScore ?? 0,
+  }
+}
+
+/**
+ * 미분류(null) 버킷 폴백 — "가장 강한 1개 토픽"만 남긴다(§1-2). 후보 전체를 억지로 묶지 않고,
+ * 최고 importance 후보의 issueId 가 있으면 같은 이슈 클러스터 멤버만, 없으면 그 후보 단독 1건.
+ */
+function buildUncategorizedFallback(uncategorized: KeyInsightCandidate[]): RankedBucket {
+  const sorted = [...uncategorized].sort((a, b) => b.importanceScore - a.importanceScore)
+  const top = sorted[0]
+  const members = top.issueId ? sorted.filter((c) => c.issueId === top.issueId) : [top]
+  return rankBucket(null, members)
+}
+
 function buildGroups(candidates: KeyInsightCandidate[]): CandidateGroup[] {
   const buckets = new Map<string | null, KeyInsightCandidate[]>()
   for (const c of candidates) {
@@ -36,17 +68,26 @@ function buildGroups(candidates: KeyInsightCandidate[]): CandidateGroup[] {
     buckets.set(key, list)
   }
 
-  const ranked = [...buckets.entries()].map(([category, members]) => {
-    const sortedMembers = [...members].sort((a, b) => b.importanceScore - a.importanceScore)
-    return {
-      category,
-      members: sortedMembers.slice(0, MAX_MEMBERS_PER_GROUP),
-      count: members.length,
-      topImportance: sortedMembers[0]?.importanceScore ?? 0,
-    }
-  })
+  const categorized = [...buckets.entries()]
+    .filter(([category]) => category !== null)
+    .map(([category, members]) => rankBucket(category, members))
+    .sort((a, b) => b.count - a.count || b.topImportance - a.topImportance)
 
-  ranked.sort((a, b) => b.count - a.count || b.topImportance - a.topImportance)
+  // 분류된 버킷이 하나라도 있으면 미분류 버킷은 버린다(§1-1) — min-1 은 분류된 버킷으로 충족.
+  if (SUPPRESS_UNCATEGORIZED_WHEN_CATEGORIZED_EXISTS && categorized.length > 0) {
+    return categorized.slice(0, MAX_GROUPS).map(({ category, members }) => ({ category, members }))
+  }
+
+  const uncategorized = buckets.get(null) ?? []
+  const ranked = SUPPRESS_UNCATEGORIZED_WHEN_CATEGORIZED_EXISTS
+    // 여기 도달 = 분류된 버킷이 전혀 없는 경우뿐 — 미분류 폴백은 단일 이슈 1건으로 제한(잡동사니 금지).
+    ? uncategorized.length > 0
+      ? [buildUncategorizedFallback(uncategorized)]
+      : []
+    // 게이트 비활성화 시 이전 동작 유지(미분류 버킷도 다른 버킷과 동일하게 경쟁).
+    : [...categorized, ...(uncategorized.length > 0 ? [rankBucket(null, uncategorized)] : [])].sort(
+        (a, b) => b.count - a.count || b.topImportance - a.topImportance
+      )
 
   return ranked.slice(0, MAX_GROUPS).map(({ category, members }) => ({ category, members }))
 }
