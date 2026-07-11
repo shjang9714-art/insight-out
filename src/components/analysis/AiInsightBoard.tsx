@@ -17,6 +17,7 @@ import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
+import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -128,12 +129,12 @@ export default function AiInsightBoard({
 
   return (
     <div className="space-y-6">
-      {/* 하위 카테고리 탭 — L1 그룹 폭(--nav-group-w) 기준 좌측블록 안에서 center → L1 중앙 아래 정렬(233) */}
+      {/* 하위 카테고리 탭 — 좌측 시작점을 활성 L1 탭 라벨 텍스트 시작 x좌표에 맞춤(§지시서 20260712) */}
       {/* 실험실(관리자 전용)은 DashboardHeader.tsx의 5탭 네비 줄로 이동(2026-07-10) —
           여기서는 항상 노출되는 3개 탭만 렌더링 */}
-      <div className="-mt-3 w-[var(--nav-group-w)]">
-        <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} className="w-full" />
-      </div>
+      <NavGroupAlign className="-mt-3">
+        <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} />
+      </NavGroupAlign>
 
       {/* 핵심 인사이트 — 일일 daily_insights 목록(§지시서 20260711 기간필터·라벨칩·전구이모지) */}
       {view === 'brief' && (
