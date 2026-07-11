@@ -14,7 +14,6 @@ import InsightCardsSectionClient, {
 } from '@/components/analysis/InsightCardsSectionClient'
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
-import ScopeFilter from '@/components/analysis/ScopeFilter'
 import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 
@@ -130,11 +129,6 @@ export default function AiInsightBoard({
           여기서는 항상 노출되는 3개 탭만 렌더링 */}
       <div className="-mt-3 w-[var(--nav-group-w)]">
         <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} className="w-full" />
-      </div>
-
-      {/* 범위 필터 (전체/내 관심사) */}
-      <div className="flex justify-end">
-        <ScopeFilter />
       </div>
 
       {/* 핵심 인사이트 — 일일 daily_insights 목록(§지시서 20260711 fast-follow §1) */}
