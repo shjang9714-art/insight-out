@@ -53,6 +53,11 @@ export default function AdminContentProcessing() {
   const [transcriptResult, setTranscriptResult] = useState<string | null>(null)
   const transcriptStopRef = useRef(false)
 
+  // PDF 표지 수집 — 286, 모드(282 패턴)
+  const [isPdfCoverRetrying, setIsPdfCoverRetrying] = useState(false)
+  const [pdfCoverResult, setPdfCoverResult] = useState<string | null>(null)
+  const pdfCoverStopRef = useRef(false)
+
   // 관련기사 재클러스터링(본문 유사도) — 220
   const [isClustering, setIsClustering] = useState(false)
   const [clusterResult, setClusterResult] = useState<string | null>(null)
@@ -252,6 +257,47 @@ export default function AdminContentProcessing() {
       setError(err instanceof Error ? err.message : '유튜브 자막 수집 중 오류가 발생했습니다.')
     } finally {
       setIsTranscriptRetrying(false)
+    }
+  }
+
+  const handlePdfCoverRetry = async (mode: 'fresh' | 'retry') => {
+    pdfCoverStopRef.current = false
+    setIsPdfCoverRetrying(true)
+    setPdfCoverResult(null)
+    setError(null)
+    const acc = { processed: 0, filled: 0, skipped: 0 }
+    try {
+      while (true) {
+        const res = await fetch(`/api/admin/pdf-cover-backfill?limit=5&mode=${mode}`, { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? 'PDF 표지 수집 실패')
+        const { processed, filled, skipped, remaining, ready } = await res.json() as {
+          processed: number; filled: number; skipped: number; remaining: number; ready: boolean
+        }
+        if (!ready) {
+          setPdfCoverResult('219 SQL 적용이 필요합니다.')
+          break
+        }
+        acc.processed += processed
+        acc.filled    += filled
+        acc.skipped   += skipped
+
+        if (pdfCoverStopRef.current) {
+          setPdfCoverResult(`중단됨 · 누적 처리 ${acc.processed} · 설정 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setPdfCoverResult(`완료 · 처리 ${acc.processed} · 설정 ${acc.filled} · 스킵 ${acc.skipped}`)
+          break
+        }
+        if (processed === 0) break
+
+        setPdfCoverResult(`수집 중… 누적 처리 ${acc.processed} · 설정 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'PDF 표지 수집 중 오류가 발생했습니다.')
+    } finally {
+      setIsPdfCoverRetrying(false)
     }
   }
 
@@ -467,6 +513,43 @@ export default function AdminContentProcessing() {
               variant="outline"
               disabled={isTranscriptRetrying}
               onClick={() => handleTranscriptRetry('retry')}
+            >
+              실패행 재시도
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* PDF 표지 수집 — 286 */}
+      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="admin-card-title text-foreground">PDF 표지 수집</p>
+            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
+              업로드된 PDF의 첫 페이지를 표지로 설정합니다. 표지가 이미 있으면 건너뜁니다.
+              신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
+            </p>
+            {pdfCoverResult && (
+              <p className="admin-caption mt-2 text-positive">
+                {isPdfCoverRetrying ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{pdfCoverResult}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isPdfCoverRetrying ? () => { pdfCoverStopRef.current = true } : () => handlePdfCoverRetry('fresh')}
+            >
+              {isPdfCoverRetrying ? '중단' : '아직 시도 안 함'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isPdfCoverRetrying}
+              onClick={() => handlePdfCoverRetry('retry')}
             >
               실패행 재시도
             </Button>
