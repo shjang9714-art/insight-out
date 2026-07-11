@@ -47,11 +47,12 @@ async function main() {
   for (const file of files) {
     const ext = path.extname(file)
     const base = file.slice(0, -ext.length)
-    // macOS(APFS)는 한글 파일명을 NFD(자모 분해)로 반환 — ALIAS/매칭 비교를 위해 NFC로 정규화.
-    // URL 자체는 실제 git 커밋 바이트(file, 정규화 전)를 그대로 써야 배포 환경에서 404가 안 남.
+    // macOS(APFS)는 한글 파일명을 NFD(자모 분해)로 반환. 매칭 키와 URL 모두 NFC로 정규화해
+    // 빌드 OS(맥=NFD / Vercel Linux=NFC 체크아웃)와 무관하게 매니페스트를 결정론적으로 만든다.
+    // git 트리 파일명은 NFC이므로 Vercel에서 NFC URL이 정확히 매칭되고(200), macOS는 정규화-무관 조회라 로컬 dev도 200.
     const rawKey = stripVariantSuffix(base).normalize('NFC')
     const canonicalKey = ALIAS[rawKey] ?? rawKey
-    const url = encodeURI(`/topic-covers/${file}`)
+    const url = encodeURI(`/topic-covers/${file.normalize('NFC')}`)
     if (!pool[canonicalKey]) pool[canonicalKey] = []
     pool[canonicalKey].push(url)
   }
