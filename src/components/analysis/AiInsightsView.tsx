@@ -7,7 +7,7 @@ import { tagTypeToBucket, type KeywordItem } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
-import { DAILY_LIST_WINDOW_DAYS } from '@/lib/daily-insights/constants'
+import { resolveDailyInsightDateRange } from '@/lib/daily-insights/period'
 import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
 
 const WATCHLIST_LIMIT = 20
@@ -67,7 +67,14 @@ function computeTrendingTopics(
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
 
-export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief' | 'headline' | 'trending' | 'issues' | 'graph' | 'keyword' }) {
+interface AiInsightsViewProps {
+  view?: 'brief' | 'headline' | 'trending' | 'issues' | 'graph' | 'keyword'
+  dailyPeriod?: string
+  dailyFrom?: string
+  dailyTo?: string
+}
+
+export default async function AiInsightsView({ view = 'brief', dailyPeriod, dailyFrom, dailyTo }: AiInsightsViewProps) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,8 +96,21 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const todayStart   = getKstTodayStartIso()
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
-  const dailyListWindowStart = new Date(todayStartMs - (DAILY_LIST_WINDOW_DAYS - 1) * 24 * 60 * 60 * 1000)
-  const dailyListWindowStartStr = getKstDateString(dailyListWindowStart)
+  const todayStr = getKstDateString(new Date(todayStartMs))
+  const dailyDateRange = resolveDailyInsightDateRange(dailyPeriod, dailyFrom, dailyTo, todayStr)
+
+  // "핵심 인사이트" 목록(§지시서 20260711 기간필터·라벨칩·전구이모지 §1) — 일일 daily_insights 소스.
+  // 기본값(필터 미적용)은 무제한 전체 목록, day_of desc → display_order asc.
+  // 기간 필터가 있을 때만 day_of 범위를 gte/lte 로 좁힌다(클라이언트 슬라이싱 금지).
+  let dailyInsightQuery = supabase
+    .from('daily_insights')
+    .select('*')
+    .eq('status', 'published')
+    .order('day_of', { ascending: false })
+    .order('display_order', { ascending: true })
+  if (dailyDateRange) {
+    dailyInsightQuery = dailyInsightQuery.gte('day_of', dailyDateRange.from).lte('day_of', dailyDateRange.to)
+  }
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
   const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes] = await Promise.all([
@@ -137,15 +157,7 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       .select('entity_id, signal_count, content_count, signal_types, last_seen')
       .order('signal_count', { ascending: false })
       .limit(30),
-    // "핵심 인사이트" 목록(§지시서 20260711 fast-follow §1) — 일일 daily_insights 소스로 교체.
-    // 최근 DAILY_LIST_WINDOW_DAYS 일치를 day_of desc, 같은 날짜 안에서는 display_order asc 로 노출.
-    supabase
-      .from('daily_insights')
-      .select('*')
-      .eq('status', 'published')
-      .gte('day_of', dailyListWindowStartStr)
-      .order('day_of', { ascending: false })
-      .order('display_order', { ascending: true }),
+    dailyInsightQuery,
     // 관리자 여부 — 숨긴 하위탭('실험실') 노출 판정용
     user
       ? supabase.from('users').select('role').eq('id', user.id).single()

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Badge } from '@/components/ui/badge'
+import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 
 interface DailyInsightListProps {
@@ -46,7 +46,7 @@ export default function DailyInsightList({ insights }: DailyInsightListProps) {
                 href={`/dashboard/daily-insights/${item.id}`}
                 className="group block rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-600/40 hover:bg-accent/40"
               >
-                {item.category && <Badge variant="secondary">{item.category}</Badge>}
+                {item.category && <CategoryBadge category={item.category} />}
                 <p className="mt-1.5 font-semibold text-foreground leading-snug transition-colors group-hover:text-brand-700">
                   {item.headline}
                 </p>
