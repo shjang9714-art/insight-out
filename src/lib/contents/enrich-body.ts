@@ -3,13 +3,19 @@ import { extract } from '@extractus/article-extractor'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrl } from '@/lib/crawler/resolve-url'
+import { copyExternalImageToCover } from '@/lib/contents/cover-from-image'
 
 const ENRICH_MIN_BODY_LEN = 400
+
+// 282 — og:image 품질게이트(자동 수집 경로 전용)
+const COVER_MIN_WIDTH = 200
+const COVER_MIN_HEIGHT = 150
 
 export interface EnrichBodyRow {
   id: string
   original_url: string
   body_original: string | null
+  thumbnail_url?: string | null
 }
 
 export interface DrainOptions {
@@ -50,13 +56,27 @@ export async function enrichOneBody(
     const resolved = await resolveArticleUrl(row.original_url)
 
     let extracted: string | null = null
+    let ogImage: string | null = null
     try {
       const result = await extract(resolved, {}, { signal: AbortSignal.timeout(6000) })
       if (result?.content) {
         extracted = cleanBodyText(htmlToPlainText(result.content))
       }
+      ogImage = result?.image ?? null
     } catch {
       // 추출 실패·타임아웃 — body_fetched_at 마킹만
+    }
+
+    if (!row.thumbnail_url && ogImage) {
+      // 본문 fetch 에서 이미 받은 og:image 재사용(추가 네트워크 fetch 없음) — 282
+      try {
+        await copyExternalImageToCover(admin, row.id, ogImage, {
+          minWidth: COVER_MIN_WIDTH,
+          minHeight: COVER_MIN_HEIGHT,
+        })
+      } catch {
+        // 실패해도 본문 처리는 계속 진행(생성 폴백 유지)
+      }
     }
 
     const existingBody = cleanBodyText(htmlToPlainText(row.body_original ?? ''))
@@ -98,7 +118,7 @@ export async function enrichByIds(
 
   const { data: targets } = await admin
     .from('contents')
-    .select('id, original_url, body_original')
+    .select('id, original_url, body_original, thumbnail_url')
     .in('id', limitedIds)
     .not('original_url', 'is', null)
 
@@ -147,7 +167,7 @@ export async function drainBackfill(
 
     let targetQ = admin
       .from('contents')
-      .select('id, original_url, body_original')
+      .select('id, original_url, body_original, thumbnail_url')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
     if (from) targetQ = targetQ.gte('collected_at', from)

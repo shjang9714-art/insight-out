@@ -5,12 +5,18 @@ import { copyExternalImageToCover } from '@/lib/contents/cover-from-image'
 
 const THUMBNAIL_TARGET_CATEGORIES = ['뉴스', '웹인사이트']
 
+/** 자동 og:image 수집 품질게이트 — 이 미만이면 생성 폴백 유지(썸네일 미설정) */
+const MIN_WIDTH = 200
+const MIN_HEIGHT = 150
+
 export interface DrainOptions {
   limit?: number
   from?: string | null
   to?: string | null
   /** Date.now() 값. 설정 시 deadline 초과까지 반복, 미설정 시 단일 배치. */
   deadline?: number
+  /** fresh(기본): thumbnail_url·thumbnail_fetched_at 둘 다 null. retry: 과거 실패행(thumbnail_fetched_at 있음)만 재대상. */
+  mode?: 'fresh' | 'retry'
 }
 
 export interface DrainResult {
@@ -29,6 +35,7 @@ interface ThumbnailRow {
 
 async function pendingCount(
   admin: SupabaseClient,
+  mode: 'fresh' | 'retry',
   from?: string | null,
   to?: string | null,
 ): Promise<number> {
@@ -37,8 +44,8 @@ async function pendingCount(
     .select('id', { count: 'exact', head: true })
     .in('category', THUMBNAIL_TARGET_CATEGORIES)
     .is('thumbnail_url', null)
-    .is('thumbnail_fetched_at', null)
     .not('original_url', 'is', null)
+    .or(mode === 'retry' ? 'thumbnail_fetched_at.not.is.null' : 'thumbnail_fetched_at.is.null')
   if (from) q = q.gte('collected_at', from)
   if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
   const { count } = await q
@@ -63,7 +70,10 @@ async function retryOneThumbnail(
 
   let filled = false
   if (imageUrl) {
-    const publicUrl = await copyExternalImageToCover(admin, row.id, imageUrl)
+    const publicUrl = await copyExternalImageToCover(admin, row.id, imageUrl, {
+      minWidth: MIN_WIDTH,
+      minHeight: MIN_HEIGHT,
+    })
     filled = publicUrl !== null
   }
 
@@ -83,7 +93,7 @@ async function retryOneThumbnail(
  */
 export async function drainThumbnailBackfill(
   admin: SupabaseClient,
-  { limit = 10, from, to, deadline }: DrainOptions = {},
+  { limit = 20, from, to, deadline, mode = 'fresh' }: DrainOptions = {},
 ): Promise<DrainResult> {
   let processed = 0, filled = 0, skipped = 0, remaining = 0
 
@@ -95,8 +105,8 @@ export async function drainThumbnailBackfill(
       .select('id, original_url')
       .in('category', THUMBNAIL_TARGET_CATEGORIES)
       .is('thumbnail_url', null)
-      .is('thumbnail_fetched_at', null)
       .not('original_url', 'is', null)
+      .or(mode === 'retry' ? 'thumbnail_fetched_at.not.is.null' : 'thumbnail_fetched_at.is.null')
     if (from) targetQ = targetQ.gte('collected_at', from)
     if (to)   targetQ = targetQ.lte('collected_at', to + 'T23:59:59.999Z')
 
@@ -112,7 +122,7 @@ export async function drainThumbnailBackfill(
     }
 
     if (!targets?.length) {
-      remaining = await pendingCount(admin, from, to)
+      remaining = await pendingCount(admin, mode, from, to)
       break
     }
 
@@ -122,7 +132,7 @@ export async function drainThumbnailBackfill(
       else skipped++
     }
     processed += targets.length
-    remaining = await pendingCount(admin, from, to)
+    remaining = await pendingCount(admin, mode, from, to)
 
     if (remaining === 0) break
     if (deadline === undefined) break

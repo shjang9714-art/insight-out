@@ -44,9 +44,9 @@ async function verifyAdmin() {
 }
 
 /**
- * POST /api/admin/thumbnail-backfill?limit=N&from=YYYY-MM-DD&to=YYYY-MM-DD
- * 뉴스·웹인사이트 중 thumbnail_url·thumbnail_fetched_at 모두 NULL 대상으로
- * 원문 og:image 재수집(단일 배치). limit: 1~20, 기본 10.
+ * POST /api/admin/thumbnail-backfill?limit=N&from=YYYY-MM-DD&to=YYYY-MM-DD&mode=fresh|retry
+ * 뉴스·웹인사이트 중 대상 행에 원문 og:image 재수집(단일 배치). limit: 1~30, 기본 20.
+ * mode=fresh(기본): thumbnail_url·thumbnail_fetched_at 모두 NULL. mode=retry: 과거 실패행(thumbnail_fetched_at 있음)만 재대상.
  * thumbnail_fetched_at 컬럼 미적용(42703) 시 { ready: false }(219 SQL 적용 필요).
  */
 export async function POST(request: NextRequest) {
@@ -55,11 +55,12 @@ export async function POST(request: NextRequest) {
 
   const sp = request.nextUrl.searchParams
   const limitParam = sp.get('limit')
-  const limit = Math.min(Math.max(parseInt(limitParam || '10', 10) || 10, 1), 20)
+  const limit = Math.min(Math.max(parseInt(limitParam || '20', 10) || 20, 1), 30)
   const from = sp.get('from')
   const to = sp.get('to')
+  const mode = sp.get('mode') === 'retry' ? 'retry' : 'fresh'
 
   const admin = createAdminClient()
-  const result = await drainThumbnailBackfill(admin, { limit, from, to })
+  const result = await drainThumbnailBackfill(admin, { limit, from, to, mode })
   return NextResponse.json(result)
 }

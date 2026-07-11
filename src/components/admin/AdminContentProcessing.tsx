@@ -43,7 +43,7 @@ export default function AdminContentProcessing() {
   const [canonicalResult,   setCanonicalResult]   = useState<string | null>(null)
   const canonicalStopRef = useRef(false)
 
-  // 썸네일 재시도(og:image) — 219
+  // 썸네일 재시도(og:image) — 219, 모드(282)
   const [isThumbRetrying, setIsThumbRetrying] = useState(false)
   const [thumbRetryResult, setThumbRetryResult] = useState<string | null>(null)
   const thumbRetryStopRef = useRef(false)
@@ -168,7 +168,7 @@ export default function AdminContentProcessing() {
     }
   }
 
-  const handleThumbnailRetry = async () => {
+  const handleThumbnailRetry = async (mode: 'fresh' | 'retry') => {
     thumbRetryStopRef.current = false
     setIsThumbRetrying(true)
     setThumbRetryResult(null)
@@ -176,7 +176,7 @@ export default function AdminContentProcessing() {
     const acc = { processed: 0, filled: 0, skipped: 0 }
     try {
       while (true) {
-        const res = await fetch('/api/admin/thumbnail-backfill?limit=10', { method: 'POST' })
+        const res = await fetch(`/api/admin/thumbnail-backfill?limit=20&mode=${mode}`, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '썸네일 재시도 실패')
         const { processed, filled, skipped, remaining, ready } = await res.json() as {
           processed: number; filled: number; skipped: number; remaining: number; ready: boolean
@@ -361,6 +361,7 @@ export default function AdminContentProcessing() {
             <p className="admin-card-title text-foreground">썸네일 재시도(og:image)</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               썸네일이 없는 크롤 뉴스·웹인사이트의 원문 og:image를 다시 받아옵니다.
+              신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
             </p>
             {thumbRetryResult && (
               <p className="admin-caption mt-2 text-positive">
@@ -368,15 +369,25 @@ export default function AdminContentProcessing() {
               </p>
             )}
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            onClick={isThumbRetrying ? () => { thumbRetryStopRef.current = true } : handleThumbnailRetry}
-          >
-            {isThumbRetrying ? '중단' : '썸네일 재시도'}
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isThumbRetrying ? () => { thumbRetryStopRef.current = true } : () => handleThumbnailRetry('fresh')}
+            >
+              {isThumbRetrying ? '중단' : '아직 시도 안 함'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isThumbRetrying}
+              onClick={() => handleThumbnailRetry('retry')}
+            >
+              실패행 재시도
+            </Button>
+          </div>
         </div>
       </div>
 
