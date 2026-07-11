@@ -76,6 +76,13 @@ export const COMPETITOR_WEEKLY_HELP: AdminHelpCopy = {
   ops: '기본은 최근 완결된 주(월~일) 기준으로 생성합니다.',
 }
 
+export const COMPETITOR_WEEKLY_SCHEDULE_HELP: AdminHelpCopy = {
+  title: '주간 리포트 발행 스케줄',
+  what: '주간 경쟁 리포트를 자동 생성할 요일·시각(KST)과, 생성 즉시 서비스에 노출할지(자동 발행) 여부를 정합니다.',
+  service: '자동 발행을 켜면 생성 즉시 경쟁사 주간리포트 탭에 노출됩니다. 끄면 초안으로 남아 검토 후 직접 발행해야 합니다.',
+  ops: 'Vercel 크론은 매시 호출되지만, 여기서 지정한 요일·시각이 아니면 그냥 스킵합니다(수동 생성 버튼은 영향받지 않음).',
+}
+
 export const SENTIMENT_HELP: AdminHelpCopy = {
   title: '논조 분석',
   what: '경쟁사 기사의 긍정/중립/부정 논조를 AI 가 판정합니다.',

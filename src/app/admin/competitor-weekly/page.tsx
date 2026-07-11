@@ -5,6 +5,7 @@ import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminCompetitorWeeklyGenerate from '@/components/admin/AdminCompetitorWeeklyGenerate'
+import AdminCompetitorWeeklySchedule from '@/components/admin/AdminCompetitorWeeklySchedule'
 import { cn } from '@/lib/utils'
 import { ListChecks } from 'lucide-react'
 
@@ -58,6 +59,8 @@ export default async function CompetitorWeeklyAdminPage() {
       <AdminPageHeader />
 
       <AdminCompetitorWeeklyGenerate />
+
+      <AdminCompetitorWeeklySchedule />
 
       <div>
         <AdminSectionHeader icon={ListChecks} title="최근 리포트" hint="최신 10건 (초안 포함)" />

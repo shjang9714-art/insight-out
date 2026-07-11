@@ -49,8 +49,8 @@ function addDaysToDateStr(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** KST 기준 "가장 최근에 완결된" 월~일 주(현재 진행 중인 주가 아니라 그 직전 주). */
-function getLastCompletedWeekKst(): { weekStart: string; weekEnd: string } {
+/** KST 기준 "가장 최근에 완결된" 월~일 주(현재 진행 중인 주가 아니라 그 직전 주). 크론 게이트(284)의 멱등 확인에도 재사용. */
+export function getLastCompletedWeekKst(): { weekStart: string; weekEnd: string } {
   const todayStr = kstDateString(0)
   const today = new Date(`${todayStr}T00:00:00Z`)
   const dow = today.getUTCDay() // 0=Sun..6=Sat
@@ -281,6 +281,8 @@ export interface GenerateCompetitorWeeklyOptions {
   /** 특정 주 재생성(관리자 수동, YYYY-MM-DD, 월요일 기준). 미지정 시 최근 완결된 주. */
   weekStart?: string
   deadline?: number
+  /** false 면 근거가 있어도 draft 로 저장(284 — 크론 게이트의 auto_publish=false 대응). 기본 true(기존 동작). */
+  publish?: boolean
 }
 
 export interface GenerateCompetitorWeeklyResult {
@@ -299,6 +301,7 @@ export async function generateCompetitorWeeklyReport(
     ? { weekStart: opts.weekStart, weekEnd: addDaysToDateStr(opts.weekStart, 6) }
     : getLastCompletedWeekKst()
   const deadline = opts.deadline
+  const publish = opts.publish ?? true
 
   // 1. 경쟁사 목록 (253)
   const competitors = await loadCompetitorCompanies(admin)
@@ -405,7 +408,8 @@ export async function generateCompetitorWeeklyReport(
   }
 
   const overallImpact = summaryOut?.overall_impact ?? deriveOverallImpact(sections)
-  const status: 'draft' | 'published' = 'published' // 근거(sections) 있으면 발행 — §1 자동발행 정책
+  // 근거(sections) 있고 publish 옵션이 true(기본)면 발행 — §1 자동발행 정책. false면 draft(284 크론 게이트).
+  const status: 'draft' | 'published' = (sections.length > 0 && publish) ? 'published' : 'draft'
 
   // 8. 저장(멱등 upsert, week_start 유니크)
   const { error: upsertError } = await admin
