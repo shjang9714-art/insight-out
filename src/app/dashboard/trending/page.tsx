@@ -63,7 +63,8 @@ type SearchParams = Promise<{ date?: string }>
 export default async function TrendingPage({ searchParams }: { searchParams: SearchParams }) {
   const { date } = await searchParams
   const todayKst = getKstDateString()
-  const selectedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayKst
+  const hasExplicitDateParam = Boolean(date && /^\d{4}-\d{2}-\d{2}$/.test(date))
+  const selectedDate = hasExplicitDateParam ? date! : todayKst
   const isToday = selectedDate === todayKst
 
   const cookieStore = await cookies()
@@ -83,24 +84,30 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
   )
 
   let all: TickerIssue[]
+  // "현재 랭킹" 모드(쿼리 파라미터 없음)에서만 채워짐 — 랭킹에 반영된 기사들의 실제 최신일.
+  // 폴백 집계(뷰 미배포) 시엔 일자 정보가 없어 null로 남고, 라벨은 selectedDate로 대체된다.
+  let currentAsOfDateKst: string | null = null
 
   if (isToday) {
     const trending = await fetchTrendingEvents()
-    all = trending
-      ? trending.events.map(e => ({
-          id: e.issueId,
-          contentId: e.contentId,
-          title: e.headline,
-          entityChip: e.entityChip,
-          topHashtag: e.topHashtag,
-          recentCount: e.recentCount,
-          todayCount: e.todayCount,
-          changePct: e.changePct,
-          changeFlag: e.changeFlag,
-          sentimentPos: 0,
-          sentimentNeg: 0,
-        }))
-      : await fetchFallbackTop()
+    if (trending) {
+      currentAsOfDateKst = trending.asOfDateKst
+      all = trending.events.map(e => ({
+        id: e.issueId,
+        contentId: e.contentId,
+        title: e.headline,
+        entityChip: e.entityChip,
+        topHashtag: e.topHashtag,
+        recentCount: e.recentCount,
+        todayCount: e.todayCount,
+        changePct: e.changePct,
+        changeFlag: e.changeFlag,
+        sentimentPos: 0,
+        sentimentNeg: 0,
+      }))
+    } else {
+      all = await fetchFallbackTop()
+    }
   } else {
     const snapshot = await fetchTrendingSnapshot(supabase, selectedDate)
     all = snapshot.map(s => ({
@@ -117,6 +124,10 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
     }))
   }
 
+  // 현재 랭킹 모드(쿼리 파라미터 없음)엔 랭킹 데이터의 실제 최신일(asOfDateKst)을,
+  // 히스토리 모드(?date=)엔 그 파라미터 값을 그대로 라벨에 쓴다 — 홈(IssueSignals)과 동일 기준.
+  const headerDateLabel = hasExplicitDateParam ? selectedDate : (currentAsOfDateKst ?? selectedDate)
+
   return (
     <PageContainer>
       <div className="mb-4">
@@ -129,7 +140,7 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <TrendingUp className="h-5 w-5 text-orange-500" />
         <h1 className="text-xl font-bold text-foreground">오늘의 급상승 전체 순위</h1>
-        <span className="text-sm text-muted-foreground">{formatKstMonthDay(selectedDate)}</span>
+        <span className="text-sm text-muted-foreground">{formatKstMonthDay(headerDateLabel)}</span>
         <div className="ml-auto">
           <TrendingHistoryPicker selectedDate={selectedDate} todayKst={todayKst} />
         </div>
