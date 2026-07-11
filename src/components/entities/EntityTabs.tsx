@@ -2,6 +2,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
+import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 
 const TABS = [
   { id: 'watchlist',  label: '주요 기업',       href: '/dashboard/entities?view=watchlist' },
@@ -14,8 +15,8 @@ export default function EntityTabs() {
   const view = searchParams.get('view') ?? 'watchlist'
 
   return (
-    <div className="mb-6">
-      <InsightViewTabs items={TABS} value={view} className="-mt-3 w-[var(--nav-group-w)]" />
-    </div>
+    <NavGroupAlign className="-mt-3 mb-6">
+      <InsightViewTabs items={TABS} value={view} />
+    </NavGroupAlign>
   )
 }
