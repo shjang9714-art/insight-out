@@ -211,6 +211,49 @@ interface IssueArticleRow {
   matched_keywords: string[] | null
 }
 
+const ISSUE_ARTICLES_PAGE_SIZE = 1000 // Supabase/PostgREST 기본 max-rows — 단일 .limit()로 이 이상 요청해도 서버가 조용히 잘라서 반환
+const ISSUE_ARTICLES_MAX_PAGES = 10 // 안전장치: 최대 10 * 1000 = 10000건까지만 페이지네이션(무한루프 방지)
+
+/**
+ * trending_issue_articles 뷰에서 issueIds에 매칭되는 행을 range() 페이지네이션으로 전부 가져온다.
+ * 과거 단일 `.limit(5000)` 호출은 PostgREST 기본 max-rows(1000)에 조용히 잘리고 정렬 기준도
+ * 없어, 이슈 후보군(31개)에 실제 매칭되는 3026건 중 1000건만 임의로(=최신순 보장 없이) 반환하던
+ * 실측 버그(2026-07-12) — 같은 이슈라도 어느 기사가 이 1000건 표본에 포함되는지가 매 요청마다
+ * 불안정해서 recentCount·순위·asOfDateKst가 실제 데이터 변화 없이도 흔들릴 수 있었다.
+ * collected_at desc 정렬 + range()로 대체해, 잘리더라도 최소한 최신순으로 결정론적으로 잘리게 한다.
+ */
+async function fetchAllIssueArticles(
+  supabase: ReturnType<typeof createPublicClient>,
+  issueIds: string[],
+): Promise<{ rows: IssueArticleRow[]; error: boolean }> {
+  const rows: IssueArticleRow[] = []
+
+  for (let page = 0; page < ISSUE_ARTICLES_MAX_PAGES; page++) {
+    const from = page * ISSUE_ARTICLES_PAGE_SIZE
+    const to = from + ISSUE_ARTICLES_PAGE_SIZE - 1
+
+    const { data, error } = await supabase
+      .from('trending_issue_articles')
+      .select('issue_id, content_id, title, collected_at, entity_name, entity_type, matched_keywords')
+      .in('issue_id', issueIds)
+      .order('collected_at', { ascending: false })
+      .range(from, to)
+
+    if (error || !data) return { rows, error: true }
+    rows.push(...(data as IssueArticleRow[]))
+
+    if (data.length < ISSUE_ARTICLES_PAGE_SIZE) return { rows, error: false }
+
+    if (page === ISSUE_ARTICLES_MAX_PAGES - 1) {
+      console.warn(
+        `[trending] issue_articles 페이지네이션 안전장치 도달 — ${ISSUE_ARTICLES_MAX_PAGES * ISSUE_ARTICLES_PAGE_SIZE}건 초과 가능성, 이후 데이터는 누락된 채로 계산됨`,
+      )
+    }
+  }
+
+  return { rows, error: false }
+}
+
 async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   const supabase = createPublicClient()
 
@@ -225,13 +268,9 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   const issueIds = candidates.map(c => c.issue_id)
 
   // trending_issue_articles 뷰는 이미 status='published' & 72h 창으로 필터링됨(2026-07-08c/10 SQL).
-  const { data: rows, error: rowsErr } = await supabase
-    .from('trending_issue_articles')
-    .select('issue_id, content_id, title, collected_at, entity_name, entity_type, matched_keywords')
-    .in('issue_id', issueIds)
-    .limit(5000)
+  const { rows, error: rowsErr } = await fetchAllIssueArticles(supabase, issueIds)
 
-  if (rowsErr || !rows) return null
+  if (rowsErr) return null
 
   // 랭킹에 실제로 반영되는 기사들의 최신 발행일(KST) — "오늘" 라벨·"오늘 N건" 카운트의 기준일.
   // 오늘자 크론(05:00 KST) 전엔 최신 기사가 어제자뿐이라 자동으로 어제 날짜가 기준이 된다.
