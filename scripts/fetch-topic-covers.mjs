@@ -56,10 +56,10 @@ if (!API_KEY) {
  */
 const TOPICS = [
   // ── 최우선: 풀이 1장뿐이라 화면이 도배됨 ──
-  { basename: 'IT',        query: 'technology abstract network',      need: 12, startAt: 2 },  // 'IT 동향' — 현재 1장
+  { basename: 'IT',        query: 'server room network cables',       need: 12, startAt: 2 },  // 'IT 동향' — 재시도(추상 렌더 대신 구체 피사체)
   { basename: '클라우드',   query: 'cloud computing server',           need: 12, startAt: 2 },  // 현재 1장
   { basename: '에너지',     query: 'renewable energy power grid',      need: 12, startAt: 2 },  // 현재 1장
-  { basename: '리포트',     query: 'business report analytics desk',   need: 12, startAt: 2 },  // 현재 1장
+  { basename: '리포트',     query: 'financial charts documents',       need: 12, startAt: 2 },  // 재시도
 
   // ── 2장뿐(고volume) ──
   { basename: 'AI기술',     query: 'artificial intelligence circuit',  need: 12, startAt: 3 },  // 'AI 기술'
