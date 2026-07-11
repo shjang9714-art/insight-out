@@ -3,6 +3,7 @@ import FeedSlot from '@/components/feed/FeedSlot'
 import IssueSignals from '@/components/dashboard/IssueSignals'
 import DailyInsightHomeHighlights from '@/components/dashboard/DailyInsightHomeHighlights'
 import VisitDelta from '@/components/dashboard/VisitDelta'
+import WelcomeGreeting from '@/components/dashboard/WelcomeGreeting'
 import PageContainer from '@/components/PageContainer'
 import { getHomeSectionLayout } from '@/lib/home/layout'
 
@@ -56,6 +57,9 @@ export default async function DashboardPage() {
   return (
     <PageContainer>
       <div className="space-y-8">
+        <Suspense fallback={null}>
+          <WelcomeGreeting />
+        </Suspense>
         {layout
           .filter((section) => section.enabled)
           .map((section) => {
