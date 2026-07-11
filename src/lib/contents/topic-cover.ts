@@ -31,6 +31,49 @@ for (const [key, urls] of Object.entries(TOPIC_COVER_POOL)) {
   NORMALIZED_POOL[normalize(key)] = urls
 }
 
+/**
+ * 토픽 선택 우선순위(288) — 작을수록 먼저(더 구체적 = 기사 주제를 잘 대표).
+ * 'AI 기술'·'IT 동향'은 거의 모든 기술 기사에 붙는 우산 태그라, 구체 토픽이 있으면 양보시킨다.
+ * 미등재 키는 DEFAULT_PRIORITY(구체 토픽으로 간주 — 우산 토픽만 명시적으로 낮춘다).
+ */
+const TOPIC_PRIORITY: Record<string, number> = {
+  // 1) 엔티티 — 가장 구체적
+  '도요타': 1,
+  '현대자동차': 1,
+
+  // 2) 구체 도메인 — 기사 주제를 잘 대표
+  '반도체': 2,
+  'AIDC': 2,
+  'AICC': 2,
+  '모빌리티': 2,
+  '통신 B2B': 2,
+  '제조 DX': 2,
+  'CCTV·영상보안': 2,
+  'SME 솔루션': 2,
+  '피지컬 AI': 2,
+  '클라우드': 2,
+  '에너지': 2,
+  'ESG': 2,
+  '정부 규제': 2,
+
+  // 3) 우산 토픽 — 구체 토픽이 없을 때만
+  'AI 기술': 8,
+  'IT 동향': 8,
+
+  // 4) 카테고리·문서종류 — 최후
+  '뉴스': 9,
+  '웹인사이트': 9,
+  '리포트': 9,
+  'AI보고서': 9,
+  '전략보고서': 9,
+}
+
+const DEFAULT_PRIORITY = 3 // 미등재 = 구체 토픽 취급(우산 토픽만 명시적으로 낮춘다)
+
+// normalize()를 우선순위 조회에도 동일 적용 — 'AI기술'/'AI 기술' 표기차로 조용히 무시되는 것 방지(288).
+const NORMALIZED_PRIORITY: Record<string, number> = {}
+for (const [k, v] of Object.entries(TOPIC_PRIORITY)) NORMALIZED_PRIORITY[normalize(k)] = v
+
 /** 문자열 안정 해시(FNV-1a 변형) — 같은 id → 같은 인덱스(회전 없음, 깜빡임 방지) */
 function hashIndex(id: string, length: number): number {
   let hash = 0
@@ -48,24 +91,27 @@ interface PickTopicCoverInput {
 }
 
 /**
- * matched_groups → matched_keywords → category 우선순위로 TOPIC_COVER_POOL 매칭.
- * 매칭되면 id 해시로 같은 그룹 내 이미지 중 1장을 고정 선택. 매칭 없으면 null(BrandedCover 폴백).
+ * matched_groups/matched_keywords/category 중 TOPIC_COVER_POOL에 풀이 있는 후보를
+ * 구체성 우선순위(TOPIC_PRIORITY, 288)로 정렬해 가장 구체적인 토픽을 선택한다.
+ * 동순위면 원래(매칭된) 순서를 유지(안정 정렬). 매칭되면 id 해시로 같은 그룹 내
+ * 이미지 중 1장을 고정 선택. 매칭 없으면 null(BrandedCover 폴백).
  */
 export function pickTopicCover({ id, matchedGroups, matchedKeywords, category }: PickTopicCoverInput): string | null {
   const candidates = [
     ...(matchedGroups ?? []),
     ...(matchedKeywords ?? []),
     ...(category ? [category] : []),
-  ]
+  ].filter(Boolean) as string[]
 
-  for (const candidate of candidates) {
-    if (!candidate) continue
-    const urls = NORMALIZED_POOL[normalize(candidate)]
-    if (urls && urls.length > 0) {
-      return urls[hashIndex(id, urls.length)]
-    }
-  }
-  return null
+  // 풀이 있는 후보만 남기고, (우선순위 → 원래 순서)로 안정 정렬
+  const matched = candidates
+    .map((c, i) => ({ i, urls: NORMALIZED_POOL[normalize(c)], priority: NORMALIZED_PRIORITY[normalize(c)] ?? DEFAULT_PRIORITY }))
+    .filter((x): x is { i: number; urls: string[]; priority: number } => Boolean(x.urls) && x.urls.length > 0)
+    .sort((a, b) => a.priority - b.priority || a.i - b.i)
+
+  const best = matched[0]
+  if (!best) return null
+  return best.urls[hashIndex(id, best.urls.length)]
 }
 
 interface CoverRow {
