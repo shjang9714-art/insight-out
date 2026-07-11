@@ -1,12 +1,13 @@
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { getKstTodayStartIso } from '@/lib/date'
+import { getKstTodayStartIso, getKstDateString } from '@/lib/date'
 import { ENTITY_TYPE_LABEL, type EntityType, type InsightCard, type InsightCardCitation, type WatchlistItem } from '@/lib/types'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { tagTypeToBucket, type KeywordItem } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
-import type { KeyInsightRow } from '@/lib/key-insights/types'
+import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { DAILY_LIST_WINDOW_DAYS } from '@/lib/daily-insights/constants'
 import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
 
 const WATCHLIST_LIMIT = 20
@@ -88,9 +89,11 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const todayStart   = getKstTodayStartIso()
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
+  const dailyListWindowStart = new Date(todayStartMs - (DAILY_LIST_WINDOW_DAYS - 1) * 24 * 60 * 60 * 1000)
+  const dailyListWindowStartStr = getKstDateString(dailyListWindowStart)
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, keyInsightRes, profileRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -134,15 +137,15 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
       .select('entity_id, signal_count, content_count, signal_types, last_seen')
       .order('signal_count', { ascending: false })
       .limit(30),
-    // "핵심 Insight" 탭(§2-2) — 게시된 전 주차. 주차 수가 적어 한 번에 받아 최신 주차만 초기 표시,
-    // 나머지는 KeyInsightArchive 가 주차 선택 시 /api/key-insights 로 지연 조회.
+    // "핵심 인사이트" 목록(§지시서 20260711 fast-follow §1) — 일일 daily_insights 소스로 교체.
+    // 최근 DAILY_LIST_WINDOW_DAYS 일치를 day_of desc, 같은 날짜 안에서는 display_order asc 로 노출.
     supabase
-      .from('key_insights')
+      .from('daily_insights')
       .select('*')
       .eq('status', 'published')
-      .order('week_of', { ascending: false })
-      .order('display_order', { ascending: true, nullsFirst: false })
-      .limit(500),
+      .gte('day_of', dailyListWindowStartStr)
+      .order('day_of', { ascending: false })
+      .order('display_order', { ascending: true }),
     // 관리자 여부 — 숨긴 하위탭('실험실') 노출 판정용
     user
       ? supabase.from('users').select('role').eq('id', user.id).single()
@@ -347,22 +350,15 @@ export default async function AiInsightsView({ view = 'brief' }: { view?: 'brief
   const fallingKws = classifiedKeywords.filter(k => k.direction === '▽').slice(0, 2)
   const kwStrip    = [...risingKws, ...fallingKws]
 
-  // ─── "핵심 Insight" 탭(§2-2) — 게시된 전 주차에서 주차 목록·최신 주차 카드 도출 ──
-  const keyInsightRows = (keyInsightRes.data ?? []) as KeyInsightRow[]
-  const keyInsightWeeks = [...new Set(keyInsightRows.map(r => r.week_of))]
-  const keyInsightWeekOf = keyInsightWeeks[0] ?? null
-  const keyInsightCards = keyInsightWeekOf
-    ? keyInsightRows.filter(r => r.week_of === keyInsightWeekOf)
-    : []
+  // ─── "핵심 인사이트" 목록 — 최근 daily_insights(§지시서 20260711 fast-follow §1) ──
+  const dailyInsights = (dailyInsightRes.data ?? []) as DailyInsightRow[]
 
   // ─── 클라이언트 보드에 데이터 props 위임 ─────────────────────────────────
   return (
     <AiInsightBoard
       initialView={view}
       isAdmin={isAdmin}
-      keyInsightWeeks={keyInsightWeeks}
-      keyInsightWeekOf={keyInsightWeekOf}
-      keyInsightCards={keyInsightCards}
+      dailyInsights={dailyInsights}
       insightGroups={insightGroups}
       contentMap={contentMapRecord}
       trendingTopics={trendingTopics}
