@@ -1,8 +1,15 @@
 import Link from 'next/link'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getKstDateString } from '@/lib/date'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
+
+/** day_of('YYYY-MM-DD')는 이미 생성 시점에 getKstDateString 으로 확정된 KST 달력일 —
+ * 재변환 없이 그대로 쪼개야 Date 재구성 과정에서 생기는 자정 근처 하루 밀림을 피한다. */
+function formatKstMonthDay(dayOf: string): string {
+  const [, month, day] = dayOf.split('-').map(Number)
+  return `${month}월 ${day}일`
+}
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 // 홈 "핵심 Insight" — daily_insights(published) 소스. 오늘(day_of) 전량을 display_order
@@ -50,8 +57,14 @@ export default async function DailyInsightHomeHighlights() {
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
       <div className="mb-5 border-b-2 border-foreground/80 pb-3">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-insight-teal-strong">
+          <Sparkles className="h-3.5 w-3.5" />
+          오늘의 핵심 인사이트 · {formatKstMonthDay(cards[0].day_of)}
+        </div>
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold text-foreground">핵심 Insight</h2>
+          <h2 className="text-xl font-semibold text-foreground">
+            <span className="text-insight-teal">주목하세요,</span> 핵심 Insight
+          </h2>
           <Link
             href="/dashboard/issues?view=brief"
             className="group inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-brand-700"
