@@ -11,7 +11,7 @@
  *   PEXELS_API_KEY=xxxx node scripts/fetch-topic-covers.mjs IT 클라우드   # 특정 토픽만
  *   (키 발급: https://www.pexels.com/api/ — 무료·즉시)
  *
- * 저장 위치: public/topic-covers/_review/{basename}-{n}.jpg  ← 검토용(서비스 미반영)
+ * 저장 위치: public/topic-covers/_review/{basename}-{n}.webp  ← 검토용(서비스 미반영)
  *   → 눈으로 보고 쓸 만한 것만 public/topic-covers/ 로 옮긴다.
  *   → 배포하면 prebuild(scripts/build-topic-cover-manifest.mjs)가 매니페스트를 자동 재생성.
  *
@@ -22,17 +22,23 @@
  *
  * 파일명 규칙(생성기가 파싱함):
  *   - 뒤의 변형 접미(-2, -3)는 제거되고, 남은 base 가 ALIAS 로 토픽 키에 매핑된다.
- *   - 예: IT-2.jpg → base 'IT' → ALIAS['IT'] = 'IT 동향'
+ *   - 예: IT-2.webp → base 'IT' → ALIAS['IT'] = 'IT 동향'
  *   - 그래서 아래 basename 은 src/lib/contents/topic-cover.ts 의 ALIAS 와 일치해야 한다.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createCanvas, loadImage } from '@napi-rs/canvas'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..')
 const OUT_DIR = path.join(ROOT, 'public', 'topic-covers', '_review')
+
+// WebP 로 재인코딩해 저장한다(JPEG 대비 절반 이하 — 장수를 늘려도 레포가 안 무거워짐).
+// 매니페스트 생성기(scripts/build-topic-cover-manifest.mjs)가 .webp 를 이미 인식한다.
+const COVER_WIDTH = 1200   // 카드 aspect-[16/9] · 레티나 감안
+const WEBP_QUALITY = 78
 
 const API_KEY = process.env.PEXELS_API_KEY
 if (!API_KEY) {
@@ -50,21 +56,21 @@ if (!API_KEY) {
  */
 const TOPICS = [
   // ── 최우선: 풀이 1장뿐이라 화면이 도배됨 ──
-  { basename: 'IT',        query: 'technology abstract network',      need: 6, startAt: 2 },  // 'IT 동향' — 현재 1장
-  { basename: '클라우드',   query: 'cloud computing server',           need: 6, startAt: 2 },  // 현재 1장
-  { basename: '에너지',     query: 'renewable energy power grid',      need: 5, startAt: 2 },  // 현재 1장
-  { basename: '리포트',     query: 'business report analytics desk',   need: 5, startAt: 2 },  // 현재 1장
+  { basename: 'IT',        query: 'technology abstract network',      need: 12, startAt: 2 },  // 'IT 동향' — 현재 1장
+  { basename: '클라우드',   query: 'cloud computing server',           need: 12, startAt: 2 },  // 현재 1장
+  { basename: '에너지',     query: 'renewable energy power grid',      need: 12, startAt: 2 },  // 현재 1장
+  { basename: '리포트',     query: 'business report analytics desk',   need: 12, startAt: 2 },  // 현재 1장
 
   // ── 2장뿐(고volume) ──
-  { basename: 'AI기술',     query: 'artificial intelligence circuit',  need: 6, startAt: 3 },  // 'AI 기술'
-  { basename: '뉴스',       query: 'newsroom journalism media',        need: 5, startAt: 3 },
-  { basename: '반도체',     query: 'semiconductor microchip wafer',    need: 5, startAt: 3 },
-  { basename: '통신 b2b',   query: 'telecommunications network tower', need: 5, startAt: 3 },  // '통신 B2B'
-  { basename: 'AIDC',       query: 'data center server room',          need: 5, startAt: 3 },
-  { basename: '제조dx',     query: 'smart factory automation robot',   need: 5, startAt: 3 },  // '제조 DX'
-  { basename: '피지컬ai',   query: 'humanoid robot industrial',        need: 5, startAt: 3 },  // '피지컬 AI'
-  { basename: 'esg',        query: 'sustainability green business',    need: 5, startAt: 3 },  // 'ESG'
-  { basename: '웹인사이트', query: 'digital insight analytics screen', need: 5, startAt: 3 },
+  { basename: 'AI기술',     query: 'artificial intelligence circuit',  need: 12, startAt: 3 },  // 'AI 기술'
+  { basename: '뉴스',       query: 'newsroom journalism media',        need: 12, startAt: 3 },
+  { basename: '반도체',     query: 'semiconductor microchip wafer',    need: 12, startAt: 3 },
+  { basename: '통신 b2b',   query: 'telecommunications network tower', need: 12, startAt: 3 },  // '통신 B2B'
+  { basename: 'AIDC',       query: 'data center server room',          need: 12, startAt: 3 },
+  { basename: '제조dx',     query: 'smart factory automation robot',   need: 12, startAt: 3 },  // '제조 DX'
+  { basename: '피지컬ai',   query: 'humanoid robot industrial',        need: 12, startAt: 3 },  // '피지컬 AI'
+  { basename: 'esg',        query: 'sustainability green business',    need: 12, startAt: 3 },  // 'ESG'
+  { basename: '웹인사이트', query: 'digital insight analytics screen', need: 12, startAt: 3 },
 ]
 
 const only = process.argv.slice(2)
@@ -83,12 +89,20 @@ async function searchPexels(query, need) {
     .slice(0, need)
 }
 
-async function download(url, dest) {
+/** 내려받아 폭 COVER_WIDTH 로 리사이즈 + WebP 재인코딩해 저장. 반환: 저장 바이트 */
+async function downloadAsWebp(url, dest) {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`download ${res.status}`)
-  const buf = Buffer.from(await res.arrayBuffer())
-  await writeFile(dest, buf)
-  return buf.length
+  const img = await loadImage(Buffer.from(await res.arrayBuffer()))
+
+  const w = Math.min(COVER_WIDTH, img.width)
+  const h = Math.round((img.height / img.width) * w)
+  const canvas = createCanvas(w, h)
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+
+  const webp = canvas.toBuffer('image/webp', WEBP_QUALITY)
+  await writeFile(dest, webp)
+  return webp.length
 }
 
 async function main() {
@@ -97,6 +111,7 @@ async function main() {
 
   const credits = []
   let total = 0
+  let totalBytes = 0
 
   for (const t of targets) {
     process.stdout.write(`[${t.basename}] "${t.query}" … `)
@@ -111,16 +126,17 @@ async function main() {
 
     let n = t.startAt
     for (const p of photos) {
-      // landscape 변형 = 1200×627 (카드 aspect-[16/9]에 근접, object-cover로 흡수)
-      const src = p.src.landscape ?? p.src.large
-      const file = `${t.basename}-${n}.jpg`
+      // large2x(1880px) 를 받아 COVER_WIDTH 로 줄여 WebP 인코딩 — 화질 손실 최소화
+      const src = p.src.large2x ?? p.src.landscape ?? p.src.large
+      const file = `${t.basename}-${n}.webp`
       try {
-        const bytes = await download(src, path.join(OUT_DIR, file))
+        const bytes = await downloadAsWebp(src, path.join(OUT_DIR, file))
         credits.push(`${file}\t${p.photographer}\t${p.url}`)
+        totalBytes += bytes
         total++
         n++
         process.stdout.write('.')
-      } catch (e) {
+      } catch {
         process.stdout.write('x')
       }
     }
@@ -134,7 +150,8 @@ async function main() {
     'utf8'
   )
 
-  console.log(`\n✅ 총 ${total}장 → ${path.relative(ROOT, OUT_DIR)}`)
+  const mb = (totalBytes / 1024 / 1024).toFixed(1)
+  console.log(`\n✅ 총 ${total}장 · ${mb}MB (WebP) → ${path.relative(ROOT, OUT_DIR)}`)
   console.log('\n다음 단계:')
   console.log('  1. 검토 폴더를 열어 눈으로 확인 (관련 없거나 조악한 것 버리기)')
   console.log('  2. 쓸 것만 public/topic-covers/ 로 이동')
