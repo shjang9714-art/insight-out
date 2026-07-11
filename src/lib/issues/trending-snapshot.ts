@@ -45,7 +45,12 @@ export async function fetchTrendingSnapshot(
   }))
 }
 
-/** 크론 적재(§6-2) 전용 — service_role로 해당 날짜 기존 행을 지우고 새로 insert(재실행 시 멱등). */
+/**
+ * 크론 적재(§6-2) 전용 — service_role로 해당 날짜 기존 행을 지우고 새로 insert.
+ * 같은 날 재실행돼도 (snapshot_date, rank) unique 제약과 절대 충돌하지 않는다(선삭제 후 insert라
+ * ON CONFLICT UPSERT 불필요). delete+insert가 단순 upsert보다 나은 점 — 재실행 시 이전 실행보다
+ * 결과 건수가 줄어도(예: 12건→10건) 남은 랭크 11·12가 잔존하지 않고 통째로 교체된다.
+ */
 export async function saveTrendingSnapshot(events: TrendingEvent[], snapshotDate: string): Promise<number> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

@@ -227,6 +227,10 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
   if (rowsErr || !rows) return null
 
   // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
+  // content_entities left join으로 한 기사에 엔티티가 여러 개면 뷰에서 같은 content_id가
+  // 행으로 중복 fan-out된다(실측 확인, 2026-07-12). Map을 issue_id→content_id로 이중 키잉해
+  // 이미 존재하는 content_id는 재생성 없이 entities 배열에만 추가하므로, 이후 subclusterIssue의
+  // count·todayCount 계산은 항상 distinct 기사 수 기준 — 별도 dedupe 불필요.
   const byIssue = new Map<string, Map<string, ArticleRow>>()
   for (const row of rows as IssueArticleRow[]) {
     if (!byIssue.has(row.issue_id)) byIssue.set(row.issue_id, new Map())
