@@ -62,9 +62,7 @@ export default async function DailyInsightHomeHighlights() {
           오늘의 핵심 인사이트 · {formatKstMonthDay(cards[0].day_of)}
         </div>
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold text-foreground">
-            <span className="text-insight-teal">주목하세요,</span> 핵심 Insight
-          </h2>
+          <h2 className="text-xl font-semibold text-foreground">주목하세요, 핵심 Insight</h2>
           <Link
             href="/dashboard/issues?view=brief"
             className="group inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-brand-700"
