@@ -6,6 +6,7 @@ import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, type KeyInsightCandidate, type PastArticleRef } from '@/lib/key-insights/candidates'
 import { getKstDateString } from '@/lib/date'
 import { dedupeSimilarArticles } from '@/lib/daily-insights/dedupe'
+import { classifyPastArticleCategories, isRelevantPastArticle } from '@/lib/daily-insights/relevance'
 import type { DailyInsightPastArticle, DailyInsightSourceArticle } from '@/lib/daily-insights/types'
 
 // 그룹 수 목표 2~3, 최소 1(§2 확정 사항). 그룹 내부는 프롬프트 크기 억제를 위해 상위 N건으로 캡.
@@ -135,12 +136,14 @@ function buildSourceArticles(members: KeyInsightCandidate[]): DailyInsightSource
   }))
 }
 
-function buildRelatedPast(
+async function buildRelatedPast(
   members: KeyInsightCandidate[],
   sourceContentIds: Set<string>,
   dayOf: string,
-  headline: string
-): DailyInsightPastArticle[] {
+  headline: string,
+  insightCategory: string | null,
+  sourceArticles: DailyInsightSourceArticle[]
+): Promise<DailyInsightPastArticle[]> {
   const cutoffMs = new Date(dayOf).getTime() - PAST_ARTICLE_MAX_AGE_DAYS * 24 * 3600 * 1000
   const seen = new Set<string>()
   const raw: PastArticleRef[] = []
@@ -156,9 +159,19 @@ function buildRelatedPast(
     }
   }
 
-  const adapted = raw.map((p) => ({ contentId: p.contentId, title: p.title, url: p.url, publishedAt: p.publishedAt }))
+  if (raw.length === 0) return []
+
+  // 관련성 필터(§ 후속 — 이슈 링크만으로는 통과 불가). LLM 추가 호출 없는 순수 토큰 판정.
+  const referenceTitles = [headline, ...sourceArticles.map((a) => a.title)]
+  const categoryByContentId = await classifyPastArticleCategories(raw.map((p) => p.contentId))
+  const relevant = raw.filter((p) =>
+    isRelevantPastArticle({ title: p.title, category: categoryByContentId.get(p.contentId) ?? null }, insightCategory, referenceTitles)
+  )
+  if (relevant.length === 0) return []
+
+  const adapted = relevant.map((p) => ({ contentId: p.contentId, title: p.title, url: p.url, publishedAt: p.publishedAt }))
   const deduped = dedupeSimilarArticles(adapted)
-  const rawById = new Map(raw.map((p) => [p.contentId, p]))
+  const rawById = new Map(relevant.map((p) => [p.contentId, p]))
 
   return deduped
     .map((p) => {
@@ -249,7 +262,14 @@ export async function generateDailyInsightBatch(): Promise<GenerateDailyInsightR
 
     const sourceArticles = buildSourceArticles(group.members)
     const sourceContentIds = new Set(sourceArticles.map((s) => s.content_id))
-    const relatedPast = buildRelatedPast(group.members, sourceContentIds, dayOf, card.headline)
+    const relatedPast = await buildRelatedPast(
+      group.members,
+      sourceContentIds,
+      dayOf,
+      card.headline,
+      group.category,
+      sourceArticles
+    )
 
     rows.push({
       day_of: dayOf,
