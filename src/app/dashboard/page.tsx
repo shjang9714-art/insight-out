@@ -56,12 +56,10 @@ export default async function DashboardPage() {
 
   return (
     <PageContainer>
-      <div className="pt-3">
-        <Suspense fallback={null}>
-          <WelcomeGreeting />
-        </Suspense>
-      </div>
-      <div className="mt-10 space-y-8">
+      <Suspense fallback={null}>
+        <WelcomeGreeting />
+      </Suspense>
+      <div className="space-y-8">
         {layout
           .filter((section) => section.enabled)
           .map((section) => {

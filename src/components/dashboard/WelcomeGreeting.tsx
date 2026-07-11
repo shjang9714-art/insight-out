@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 /** 메인 인사말 문구 전용 세리프 폰트. 레이아웃 전체 폰트(Pretendard)는 그대로 두고
  *  이 컴포넌트의 메인 라인에만 국한해서 적용. */
 const nanumMyeongjo = Nanum_Myeongjo({
-  weight: '700',
+  weight: '400',
   subsets: ['latin'],
   display: 'swap',
 })
@@ -84,8 +84,8 @@ export default async function WelcomeGreeting() {
   const phrase = pickRandomPhrase(period)
 
   return (
-    <div>
-      <p className={cn(nanumMyeongjo.className, 'text-[26px] font-bold text-foreground')}>
+    <div className="pt-10 pb-16">
+      <p className={cn(nanumMyeongjo.className, 'text-[26px] font-normal text-[#3A3733] dark:text-foreground')}>
         {phrase.main(name)}
       </p>
       <p className="text-[15px] text-muted-foreground">{phrase.sub}</p>
