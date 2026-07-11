@@ -6,6 +6,13 @@
 
 begin;
 
+-- ── 0. 컬럼 보장 (224 미적용 대비 — 자체 포함) ────────────────────────────────
+-- 확인 결과 competitor_group 컬럼이 없어(224 SQL 미적용) 246이 42703으로 실패 → 여기서 직접 생성.
+alter table public.entities
+  add column if not exists competitor_group text;
+create index if not exists entities_competitor_group_idx
+  on public.entities (competitor_group) where competitor_group is not null;
+
 -- ── 1. 통신 ──────────────────────────────────────────────────────────────────
 update public.entities
 set competitor_group = '통신', is_competitor = true
