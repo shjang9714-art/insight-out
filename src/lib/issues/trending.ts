@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
-import { getKstTodayStartIso } from '@/lib/date'
+import { getKstDateString, getKstDayStartIso } from '@/lib/date'
 
 /**
  * 쿠키 비의존 anon 클라이언트 — unstable_cache로 요청 간 캐시하려면 특정 사용자
@@ -50,6 +50,13 @@ interface ArticleRow {
   collectedAt: string
   entities: EntityRef[]
   matchedKeywords: string[]
+}
+
+export interface TrendingEventsResult {
+  events: TrendingEvent[]
+  /** 랭킹에 반영된 기사들 중 가장 최신 collected_at 기준 KST 날짜('YYYY-MM-DD') —
+   *  오늘자 크론(05:00 KST) 전엔 자동으로 어제 날짜, 크론 완료 후엔 오늘 날짜가 된다. */
+  asOfDateKst: string
 }
 
 export interface TrendingEvent {
@@ -144,7 +151,7 @@ interface SubclusterResult {
 }
 
 /** 이슈 하나의 72h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
-function subclusterIssue(articles: ArticleRow[], kstTodayStartIso: string): SubclusterResult[] {
+function subclusterIssue(articles: ArticleRow[], kstBasisDayStartIso: string): SubclusterResult[] {
   if (articles.length === 0) return []
 
   const uf = new UnionFind(articles.length)
@@ -175,7 +182,7 @@ function subclusterIssue(articles: ArticleRow[], kstTodayStartIso: string): Subc
         entityChip: dominantEntity(group),
         topHashtag: representative.matchedKeywords[0] ?? null,
         count: group.length,
-        todayCount: group.filter(a => a.collectedAt >= kstTodayStartIso).length,
+        todayCount: group.filter(a => a.collectedAt >= kstBasisDayStartIso).length,
       }
     })
 }
@@ -204,7 +211,7 @@ interface IssueArticleRow {
   matched_keywords: string[] | null
 }
 
-async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
+async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   const supabase = createPublicClient()
 
   const { data: candidateData, error: viewErr } = await supabase
@@ -213,7 +220,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
 
   if (viewErr) return null
   const candidates = (candidateData ?? []) as TrendingIssueRow[]
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) return { events: [], asOfDateKst: getKstDateString() }
 
   const issueIds = candidates.map(c => c.issue_id)
 
@@ -225,6 +232,12 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
     .limit(5000)
 
   if (rowsErr || !rows) return null
+
+  // 랭킹에 실제로 반영되는 기사들의 최신 발행일(KST) — "오늘" 라벨·"오늘 N건" 카운트의 기준일.
+  // 오늘자 크론(05:00 KST) 전엔 최신 기사가 어제자뿐이라 자동으로 어제 날짜가 기준이 된다.
+  const asOfDateKst = rows.length > 0
+    ? getKstDateString(new Date(rows.reduce((max, r) => (r.collected_at > max ? r.collected_at : max), rows[0].collected_at)))
+    : getKstDateString()
 
   // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
   // content_entities left join으로 한 기사에 엔티티가 여러 개면 뷰에서 같은 content_id가
@@ -254,7 +267,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
     }
   }
 
-  const kstTodayStartIso = getKstTodayStartIso()
+  const kstBasisDayStartIso = getKstDayStartIso(asOfDateKst)
 
   const specificEvents: TrendingEvent[] = []
   // 이슈별 changePct/changeFlag/오늘 건수 — backfill 단계에서 재사용(중복 계산 방지).
@@ -269,10 +282,10 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
       : (issue.recent_count > 0 ? null : 0)
     const isSurge = issue.recent_count > 0 && (changePct === null || changePct > SURGE_CHANGE_PCT_THRESHOLD)
     const changeFlag = isSurge ? 'surge' as const : null
-    const issueTodayCount = articles.filter(a => a.collectedAt >= kstTodayStartIso).length
+    const issueTodayCount = articles.filter(a => a.collectedAt >= kstBasisDayStartIso).length
     issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount })
 
-    for (const sc of subclusterIssue(articles, kstTodayStartIso)) {
+    for (const sc of subclusterIssue(articles, kstBasisDayStartIso)) {
       specificEvents.push({
         issueId: issue.issue_id,
         contentId: sc.contentId,
@@ -341,7 +354,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
     }
   }
 
-  return final
+  return { events: final, asOfDateKst }
 }
 
 /**
@@ -349,6 +362,8 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
  * 이슈 내부 서브이벤트 클러스터링(§5)을 얹어 특정 사건 단위로 반환.
  * 특정 사건이 MIN_DISPLAY 미만이면 degrade(이슈 전체) 항목으로 backfill.
  * 뷰가 아직 적용되지 않았으면(42P01/PGRST205 등 조회 실패) null — 호출부에서 폴백 처리.
+ * `asOfDateKst`는 랭킹에 반영된 기사들의 최신 발행일 기준 — 오늘자 크론(05:00 KST) 전
+ * 새벽 시간대엔 자동으로 어제 날짜가 되어, "오늘 라벨 + 오늘 0건" 같은 모순을 막는다.
  * 20분 단위로 캐시(크롤 주기 대비 매 요청 재계산 방지).
  */
 export const fetchTrendingEvents = unstable_cache(

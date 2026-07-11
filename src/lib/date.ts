@@ -1,3 +1,10 @@
+/** 'YYYY-MM-DD'(KST 날짜) 문자열이 가리키는 KST 0시를 UTC ISO 문자열로 반환 */
+export function getKstDayStartIso(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const midnightUtc = Date.UTC(year, month - 1, day) - 9 * 60 * 60 * 1000
+  return new Date(midnightUtc).toISOString()
+}
+
 /** KST 기준 오늘 0시를 UTC ISO 문자열로 반환 */
 export function getKstTodayStartIso(): string {
   const now = Date.now()

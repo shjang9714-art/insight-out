@@ -85,9 +85,9 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
   let all: TickerIssue[]
 
   if (isToday) {
-    const events = await fetchTrendingEvents()
-    all = events
-      ? events.map(e => ({
+    const trending = await fetchTrendingEvents()
+    all = trending
+      ? trending.events.map(e => ({
           id: e.issueId,
           contentId: e.contentId,
           title: e.headline,

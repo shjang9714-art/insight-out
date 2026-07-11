@@ -51,10 +51,10 @@ export default async function IssueSignals() {
   // "실시간 급상승" = trending_keywords 뷰(48h 발행건수 후보) 위에 이슈 내부
   // 서브이벤트 클러스터링(§5)을 얹어 특정 사건 단위로 노출. 뷰 미적용 시(42P01/PGRST205)
   // 기존 주간 활동량 집계로 폴백 — 섹션이 빈 화면이 되지 않게.
-  const events = await fetchTrendingEvents()
+  const trending = await fetchTrendingEvents()
 
-  const top: TickerIssue[] = events
-    ? events.map(e => ({
+  const top: TickerIssue[] = trending
+    ? trending.events.map(e => ({
         id: e.issueId,
         contentId: e.contentId,
         title: e.headline,
@@ -71,7 +71,10 @@ export default async function IssueSignals() {
 
   if (top.length === 0) return null
 
-  const todayLabel = formatKstMonthDay(getKstDateString())
+  // 랭킹에 반영된 기사들의 최신 발행일 기준 — 오늘자 크론(05:00 KST) 전엔 자동으로 어제
+  // 날짜가 표시되어 "오늘 0건" 같은 모순이 생기지 않는다. 폴백 집계는 일자 정보가 없어
+  // 현재 KST 날짜를 그대로 쓴다(기존 동작 유지).
+  const todayLabel = formatKstMonthDay(trending?.asOfDateKst ?? getKstDateString())
 
   return (
     // 실검 스트립 — 카드가 아닌 한 줄 바. 제목만 휘리릭 롤링.
