@@ -1,7 +1,7 @@
 import { Suspense, type ReactNode } from 'react'
 import FeedSlot from '@/components/feed/FeedSlot'
 import IssueSignals from '@/components/dashboard/IssueSignals'
-import KeyInsightHomeHighlights from '@/components/dashboard/KeyInsightHomeHighlights'
+import DailyInsightHomeHighlights from '@/components/dashboard/DailyInsightHomeHighlights'
 import VisitDelta from '@/components/dashboard/VisitDelta'
 import PageContainer from '@/components/PageContainer'
 import { getHomeSectionLayout } from '@/lib/home/layout'
@@ -38,7 +38,7 @@ const SECTION_RENDERERS: Record<string, () => ReactNode> = {
   ),
   briefing_highlights: () => (
     <Suspense fallback={null}>
-      <KeyInsightHomeHighlights />
+      <DailyInsightHomeHighlights />
     </Suspense>
   ),
   feed_slot: () => (

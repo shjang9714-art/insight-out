@@ -1517,6 +1517,76 @@ do update set
   is_active = excluded.is_active;
 
 -- ============================================================
+-- 핵심 Insight 일일 종합 인사이트 (2026-07-11)
+-- 그날 발행 기사를 2~3개 주제로 종합(시장동향/경쟁사동향/자사시사점 3C) →
+-- 자동게시 + 사후 검토(needs_review). key_insights(주간)와 병행 — 대체 아님.
+-- supabase/2026-07-11-daily-insights.sql 과 동일 정의(단일 진실 동기화).
+-- ============================================================
+create table if not exists public.daily_insights (
+  id               uuid primary key default gen_random_uuid(),
+  day_of           date not null,
+  status           text not null default 'published',
+  needs_review     boolean not null default true,
+  display_order    integer not null default 0,
+  category         text,
+
+  headline         text not null,
+  summary_ko       text not null,
+
+  market_trend     text,
+  competitor_trend text,
+  implication      text,
+
+  source_articles  jsonb,
+  related_past     jsonb,
+
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create index if not exists idx_daily_insights_day    on public.daily_insights(day_of);
+create index if not exists idx_daily_insights_status  on public.daily_insights(status);
+create index if not exists idx_daily_insights_review  on public.daily_insights(needs_review) where needs_review;
+create index if not exists daily_insights_day_status_idx
+  on public.daily_insights (day_of desc, status, display_order asc);
+
+drop trigger if exists set_daily_insights_updated_at on public.daily_insights;
+create trigger set_daily_insights_updated_at
+  before update on public.daily_insights
+  for each row execute function public.set_updated_at();
+
+alter table public.daily_insights enable row level security;
+
+drop policy if exists "daily_insights: 인증 사용자 published 조회" on public.daily_insights;
+create policy "daily_insights: 인증 사용자 published 조회"
+  on public.daily_insights for select
+  using (auth.role() = 'authenticated' and status = 'published');
+
+drop policy if exists "daily_insights: admin 전체 조회" on public.daily_insights;
+create policy "daily_insights: admin 전체 조회"
+  on public.daily_insights for select
+  using (public.is_admin());
+
+drop policy if exists "daily_insights: admin 관리" on public.daily_insights;
+create policy "daily_insights: admin 관리"
+  on public.daily_insights for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+grant select on public.daily_insights to anon, authenticated;
+grant insert, update on public.daily_insights to authenticated;
+
+insert into public.llm_task_routing (id, task_type, priority, provider, model_id, is_active)
+values
+  (gen_random_uuid(), 'daily_insight', 1, 'gemini', 'gemini-2.5-flash', true),
+  (gen_random_uuid(), 'daily_insight', 2, 'openrouter', 'google/gemini-2.0-flash-exp:free', true)
+on conflict (task_type, priority)
+do update set
+  provider  = excluded.provider,
+  model_id  = excluded.model_id,
+  is_active = excluded.is_active;
+
+-- ============================================================
 -- MIGRATION (기존 배포 인스턴스에 직접 실행)
 -- 새 인스턴스는 위 CREATE TABLE 정의로 자동 적용되므로 불필요
 -- ============================================================
