@@ -10,7 +10,11 @@ export interface TickerIssue {
   contentId: string | null
   /** 서브이벤트의 지배 엔티티(회사/제품/인물) — 있으면 제목 앞에 보조 칩으로 표시 */
   entityChip?: string | null
+  /** 대표 기사의 매칭 키워드 중 관련도 최상위 1개(없으면 null) — 제목 앞 해시태그 칩 */
+  topHashtag?: string | null
   recentCount: number
+  /** KST 오늘(자정~현재) 발행 건수 */
+  todayCount: number
   changePct: number | null
   changeFlag: 'surge' | 'worsening' | null
   sentimentPos: number
@@ -32,24 +36,11 @@ const ROW_H_COMPACT = 36 // px, h-9
 /** 한 행이 지나가는 기본 시간(ms). 기존 2200 → 약 1.8배 느리게. */
 export const DEFAULT_MS_PER_ROW = 4000
 
-function ChangeBadge({ issue }: { issue: TickerIssue }) {
-  if (issue.changeFlag === 'worsening') {
-    return (
-      <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-        ⚠ 악화
-      </span>
-    )
-  }
-  if (issue.changeFlag === 'surge') {
-    return (
-      <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-600">
-        {issue.changePct === null ? '신규' : '급상승'}
-      </span>
-    )
-  }
+function HashtagPill({ topHashtag }: { topHashtag: string | null | undefined }) {
+  if (!topHashtag) return null
   return (
-    <span className="shrink-0 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-      {issue.changePct === null ? '-' : issue.changePct > 0 ? `+${issue.changePct}%` : `${issue.changePct}%`}
+    <span className="shrink-0 max-w-24 truncate rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-brand-600">
+      #{topHashtag}
     </span>
   )
 }
@@ -70,17 +61,17 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
         {rank}
       </span>
 
-      {/* 변화 감지 배지 */}
-      <ChangeBadge issue={issue} />
+      {/* 해시태그 칩 */}
+      <HashtagPill topHashtag={issue.topHashtag} />
 
       {/* 제목 */}
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground group-hover:text-brand-600 transition-colors">
         {issue.title}
       </span>
 
-      {/* 최근 7일 + 논조 */}
+      {/* 오늘 발행 건수 + 논조 */}
       <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="tabular-nums">{issue.recentCount}건</span>
+        <span className="tabular-nums">오늘 {issue.todayCount}건</span>
         {sentimentTotal > 0 && (
           <div className="flex items-center gap-1">
             {issue.sentimentPos > 0 && (
@@ -114,6 +105,7 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
       >
         {rank}
       </span>
+      <HashtagPill topHashtag={issue.topHashtag} />
       {issue.entityChip && (
         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
           {issue.entityChip}
@@ -122,19 +114,9 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors group-hover:text-brand-600">
         {issue.title}
       </span>
-      {issue.changeFlag && (
-        <span
-          className={`shrink-0 text-[11px] font-semibold ${
-            issue.changeFlag === 'surge' ? 'text-orange-500' : 'text-amber-600'
-          }`}
-        >
-          {issue.changeFlag === 'surge'
-            ? issue.changePct === null
-              ? '신규'
-              : '▲ 급상승'
-            : '⚠ 악화'}
-        </span>
-      )}
+      <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+        오늘 {issue.todayCount}건
+      </span>
     </Link>
   )
 }

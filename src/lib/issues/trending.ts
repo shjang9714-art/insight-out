@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
+import { getKstTodayStartIso } from '@/lib/date'
 
 /**
  * 쿠키 비의존 anon 클라이언트 — unstable_cache로 요청 간 캐시하려면 특정 사용자
@@ -48,6 +49,7 @@ interface ArticleRow {
   normTitle: string
   collectedAt: string
   entities: EntityRef[]
+  matchedKeywords: string[]
 }
 
 export interface TrendingEvent {
@@ -56,7 +58,11 @@ export interface TrendingEvent {
   contentId: string
   headline: string
   entityChip: string | null
+  /** 대표 기사의 matched_keywords 중 첫 번째(관련도 점수 컬럼이 없어 매칭 순서로 대체) */
+  topHashtag: string | null
   recentCount: number
+  /** KST 오늘(자정~현재) 발행 건수 */
+  todayCount: number
   changePct: number | null
   changeFlag: 'surge' | null
 }
@@ -91,7 +97,7 @@ function similarity(a: string, b: string): number {
   return inter / (A.size + B.size - inter)
 }
 
-// ─── Union-Find (이슈 내부 48h 기사 서브클러스터링) ───────────────────────────
+// ─── Union-Find (이슈 내부 72h 기사 서브클러스터링) ───────────────────────────
 
 class UnionFind {
   private parent: number[]
@@ -128,10 +134,17 @@ function dominantEntity(articles: ArticleRow[]): string | null {
   return best
 }
 
-interface SubclusterResult { headline: string; contentId: string; entityChip: string | null; count: number }
+interface SubclusterResult {
+  headline: string
+  contentId: string
+  entityChip: string | null
+  topHashtag: string | null
+  count: number
+  todayCount: number
+}
 
-/** 이슈 하나의 48h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
-function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
+/** 이슈 하나의 72h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
+function subclusterIssue(articles: ArticleRow[], kstTodayStartIso: string): SubclusterResult[] {
   if (articles.length === 0) return []
 
   const uf = new UnionFind(articles.length)
@@ -160,7 +173,9 @@ function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
         headline: representative.title,
         contentId: representative.contentId,
         entityChip: dominantEntity(group),
+        topHashtag: representative.matchedKeywords[0] ?? null,
         count: group.length,
+        todayCount: group.filter(a => a.collectedAt >= kstTodayStartIso).length,
       }
     })
 }
@@ -186,6 +201,7 @@ interface IssueArticleRow {
   collected_at: string
   entity_name: string | null
   entity_type: string | null
+  matched_keywords: string[] | null
 }
 
 async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
@@ -201,16 +217,20 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
 
   const issueIds = candidates.map(c => c.issue_id)
 
-  // trending_issue_articles 뷰는 이미 status='published' & 48h 창으로 필터링됨(§5 SQL).
+  // trending_issue_articles 뷰는 이미 status='published' & 72h 창으로 필터링됨(2026-07-08c/10 SQL).
   const { data: rows, error: rowsErr } = await supabase
     .from('trending_issue_articles')
-    .select('issue_id, content_id, title, collected_at, entity_name, entity_type')
+    .select('issue_id, content_id, title, collected_at, entity_name, entity_type, matched_keywords')
     .in('issue_id', issueIds)
     .limit(5000)
 
   if (rowsErr || !rows) return null
 
   // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
+  // content_entities left join으로 한 기사에 엔티티가 여러 개면 뷰에서 같은 content_id가
+  // 행으로 중복 fan-out된다(실측 확인, 2026-07-12). Map을 issue_id→content_id로 이중 키잉해
+  // 이미 존재하는 content_id는 재생성 없이 entities 배열에만 추가하므로, 이후 subclusterIssue의
+  // count·todayCount 계산은 항상 distinct 기사 수 기준 — 별도 dedupe 불필요.
   const byIssue = new Map<string, Map<string, ArticleRow>>()
   for (const row of rows as IssueArticleRow[]) {
     if (!byIssue.has(row.issue_id)) byIssue.set(row.issue_id, new Map())
@@ -223,6 +243,7 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
         normTitle: normalizeTitle(row.title),
         collectedAt: row.collected_at,
         entities: [],
+        matchedKeywords: row.matched_keywords ?? [],
       })
     }
     if (row.entity_name && row.entity_type) {
@@ -233,9 +254,11 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
     }
   }
 
+  const kstTodayStartIso = getKstTodayStartIso()
+
   const specificEvents: TrendingEvent[] = []
-  // 이슈별 changePct/changeFlag — backfill 단계에서 재사용(중복 계산 방지).
-  const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null }>()
+  // 이슈별 changePct/changeFlag/오늘 건수 — backfill 단계에서 재사용(중복 계산 방지).
+  const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null; todayCount: number }>()
 
   for (const issue of candidates) {
     const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
@@ -246,15 +269,18 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
       : (issue.recent_count > 0 ? null : 0)
     const isSurge = issue.recent_count > 0 && (changePct === null || changePct > SURGE_CHANGE_PCT_THRESHOLD)
     const changeFlag = isSurge ? 'surge' as const : null
-    issueChange.set(issue.issue_id, { changePct, changeFlag })
+    const issueTodayCount = articles.filter(a => a.collectedAt >= kstTodayStartIso).length
+    issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount })
 
-    for (const sc of subclusterIssue(articles)) {
+    for (const sc of subclusterIssue(articles, kstTodayStartIso)) {
       specificEvents.push({
         issueId: issue.issue_id,
         contentId: sc.contentId,
         headline: sc.headline,
         entityChip: sc.entityChip,
+        topHashtag: sc.topHashtag,
         recentCount: sc.count,
+        todayCount: sc.todayCount,
         changePct,
         changeFlag,
       })
@@ -296,13 +322,15 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
       for (const article of articles) {
         if (usedContentIds.has(article.contentId) || usedHeadlines.has(article.normTitle)) continue
 
-        const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null }
+        const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null, todayCount: 0 }
         final.push({
           issueId: issue.issue_id,
           contentId: article.contentId,
           headline: article.title,
           entityChip: dominantEntity([article]),
-          recentCount: issue.recent_count, // 이슈 전체 48h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미
+          topHashtag: article.matchedKeywords[0] ?? null,
+          recentCount: issue.recent_count, // 이슈 전체 72h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미
+          todayCount: change.todayCount, // 이슈 전체 기사 중 오늘 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
           changePct: change.changePct,
           changeFlag: change.changeFlag,
         })
@@ -325,6 +353,6 @@ async function computeTrendingEvents(): Promise<TrendingEvent[] | null> {
  */
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEvents,
-  ['trending-events-v2'],
+  ['trending-events-v3'],
   { revalidate: CACHE_REVALIDATE_SECONDS },
 )

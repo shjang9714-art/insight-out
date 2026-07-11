@@ -40,6 +40,10 @@
     {
       "path": "/api/cron/competitor-weekly",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/trending-snapshot",
+      "schedule": "50 14 * * *"
     }
   ]
 }
