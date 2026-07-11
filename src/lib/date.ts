@@ -39,3 +39,14 @@ export function getKstDateString(date: Date = new Date()): string {
   const { year, month, day } = getKstDateParts(date)
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
+
+/** 임의 시각을 KST 기준 시(0~23)로. */
+export function getKstHour(date: Date = new Date()): number {
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    hour: 'numeric',
+    hour12: false,
+  }).format(date)
+  // Intl 은 자정을 '24'로 표기하는 로케일이 있어 24 → 0 보정
+  return Number(hour) % 24
+}
