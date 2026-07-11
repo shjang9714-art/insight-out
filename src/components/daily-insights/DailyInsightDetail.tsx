@@ -1,5 +1,5 @@
 import { ExternalLink } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 
 interface DailyInsightDetailProps {
@@ -19,9 +19,9 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
   return (
     <article className="space-y-6">
       <header className="space-y-2">
-        {insight.category && <Badge variant="secondary">{insight.category}</Badge>}
+        {insight.category && <CategoryBadge category={insight.category} />}
         <h1 className="text-2xl font-bold leading-snug tracking-tight text-foreground">{insight.headline}</h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">{insight.summary_ko}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">💡 {insight.summary_ko}</p>
       </header>
 
       {sections.length > 0 && (

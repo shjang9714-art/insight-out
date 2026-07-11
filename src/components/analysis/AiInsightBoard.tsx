@@ -7,6 +7,7 @@ import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
 import DailyInsightList from '@/components/daily-insights/DailyInsightList'
+import DailyInsightPeriodFilter from '@/components/daily-insights/DailyInsightPeriodFilter'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import InsightCardsSectionClient, {
   type InsightGroup,
@@ -119,7 +120,10 @@ export default function AiInsightBoard({
   const view = resolvedView
 
   function handleTabChange(v: AiInsightViewId) {
-    router.replace(`${pathname}?view=${v}`, { scroll: false })
+    // 탭 전환 시 기간 필터(period/from/to) 등 다른 쿼리 파라미터는 유지 — view만 교체.
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', v)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
   return (
@@ -131,9 +135,14 @@ export default function AiInsightBoard({
         <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} className="w-full" />
       </div>
 
-      {/* 핵심 인사이트 — 일일 daily_insights 목록(§지시서 20260711 fast-follow §1) */}
+      {/* 핵심 인사이트 — 일일 daily_insights 목록(§지시서 20260711 기간필터·라벨칩·전구이모지) */}
       {view === 'brief' && (
-        <DailyInsightList insights={dailyInsights} />
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <DailyInsightPeriodFilter />
+          </div>
+          <DailyInsightList insights={dailyInsights} />
+        </div>
       )}
 
       {/* 헤드라인 분석 */}
