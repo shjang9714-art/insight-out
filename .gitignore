@@ -44,3 +44,6 @@ next-env.d.ts
 
 # 에디터 로컬 설정
 .vscode/
+
+# 스톡 커버 검토용(커밋 금지)
+public/topic-covers/_review/

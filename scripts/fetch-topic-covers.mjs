@@ -1,0 +1,145 @@
+#!/usr/bin/env node
+/**
+ * 토픽 커버 풀 확충 — Pexels에서 토픽별 이미지를 받아 검토 폴더에 저장한다.
+ *
+ * 배경: public/topic-covers/ 의 생성 커버 풀이 토픽당 1~2장뿐이라(특히 'IT 동향'=1장),
+ *   실사 썸네일이 없는 기사들이 전부 같은 그림을 받는다(pickTopicCover는 hashIndex(id, N)로
+ *   분산하는데 N=1이면 분산할 게 없다).
+ *
+ * 사용법:
+ *   PEXELS_API_KEY=xxxx node scripts/fetch-topic-covers.mjs            # 전체
+ *   PEXELS_API_KEY=xxxx node scripts/fetch-topic-covers.mjs IT 클라우드   # 특정 토픽만
+ *   (키 발급: https://www.pexels.com/api/ — 무료·즉시)
+ *
+ * 저장 위치: public/topic-covers/_review/{basename}-{n}.jpg  ← 검토용(서비스 미반영)
+ *   → 눈으로 보고 쓸 만한 것만 public/topic-covers/ 로 옮긴다.
+ *   → 배포하면 prebuild(scripts/build-topic-cover-manifest.mjs)가 매니페스트를 자동 재생성.
+ *
+ * ⚠️ 검토 없이 바로 public/topic-covers/ 에 넣지 말 것 — 스톡은 관련성이 들쭉날쭉하다.
+ *
+ * 라이선스: Pexels License(상업적 사용 무료, 출처표기 불필요).
+ *   https://www.pexels.com/license/
+ *
+ * 파일명 규칙(생성기가 파싱함):
+ *   - 뒤의 변형 접미(-2, -3)는 제거되고, 남은 base 가 ALIAS 로 토픽 키에 매핑된다.
+ *   - 예: IT-2.jpg → base 'IT' → ALIAS['IT'] = 'IT 동향'
+ *   - 그래서 아래 basename 은 src/lib/contents/topic-cover.ts 의 ALIAS 와 일치해야 한다.
+ */
+
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.join(__dirname, '..')
+const OUT_DIR = path.join(ROOT, 'public', 'topic-covers', '_review')
+
+const API_KEY = process.env.PEXELS_API_KEY
+if (!API_KEY) {
+  console.error('❌ PEXELS_API_KEY 가 없습니다. https://www.pexels.com/api/ 에서 무료 발급 후:')
+  console.error('   PEXELS_API_KEY=xxxx node scripts/fetch-topic-covers.mjs')
+  process.exit(1)
+}
+
+/**
+ * 토픽별 큐레이션.
+ *   basename: 저장 파일명 base (ALIAS 키와 일치할 것)
+ *   query   : Pexels 검색어(영어)
+ *   need    : 받을 장수
+ *   startAt : 파일명 시작 번호(기존 파일과 충돌 방지 — 현재 보유 장수 + 1)
+ */
+const TOPICS = [
+  // ── 최우선: 풀이 1장뿐이라 화면이 도배됨 ──
+  { basename: 'IT',        query: 'technology abstract network',      need: 6, startAt: 2 },  // 'IT 동향' — 현재 1장
+  { basename: '클라우드',   query: 'cloud computing server',           need: 6, startAt: 2 },  // 현재 1장
+  { basename: '에너지',     query: 'renewable energy power grid',      need: 5, startAt: 2 },  // 현재 1장
+  { basename: '리포트',     query: 'business report analytics desk',   need: 5, startAt: 2 },  // 현재 1장
+
+  // ── 2장뿐(고volume) ──
+  { basename: 'AI기술',     query: 'artificial intelligence circuit',  need: 6, startAt: 3 },  // 'AI 기술'
+  { basename: '뉴스',       query: 'newsroom journalism media',        need: 5, startAt: 3 },
+  { basename: '반도체',     query: 'semiconductor microchip wafer',    need: 5, startAt: 3 },
+  { basename: '통신 b2b',   query: 'telecommunications network tower', need: 5, startAt: 3 },  // '통신 B2B'
+  { basename: 'AIDC',       query: 'data center server room',          need: 5, startAt: 3 },
+  { basename: '제조dx',     query: 'smart factory automation robot',   need: 5, startAt: 3 },  // '제조 DX'
+  { basename: '피지컬ai',   query: 'humanoid robot industrial',        need: 5, startAt: 3 },  // '피지컬 AI'
+  { basename: 'esg',        query: 'sustainability green business',    need: 5, startAt: 3 },  // 'ESG'
+  { basename: '웹인사이트', query: 'digital insight analytics screen', need: 5, startAt: 3 },
+]
+
+const only = process.argv.slice(2)
+const targets = only.length > 0
+  ? TOPICS.filter((t) => only.includes(t.basename))
+  : TOPICS
+
+async function searchPexels(query, need) {
+  // per_page 를 넉넉히 받아 세로 사진을 걸러낸 뒤 need 장만 쓴다.
+  const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${need * 3}`
+  const res = await fetch(url, { headers: { Authorization: API_KEY } })
+  if (!res.ok) throw new Error(`Pexels ${res.status} ${res.statusText}`)
+  const data = await res.json()
+  return (data.photos ?? [])
+    .filter((p) => p.width >= p.height)   // 가로형 우선(세로 원본은 크롭이 어색해짐)
+    .slice(0, need)
+}
+
+async function download(url, dest) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`download ${res.status}`)
+  const buf = Buffer.from(await res.arrayBuffer())
+  await writeFile(dest, buf)
+  return buf.length
+}
+
+async function main() {
+  await mkdir(OUT_DIR, { recursive: true })
+  console.log(`검토 폴더: ${path.relative(ROOT, OUT_DIR)}\n`)
+
+  const credits = []
+  let total = 0
+
+  for (const t of targets) {
+    process.stdout.write(`[${t.basename}] "${t.query}" … `)
+    let photos
+    try {
+      photos = await searchPexels(t.query, t.need)
+    } catch (e) {
+      console.log(`❌ 검색 실패: ${e.message}`)
+      continue
+    }
+    if (photos.length === 0) { console.log('결과 없음'); continue }
+
+    let n = t.startAt
+    for (const p of photos) {
+      // landscape 변형 = 1200×627 (카드 aspect-[16/9]에 근접, object-cover로 흡수)
+      const src = p.src.landscape ?? p.src.large
+      const file = `${t.basename}-${n}.jpg`
+      try {
+        const bytes = await download(src, path.join(OUT_DIR, file))
+        credits.push(`${file}\t${p.photographer}\t${p.url}`)
+        total++
+        n++
+        process.stdout.write('.')
+      } catch (e) {
+        process.stdout.write('x')
+      }
+    }
+    console.log(` ${n - t.startAt}장`)
+  }
+
+  // 출처 기록(Pexels는 표기 의무 없지만, 어디서 왔는지 추적용)
+  await writeFile(
+    path.join(OUT_DIR, '_credits.tsv'),
+    '파일\t촬영자\t원본URL\n' + credits.join('\n') + '\n',
+    'utf8'
+  )
+
+  console.log(`\n✅ 총 ${total}장 → ${path.relative(ROOT, OUT_DIR)}`)
+  console.log('\n다음 단계:')
+  console.log('  1. 검토 폴더를 열어 눈으로 확인 (관련 없거나 조악한 것 버리기)')
+  console.log('  2. 쓸 것만 public/topic-covers/ 로 이동')
+  console.log('  3. 커밋·배포 → prebuild 가 매니페스트를 자동 재생성')
+  console.log('  4. _review 폴더와 _credits.tsv 는 커밋하지 말 것(.gitignore 확인)')
+}
+
+main().catch((e) => { console.error('실패:', e); process.exit(1) })
