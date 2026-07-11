@@ -322,7 +322,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         className="hidden md:flex"
         aria-label="주 메뉴"
       >
-        <div className="mx-auto flex w-full max-w-6xl items-stretch justify-start gap-9 px-4 sm:px-5 tracking-[-0.01em]">
+        <div id="l1-nav-row" className="mx-auto flex w-full max-w-6xl items-stretch justify-start gap-9 px-4 sm:px-5 tracking-[-0.01em]">
           {NAV_TABS.map((tab) => {
             const active = isTabActive(tab.href, tab.exact, pathname)
             return (
@@ -336,7 +336,9 @@ export default function DashboardHeader({ onMenuClick }: Props) {
                 }`}
               >
                 <span className={`h-[5px] w-[5px] shrink-0 rounded-full ${active ? 'bg-brand-600' : 'bg-transparent'}`} />
-                <span>{tab.label}</span>
+                {/* id="l1-active-label"는 NavGroupAlign(§지시서 20260712)이 L2 탭 그룹의
+                    좌측 시작점을 이 라벨의 텍스트 x좌표에 맞추는 기준점으로 씀 */}
+                <span id={active ? 'l1-active-label' : undefined}>{tab.label}</span>
               </Link>
             )
           })}

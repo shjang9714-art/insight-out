@@ -146,10 +146,6 @@
   --brand-muted: #A83E63;
   /* 핵심 Insight 섹션 틸 액센트(라이트, 아이브로우 라벨 전용) — white 배경 대비 6.2:1 확보 */
   --insight-teal-strong: #0F6E56;
-  /* L1 내비(홈·AI 인사이트·기업동향·콘텐츠·전략보고서, 17px+gap-9) 렌더 폭.
-     L2(InsightViewTabs)를 이 폭의 좌측기준 블록으로 감싸 center 시키면
-     L1 그룹 중앙 아래에 L2 중앙이 옴(지시서 233). 시각 QA로 튜닝된 값. */
-  --nav-group-w: 500px;
 }
 
 .dark {
