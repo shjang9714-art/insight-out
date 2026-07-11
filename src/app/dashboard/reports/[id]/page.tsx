@@ -5,12 +5,13 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { ExternalLink, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { AiReport, AiReportType, AiReportStatus } from '@/lib/types'
-import ReportEditor from '@/components/reports/ReportEditor'
+import type { AiReportType } from '@/lib/types'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
 import PrintButton from '@/components/reports/PrintButton'
 import BackLink from '@/components/BackLink'
 import PageContainer from '@/components/PageContainer'
+import { getReport } from '@/lib/reports/query'
+import { sanitizeReportHtml } from '@/lib/reports/sanitize-html'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,10 +32,8 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { id } = await params
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
+function createSupabase(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -46,39 +45,24 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       },
     }
   )
-  const { data } = await supabase.from('ai_reports').select('title').eq('id', id).single()
-  const title = (data as { title?: string } | null)?.title ?? '전략보고서'
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { id } = await params
+  const supabase = createSupabase(await cookies())
+  const report = await getReport(supabase, id)
+  const title = report?.published_at ? report.title : '전략보고서'
   return { title: `${title} | Insight Out` }
 }
 
 export default async function ReportDetailPage({ params }: PageProps) {
   const { id } = await params
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) {
-          toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-        },
-      },
-    }
-  )
+  const supabase = createSupabase(await cookies())
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const report = await getReport(supabase, id)
 
-  const { data: reportData } = await supabase
-    .from('ai_reports')
-    .select('id, user_id, title, type, status, prompt, body_md, created_at')
-    .eq('id', id)
-    .single()
-
-  if (!reportData) notFound()
-
-  const report = reportData as Pick<AiReport, 'id' | 'user_id' | 'title' | 'type' | 'status' | 'prompt' | 'body_md' | 'created_at'>
-  const isOwner = user?.id === report.user_id
+  // 275 — 서비스는 발행된(published_at not null) 보고서만 열람 가능(어드민 미리보기는 276)
+  if (!report || !report.published_at) notFound()
 
   // ─── 근거 출처 ──────────────────────────────────────────────────────────────
   const { data: sourcesData } = await supabase
@@ -111,6 +95,8 @@ export default async function ReportDetailPage({ params }: PageProps) {
     .filter(s => s.issues !== null && s.contents === null)
     .map(s => s.issues!)
 
+  const sanitizedHtml = report.body_html ? sanitizeReportHtml(report.body_html) : null
+
   return (
     <PageContainer variant="reading" className="print:px-0 print:py-0 print:max-w-none">
       {/* 뒤로 + PDF 버튼 */}
@@ -123,7 +109,17 @@ export default async function ReportDetailPage({ params }: PageProps) {
       </div>
 
       {/* 헤더 */}
-      <div className="mb-8 space-y-2">
+      <div className="mb-8 space-y-3">
+        {report.cover_image_url && (
+          <div className="aspect-[16/9] w-full overflow-hidden rounded-xl bg-muted print:hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={report.cover_image_url}
+              alt={report.title}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <span className={cn(
             'rounded-full border px-2.5 py-0.5 text-xs font-medium',
@@ -131,22 +127,43 @@ export default async function ReportDetailPage({ params }: PageProps) {
           )}>
             {report.type}
           </span>
-          <span className="text-xs text-muted-foreground">{formatDate(report.created_at)}</span>
+          <span className="text-xs text-muted-foreground">{formatDate(report.published_at)}</span>
+          {report.publisher && (
+            <span className="text-xs text-muted-foreground">· {report.publisher}</span>
+          )}
         </div>
         <h1 className="text-xl font-bold text-foreground leading-snug">{report.title}</h1>
-        {report.prompt && (
-          <p className="text-sm text-muted-foreground">{report.prompt}</p>
+        {report.summary && (
+          <p className="text-sm text-muted-foreground">{report.summary}</p>
         )}
       </div>
 
       {/* 본문 */}
-      {isOwner ? (
-        <ReportEditor
-          reportId={report.id}
-          initialTitle={report.title}
-          initialBodyMd={report.body_md ?? null}
-          initialStatus={report.status as AiReportStatus}
-        />
+      {sanitizedHtml ? (
+        <div className="rounded-xl border border-border bg-card p-6 sm:p-8 print:border-0 print:bg-white print:p-0 print:shadow-none">
+          <div
+            className={cn(
+              '[&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mb-3 [&_h2]:mt-6 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-1.5',
+              '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-4',
+              '[&_h4]:text-sm [&_h4]:font-semibold [&_h4]:text-foreground [&_h4]:mb-2 [&_h4]:mt-3',
+              '[&_p]:text-sm [&_p]:text-foreground/90 [&_p]:leading-relaxed [&_p]:mb-3',
+              '[&_strong]:font-semibold [&_strong]:text-foreground',
+              '[&_em]:italic [&_em]:text-foreground/80',
+              '[&_ul]:mb-3 [&_ul]:pl-5 [&_ul]:list-disc [&_ul]:space-y-1',
+              '[&_ol]:mb-3 [&_ol]:pl-5 [&_ol]:list-decimal [&_ol]:space-y-1',
+              '[&_li]:text-sm [&_li]:text-foreground/90 [&_li]:leading-relaxed',
+              '[&_blockquote]:border-l-2 [&_blockquote]:border-brand-600/40 [&_blockquote]:pl-4 [&_blockquote]:py-1 [&_blockquote]:my-3',
+              '[&_blockquote_p]:text-sm [&_blockquote_p]:text-muted-foreground [&_blockquote_p]:italic [&_blockquote_p]:mb-0',
+              '[&_table]:w-full [&_table]:text-sm [&_table]:border-collapse [&_table]:mb-4',
+              '[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:text-foreground',
+              '[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_td]:text-foreground/90',
+              '[&_tr:nth-child(even)_td]:bg-muted/40',
+              '[&_hr]:border-border [&_hr]:my-6',
+              '[&_a]:text-brand-600 [&_a]:underline [&_a]:underline-offset-2',
+            )}
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+          />
+        </div>
       ) : report.body_md ? (
         <div className="rounded-xl border border-border bg-card p-6 sm:p-8 print:border-0 print:bg-white print:p-0 print:shadow-none">
           <ReportMarkdown>{report.body_md}</ReportMarkdown>
