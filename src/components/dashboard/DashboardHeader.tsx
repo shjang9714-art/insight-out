@@ -21,13 +21,8 @@ export const NAV_TABS = [
   { label: '전략보고서', href: '/dashboard/reports',  exact: false },
 ]
 
-// 관리자 전용 '실험실' 퀵링크 — AI인사이트 페이지의 실험적 하위탭(AiInsightBoard.tsx의
-// LAB_TABS와 대응)으로 바로 이동. 라벨/href만 필요해 그쪽 타입에 의존하지 않고 여기서 별도 정의.
-const LAB_QUICK_LINKS = [
-  { id: 'headline', label: '헤드라인 분석' },
-  { id: 'trending', label: '뜨는 토픽' },
-  { id: 'issues',   label: '이슈 타임라인' },
-]
+// 관리자 전용 '실험실' 퀵링크 — 숨김 처리된 하위 카테고리를 모아 보는 별도 페이지
+// (/dashboard/lab, LabBoard.tsx) 하나로 이동. 현재/향후 실험 탭은 그 페이지 안에서 관리.
 
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
@@ -351,23 +346,16 @@ export default function DashboardHeader({ onMenuClick }: Props) {
               기존에는 AiInsightBoard.tsx 안 L2 탭 영역에 있던 것을 여기로 이동) */}
           {isAdmin && (
             <div className="ml-auto flex items-center gap-3">
-              <span className="shrink-0 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <Link
+                href="/dashboard/lab"
+                className={`shrink-0 rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  pathname.startsWith('/dashboard/lab')
+                    ? 'border-brand-600/40 text-foreground'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
                 실험실
-              </span>
-              {LAB_QUICK_LINKS.map((tab) => {
-                const active = pathname.startsWith('/dashboard/issues') && searchParams.get('view') === tab.id
-                return (
-                  <Link
-                    key={tab.id}
-                    href={`/dashboard/issues?view=${tab.id}`}
-                    className={`text-xs transition-colors ${
-                      active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {tab.label}
-                  </Link>
-                )
-              })}
+              </Link>
             </div>
           )}
         </div>
