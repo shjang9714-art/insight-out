@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // @napi-rs/canvas 는 네이티브 .node 바이너리 — 번들링하면 런타임 로드 실패(285)
+  serverExternalPackages: ["@napi-rs/canvas"],
 };
 
 export default nextConfig;
