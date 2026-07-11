@@ -128,6 +128,11 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/admin') && gate.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+
+    // 실험실(숨김 처리된 하위 카테고리 확인용) — 관리자 전용
+    if (pathname.startsWith('/dashboard/lab') && gate.role !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
   return supabaseResponse
