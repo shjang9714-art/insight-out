@@ -33,7 +33,17 @@ export interface CompetitorWeeklyTimelineEntry {
   overall_impact: '위기' | '기회' | '관망' | null
 }
 
+export interface CompetitorWeeklyCardRow {
+  id: string
+  week_start: string
+  week_end: string
+  summary: string | null
+  overall_impact: '위기' | '기회' | '관망' | null
+  emerging_topics: string[]
+}
+
 const REPORT_COLUMNS = 'id, week_start, week_end, summary, overall_impact, emerging_topics, sections, status, generated_at'
+const CARD_COLUMNS = 'id, week_start, week_end, summary, overall_impact, emerging_topics'
 
 /** 최신 published 주간 리포트 1건. 261 SQL 미적용(42P01)이면 null(graceful). */
 export async function getLatestPublishedCompetitorWeeklyReport(
@@ -71,6 +81,25 @@ export async function getCompetitorWeeklyReportByWeek(
     return null
   }
   return (data as CompetitorWeeklyReportRow | null) ?? null
+}
+
+/** 카드형 목록(283)용 — published 주간 리포트 최근 N건(최신순). 261 SQL 미적용(42P01)이면 []. */
+export async function getPublishedCompetitorWeeklyReports(
+  supabase: SupabaseClient,
+  limit = 12,
+): Promise<CompetitorWeeklyCardRow[]> {
+  const { data, error } = await supabase
+    .from('competitor_weekly_reports')
+    .select(CARD_COLUMNS)
+    .eq('status', 'published')
+    .order('week_start', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    if (error.code !== '42P01') console.warn('[CompetitorWeekly] 카드 목록 조회 실패:', error.message)
+    return []
+  }
+  return (data ?? []) as CompetitorWeeklyCardRow[]
 }
 
 /** 타임라인용 — 과거 published 주간 리포트 요약 목록(최신순). */

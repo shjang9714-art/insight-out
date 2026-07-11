@@ -6,7 +6,7 @@ import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 const TABS = [
   { id: 'watchlist',  label: '주요 기업',       href: '/dashboard/entities?view=watchlist' },
   { id: 'competitor', label: '경쟁사 최근 뉴스', href: '/dashboard/entities?view=competitor' },
-  { id: 'trend',      label: '경쟁사 동향분석', href: '/dashboard/entities?view=trend' },
+  { id: 'trend',      label: '경쟁사 주간리포트', href: '/dashboard/entities?view=trend' },
 ]
 
 export default function EntityTabs() {

@@ -11,10 +11,10 @@ import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
 import { getMajorCompaniesData } from '@/lib/entities/major-companies'
 import MajorCompanyGroups from '@/components/entities/MajorCompanyGroups'
 import {
-  getLatestPublishedCompetitorWeeklyReport,
+  getPublishedCompetitorWeeklyReports,
   getCompetitorWeeklyTimeline,
 } from '@/lib/competitor-weekly/query'
-import CompetitorWeeklyReport from '@/components/entities/CompetitorWeeklyReport'
+import CompetitorWeeklyCard from '@/components/entities/CompetitorWeeklyCard'
 import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
 
 export const dynamic = 'force-dynamic'
@@ -69,13 +69,13 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
   const { competitorCount, groups: competitorGroups, overallImpactDist } = competitorNews
   const COMPETITOR_SUMMARY_CAP = 6
 
-  // ─── 경쟁사(동향) 탭 — 261: per-company 카드 나열 → 주간 종합 리포트로 전환(257 대체) ──
-  const [latestWeeklyReport, weeklyTimeline] = view === 'trend'
+  // ─── 경쟁사(동향) 탭 — 261: per-company 카드 나열 → 주간 종합 리포트 → 283: 카드 목록+상세 진입 ──
+  const [weeklyReports, weeklyTimeline] = view === 'trend'
     ? await Promise.all([
-        getLatestPublishedCompetitorWeeklyReport(supabase),
+        getPublishedCompetitorWeeklyReports(supabase, 12),
         getCompetitorWeeklyTimeline(supabase, 12),
       ])
-    : [null, []]
+    : [[], []]
 
   return (
     <PageContainer>
@@ -153,21 +153,24 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
         </div>
       )}
 
-      {/* 경쟁사(동향) 탭 — 261: 주간 종합 리포트(사업영역별 + 위기/기회 + 타임라인) */}
+      {/* 경쟁사(동향) 탭 — 283: 카드 목록(최근 N건) + 위기/기회 타임라인, 클릭 시 상세 진입 */}
       {view === 'trend' && (
-        <div className="space-y-4">
-          {!latestWeeklyReport ? (
+        <div className="space-y-6">
+          <CompetitorWeeklyTimeline entries={weeklyTimeline} />
+
+          {weeklyReports.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-              <p className="text-sm font-medium text-foreground">이번 주 경쟁 리포트 생성 대기</p>
+              <p className="text-sm font-medium text-foreground">발행된 주간 리포트가 아직 없습니다.</p>
               <p className="text-xs text-muted-foreground">
                 매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합해 여기에 표시됩니다.
               </p>
             </div>
           ) : (
-            <>
-              <CompetitorWeeklyReport report={latestWeeklyReport} />
-              <CompetitorWeeklyTimeline entries={weeklyTimeline} activeWeekStart={latestWeeklyReport.week_start} />
-            </>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {weeklyReports.map((r) => (
+                <CompetitorWeeklyCard key={r.id} report={r} />
+              ))}
+            </div>
           )}
         </div>
       )}

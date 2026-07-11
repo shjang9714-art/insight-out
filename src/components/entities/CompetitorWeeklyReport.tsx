@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CompetitorWeeklyReportRow } from '@/lib/competitor-weekly/query'
+import { stripInlineCitations } from '@/lib/competitor-weekly/strip-citations'
 
 const IMPACT_CHIP: Record<string, string> = {
   위기: 'bg-negative-soft text-negative',
@@ -51,7 +52,7 @@ export default function CompetitorWeeklyReport({ report }: Props) {
           <ImpactChip impact={overall_impact} size="md" />
         </div>
         {summary && (
-          <p className="text-base font-semibold text-foreground leading-snug">{summary}</p>
+          <p className="text-base font-semibold text-foreground leading-snug">{stripInlineCitations(summary)}</p>
         )}
         {emerging_topics.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
@@ -89,12 +90,12 @@ export default function CompetitorWeeklyReport({ report }: Props) {
             </div>
 
             <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">
-              {section.moves}
+              {stripInlineCitations(section.moves)}
             </p>
 
             {section.implication && (
               <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-brand-600/30 pl-3">
-                {section.implication}
+                {stripInlineCitations(section.implication)}
               </p>
             )}
 
