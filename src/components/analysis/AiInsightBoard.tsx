@@ -6,8 +6,8 @@ import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
-import KeyInsightArchive from '@/components/key-insights/KeyInsightArchive'
-import type { KeyInsightRow } from '@/lib/key-insights/types'
+import DailyInsightList from '@/components/daily-insights/DailyInsightList'
+import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import InsightCardsSectionClient, {
   type InsightGroup,
   type ContentMetaRecord,
@@ -43,9 +43,7 @@ export interface SignalItem {
 
 export interface AiInsightBoardProps {
   initialView: AiInsightViewId
-  keyInsightWeeks: string[]
-  keyInsightWeekOf: string | null
-  keyInsightCards: KeyInsightRow[]
+  dailyInsights: DailyInsightRow[]
   insightGroups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
   trendingTopics: TopicTrend[]
@@ -90,9 +88,7 @@ const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS
 
 export default function AiInsightBoard({
   initialView,
-  keyInsightWeeks,
-  keyInsightWeekOf,
-  keyInsightCards,
+  dailyInsights,
   insightGroups,
   contentMap,
   trendingTopics,
@@ -141,13 +137,9 @@ export default function AiInsightBoard({
         <ScopeFilter />
       </div>
 
-      {/* 핵심 Insight — 주간 배치 아카이브(§2-2) */}
+      {/* 핵심 인사이트 — 일일 daily_insights 목록(§지시서 20260711 fast-follow §1) */}
       {view === 'brief' && (
-        <KeyInsightArchive
-          initialWeeks={keyInsightWeeks}
-          initialWeekOf={keyInsightWeekOf}
-          initialCards={keyInsightCards}
-        />
+        <DailyInsightList insights={dailyInsights} />
       )}
 
       {/* 헤드라인 분석 */}
