@@ -214,6 +214,7 @@ export interface AiReportSource {
   ai_report_id: string
   content_id?: string | null
   youtube_video_id?: string | null
+  issue_id?: string | null
   created_at: string
 }
 

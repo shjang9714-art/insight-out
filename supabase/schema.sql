@@ -679,34 +679,46 @@ create unique index youtube_videos_video_id_key on public.youtube_videos (video_
 create index youtube_videos_source_idx       on public.youtube_videos (source_id);
 create index youtube_videos_published_at_idx on public.youtube_videos (published_at desc);
 
--- AI 보고서 (사용자 생성) — 결정 A: 별도 테이블
+-- AI 보고서 (사용자 생성 → 274 이후 어드민 HITL 발행물로 확장) — 결정 A: 별도 테이블
 create table public.ai_reports (
-  id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references public.users (id) on delete cascade,
-  type          ai_report_type not null,
-  status        ai_report_status not null default 'draft',
-  title         text not null default '',
-  prompt        text,                                  -- 사용자 요청/주제
-  body_md       text,                                  -- 생성된 보고서 본문(markdown)
-  file_path     text,                                  -- 내보낸 파일(PDF 등) Storage 경로
-  error_message text,                                  -- status='failed' 시 사유
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references public.users (id) on delete cascade,
+  type            ai_report_type not null,
+  status          ai_report_status not null default 'draft',
+  title           text not null default '',
+  prompt          text,                                  -- 사용자 요청/주제
+  body_md         text,                                  -- 생성된 보고서 본문(markdown, 레거시 폴백)
+  file_path       text,                                  -- 내보낸 파일(PDF 등) Storage 경로
+  error_message   text,                                  -- status='failed' 시 사유
+  body_html       text,                                  -- 본문(HTML, 274 — 주 렌더)
+  summary         text,                                  -- 카드 요약 2~3줄(274)
+  cover_image_url text,                                  -- 표지(업로드/AI, 274)
+  publisher       text default '인사이트 아웃',            -- 발행자(274)
+  published_at    timestamptz,                           -- 발행일(274, null=미발행 — 서비스 노출 게이트)
+  topic           text,                                  -- 주제(자유, 274) — type 은 분류 배지로 유지
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
 );
 create index ai_reports_user_idx on public.ai_reports (user_id);
+create index ai_reports_published_at_idx
+  on public.ai_reports (published_at desc) where published_at is not null;
 
--- AI 보고서 ↔ 참조 콘텐츠 (N:M, 결정 J) — 다형 참조: contents | youtube_videos 중 하나
+-- AI 보고서 ↔ 참조 콘텐츠 (N:M, 결정 J) — 다형 참조: contents | youtube_videos | issues(276) 중 하나
+-- issue_id 의 FK 는 issues 테이블 생성 이후 섹션에서 추가(전방참조 회피, 아래 "ai_report_sources.issue_id FK" 참조)
 create table public.ai_report_sources (
   ai_report_id     uuid not null references public.ai_reports (id) on delete cascade,
   content_id       uuid references public.contents (id) on delete cascade,
   youtube_video_id uuid references public.youtube_videos (id) on delete cascade,
+  issue_id         uuid,
   created_at       timestamptz not null default now(),
   constraint ai_report_sources_one_item check (
-    (content_id is not null)::int + (youtube_video_id is not null)::int = 1
+    (content_id is not null)::int + (youtube_video_id is not null)::int + (issue_id is not null)::int = 1
   )
 );
 create unique index ai_report_sources_content_key
   on public.ai_report_sources (ai_report_id, content_id) where content_id is not null;
+create unique index ai_report_sources_issue_key
+  on public.ai_report_sources (ai_report_id, issue_id) where issue_id is not null;
 create unique index ai_report_sources_youtube_key
   on public.ai_report_sources (ai_report_id, youtube_video_id) where youtube_video_id is not null;
 
@@ -1347,6 +1359,13 @@ create table if not exists public.issues (
 );
 create index if not exists issues_status_idx on public.issues (status);
 
+-- ai_report_sources.issue_id FK(276) — issues 테이블이 여기서 생성되므로 전방참조를 피해 여기서 추가
+do $$ begin
+  alter table public.ai_report_sources
+    add constraint ai_report_sources_issue_id_fkey
+    foreign key (issue_id) references public.issues (id) on delete cascade;
+exception when duplicate_object then null; end $$;
+
 drop trigger if exists set_issues_updated_at on public.issues;
 create trigger set_issues_updated_at
   before update on public.issues
@@ -1515,3 +1534,22 @@ do update set
 --   add column if not exists error_reason text;
 -- contents 테이블에 body_markdown 추가 (212-리치에디터-마크다운, docs/sql-handoff/212-body-markdown.sql)
 -- alter table public.contents add column if not exists body_markdown text;
+
+-- ai_reports 발행 컬럼 확장 (274, docs/sql-handoff/274-ai_reports-발행모델-확장+전략프롬프트.sql)
+-- alter table public.ai_reports
+--   add column if not exists body_html text,
+--   add column if not exists summary text,
+--   add column if not exists cover_image_url text,
+--   add column if not exists publisher text default '인사이트 아웃',
+--   add column if not exists published_at timestamptz,
+--   add column if not exists topic text;
+
+-- ai_report_sources issue_id + CHECK 3항 확장 (276, docs/sql-handoff/276-ai_report_sources-정합.sql)
+-- alter table public.ai_report_sources
+--   add column if not exists issue_id uuid references public.issues (id) on delete cascade;
+-- alter table public.ai_report_sources drop constraint if exists ai_report_sources_one_item;
+-- alter table public.ai_report_sources add constraint ai_report_sources_one_item check (
+--   (content_id is not null)::int + (youtube_video_id is not null)::int + (issue_id is not null)::int = 1
+-- );
+-- create unique index if not exists ai_report_sources_issue_key
+--   on public.ai_report_sources (ai_report_id, issue_id) where issue_id is not null;

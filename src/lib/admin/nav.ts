@@ -25,6 +25,7 @@ import {
   Filter,
   Gauge,
   LayoutTemplate,
+  FileText,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -182,7 +183,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성·확인합니다.',
         icon: TrendingUp,
       },
-      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 전략리서치 — ADMIN_RESTRUCTURE_PLAN.md 참고
+      {
+        href: '/admin/reports',
+        label: '전략보고서 관리',
+        description: '전략보고서 생성·재생성·표지·발행자/발행일 HITL 발행 워크플로우를 관리합니다.',
+        icon: FileText,
+      },
     ],
   },
   {

@@ -22,6 +22,8 @@ export interface GenerateStrategyResult {
   error?: string
   /** false 면 SQL 274 미적용 — body_md 레거시 경로로 폴백 저장됨 */
   columnsApplied: boolean
+  /** 근거(ai_report_sources)로 실제 적재된 행 수(276). SQL 276 미적용/실패 시 0(graceful). */
+  sourcesSaved: number
 }
 
 // llm_prompts(key='strategy_report') 미적용/조회 실패 시 코드 상수 폴백 (SQL 274 시드와 동일 문구)
@@ -161,6 +163,38 @@ async function saveWithFallback(
   return { id: row.id, columnsApplied: false }
 }
 
+/**
+ * 근거(출처) 적재(276) — 전달된 이슈/콘텐츠를 ai_report_sources 에 반영한다.
+ * 재생성 시 기존 행을 먼저 삭제 후 재적재(중복 방지, 유니크 인덱스 정합).
+ * SQL 276(issue_id 컬럼·CHECK) 미적용이어도 보고서 생성 자체는 깨지지 않게 graceful.
+ */
+async function saveReportSources(
+  admin: SupabaseClient,
+  reportId: string,
+  sourceIssueIds: string[],
+  contentIds: string[],
+): Promise<number> {
+  try {
+    await admin.from('ai_report_sources').delete().eq('ai_report_id', reportId)
+
+    const rows = [
+      ...contentIds.map((content_id) => ({ ai_report_id: reportId, content_id })),
+      ...sourceIssueIds.map((issue_id) => ({ ai_report_id: reportId, issue_id })),
+    ]
+    if (rows.length === 0) return 0
+
+    const { error } = await admin.from('ai_report_sources').insert(rows)
+    if (error) {
+      console.error('[generate-strategy] 근거 적재 실패:', error.message)
+      return 0
+    }
+    return rows.length
+  } catch (e) {
+    console.error('[generate-strategy] 근거 적재 실패:', e)
+    return 0
+  }
+}
+
 /** 전략보고서(HTML) 생성 — 이슈/콘텐츠 컨텍스트 수집 → llmComplete('report', …) → ai_reports 저장(274). */
 export async function generateStrategyReport(
   admin: SupabaseClient,
@@ -197,10 +231,11 @@ export async function generateStrategyReport(
         { title: reportTitle, topic, status: 'failed', error_message: reason },
         { title: reportTitle, status: 'failed', error_message: reason },
       )
-      return { reportId: id, status: 'failed', error: reason, columnsApplied }
+      const sourcesSaved = await saveReportSources(admin, id, sourceIssueIds, contentIds)
+      return { reportId: id, status: 'failed', error: reason, columnsApplied, sourcesSaved }
     } catch (e) {
       console.error('[generate-strategy] 실패 상태 저장 실패:', e)
-      return { reportId: reportId ?? '', status: 'failed', error: reason, columnsApplied: false }
+      return { reportId: reportId ?? '', status: 'failed', error: reason, columnsApplied: false, sourcesSaved: 0 }
     }
   }
 
@@ -213,9 +248,10 @@ export async function generateStrategyReport(
       { title: reportTitle, topic, body_html: bodyHtml, summary, status: 'completed', error_message: null },
       { title: reportTitle, status: 'completed', body_md: bodyHtml, error_message: null },
     )
-    return { reportId: id, status: 'completed', columnsApplied }
+    const sourcesSaved = await saveReportSources(admin, id, sourceIssueIds, contentIds)
+    return { reportId: id, status: 'completed', columnsApplied, sourcesSaved }
   } catch (e) {
     console.error('[generate-strategy] 저장 실패:', e)
-    return { reportId: reportId ?? '', status: 'failed', error: '보고서 저장에 실패했습니다.', columnsApplied: false }
+    return { reportId: reportId ?? '', status: 'failed', error: '보고서 저장에 실패했습니다.', columnsApplied: false, sourcesSaved: 0 }
   }
 }
