@@ -26,6 +26,7 @@ import {
   Gauge,
   LayoutTemplate,
   FileText,
+  CalendarClock,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -176,6 +177,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '핵심 Insight',
         description: '주간 핵심 Insight를 검수, 편집, 발행합니다.',
         icon: Star,
+      },
+      {
+        href: '/admin/daily-insights',
+        label: '일일 핵심 Insight',
+        description: '자동 게시된 일일 핵심 Insight를 사후 검토·편집·반려합니다.',
+        icon: CalendarClock,
       },
       {
         href: '/admin/competitor-weekly',

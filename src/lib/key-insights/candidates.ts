@@ -84,10 +84,13 @@ export interface CandidatePoolResult {
 /**
  * §3-1 후보 조회 + 프리필터 + 7개 카테고리 버킷팅 + 이슈 단위 대표 1건 통합.
  * LLM 호출 전 순수 DB 조회 단계 — generate.ts 가 이 풀을 그대로 프롬프트에 싣는다.
+ * @param opts.windowDays 조회 창(일). 기본값은 주간 배치용 WINDOW_DAYS(7) — 일일 종합
+ *   파이프라인(daily-insights)이 1을 넘겨 "그날 발행분"으로 좁힐 때만 사용, 나머지 로직은 불변.
  */
-export async function buildCandidatePool(): Promise<CandidatePoolResult> {
+export async function buildCandidatePool(opts?: { windowDays?: number }): Promise<CandidatePoolResult> {
   const admin = createAdminClient()
-  const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
+  const windowDays = opts?.windowDays ?? WINDOW_DAYS
+  const windowStart = new Date(Date.now() - windowDays * 24 * 3600 * 1000).toISOString()
 
   const { data: rawContents, error } = await admin
     .from('contents')

@@ -30,6 +30,22 @@ export function AdminSidebar() {
     void run()
   }, [])
 
+  // 일일 핵심 Insight — 검토 필요(needs_review) 개수 배지 (자동게시+사후검토 알림)
+  const [dailyInsightReviewCount, setDailyInsightReviewCount] = useState(0)
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const res = await fetch('/api/admin/daily-insights/count')
+        if (!res.ok) return
+        const data = await res.json() as { count: number }
+        setDailyInsightReviewCount(data.count ?? 0)
+      } catch {
+        // 비차단 — 배지 숨김
+      }
+    }
+    void run()
+  }, [])
+
   function isActive(href: string) {
     if (href === '/admin') return pathname === '/admin'
     return pathname === href || pathname.startsWith(href + '/')
@@ -163,6 +179,11 @@ export function AdminSidebar() {
                         {item.href === '/admin/requests' && openRequestCount > 0 && (
                           <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
                             {openRequestCount}
+                          </span>
+                        )}
+                        {item.href === '/admin/daily-insights' && dailyInsightReviewCount > 0 && (
+                          <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
+                            {dailyInsightReviewCount}
                           </span>
                         )}
                       </Link>

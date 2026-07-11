@@ -64,3 +64,8 @@ export const KEY_INSIGHT_STATUS_TONE = {
   published:    'positive',
   rejected:     'negative',
 } as const
+
+export const DAILY_INSIGHT_STATUS_TONE = {
+  published: 'positive',
+  rejected:  'negative',
+} as const
