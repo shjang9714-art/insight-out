@@ -84,7 +84,7 @@ export default async function WelcomeGreeting() {
   const phrase = pickRandomPhrase(period)
 
   return (
-    <div className="pt-10 pb-16">
+    <div className="pt-6 pb-10">
       <p className={cn(nanumMyeongjo.className, 'text-[26px] font-normal text-[#3A3733] dark:text-foreground')}>
         {phrase.main(name)}
       </p>
