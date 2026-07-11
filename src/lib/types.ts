@@ -146,6 +146,10 @@ export interface Content {
   body_markdown?: string | null
   body_fetched_at?: string | null
   body_translated_ko?: string | null
+  transcript?: string | null
+  transcript_ko?: string | null
+  transcript_lang?: string | null
+  transcript_fetched_at?: string | null
   original_language: string
   author?: string | null
   original_url?: string | null

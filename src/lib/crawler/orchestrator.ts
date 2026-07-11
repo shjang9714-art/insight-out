@@ -22,11 +22,14 @@ import { classifyRelevance } from './classify'
 import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrl } from './resolve-url'
+import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_SUMMARIES_PER_CRAWL = 60
 const SUMMARY_MIN_BODY_LEN = 200
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
+// 265 — 유튜브 자막 수집(비공식 엔드포인트, rate limit 위험) 크롤당 상한. 나머지는 어드민 백필로.
+const MAX_TRANSCRIPTS_PER_CRAWL = 15
 const RELATEDNESS_MARGIN = 0.15
 const MAX_MERGED_TAGS = 8
 const OPINION_LOOKBACK_DAYS = 7
@@ -747,7 +750,8 @@ async function crawlYoutube(
   source: Source,
   groups: ScoringGroup[],
   aliasMap: Map<string, string>,
-  summarizeBudget: TranslationBudget
+  summarizeBudget: TranslationBudget,
+  transcriptBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
@@ -831,6 +835,16 @@ async function crawlYoutube(
               }
             } catch (e) {
               console.error('[크롤러] 유튜브 요약 생성 실패:', e)
+            }
+          }
+
+          // 자막 수집·번역 1회 시도(265) — budget 소진 시 스킵(나머지는 어드민 백필에서 처리)
+          if (transcriptBudget.remaining > 0) {
+            transcriptBudget.remaining--
+            try {
+              await fetchAndSaveYoutubeTranscript(admin, mirrorId, item.videoId)
+            } catch (e) {
+              console.error('[크롤러] 유튜브 자막 수집 실패:', e)
             }
           }
         }
@@ -1351,6 +1365,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const classifyBudget: TranslationBudget = {
     remaining: MAX_LLM_CLASSIFY_PER_CRAWL,
   }
+  const transcriptBudget: TranslationBudget = {
+    remaining: MAX_TRANSCRIPTS_PER_CRAWL,
+  }
 
   const scoped = options.sourceIds?.length
     ? rawSources.filter(s => options.sourceIds!.includes(s.id))
@@ -1366,7 +1383,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const results = await Promise.allSettled(
     dueSources.map(s =>
       s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap, summarizeBudget)
+        ? crawlYoutube(admin, s, groups, aliasMap, summarizeBudget, transcriptBudget)
         : crawlOne(
             admin,
             s,

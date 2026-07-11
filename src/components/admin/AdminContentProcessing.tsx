@@ -48,6 +48,11 @@ export default function AdminContentProcessing() {
   const [thumbRetryResult, setThumbRetryResult] = useState<string | null>(null)
   const thumbRetryStopRef = useRef(false)
 
+  // 유튜브 자막 수집 — 265, 모드(282 패턴)
+  const [isTranscriptRetrying, setIsTranscriptRetrying] = useState(false)
+  const [transcriptResult, setTranscriptResult] = useState<string | null>(null)
+  const transcriptStopRef = useRef(false)
+
   // 관련기사 재클러스터링(본문 유사도) — 220
   const [isClustering, setIsClustering] = useState(false)
   const [clusterResult, setClusterResult] = useState<string | null>(null)
@@ -206,6 +211,47 @@ export default function AdminContentProcessing() {
       setError(err instanceof Error ? err.message : '썸네일 재시도 중 오류가 발생했습니다.')
     } finally {
       setIsThumbRetrying(false)
+    }
+  }
+
+  const handleTranscriptRetry = async (mode: 'fresh' | 'retry') => {
+    transcriptStopRef.current = false
+    setIsTranscriptRetrying(true)
+    setTranscriptResult(null)
+    setError(null)
+    const acc = { processed: 0, fetched: 0, skipped: 0 }
+    try {
+      while (true) {
+        const res = await fetch(`/api/admin/youtube-transcript?limit=10&mode=${mode}`, { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '유튜브 자막 수집 실패')
+        const { processed, fetched, skipped, remaining, ready } = await res.json() as {
+          processed: number; fetched: number; skipped: number; remaining: number; ready: boolean
+        }
+        if (!ready) {
+          setTranscriptResult('265 SQL 적용이 필요합니다.')
+          break
+        }
+        acc.processed += processed
+        acc.fetched   += fetched
+        acc.skipped   += skipped
+
+        if (transcriptStopRef.current) {
+          setTranscriptResult(`중단됨 · 누적 처리 ${acc.processed} · 수집 ${acc.fetched} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setTranscriptResult(`완료 · 처리 ${acc.processed} · 수집 ${acc.fetched} · 스킵 ${acc.skipped}`)
+          break
+        }
+        if (processed === 0) break
+
+        setTranscriptResult(`수집 중… 누적 처리 ${acc.processed} · 수집 ${acc.fetched} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '유튜브 자막 수집 중 오류가 발생했습니다.')
+    } finally {
+      setIsTranscriptRetrying(false)
     }
   }
 
@@ -384,6 +430,43 @@ export default function AdminContentProcessing() {
               variant="outline"
               disabled={isThumbRetrying}
               onClick={() => handleThumbnailRetry('retry')}
+            >
+              실패행 재시도
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* 유튜브 자막 수집 — 265 */}
+      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="admin-card-title text-foreground">유튜브 자막 수집</p>
+            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
+              유튜브 영상의 자막을 수집해 한글로 번역합니다(비공식 엔드포인트 — 순차 처리, rate limit 주의).
+              신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
+            </p>
+            {transcriptResult && (
+              <p className="admin-caption mt-2 text-positive">
+                {isTranscriptRetrying ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{transcriptResult}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={isTranscriptRetrying ? () => { transcriptStopRef.current = true } : () => handleTranscriptRetry('fresh')}
+            >
+              {isTranscriptRetrying ? '중단' : '아직 시도 안 함'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isTranscriptRetrying}
+              onClick={() => handleTranscriptRetry('retry')}
             >
               실패행 재시도
             </Button>

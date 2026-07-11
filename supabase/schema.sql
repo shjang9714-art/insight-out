@@ -349,6 +349,10 @@ create table public.contents (
   body_markdown      text,                              -- 어드민 수기 작성 콘텐츠의 마크다운 원본(212). null=평문(기존 body_original 렌더).
   body_fetched_at    timestamptz,                       -- 지연 풀본문 추출 시도 시각(null=미추출/스니펫, 값=추출 시도 완료)
   body_translated_ko text,                              -- 번역본 (결정 F)
+  transcript          text,                              -- 유튜브 자막 원문(언어 원본, 265)
+  transcript_ko       text,                              -- 유튜브 자막 번역(한글, 265). 원본이 ko면 transcript와 동일
+  transcript_lang     text,                              -- 자막 언어(ko/en/…, 265)
+  transcript_fetched_at timestamptz,                     -- 자막 수집 시도 시각(265, null=미시도·값=시도완료·자막없음 포함)
   original_language  text not null default 'ko',        -- 'ko' | 'en' ...
   author             text,
   original_url       text,
@@ -393,6 +397,10 @@ create index contents_cluster_idx         on public.contents (cluster_id) where 
 create index contents_search_vector_idx   on public.contents using gin(search_vector);
 create index contents_status_idx          on public.contents (status);
 create index contents_cluster_idx         on public.contents (cluster_id) where cluster_id is not null;
+-- 미시도 유튜브 영상 백필 스캔용 부분 인덱스(265)
+create index contents_youtube_transcript_pending_idx
+  on public.contents (collected_at desc)
+  where category = '유튜브' and transcript_fetched_at is null;
 create index contents_matched_groups_idx  on public.contents using gin(matched_groups);
 create index contents_matched_keywords_idx on public.contents using gin(matched_keywords);
 
@@ -1553,3 +1561,13 @@ do update set
 -- );
 -- create unique index if not exists ai_report_sources_issue_key
 --   on public.ai_report_sources (ai_report_id, issue_id) where issue_id is not null;
+
+-- contents 유튜브 자막 컬럼 4개 (265, docs/sql-handoff/265-youtube-transcript.sql)
+-- alter table public.contents
+--   add column if not exists transcript text,
+--   add column if not exists transcript_ko text,
+--   add column if not exists transcript_lang text,
+--   add column if not exists transcript_fetched_at timestamptz;
+-- create index if not exists contents_youtube_transcript_pending_idx
+--   on public.contents (collected_at desc)
+--   where category = '유튜브' and transcript_fetched_at is null;

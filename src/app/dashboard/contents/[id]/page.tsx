@@ -103,7 +103,7 @@ const getContentRow = cache(async (id: string) => {
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
-  const [{ data, error }, { data: lh }, { data: md }] = await Promise.all([
+  const [{ data, error }, { data: lh }, { data: md }, { data: tr }] = await Promise.all([
     supabase
       .from('contents')
       .select(`
@@ -122,12 +122,15 @@ const getContentRow = cache(async (id: string) => {
     supabase.from('contents').select('link_ok').eq('id', id).single(),
     // 별도 가드 쿼리: body_markdown(212, 컬럼 없으면 null→기존 평문 렌더, 42703 graceful)
     supabase.from('contents').select('body_markdown').eq('id', id).single(),
+    // 별도 가드 쿼리: 유튜브 자막(265, 컬럼 없으면 null→스크립트 섹션 생략, 42703 graceful)
+    supabase.from('contents').select('transcript, transcript_ko, transcript_lang').eq('id', id).single(),
   ])
 
   const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
   const bodyMarkdown = (md as { body_markdown: string | null } | null)?.body_markdown ?? null
+  const transcriptRow = tr as { transcript: string | null; transcript_ko: string | null; transcript_lang: string | null } | null
 
-  return { data, error, linkDead, bodyMarkdown, supabase }
+  return { data, error, linkDead, bodyMarkdown, transcriptRow, supabase }
 })
 
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
@@ -147,7 +150,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ContentDetailPage({ params }: PageProps) {
   const { id } = await params
-  const { data, error, linkDead, bodyMarkdown, supabase } = await getContentRow(id)
+  const { data, error, linkDead, bodyMarkdown, transcriptRow, supabase } = await getContentRow(id)
 
   if (error || !data) {
     notFound()
@@ -159,6 +162,13 @@ export default async function ContentDetailPage({ params }: PageProps) {
   const isReport = Boolean(content.file_path)
   const isYoutube = content.category === '유튜브'
   const youtubeVideoId = isYoutube ? extractVideoId(content.original_url) : null
+  // 유튜브 자막 스크립트(265) — transcript_ko 있을 때만 노출, 없으면 섹션 생략
+  const transcriptKo = isYoutube ? (transcriptRow?.transcript_ko ?? null) : null
+  const transcriptOriginal = isYoutube ? (transcriptRow?.transcript ?? null) : null
+  const transcriptLang = transcriptRow?.transcript_lang ?? null
+  const hasOriginalTranscriptToggle = Boolean(
+    transcriptKo && transcriptOriginal && transcriptLang && transcriptLang !== 'ko' && transcriptOriginal !== transcriptKo
+  )
   const hasKoreanTranslation =
     !isYoutube &&
     content.original_language === 'en' &&
@@ -372,6 +382,26 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       {content.summary_ko}
                     </p>
                   </div>
+                )}
+                {transcriptKo && (
+                  <details className="mb-6 rounded-xl border border-border bg-card p-4">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+                      스크립트
+                    </summary>
+                    <div className="mt-3 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                      {transcriptKo}
+                    </div>
+                    {hasOriginalTranscriptToggle && (
+                      <details className="mt-3 border-t border-border pt-3">
+                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                          원문 보기({transcriptLang})
+                        </summary>
+                        <div className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                          {transcriptOriginal}
+                        </div>
+                      </details>
+                    )}
+                  </details>
                 )}
                 {youtubeVideoId ? (
                   <div className="mb-6 aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
