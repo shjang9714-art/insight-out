@@ -150,8 +150,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       },
       {
         href: '/admin/ai-jobs',
-        label: 'AI 작업 관리',
-        description: '논조·위기기회 분석, 유튜브 태깅·요약, 데이터 백필 등 AI/일괄 작업을 실행합니다.',
+        label: '일괄 작업 관리',
+        description: '콘텐츠의 AI 분석, 데이터 보강, 재수집·재처리 작업을 실행하고 진행 상태를 관리합니다.',
         icon: Wrench,
       },
       // Phase 2/3 후보(신규 route 아님, 문서 TODO): 프롬프트 관리 — ADMIN_RESTRUCTURE_PLAN.md 참고

@@ -80,7 +80,7 @@ export default function AiJobsAdminPage() {
   }
 
   const handleYoutubeTagging = async () => {
-    if (!window.confirm('기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 백필하시겠습니까?')) return
+    if (!window.confirm('기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 생성하시겠습니까?')) return
     setIsYoutubeTagging(true)
     setYoutubeTaggingResult(null)
     setError(null)
@@ -91,10 +91,10 @@ export default function AiJobsAdminPage() {
         body: JSON.stringify({}),
       })
       const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? '유튜브 태깅 백필 실패')
+      if (!res.ok) throw new Error(data.error ?? '유튜브 태그 생성 실패')
       setYoutubeTaggingResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '유튜브 태깅 백필에 실패했습니다.')
+      setError(e instanceof Error ? e.message : '유튜브 태그 생성에 실패했습니다.')
     } finally {
       setIsYoutubeTagging(false)
     }
@@ -129,7 +129,7 @@ export default function AiJobsAdminPage() {
 
       {/* AI 콘텐츠 보강 잡 (279 — /admin/insights 에서 이동) */}
       <div>
-        <AdminSectionHeader icon={Sparkles} title="AI 콘텐츠 보강" hint="이슈·기업·유튜브 콘텐츠에 대한 LLM 분석·태깅 작업" />
+        <AdminSectionHeader icon={Sparkles} title="AI 콘텐츠 보강" hint="콘텐츠에 AI 분석 결과와 태그·요약 정보를 일괄 생성합니다." />
         <div className="space-y-4">
           {/* 논조 분석 패널 */}
           <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -179,10 +179,10 @@ export default function AiJobsAdminPage() {
             )}
           </div>
 
-          {/* 유튜브 태깅 백필 패널 */}
+          {/* 기존 유튜브 태그 생성 패널 */}
           <div className="rounded-xl border border-border bg-card p-5 space-y-4">
             <div className="flex items-center gap-1.5">
-              <h3 className="text-sm font-semibold text-foreground">유튜브 해시태그·엔티티 백필</h3>
+              <h3 className="text-sm font-semibold text-foreground">기존 유튜브 태그 생성</h3>
               <InfoHelp copy={YOUTUBE_TAGGING_HELP} />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -191,9 +191,9 @@ export default function AiJobsAdminPage() {
             <div className="flex items-center gap-3 flex-wrap">
               <Button onClick={() => void handleYoutubeTagging()} disabled={isYoutubeTagging} size="sm" variant="outline">
                 {isYoutubeTagging ? (
-                  <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />백필 중...</>
+                  <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
                 ) : (
-                  <>유튜브 태깅 백필 실행</>
+                  <>유튜브 태그 생성 실행</>
                 )}
               </Button>
             </div>
@@ -201,7 +201,7 @@ export default function AiJobsAdminPage() {
               <p className="text-sm text-muted-foreground">
                 {youtubeTaggingResult.reason
                   ? youtubeTaggingResult.reason
-                  : `후보 ${youtubeTaggingResult.candidates}건 중 ${youtubeTaggingResult.analyzed}건 백필 완료`}
+                  : `후보 ${youtubeTaggingResult.candidates}건 중 ${youtubeTaggingResult.analyzed}건 생성 완료`}
               </p>
             )}
           </div>
@@ -235,9 +235,9 @@ export default function AiJobsAdminPage() {
         </div>
       </div>
 
-      {/* 데이터 백필 작업 (279 — /admin/content-data 에서 이동) */}
+      {/* 데이터 보강·재처리 작업 (279 — /admin/content-data 에서 이동) */}
       <div>
-        <AdminSectionHeader icon={Wrench} title="데이터 백필" hint="수집 기사에 대한 일괄 처리 작업" />
+        <AdminSectionHeader icon={Wrench} title="데이터 보강·재처리" hint="수집된 콘텐츠의 누락 데이터를 채우거나 기존 데이터를 다시 정리합니다." />
         <AdminContentProcessing />
       </div>
     </div>

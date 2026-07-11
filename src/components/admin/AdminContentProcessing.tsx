@@ -77,7 +77,7 @@ export default function AdminContentProcessing() {
         if (to) params.set('to', to)
         const url = `/api/admin/body-backfill?${params.toString()}`
         const res = await fetch(url, { method: 'POST' })
-        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '풀본문 채우기 실패')
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '기사 본문 수집 실패')
         const { processed, improved, skipped, remaining } = await res.json() as {
           processed: number; improved: number; skipped: number; remaining: number
         }
@@ -99,7 +99,7 @@ export default function AdminContentProcessing() {
         await new Promise((r) => setTimeout(r, 300))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '풀본문 채우기 중 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : '기사 본문 수집 중 오류가 발생했습니다.')
     } finally {
       setIsEnriching(false)
     }
@@ -187,7 +187,7 @@ export default function AdminContentProcessing() {
     try {
       while (true) {
         const res = await fetch(`/api/admin/thumbnail-backfill?limit=20&mode=${mode}`, { method: 'POST' })
-        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '썸네일 재시도 실패')
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '썸네일 수집 실패')
         const { processed, filled, skipped, remaining, ready } = await res.json() as {
           processed: number; filled: number; skipped: number; remaining: number; ready: boolean
         }
@@ -213,7 +213,7 @@ export default function AdminContentProcessing() {
         await new Promise((r) => setTimeout(r, 300))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '썸네일 재시도 중 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : '썸네일 수집 중 오류가 발생했습니다.')
     } finally {
       setIsThumbRetrying(false)
     }
@@ -310,7 +310,7 @@ export default function AdminContentProcessing() {
     try {
       while (true) {
         const res = await fetch('/api/admin/cluster-backfill?limit=20', { method: 'POST' })
-        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '재클러스터링 실패')
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '관련기사 다시 묶기 실패')
         const { processed, merged, repChanged, remaining, ready } = await res.json() as {
           processed: number; merged: number; repChanged: number; remaining: number; ready: boolean
         }
@@ -336,7 +336,7 @@ export default function AdminContentProcessing() {
         await new Promise((r) => setTimeout(r, 300))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '재클러스터링 중 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : '관련기사 다시 묶기 중 오류가 발생했습니다.')
     } finally {
       setIsClustering(false)
     }
@@ -365,11 +365,11 @@ export default function AdminContentProcessing() {
         </AdminErrorBox>
       )}
 
-      {/* 풀본문 채우기 */}
+      {/* 누락 기사 본문 수집 */}
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">풀본문 채우기</p>
+            <p className="admin-card-title text-foreground">누락 기사 본문 수집</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               기사 본문을 원문에서 가져와 채웁니다. 기간을 골라 실행합니다.
             </p>
@@ -389,7 +389,7 @@ export default function AdminContentProcessing() {
             className="shrink-0"
             onClick={isEnriching ? () => { stopRef.current = true } : () => setIsEnrichRangeOpen(true)}
           >
-            {isEnriching ? '중단' : '기사 풀본문 채우기'}
+            {isEnriching ? '중단' : '누락 기사 본문 수집'}
           </Button>
         </div>
       </div>
@@ -446,11 +446,11 @@ export default function AdminContentProcessing() {
         </div>
       </div>
 
-      {/* 썸네일 재시도(og:image) — 219 */}
+      {/* 누락 썸네일 다시 수집 — 219 */}
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">썸네일 재시도(og:image)</p>
+            <p className="admin-card-title text-foreground">누락 썸네일 다시 수집</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               썸네일이 없는 크롤 뉴스·웹인사이트의 원문 og:image를 다시 받아옵니다.
               신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
@@ -557,11 +557,11 @@ export default function AdminContentProcessing() {
         </div>
       </div>
 
-      {/* 관련기사 재클러스터링(본문 유사도) — 220 */}
+      {/* 관련기사 다시 묶기(본문 유사도) — 220 */}
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">관련기사 재클러스터링(본문 유사도)</p>
+            <p className="admin-card-title text-foreground">관련기사 다시 묶기</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               제목만으론 못 묶인 같은 사건 기사를 본문 유사도로 재평가해 병합하고, 신호 기반으로 대표를 재선정합니다.
             </p>
@@ -578,16 +578,16 @@ export default function AdminContentProcessing() {
             className="shrink-0"
             onClick={isClustering ? () => { clusterStopRef.current = true } : handleClusterBackfill}
           >
-            {isClustering ? '중단' : '재클러스터링'}
+            {isClustering ? '중단' : '관련기사 다시 묶기'}
           </Button>
         </div>
       </div>
 
-      {/* 풀본문 채우기 기간 팝업 */}
+      {/* 누락 기사 본문 수집 기간 팝업 */}
       <Dialog open={isEnrichRangeOpen} onOpenChange={setIsEnrichRangeOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>풀본문 채우기 기간</DialogTitle>
+            <DialogTitle>본문 수집 기간</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">

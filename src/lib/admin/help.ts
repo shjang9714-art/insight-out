@@ -87,18 +87,18 @@ export const SENTIMENT_HELP: AdminHelpCopy = {
   title: '논조 분석',
   what: '경쟁사 기사의 긍정/중립/부정 논조를 AI 가 판정합니다.',
   service: '내부 신호·정렬에 활용됩니다(화면에 직접 노출되지 않음).',
-  ops: '최근 미분석 기사를 대상으로 주기적으로 백필하세요.',
+  ops: '최근 미분석 기사를 대상으로 주기적으로 실행하세요.',
 }
 
 export const LGU_IMPACT_HELP: AdminHelpCopy = {
   title: '위기·기회 분석',
   what: '경쟁사 기사를 LG U+ 관점에서 위기/기회/관망으로 판정합니다.',
   service: '경쟁사 동향(주간 리포트)의 위기/기회 칩·타임라인의 재료가 됩니다.',
-  ops: '주기적으로 백필해 최신 판정을 유지하세요.',
+  ops: '주기적으로 실행해 최신 판정을 유지하세요.',
 }
 
 export const YOUTUBE_TAGGING_HELP: AdminHelpCopy = {
-  title: '유튜브 해시태그·엔티티 백필',
+  title: '기존 유튜브 태그 생성',
   what: '분류 없이 적재된 기존 유튜브 콘텐츠에 뉴스와 동일한 해시태그·관련 엔티티를 부여합니다.',
   service: '유튜브 카드·상세의 해시태그·관련 콘텐츠에 반영됩니다.',
   ops: '신규 수집분은 자동 태깅되므로, 이 실행은 과거 적재분에만 필요합니다.',
