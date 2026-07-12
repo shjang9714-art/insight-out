@@ -60,9 +60,12 @@ export async function authenticateToken(plain: string): Promise<McpActor | null>
   if (!plain || !plain.startsWith(TOKEN_PREFIX)) return null
 
   const admin = createAdminClient()
+  // ⚠️ mcp_tokens 는 users 를 두 번 참조한다(user_id, created_by).
+  // 힌트 없이 users!inner(...) 로 조인하면 PostgREST 가 모호하다며 거부한다
+  // ("more than one relationship was found"). FK 이름을 명시할 것.
   const { data, error } = await admin
     .from('mcp_tokens')
-    .select('id, user_id, scopes, expires_at, revoked_at, users!inner(email, name, role)')
+    .select('id, user_id, scopes, expires_at, revoked_at, users!mcp_tokens_user_id_fkey!inner(email, name, role)')
     .eq('token_hash', hashToken(plain))
     .is('revoked_at', null)
     .maybeSingle<TokenRow>()

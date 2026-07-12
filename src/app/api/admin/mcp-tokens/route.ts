@@ -57,10 +57,13 @@ export async function GET() {
 
   const admin = createAdminClient()
 
+  // ⚠️ mcp_tokens 는 users 를 두 번 참조한다(user_id = 토큰 소유자, created_by = 발급한 어드민).
+  // 힌트 없이 users!inner(...) 로 조인하면 PostgREST 가 모호하다며 거부한다.
+  // 여기서 필요한 건 "토큰 소유자" 쪽이므로 user_id FK 를 명시한다.
   const [tokensRes, usersRes] = await Promise.all([
     admin
       .from('mcp_tokens')
-      .select('id, label, token_prefix, scopes, last_used_at, expires_at, revoked_at, created_at, users!inner(id, name, email)')
+      .select('id, label, token_prefix, scopes, last_used_at, expires_at, revoked_at, created_at, users!mcp_tokens_user_id_fkey!inner(id, name, email)')
       .order('created_at', { ascending: false }),
     admin.from('users').select('id, name, email').order('name', { ascending: true }),
   ])
