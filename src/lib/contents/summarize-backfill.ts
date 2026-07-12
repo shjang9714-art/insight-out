@@ -11,7 +11,7 @@ export interface DrainSummaryOptions {
 export interface DrainSummaryResult {
   processed: number
   filled: number
-  /** -1: summary_attempted_at 컬럼 미적용(SQL 293 미실행) */
+  /** -1: summary_attempted_at 컬럼 미적용(SQL 295 미실행) */
   remaining: number
 }
 
@@ -105,7 +105,7 @@ export async function drainSummaries(
       .limit(limit)
 
     if (error) {
-      // 컬럼 미존재 (SQL 293 핸드오프 미실행)
+      // 컬럼 미존재 (SQL 295 핸드오프 미실행)
       if ((error as { code?: string }).code === '42703') {
         return { processed, filled, remaining: -1 }
       }
