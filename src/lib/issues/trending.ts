@@ -21,7 +21,7 @@ function createPublicClient() {
 // 72h 창·임계 2건은 trending_keywords/trending_issue_articles 뷰(SQL)에 고정 — 여기선 미사용.
 
 export const TRENDING_LIMIT = 12
-const MIN_DISPLAY = 10 // 특정 사건이 모자라면 이 개수까지 degrade(이슈 전체) 항목으로 backfill
+const MIN_DISPLAY = 10 // 특정 사건이 모자라면 이 개수까지 degrade(이슈 전체) 항목으로 backfill — 단, 오늘 기사가 있는 이슈로만 채움(§오늘자 게이트). 모자라면 목표치 미달인 채 그대로 반환(오늘 0건 이슈로 패딩 금지).
 const SUBCLUSTER_SIM = 0.35 // 이슈 내부 서브클러스터링(느슨 — 같은 사건 다매체 픽업 흡수용)
 const DEDUP_SIM = 0.5 // 이슈 간 동일 엔티티 + 헤드라인 유사 시 병합(느슨한 SUBCLUSTER_SIM보다 엄격)
 const IDENTICAL_SIM = 0.6 // 엔티티 무관, 사실상 같은 헤드라인이면 무조건 병합(교차 태깅된 동일 기사 중복 방지)
@@ -175,7 +175,11 @@ function subclusterIssue(articles: ArticleRow[], kstBasisDayStartIso: string): S
   return [...groups.values()]
     .filter(g => g.length >= MIN_SUBCLUSTER)
     .map(group => {
-      const representative = [...group].sort((a, b) => a.title.length - b.title.length)[0]
+      // 대표 기사 = collectedAt 최신순 1건(오늘 기사가 있으면 오늘 날짜가 어제보다 항상 뒤라
+      // 자연히 우선 채택됨). 과거엔 title.length asc(제목 짧은 순)였는데 날짜와 무관해
+      // 그룹 내 가장 짧은 제목이 며칠 전 기사여도 대표로 뽑히는 버그였다(실측, 2026-07-12:
+      // "KT알파" 10위 항목 대표기사가 7/12 랭킹인데 7/10자 기사로 노출).
+      const representative = [...group].sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))[0]
       return {
         headline: representative.title,
         contentId: representative.contentId,
@@ -324,15 +328,24 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
     if (articles.length === 0) continue
 
+    const issueTodayCount = articles.filter(a => a.collectedAt >= kstBasisDayStartIso).length
+    // "오늘의 급상승" 게이트 — 72h 윈도우엔 걸리지만 오늘(asOfDateKst 당일) 기사가 0건인
+    // 이슈는 애초에 순위 진입시키지 않는다(실측 버그, 2026-07-12: todayCount=0 이슈가
+    // 대표기사만 며칠 전 기사로 노출됨). 이슈 레벨 게이트 — 서브클러스터 레벨은 아래 sc.todayCount에서 별도 적용.
+    if (issueTodayCount === 0) continue
+
     const changePct = issue.prev_count > 0
       ? Math.round((issue.recent_count - issue.prev_count) / issue.prev_count * 100)
       : (issue.recent_count > 0 ? null : 0)
     const isSurge = issue.recent_count > 0 && (changePct === null || changePct > SURGE_CHANGE_PCT_THRESHOLD)
     const changeFlag = isSurge ? 'surge' as const : null
-    const issueTodayCount = articles.filter(a => a.collectedAt >= kstBasisDayStartIso).length
     issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount })
 
     for (const sc of subclusterIssue(articles, kstBasisDayStartIso)) {
+      // 이슈 자체는 오늘 기사가 있어도, 이 특정 서브클러스터(사건)엔 오늘 기사가 없을 수
+      // 있다 — 그 경우 이 사건 단위는 순위에서 제외(같은 이슈의 다른 사건·degrade로 대체).
+      if (sc.todayCount === 0) continue
+
       specificEvents.push({
         issueId: issue.issue_id,
         contentId: sc.contentId,
@@ -364,8 +377,10 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     const usedContentIds = new Set<string>()
     const usedHeadlines = new Set(final.map(f => normalizeTitle(f.headline)))
 
+    // issueChange엔 issueTodayCount>=1인 이슈만 들어있다(위 이슈 레벨 게이트) — degrade
+    // backfill도 오늘 기사가 아예 없는 이슈로는 채우지 않는다(그게 원래 버그의 원인).
     const backfillIssues = candidates
-      .filter(c => !usedIssueIds.has(c.issue_id))
+      .filter(c => !usedIssueIds.has(c.issue_id) && issueChange.has(c.issue_id))
       .sort((a, b) => b.recent_count - a.recent_count)
 
     for (const issue of backfillIssues) {
@@ -374,25 +389,30 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
       const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
         .sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
 
-      for (const article of articles) {
-        if (usedContentIds.has(article.contentId) || usedHeadlines.has(article.normTitle)) continue
+      // 대표는 반드시 오늘 기사여야 한다 — 이미 다른 항목에 쓰여 소진됐으면(이 이슈의 유일한
+      // 오늘 기사가 다른 특정사건에 이미 대표로 쓰인 경우 등) 오래된 기사로 대체하지 않고
+      // 이 이슈는 degrade 노출에서 통째로 제외한다(제목길이 대표선정 버그와 같은 성격 재발 방지).
+      const todayArticle = articles.find(
+        a => a.collectedAt >= kstBasisDayStartIso
+          && !usedContentIds.has(a.contentId)
+          && !usedHeadlines.has(a.normTitle)
+      )
+      if (!todayArticle) continue
 
-        const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null, todayCount: 0 }
-        final.push({
-          issueId: issue.issue_id,
-          contentId: article.contentId,
-          headline: article.title,
-          entityChip: dominantEntity([article]),
-          topHashtag: article.matchedKeywords[0] ?? null,
-          recentCount: issue.recent_count, // 이슈 전체 72h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미
-          todayCount: change.todayCount, // 이슈 전체 기사 중 오늘 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
-          changePct: change.changePct,
-          changeFlag: change.changeFlag,
-        })
-        usedContentIds.add(article.contentId)
-        usedHeadlines.add(article.normTitle)
-        break // 이슈당 backfill 항목 최대 1개
-      }
+      const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null, todayCount: 0 }
+      final.push({
+        issueId: issue.issue_id,
+        contentId: todayArticle.contentId,
+        headline: todayArticle.title,
+        entityChip: dominantEntity([todayArticle]),
+        topHashtag: todayArticle.matchedKeywords[0] ?? null,
+        recentCount: issue.recent_count, // 이슈 전체 72h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미
+        todayCount: change.todayCount, // 이슈 전체 기사 중 오늘 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
+        changePct: change.changePct,
+        changeFlag: change.changeFlag,
+      })
+      usedContentIds.add(todayArticle.contentId)
+      usedHeadlines.add(todayArticle.normTitle)
     }
 
     // degrade 항목은 이슈 전체 recentCount를 쓰므로 특정사건보다 커질 수 있다 — 단순히 뒤에
