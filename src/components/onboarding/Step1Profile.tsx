@@ -5,20 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import type { OnboardingStep1, ContentFilterMode } from '@/lib/types'
+import type { OnboardingStep1 } from '@/lib/types'
+import { LENS_PRESETS, type LensKey } from '@/lib/lens'
 
-const FILTER_OPTIONS: { value: ContentFilterMode; label: string; description: string }[] = [
-  {
-    value: 'my_services',
-    label: '담당 서비스만',
-    description: '내가 담당하는 서비스 관련 콘텐츠만 표시합니다.',
-  },
-  {
-    value: 'all',
-    label: '전체 보기',
-    description: '모든 서비스의 콘텐츠를 함께 표시합니다.',
-  },
-]
+const FILTER_OPTIONS: { value: LensKey; label: string; description: string }[] = (
+  ['mine', 'watch', 'all'] as const
+).map((key) => ({ value: key, label: LENS_PRESETS[key].label, description: LENS_PRESETS[key].desc }))
 
 const SERVICE_OPTIONS = [
   'Connectivity',
@@ -102,12 +94,12 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
         <p className="text-xs text-muted-foreground">대시보드에서 어떤 범위의 콘텐츠를 기본으로 보시겠어요?</p>
         <div className="flex gap-2">
           {FILTER_OPTIONS.map((opt) => {
-            const isSelected = form.content_filter_mode === opt.value
+            const isSelected = form.default_lens === opt.value
             return (
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setForm({ ...form, content_filter_mode: opt.value })}
+                onClick={() => setForm({ ...form, default_lens: opt.value })}
                 className={cn(
                   'flex flex-1 flex-col gap-0.5 rounded-xl border p-3 text-left transition-all',
                   isSelected
@@ -126,34 +118,33 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
           })}
         </div>
 
-        {form.content_filter_mode === 'my_services' && (
-          <div className="flex flex-col gap-2 mt-1">
-            <p className="text-xs text-muted-foreground">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
-            <div className="flex flex-wrap gap-2">
-              {SERVICE_OPTIONS.map((service) => {
-                const isSelected = form.selected_services.includes(service)
-                return (
-                  <button
-                    key={service}
-                    type="button"
-                    onClick={() => toggleService(service)}
-                    className={cn(
-                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50 text-blue-900'
-                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
-                    )}
-                  >
-                    {service}
-                  </button>
-                )
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              가입 이후 프로필에서 담당 서비스를 변경할 수 있습니다.
-            </p>
+        {/* 담당 서비스는 항상 노출 — watch/all을 골라도 담당 서비스는 받는다(309) */}
+        <div className="flex flex-col gap-2 mt-1">
+          <p className="text-xs text-muted-foreground">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
+          <div className="flex flex-wrap gap-2">
+            {SERVICE_OPTIONS.map((service) => {
+              const isSelected = form.selected_services.includes(service)
+              return (
+                <button
+                  key={service}
+                  type="button"
+                  onClick={() => toggleService(service)}
+                  className={cn(
+                    'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                    isSelected
+                      ? 'border-blue-500 bg-blue-50 text-blue-900'
+                      : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
+                  )}
+                >
+                  {service}
+                </button>
+              )
+            })}
           </div>
-        )}
+          <p className="text-xs text-muted-foreground">
+            가입 이후 프로필에서 담당 서비스를 변경할 수 있습니다.
+          </p>
+        </div>
       </div>
 
       <Button type="submit" className="mt-2 w-full h-10">

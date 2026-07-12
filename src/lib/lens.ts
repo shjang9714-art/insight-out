@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ export interface LensContext {
   serviceNames: string[]     // 담당 서비스명 (소문자 비교용)
   watchlist: string[]        // user_watchlist.company lower-cased (문자열 폴백)
   watchlistEntityIds: string[]  // user_watchlist.entity_id — 엔티티 연결(225, 정확 매칭용)
+  defaultLens: LensKey       // users.default_lens (DB 저장값, 309) — 42703 시 'all' 폴백
 }
 
 export interface LensTarget {
@@ -74,7 +75,7 @@ export function lensScore(key: LensKey, ctx: LensContext, t: LensTarget): number
 
 // ─── useLensContext (1회 fetch + 모듈 스코프 캐시) ─────────────────────────────
 
-const EMPTY_CTX: LensContext = { serviceIds: [], serviceNames: [], watchlist: [], watchlistEntityIds: [] }
+const EMPTY_CTX: LensContext = { serviceIds: [], serviceNames: [], watchlist: [], watchlistEntityIds: [], defaultLens: 'all' }
 
 let cachedCtx: LensContext | null = null
 let fetchPromise: Promise<LensContext> | null = null
@@ -84,7 +85,7 @@ async function loadLensContext(): Promise<LensContext> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return EMPTY_CTX
 
-  const [servicesRes, watchlistRes] = await Promise.all([
+  const [servicesRes, watchlistRes, userRes] = await Promise.all([
     supabase
       .from('user_services')
       .select('service_id, services(id, name)')
@@ -94,7 +95,18 @@ async function loadLensContext(): Promise<LensContext> {
       .select('company, entity_id')
       .eq('user_id', user.id)
       .limit(20),
+    supabase
+      .from('users')
+      .select('default_lens')
+      .eq('id', user.id)
+      .single(),
   ])
+
+  // default_lens 컬럼 미적용(SQL 309 전, 42703) 시 'all' 폴백
+  const defaultLens: LensKey =
+    !userRes.error && userRes.data?.default_lens
+      ? (userRes.data.default_lens as LensKey)
+      : 'all'
 
   type ServiceRow = { service_id: string; services: { id: string; name: string } | null }
   const rows = (servicesRes.data ?? []) as unknown as ServiceRow[]
@@ -119,7 +131,7 @@ async function loadLensContext(): Promise<LensContext> {
     .map(w => w.entity_id)
     .filter((id): id is string => Boolean(id))
 
-  return { serviceIds, serviceNames, watchlist, watchlistEntityIds }
+  return { serviceIds, serviceNames, watchlist, watchlistEntityIds, defaultLens }
 }
 
 export function useLensContext(): LensContext {
@@ -143,13 +155,23 @@ export function useLensContext(): LensContext {
 const STORAGE_KEY = 'io:lens'
 
 export function useActiveLens(): [LensKey, (k: LensKey) => void] {
+  const ctx = useLensContext()
   const [lens, setLens] = useState<LensKey>(() => {
     if (typeof window === 'undefined') return 'all'
     return (localStorage.getItem(STORAGE_KEY) as LensKey) ?? 'all'
   })
+  // localStorage에 값이 있었는지(= 사용자가 이미 이 기기에서 고른 값이 있는지) 추적.
+  // 있으면 DB 기본값이 로드돼도 덮어쓰지 않는다(우선순위: localStorage > DB > 'all').
+  const hasStoredRef = useRef(typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY) !== null)
+
+  useEffect(() => {
+    if (hasStoredRef.current) return
+    setLens(ctx.defaultLens)
+  }, [ctx.defaultLens])
 
   useEffect(() => {
     const handler = () => {
+      hasStoredRef.current = true
       setLens((localStorage.getItem(STORAGE_KEY) as LensKey) ?? 'all')
     }
     window.addEventListener('lens:changed', handler)
@@ -158,6 +180,7 @@ export function useActiveLens(): [LensKey, (k: LensKey) => void] {
 
   const setActiveLens = (k: LensKey) => {
     localStorage.setItem(STORAGE_KEY, k)
+    hasStoredRef.current = true
     window.dispatchEvent(new Event('lens:changed'))
     setLens(k)
   }

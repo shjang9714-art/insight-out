@@ -1,3 +1,5 @@
+import type { LensKey } from './lens'
+
 export type UserRole = 'user' | 'admin'
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
@@ -52,7 +54,7 @@ export interface OnboardingStep1 {
   name: string
   team: string
   position: string
-  content_filter_mode: ContentFilterMode
+  default_lens: LensKey
   selected_services: string[]
 }
 

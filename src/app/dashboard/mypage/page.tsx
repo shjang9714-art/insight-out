@@ -18,11 +18,11 @@ import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronRight, Mail, Trash2, X, Building2 } from 'lucide-react'
 import type {
   Department,
-  ContentFilterMode,
   Service,
 } from '@/lib/types'
 import PageContainer from '@/components/PageContainer'
 import WatchlistManager from '@/components/watchlist/WatchlistManager'
+import { LENS_PRESETS, type LensKey } from '@/lib/lens'
 
 const DEPARTMENTS: Department[] = [
   'Enterprise사업부문',
@@ -41,7 +41,7 @@ interface ProfileForm {
   department: Department
   team: string
   position: string
-  content_filter_mode: ContentFilterMode
+  default_lens: LensKey
 }
 
 interface NewsletterForm {
@@ -60,7 +60,7 @@ export default function MyPage() {
     department: '기타',
     team: '',
     position: '',
-    content_filter_mode: 'all',
+    default_lens: 'all',
   })
   const [profileStatus, setProfileStatus] = useState<SaveStatus>('idle')
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -132,14 +132,14 @@ export default function MyPage() {
       setAuthEmail(user.email ?? '')
 
       const [
-        { data: userRow },
+        userRes,
         { data: userServices },
         { data: allServices },
         { data: sub },
         { data: bookmarksData },
         { data: archivesData },
       ] = await Promise.all([
-        supabase.from('users').select('name, department, team, position, content_filter_mode').eq('id', user.id).single(),
+        supabase.from('users').select('name, department, team, position, default_lens').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
         supabase.from('services').select('*').order('order'),
         supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
@@ -157,13 +157,24 @@ export default function MyPage() {
           .order('created_at', { ascending: false }),
       ])
 
+      // default_lens 컬럼 미적용(SQL 309 전, 42703) — 필드 없이 재조회, graceful 'all' 폴백
+      let userRow = userRes.data
+      if (userRes.error?.code === '42703') {
+        const { data: fallback } = await supabase
+          .from('users')
+          .select('name, department, team, position')
+          .eq('id', user.id)
+          .single()
+        userRow = fallback ? { ...fallback, default_lens: 'all' as LensKey } : null
+      }
+
       if (userRow) {
         setProfile({
           name: userRow.name ?? '',
           department: (userRow.department as Department) ?? '기타',
           team: userRow.team ?? '',
           position: userRow.position ?? '',
-          content_filter_mode: (userRow.content_filter_mode as ContentFilterMode) ?? 'all',
+          default_lens: (userRow.default_lens as LensKey) ?? 'all',
         })
       }
 
@@ -216,18 +227,30 @@ export default function MyPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
 
-      const { error } = await supabase
-        .from('users')
-        .update({
-          name: profile.name,
-          department: profile.department,
-          team: profile.team,
-          position: profile.position || null,
-          content_filter_mode: profile.content_filter_mode,
-        })
-        .eq('id', user.id)
+      const updatePayload = {
+        name: profile.name,
+        department: profile.department,
+        team: profile.team,
+        position: profile.position || null,
+        default_lens: profile.default_lens,
+      }
+
+      let { error } = await supabase.from('users').update(updatePayload).eq('id', user.id)
+
+      // default_lens 컬럼 미적용(SQL 309 전, 42703) — 필드 제외 후 재시도
+      if (error?.code === '42703') {
+        const { default_lens: _omit, ...fallbackPayload } = updatePayload
+        void _omit
+        ;({ error } = await supabase.from('users').update(fallbackPayload).eq('id', user.id))
+      }
 
       if (error) throw new Error(`저장 실패: ${error.message}`)
+
+      // 저장 즉시 반영(309 §3-4) — localStorage 갱신 + 4개 화면·콘텐츠 목록에 브로드캐스트
+      try {
+        localStorage.setItem('io:lens', profile.default_lens)
+        window.dispatchEvent(new Event('lens:changed'))
+      } catch { /* noop */ }
 
       setProfileStatus('saved')
       setTimeout(() => setProfileStatus('idle'), 2500)
@@ -471,19 +494,17 @@ export default function MyPage() {
 
             <div className="flex flex-col gap-2">
               <Label>콘텐츠 보기 방식</Label>
+              <p className="text-xs text-muted-foreground">
+                📍 콘텐츠·AI인사이트·이슈·기업동향·관계지도에서 이 기준으로 보여줍니다.
+              </p>
               <div className="flex gap-2">
-                {(
-                  [
-                    { value: 'my_services' as ContentFilterMode, label: '담당 서비스만' },
-                    { value: 'all' as ContentFilterMode, label: '전체 보기' },
-                  ] as const
-                ).map((opt) => {
-                  const isSelected = profile.content_filter_mode === opt.value
+                {(['mine', 'watch', 'all'] as const).map((key) => {
+                  const isSelected = profile.default_lens === key
                   return (
                     <button
-                      key={opt.value}
+                      key={key}
                       type="button"
-                      onClick={() => setProfile({ ...profile, content_filter_mode: opt.value })}
+                      onClick={() => setProfile({ ...profile, default_lens: key })}
                       className={cn(
                         'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all',
                         isSelected
@@ -491,7 +512,7 @@ export default function MyPage() {
                           : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
                       )}
                     >
-                      {opt.label}
+                      {LENS_PRESETS[key].label}
                     </button>
                   )
                 })}

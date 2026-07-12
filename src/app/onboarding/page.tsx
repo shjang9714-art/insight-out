@@ -20,7 +20,7 @@ export default function OnboardingPage() {
     name: '',
     team: '',
     position: '',
-    content_filter_mode: 'all',
+    default_lens: 'all',
     selected_services: [],
   })
 
@@ -46,14 +46,25 @@ export default function OnboardingPage() {
         department: '기타',
         team: data.team,
         position: data.position || null,
-        content_filter_mode: data.content_filter_mode,
+        default_lens: data.default_lens,
         onboarding_completed: true,
       }
       console.log('[onboarding] users upsert payload:', upsertPayload)
 
-      const { error: profileError } = await supabase
+      let { error: profileError } = await supabase
         .from('users')
         .upsert(upsertPayload, { onConflict: 'id' })
+
+      // default_lens 컬럼 미적용(SQL 309 전, 42703) — 해당 필드 없이 재시도(온보딩 자체를 막지 않음)
+      if (profileError?.code === '42703') {
+        console.warn('[onboarding] default_lens 컬럼 없음(SQL 309 미적용) — 필드 제외 후 재시도')
+        const { default_lens: _omit, ...fallbackPayload } = upsertPayload
+        void _omit
+        ;({ error: profileError } = await supabase
+          .from('users')
+          .upsert(fallbackPayload, { onConflict: 'id' }))
+      }
+
       if (profileError) {
         console.error('[onboarding] users upsert error:', JSON.stringify(profileError, null, 2))
         throw new Error(
@@ -63,7 +74,7 @@ export default function OnboardingPage() {
         )
       }
 
-      if (data.content_filter_mode === 'my_services' && data.selected_services.length > 0) {
+      if (data.selected_services.length > 0) {
         const { data: matchedServices, error: servicesError } = await supabase
           .from('services')
           .select('id, name')
