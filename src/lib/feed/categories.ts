@@ -78,6 +78,59 @@ export const FEED_CATEGORIES: FeedCategory[] = [
       'Talkdesk',
     ],
   },
+  {
+    key: 'ai',
+    label: 'AI',
+    hashtags: [
+      '인공지능', 'AI', '생성형 AI', 'LLM', '거대언어모델', '머신러닝', '딥러닝',
+      '파운데이션 모델', 'GPT', 'Gemini', 'Claude', 'AI 에이전트', 'Agentic AI',
+      'AGI', 'AI 반도체', 'AI 서비스', 'AI 플랫폼', 'AI 윤리', 'AI 규제',
+      '멀티모달', 'sLLM', 'On-device AI',
+    ],
+  },
+  {
+    key: 'finance',
+    label: '금융',
+    hashtags: [
+      '금융', '핀테크', '디지털금융', '오픈뱅킹', '마이데이터', '전자금융', '금융AI',
+      '금융보안', '인터넷은행', '증권', '보험', '자산관리', '블록체인 금융', 'CBDC',
+      '스테이블코인', '결제', '간편결제', '금융규제', '망분리',
+    ],
+  },
+  {
+    key: 'public',
+    label: '공공',
+    hashtags: [
+      '공공', '공공기관', '정부', '전자정부', '스마트시티', '공공데이터', '공공클라우드',
+      '행정전산망', '디지털플랫폼정부', '공공조달', '지자체', '공공보안', '국방',
+      '국가정보자원관리원',
+    ],
+  },
+  {
+    key: 'enterprise-group',
+    label: '대기업그룹사',
+    hashtags: [
+      '대기업', '그룹사', '계열사', '대기업IT', '사내SI', '그룹IT', '전사시스템',
+      'ERP', '대기업DX', '지주회사',
+    ],
+  },
+  {
+    key: 'global-bigtech',
+    label: '글로벌 빅테크',
+    hashtags: [
+      '빅테크', 'Google', 'Microsoft', 'Amazon', 'Meta', 'Apple', 'OpenAI',
+      'NVIDIA', '글로벌테크', '실리콘밸리', '테크기업', '클라우드빅3', 'AWS',
+      'Azure', 'GCP',
+    ],
+  },
+  {
+    key: 'startup',
+    label: '스타트업',
+    hashtags: [
+      '스타트업', '창업', '벤처', '투자유치', '시리즈A', '시리즈B', '유니콘',
+      '액셀러레이터', 'VC', '벤처캐피털', '스케일업', '테크스타트업',
+    ],
+  },
 ]
 
 export const CATEGORY_BY_KEY: Record<string, FeedCategory> = Object.fromEntries(
