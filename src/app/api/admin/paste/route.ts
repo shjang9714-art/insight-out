@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
   let summaryKo: string | null = summary?.trim() || null
   if (!summaryKo) {
-    summaryKo = await summarizeKo(title.trim(), cleanBody)
+    summaryKo = (await summarizeKo(title.trim(), cleanBody)).text
   }
 
   // ─── contents insert ─────────────────────────────────────────────────────

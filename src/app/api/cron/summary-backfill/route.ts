@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
         limit: 20,
         deadline: Date.now() + 270_000,
       })
+      // 한도소진은 실패가 아니라 정상적인 한도 도달 — job_runs 에 'skipped' 로 기록되도록
+      // (runJob 은 result.skipped 가 숫자가 아니면서 truthy 일 때만 skipped 판정한다) notReady 건수 대신 표시.
+      if (r.rateLimited) return { ok: true, ...r, skipped: 'rate_limited' as const }
       return { ok: true, ...r }
     })
     return Response.json(result)

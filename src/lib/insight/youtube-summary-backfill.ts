@@ -51,7 +51,7 @@ export async function backfillYoutubeSummary(
     const sourcesField = row.sources
     const channelName = (Array.isArray(sourcesField) ? sourcesField[0]?.name : sourcesField?.name) ?? null
     try {
-      const summary = await summarizeYoutubeKo(row.title, channelName)
+      const { text: summary } = await summarizeYoutubeKo(row.title, channelName)
       if (summary) {
         await admin.from('contents').update({ summary_ko: summary }).eq('id', row.id)
       }

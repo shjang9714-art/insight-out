@@ -158,7 +158,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
   let summaryKo: string | null = null
   try {
     if (koBody.length >= 100) {
-      summaryKo = await summarizeKo(title, koBody)
+      summaryKo = (await summarizeKo(title, koBody)).text
       summarized = summaryKo !== null
     }
   } catch (e) {

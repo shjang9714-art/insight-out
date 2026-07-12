@@ -63,6 +63,11 @@ export default function AdminContentProcessing() {
   const [clusterResult, setClusterResult] = useState<string | null>(null)
   const clusterStopRef = useRef(false)
 
+  // 뉴스 요약 백필 — 310/311, 크론(05:20) 안 기다리고 즉시 확인
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const [summaryResult, setSummaryResult] = useState<string | null>(null)
+  const summaryStopRef = useRef(false)
+
   const handleEnrich = async ({ from, to }: { from: string | null; to: string | null }) => {
     stopRef.current = false
     setIsEnriching(true)
@@ -342,6 +347,47 @@ export default function AdminContentProcessing() {
     }
   }
 
+  const handleSummaryBackfill = async () => {
+    summaryStopRef.current = false
+    setIsSummarizing(true)
+    setSummaryResult(null)
+    setError(null)
+    const acc = { processed: 0, filled: 0, notReady: 0 }
+    try {
+      while (true) {
+        const res = await fetch('/api/admin/summary-backfill?limit=20', { method: 'POST' })
+        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '뉴스 요약 백필 실패')
+        const { processed, filled, notReady, remaining, rateLimited } = await res.json() as {
+          processed: number; filled: number; notReady: number; remaining: number; rateLimited?: boolean
+        }
+        acc.processed += processed
+        acc.filled    += filled
+        acc.notReady  += notReady
+
+        if (rateLimited) {
+          setSummaryResult(`LLM 한도 소진 — 중단됨. 내일 다시 시도됩니다. · 누적 처리 ${acc.processed} · 요약 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (summaryStopRef.current) {
+          setSummaryResult(`중단됨 · 누적 처리 ${acc.processed} · 요약 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
+          break
+        }
+        if (remaining === 0) {
+          setSummaryResult(`완료 · 처리 ${acc.processed} · 요약 ${acc.filled} · 준비안됨 ${acc.notReady}`)
+          break
+        }
+        if (processed === 0) break
+
+        setSummaryResult(`요약 중… 누적 처리 ${acc.processed} · 요약 ${acc.filled} · 준비안됨 ${acc.notReady} · 남은 ${remaining.toLocaleString()}`)
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '뉴스 요약 백필 중 오류가 발생했습니다.')
+    } finally {
+      setIsSummarizing(false)
+    }
+  }
+
   // Date.now() purity 규칙 회피 (crawl-logs/page.tsx 패턴과 동일)
   const applyEnrichPreset = (days: number | null) => {
     if (days === null) { setEnrichFrom(''); setEnrichTo(''); return }
@@ -390,6 +436,33 @@ export default function AdminContentProcessing() {
             onClick={isEnriching ? () => { stopRef.current = true } : () => setIsEnrichRangeOpen(true)}
           >
             {isEnriching ? '중단' : '누락 기사 본문 수집'}
+          </Button>
+        </div>
+      </div>
+
+      {/* 뉴스 요약 백필 — 310/311 */}
+      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="admin-card-title text-foreground">뉴스 요약 백필</p>
+            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
+              요약이 없는 발행 콘텐츠를 LLM으로 요약합니다. 매일 05:20 크론이 돌지만,
+              지금 바로 채워서 확인하려면 이 버튼을 누르세요.
+            </p>
+            {summaryResult && (
+              <p className="admin-caption mt-2 text-positive">
+                {isSummarizing ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{summaryResult}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={isSummarizing ? () => { summaryStopRef.current = true } : handleSummaryBackfill}
+          >
+            {isSummarizing ? '중단' : '뉴스 요약 백필'}
           </Button>
         </div>
       </div>

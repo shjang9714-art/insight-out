@@ -20,6 +20,8 @@ export interface DrainSummaryResult {
   skipped: number
   /** -1: summary_attempted_at 컬럼 미적용(SQL 295 미실행) */
   remaining: number
+  /** true 면 LLM 한도 소진으로 드레인을 중단했다 — 내일 한도 리셋 후 재개(312). */
+  rateLimited?: boolean
 }
 
 interface ContentRow {
@@ -102,15 +104,19 @@ async function fetchSummaryTargets(
 /**
  * 콘텐츠 1건의 요약을 생성해 적재한다. LLM 을 실제 호출한 경우에만 summary_attempted_at 을
  * 마킹한다. 본문/번역이 준비되지 않아 호출하지 못한 건은 다음 본문 백필 뒤 다시 후보가 된다.
+ * ⛔ 한도소진(rate_limited)은 마킹하지 않는다 — 영구 실패가 아니라 내일 리셋되는 일시 상태(312).
  */
-async function summarizeOne(admin: SupabaseClient, row: ContentRow): Promise<'filled' | 'failed' | 'not_ready'> {
+async function summarizeOne(admin: SupabaseClient, row: ContentRow): Promise<'filled' | 'failed' | 'not_ready' | 'rate_limited'> {
   let summary: string | null = null
   let llmCalled = false
+  let rateLimited = false
 
   try {
     if (row.category === '유튜브') {
       llmCalled = true
-      summary = await summarizeYoutubeKo(row.title, row.author)
+      const res = await summarizeYoutubeKo(row.title, row.author)
+      summary = res.text
+      rateLimited = res.rateLimited
     } else {
       const rawBodyKo = row.original_language === 'ko'
         ? row.body_original?.trim()
@@ -120,12 +126,15 @@ async function summarizeOne(admin: SupabaseClient, row: ContentRow): Promise<'fi
         return 'not_ready'
       }
       llmCalled = true
-      summary = await summarizeKo(row.title, rawBodyKo)
+      const res = await summarizeKo(row.title, rawBodyKo)
+      summary = res.text
+      rateLimited = res.rateLimited
     }
   } catch (e) {
     console.error('[요약백필] 요약 생성 오류 (id:', row.id, '):', e)
   }
 
+  if (rateLimited) return 'rate_limited'
   if (!llmCalled) return 'not_ready'
 
   const attemptedAt = new Date().toISOString()
@@ -182,6 +191,7 @@ export async function drainSummaries(
   let failed = 0
   let notReady = 0
   let remaining = 0
+  let rateLimited = false
   let useReadinessFilter = true
 
   while (true) {
@@ -215,6 +225,11 @@ export async function drainSummaries(
     for (const row of targets) {
       if (deadline !== undefined && Date.now() >= deadline) break
       const result = await summarizeOne(admin, row)
+      // 한도소진 — 나머지도 전부 실패할 게 뻔하니 즉시 중단(전부 박제 방지, 312).
+      if (result === 'rate_limited') {
+        rateLimited = true
+        break
+      }
       if (result === 'filled') filled++
       if (result === 'failed') failed++
       if (result === 'not_ready') notReady++
@@ -229,10 +244,11 @@ export async function drainSummaries(
     }
     if (countRes.error) console.error('[요약백필] 남은 건수 조회 오류:', countRes.error)
     remaining = countRes.remaining
+    if (rateLimited) break
     if (remaining === 0) break
     if (deadline === undefined) break
     if (durableProgress === 0) break
   }
 
-  return { processed, filled, failed, notReady, skipped: notReady, remaining }
+  return { processed, filled, failed, notReady, skipped: notReady, remaining, rateLimited }
 }
