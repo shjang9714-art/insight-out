@@ -19,7 +19,7 @@ create table if not exists public.mcp_tokens (
   label        text not null default '',              -- 용도 메모(예: 'David - MacBook Claude Code')
   token_hash   text not null unique,                  -- sha256(평문 토큰) hex
   token_prefix text not null default '',              -- 앞 8자(io_xxxxxxxx) — 목록에서 식별용
-  scopes       text[] not null default '{read,ops}',  -- read | ops | reports | insights | publish
+  scopes       text[] not null default '{read,ops}',  -- read | ops | reports | publish
   last_used_at timestamptz,
   expires_at   timestamptz,                           -- null = 무기한
   revoked_at   timestamptz,                           -- null = 유효

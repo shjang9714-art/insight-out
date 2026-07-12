@@ -3,8 +3,14 @@
 // 목적: 팀원 각자의 Claude(Code/Desktop)가 인사이트 아웃에 직접 기록한다.
 //   · 작업계획/결과   → ops_requests (post_type='work')
 //   · 전략보고서      → ai_reports + ai_report_sources
-//   · 핵심인사이트    → key_insights
 //   · 근거 조회·검색  → contents / issues / entities
+//
+// 인사이트 툴은 보류(190 후속 결정):
+//   9e10230 에서 key_insights 주간 파이프라인이 폐기되며 이를 읽는 화면·API 가 전부 사라졌다.
+//   "핵심 인사이트" 지면은 daily_insights 가 가져갔고 key_insights 는 테이블만 남았다.
+//   그 상태로 인사이트 툴을 두면 팀원이 카드를 써도 아무도 볼 수 없다 —
+//   에러도 안 나고 빌드도 통과하는, 조용히 실패하는 최악의 형태.
+//   인사이트 기록은 지면(daily_insights 통합 vs 별도 코너)을 먼저 정한 뒤 다시 붙인다.
 //
 // 인증(188 → 190 변경):
 //   188 은 팀 공용 단일 MCP_TOKEN 하나였다. "누가 썼는지"를 알 수 없어
@@ -23,7 +29,6 @@ import { authenticateToken } from '@/lib/mcp/auth'
 import { registerReadTools } from '@/lib/mcp/tools/read'
 import { registerOpsTools } from '@/lib/mcp/tools/ops'
 import { registerReportTools } from '@/lib/mcp/tools/reports'
-import { registerInsightTools } from '@/lib/mcp/tools/insights'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -35,7 +40,6 @@ const mcpHandler = createMcpHandler(
     registerReadTools(server)
     registerOpsTools(server)
     registerReportTools(server)
-    registerInsightTools(server)
   },
   {
     serverInfo: { name: 'insight-out', version: '190' },

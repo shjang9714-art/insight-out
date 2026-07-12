@@ -25,7 +25,7 @@ interface TeamUser {
   email: string
 }
 
-const DEFAULT_SCOPES: McpScope[] = ['read', 'ops', 'reports', 'insights']
+const DEFAULT_SCOPES: McpScope[] = ['read', 'ops', 'reports']
 
 export default function McpTokenBoard() {
   const [tokens, setTokens] = useState<TokenRow[]>([])
