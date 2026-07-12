@@ -18,7 +18,6 @@ import {
   ClipboardList,
   Ban,
   Settings,
-  Star,
   Wrench,
   TrendingUp,
   ShieldAlert,
@@ -178,12 +177,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '인사이트 카드',
         description: 'AI가 생성한 인사이트 카드의 생성, 검수, 발행 상태를 관리합니다.',
         icon: Sparkles,
-      },
-      {
-        href: '/admin/key-insights',
-        label: '핵심 Insight',
-        description: '주간 핵심 Insight를 검수, 편집, 발행합니다.',
-        icon: Star,
       },
       {
         href: '/admin/daily-insights',
