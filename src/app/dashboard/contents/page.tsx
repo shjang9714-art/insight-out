@@ -18,6 +18,7 @@ import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopo
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
+import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -463,7 +464,7 @@ function ContentsContent() {
     <PageContainer>
 
       {/* ── 소스타입 선택 바 ─────────────────────────────────────────────────── */}
-      <div className="mb-5">
+      <NavGroupAlign className="-mt-3 mb-5">
         <InsightViewTabs
           items={CONTENT_SOURCE_TABS.map((tab) => ({
             id: tab.value,
@@ -471,9 +472,8 @@ function ContentsContent() {
           }))}
           value={activeSourceTab}
           onChange={(v) => updateParam('category', v)}
-          className="-mt-3 w-[var(--nav-group-w)]"
         />
-      </div>
+      </NavGroupAlign>
 
       {/* 제목 + 건수 + 뷰 토글 */}
       <div className="mb-5 flex items-end justify-between gap-4">

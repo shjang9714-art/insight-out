@@ -19,7 +19,7 @@ export const HOME_SECTION_REGISTRY: HomeSectionDef[] = [
   {
     key: 'issue_signals',
     label: '트렌딩 이슈 티커',
-    description: '실시간 급상승 이슈 스트립',
+    description: '오늘의 급상승 이슈 스트립',
   },
   {
     key: 'briefing_highlights',

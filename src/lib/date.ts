@@ -1,3 +1,10 @@
+/** 'YYYY-MM-DD'(KST 날짜) 문자열이 가리키는 KST 0시를 UTC ISO 문자열로 반환 */
+export function getKstDayStartIso(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const midnightUtc = Date.UTC(year, month - 1, day) - 9 * 60 * 60 * 1000
+  return new Date(midnightUtc).toISOString()
+}
+
 /** KST 기준 오늘 0시를 UTC ISO 문자열로 반환 */
 export function getKstTodayStartIso(): string {
   const now = Date.now()
@@ -38,4 +45,15 @@ export function getKstDateParts(date: Date = new Date()): KstDateParts {
 export function getKstDateString(date: Date = new Date()): string {
   const { year, month, day } = getKstDateParts(date)
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 임의 시각을 KST 기준 시(0~23)로. */
+export function getKstHour(date: Date = new Date()): number {
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    hour: 'numeric',
+    hour12: false,
+  }).format(date)
+  // Intl 은 자정을 '24'로 표기하는 로케일이 있어 24 → 0 보정
+  return Number(hour) % 24
 }
