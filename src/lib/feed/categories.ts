@@ -110,8 +110,8 @@ export const FEED_CATEGORIES: FeedCategory[] = [
     key: 'enterprise-group',
     label: '대기업그룹사',
     hashtags: [
-      '대기업', '그룹사', '계열사', '대기업IT', '사내SI', '그룹IT', '전사시스템',
-      'ERP', '대기업DX', '지주회사',
+      '대기업그룹사', '대기업', '그룹사', '계열사', '대기업IT', '사내SI', '그룹IT',
+      '전사시스템', 'ERP', '대기업DX', '지주회사',
     ],
   },
   {
