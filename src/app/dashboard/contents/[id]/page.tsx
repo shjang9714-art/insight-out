@@ -10,6 +10,7 @@ import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
+import ViewTracker from '@/components/contents/ViewTracker'
 import BackLink from '@/components/BackLink'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
@@ -246,6 +247,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
       </div>
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
+      <ViewTracker contentId={content.id} />
 
       <article>
         {hasKoreanTranslation && !isReport ? (
