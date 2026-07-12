@@ -123,7 +123,7 @@ export default function McpTokenBoard() {
   return (
     <div className="space-y-8">
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-base text-destructive">
           {error}
         </div>
       )}
@@ -131,28 +131,28 @@ export default function McpTokenBoard() {
       {/* 발급 직후 1회 노출 */}
       {freshToken && (
         <div className="rounded-lg border border-brand-600/30 bg-brand-50/50 p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <AlertTriangle className="h-4 w-4 text-brand-600" />
+          <div className="mb-2 flex items-center gap-2 text-base font-semibold text-foreground">
+            <AlertTriangle className="h-5 w-5 text-brand-600" />
             토큰이 발급되었습니다 — 지금 복사하세요. 이 화면을 벗어나면 다시 볼 수 없습니다.
           </div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 overflow-x-auto rounded border border-border bg-background px-3 py-2 font-mono text-xs">
+            <code className="flex-1 overflow-x-auto rounded border border-border bg-background px-3 py-2 font-mono text-sm">
               {freshToken}
             </code>
             <button
               onClick={copyToken}
-              className="flex shrink-0 items-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700"
+              className="flex shrink-0 items-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
             >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               {copied ? '복사됨' : '복사'}
             </button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2 text-sm text-muted-foreground">
             팀원에게 안전한 경로(1:1 메시지 등)로 전달하세요. Slack 공개 채널·이메일 평문 전송은 피해주세요.
           </p>
           <button
             onClick={() => setFreshToken(null)}
-            className="mt-3 text-xs text-muted-foreground underline hover:text-foreground"
+            className="mt-3 text-sm text-muted-foreground underline hover:text-foreground"
           >
             확인했습니다 — 닫기
           </button>
@@ -161,18 +161,18 @@ export default function McpTokenBoard() {
 
       {/* 발급 폼 */}
       <section className="rounded-lg border border-border p-5">
-        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <KeyRound className="h-4 w-4 text-brand-600" />
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-foreground">
+          <KeyRound className="h-5 w-5 text-brand-600" />
           새 토큰 발급
         </h2>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">팀원</label>
+            <label className="mb-1.5 block text-sm font-medium text-muted-foreground">팀원</label>
             <select
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-base"
             >
               <option value="">선택하세요</option>
               {users.map((u) => (
@@ -184,38 +184,38 @@ export default function McpTokenBoard() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">용도 메모</label>
+            <label className="mb-1.5 block text-sm font-medium text-muted-foreground">용도 메모</label>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="예: 수희 - 업무용 노트북 Claude Code"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-base"
             />
           </div>
         </div>
 
         <div className="mt-4">
-          <label className="mb-2 block text-xs font-medium text-muted-foreground">권한(스코프)</label>
+          <label className="mb-2 block text-sm font-medium text-muted-foreground">권한(스코프)</label>
           <div className="space-y-2">
             {MCP_SCOPES.map((s) => (
-              <label key={s} className="flex cursor-pointer items-start gap-2.5 text-sm">
+              <label key={s} className="flex cursor-pointer items-start gap-2.5 text-base">
                 <input
                   type="checkbox"
                   checked={scopes.includes(s)}
                   onChange={() => toggleScope(s)}
-                  className="mt-0.5"
+                  className="mt-1 h-4 w-4"
                 />
                 <span>
                   <span className={`font-medium ${s === 'publish' ? 'text-brand-600' : 'text-foreground'}`}>
                     {MCP_SCOPE_LABEL[s]}
                   </span>
-                  <span className="ml-2 text-xs text-muted-foreground">{MCP_SCOPE_DESC[s]}</span>
+                  <span className="ml-2 text-sm text-muted-foreground">{MCP_SCOPE_DESC[s]}</span>
                 </span>
               </label>
             ))}
           </div>
           {scopes.includes('publish') && (
-            <p className="mt-2 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-2 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
               ⚠️ 즉시 발행 권한입니다. 이 토큰을 쓰는 Claude 는 검토 없이 사용자 화면에 글을 올릴 수 있습니다.
             </p>
           )}
@@ -224,7 +224,7 @@ export default function McpTokenBoard() {
         <button
           onClick={issue}
           disabled={issuing || !userId}
-          className="mt-5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          className="mt-5 rounded-md bg-brand-600 px-4 py-2 text-base font-medium text-white hover:bg-brand-700 disabled:opacity-50"
         >
           {issuing ? '발급 중…' : '토큰 발급'}
         </button>
@@ -232,16 +232,16 @@ export default function McpTokenBoard() {
 
       {/* 발급 목록 */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">발급된 토큰</h2>
+        <h2 className="mb-3 text-lg font-semibold text-foreground">발급된 토큰</h2>
 
         {loading ? (
-          <p className="text-sm text-muted-foreground">불러오는 중…</p>
+          <p className="text-base text-muted-foreground">불러오는 중…</p>
         ) : tokens.length === 0 ? (
-          <p className="text-sm text-muted-foreground">아직 발급된 토큰이 없습니다.</p>
+          <p className="text-base text-muted-foreground">아직 발급된 토큰이 없습니다.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
+            <table className="w-full text-base">
+              <thead className="border-b border-border bg-muted/40 text-sm text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">팀원</th>
                   <th className="px-4 py-2.5 text-left font-medium">용도</th>
@@ -259,18 +259,18 @@ export default function McpTokenBoard() {
                     <tr key={t.id} className={`border-b border-border last:border-0 ${revoked ? 'opacity-50' : ''}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium text-foreground">{t.users?.name || '-'}</div>
-                        <div className="text-xs text-muted-foreground">{t.users?.email}</div>
+                        <div className="text-sm text-muted-foreground">{t.users?.email}</div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{t.label || '-'}</td>
                       <td className="px-4 py-3">
-                        <code className="font-mono text-xs">{t.token_prefix}…</code>
+                        <code className="font-mono text-sm">{t.token_prefix}…</code>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {t.scopes.map((s) => (
                             <span
                               key={s}
-                              className={`rounded px-1.5 py-0.5 text-[11px] ${
+                              className={`rounded px-1.5 py-0.5 text-xs ${
                                 s === 'publish'
                                   ? 'bg-brand-600/10 text-brand-700'
                                   : 'bg-muted text-muted-foreground'
@@ -281,10 +281,10 @@ export default function McpTokenBoard() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {t.last_used_at ? t.last_used_at.slice(0, 16).replace('T', ' ') : '미사용'}
                       </td>
-                      <td className="px-4 py-3 text-xs">
+                      <td className="px-4 py-3 text-sm">
                         {revoked ? (
                           <span className="text-destructive">폐기됨</span>
                         ) : (
@@ -295,9 +295,9 @@ export default function McpTokenBoard() {
                         {!revoked && (
                           <button
                             onClick={() => revoke(t.id)}
-                            className="flex items-center gap-1 text-xs text-destructive hover:underline"
+                            className="flex items-center gap-1 text-sm text-destructive hover:underline"
                           >
-                            <Ban className="h-3 w-3" />
+                            <Ban className="h-4 w-4" />
                             폐기
                           </button>
                         )}
