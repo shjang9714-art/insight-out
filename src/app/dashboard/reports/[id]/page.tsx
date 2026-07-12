@@ -12,6 +12,7 @@ import BackLink from '@/components/BackLink'
 import PageContainer from '@/components/PageContainer'
 import { getReport } from '@/lib/reports/query'
 import { sanitizeReportHtml } from '@/lib/reports/sanitize-html'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,7 +96,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
     .filter(s => s.issues !== null && s.contents === null)
     .map(s => s.issues!)
 
-  const sanitizedHtml = report.body_html ? sanitizeReportHtml(report.body_html) : null
+  const reportSummary = report.summary ? stripLlmArtifacts(report.summary) : null
+  const sanitizedHtml = report.body_html ? sanitizeReportHtml(stripLlmArtifacts(report.body_html)) : null
+  const bodyMarkdown = report.body_md ? stripLlmArtifacts(report.body_md) : null
 
   return (
     <PageContainer variant="reading" className="print:px-0 print:py-0 print:max-w-none">
@@ -133,8 +136,8 @@ export default async function ReportDetailPage({ params }: PageProps) {
           )}
         </div>
         <h1 className="text-xl font-bold text-foreground leading-snug">{report.title}</h1>
-        {report.summary && (
-          <p className="text-sm text-muted-foreground">{report.summary}</p>
+        {reportSummary && (
+          <p className="text-sm text-muted-foreground">{reportSummary}</p>
         )}
       </div>
 
@@ -164,9 +167,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
         </div>
-      ) : report.body_md ? (
+      ) : bodyMarkdown ? (
         <div className="rounded-xl border border-border bg-card p-6 sm:p-8 print:border-0 print:bg-white print:p-0 print:shadow-none">
-          <ReportMarkdown>{report.body_md}</ReportMarkdown>
+          <ReportMarkdown>{bodyMarkdown}</ReportMarkdown>
         </div>
       ) : (
         <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
@@ -191,7 +194,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
                     href={`/dashboard/issues/${issue.id}`}
                     className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-brand-600/40 hover:text-brand-600"
                   >
-                    {issue.title}
+                    {stripLlmArtifacts(issue.title)}
                   </Link>
                 ))}
               </div>

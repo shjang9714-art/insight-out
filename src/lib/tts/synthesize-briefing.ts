@@ -2,6 +2,7 @@ import 'server-only'
 
 import { TextToSpeechClient } from '@google-cloud/text-to-speech'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 기간 헬퍼 (translate/index.ts 와 동일 로직) ────────────────────────────
 
@@ -56,7 +57,10 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
     return { ok: false, reason: '스크립트 없음' }
   }
 
-  const script = briefing.script.trim()
+  const script = stripLlmArtifacts(briefing.script).trim()
+  if (!script) {
+    return { ok: false, reason: '스크립트 없음' }
+  }
   const period = getKstPeriod()
   // 기본 보이스가 WaveNet(ko-KR-Wavenet-C)이라 무료 한도는 100만 자/월. 보수적으로 90만.
   // (Vercel 에 TTS_MONTHLY_CHAR_CAP 미설정 시 이 값이 가드로 작동.)

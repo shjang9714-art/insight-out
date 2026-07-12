@@ -1,6 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 interface DailyInsightDetailProps {
   insight: DailyInsightRow
@@ -20,8 +21,8 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
     <article className="space-y-6">
       <header className="space-y-2">
         {insight.category && <CategoryBadge category={insight.category} />}
-        <h1 className="text-2xl font-bold leading-snug tracking-tight text-foreground">{insight.headline}</h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">💡 {insight.summary_ko}</p>
+        <h1 className="text-2xl font-bold leading-snug tracking-tight text-foreground">{stripLlmArtifacts(insight.headline)}</h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">💡 {stripLlmArtifacts(insight.summary_ko)}</p>
       </header>
 
       {sections.length > 0 && (
@@ -31,7 +32,7 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
                 {s.emoji} {s.label}
               </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-foreground">{insight[s.key]}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-foreground">{stripLlmArtifacts(insight[s.key] ?? '')}</p>
             </div>
           ))}
         </div>

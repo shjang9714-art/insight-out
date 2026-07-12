@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import BriefingArchive from '@/components/dashboard/BriefingArchive'
 import PageContainer from '@/components/PageContainer'
 import BackLink from '@/components/BackLink'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const metadata: Metadata = {
   title: '지난 브리핑 | Insight Out',
@@ -34,6 +35,12 @@ export default async function BriefingsPage() {
     .order('briefing_date', { ascending: false })
     .limit(90)
 
+  const briefings = (data ?? []).map((briefing) => ({
+    ...briefing,
+    title: briefing.title ? stripLlmArtifacts(briefing.title) : briefing.title,
+    script: briefing.script ? stripLlmArtifacts(briefing.script) : briefing.script,
+  }))
+
   return (
     <PageContainer className="py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
@@ -47,7 +54,7 @@ export default async function BriefingsPage() {
         </p>
       </div>
 
-      <BriefingArchive briefings={data ?? []} />
+      <BriefingArchive briefings={briefings} />
     </PageContainer>
   )
 }

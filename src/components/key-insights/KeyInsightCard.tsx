@@ -17,6 +17,7 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { KEY_INSIGHT_CATEGORIES } from '@/lib/key-insights/constants'
 import { KEY_INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
 import type { KeyInsightRow, KeyInsightStatus } from '@/lib/key-insights/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 const STATUS_LABEL: Record<KeyInsightStatus, string> = {
   draft: '초안',
@@ -291,13 +292,13 @@ export default function KeyInsightCard({
       ) : (
         <div className="space-y-3">
           <div>
-            <p className="font-semibold text-foreground leading-snug">{card.headline}</p>
-            <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{card.summary_ko}</p>
+            <p className="font-semibold text-foreground leading-snug">{stripLlmArtifacts(card.headline)}</p>
+            <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{stripLlmArtifacts(card.summary_ko)}</p>
           </div>
 
           {card.implication && (
             <p className="text-sm text-foreground leading-relaxed border-l-2 border-brand-600/40 pl-3">
-              💡 {stripImplicationLead(card.implication)}
+              💡 {stripImplicationLead(stripLlmArtifacts(card.implication))}
             </p>
           )}
 

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { CompetitorWeeklyCardRow } from '@/lib/competitor-weekly/query'
-import { stripInlineCitations } from '@/lib/competitor-weekly/strip-citations'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 const IMPACT_CHIP: Record<string, string> = {
   위기: 'bg-negative-soft text-negative',
@@ -45,7 +45,7 @@ export default function CompetitorWeeklyCard({ report }: Props) {
 
       {summary && (
         <p className="mb-2 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
-          {stripInlineCitations(summary)}
+          {stripLlmArtifacts(summary)}
         </p>
       )}
 

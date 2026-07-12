@@ -12,6 +12,7 @@ import IssueEvidenceExplorer, { type EvidenceItem } from '@/components/issues/Is
 import IssueEvidenceSection, { type EvidenceRow } from '@/components/issues/IssueEvidenceSection'
 import type { IssueBrief } from '@/lib/issues/brief'
 import PageContainer from '@/components/PageContainer'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -114,7 +115,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     }
   )
   const { data } = await supabase.from('issues').select('title').eq('id', id).single()
-  const title = (data as { title?: string } | null)?.title ?? '이슈'
+  const title = stripLlmArtifacts((data as { title?: string } | null)?.title ?? '이슈')
   return {
     title: `${title} | 이슈 | Insight Out`,
     description: `${title} 관련 콘텐츠·타임라인·엔티티`,
@@ -331,7 +332,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
         similarIssues = (candidateIssues ?? [])
           .map((issue: { id: string; title: string }) => ({
             id: issue.id,
-            title: issue.title,
+            title: stripLlmArtifacts(issue.title),
             score: scoreMap.get(issue.id) ?? 0,
           }))
           .sort((a, b) => b.score - a.score)
@@ -390,11 +391,11 @@ export default async function IssueDetailPage({ params }: PageProps) {
       <div className="mb-8">
         <div className="flex items-start gap-2 mb-2">
           <Radar className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-          <h1 className="text-xl font-bold text-foreground leading-snug">{issue.title}</h1>
+          <h1 className="text-xl font-bold text-foreground leading-snug">{stripLlmArtifacts(issue.title)}</h1>
         </div>
         {issue.summary && !issue.brief && (
           <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed mt-2 ml-7">
-            {issue.summary}
+            {stripLlmArtifacts(issue.summary)}
           </p>
         )}
         <div className="flex items-center gap-2 mt-3 ml-7">
@@ -428,7 +429,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
               {/* 현황 */}
               <div>
                 <p className="mb-1 text-xs font-semibold text-muted-foreground">현황</p>
-                <p className="text-sm text-foreground leading-relaxed">{issue.brief.situation}</p>
+                <p className="text-sm text-foreground leading-relaxed">{stripLlmArtifacts(issue.brief.situation)}</p>
               </div>
               {/* 핵심 동인 */}
               {issue.brief.drivers.length > 0 && (
@@ -438,7 +439,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
                     {issue.brief.drivers.map((d, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-foreground">
                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-600" />
-                        {d}
+                        {stripLlmArtifacts(d)}
                       </li>
                     ))}
                   </ul>
@@ -448,7 +449,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
               {issue.brief.sentiment_read && (
                 <div>
                   <p className="mb-1 text-xs font-semibold text-muted-foreground">논조 해석</p>
-                  <p className="text-sm text-foreground leading-relaxed">{issue.brief.sentiment_read}</p>
+                  <p className="text-sm text-foreground leading-relaxed">{stripLlmArtifacts(issue.brief.sentiment_read)}</p>
                 </div>
               )}
               {/* 시사점 */}
@@ -459,7 +460,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
                     {issue.brief.implications.map((imp, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-foreground">
                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                        {imp}
+                        {stripLlmArtifacts(imp)}
                       </li>
                     ))}
                   </ul>
@@ -489,7 +490,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
           ) : (
             <p className="text-sm text-muted-foreground">
               {issue.summary
-                ? issue.summary
+                ? stripLlmArtifacts(issue.summary)
                 : '브리핑이 아직 생성되지 않았습니다. 관리자 페이지에서 "AI 브리핑 생성" 버튼을 눌러주세요.'}
             </p>
           )}

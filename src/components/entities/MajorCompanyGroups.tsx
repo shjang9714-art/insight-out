@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { computeImportance, getCardDetailHref } from '@/lib/insight/card-meta'
 import type { MajorGroupBucket } from '@/lib/entities/major-companies'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 function formatShortPeriod(start: string, end: string): string {
   const fmt = (d: Date) => `${d.getMonth() + 1}.${d.getDate()}`
@@ -75,12 +76,12 @@ export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase }:
                     )}
 
                     <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-brand-600">
-                      {card.card_headline ?? card.headline}
+                      {stripLlmArtifacts(card.card_headline ?? card.headline)}
                     </p>
 
                     {card.implication && (
                       <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                        {card.implication}
+                        {stripLlmArtifacts(card.implication)}
                       </p>
                     )}
 

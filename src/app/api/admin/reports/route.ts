@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -60,5 +61,10 @@ export async function GET() {
     return NextResponse.json({ error: '목록을 불러오지 못했습니다.' }, { status: 500 })
   }
 
-  return NextResponse.json({ reports: data ?? [] })
+  const reports = (data ?? []).map((report) => ({
+    ...report,
+    summary: report.summary ? stripLlmArtifacts(report.summary) : null,
+  }))
+
+  return NextResponse.json({ reports })
 }

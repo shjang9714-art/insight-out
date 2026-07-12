@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -109,70 +110,75 @@ export default function EntityEventTimeline({ events }: Props) {
       />
 
       <ol className="space-y-6">
-        {events.map((ev) => (
-          <li key={ev.id} className="relative pl-6">
-            {/* 타임라인 점 */}
-            <span
-              className="absolute left-0 top-3 h-3.5 w-3.5 rounded-full border-2 border-border bg-card"
-              aria-hidden="true"
-            />
+        {events.map((ev) => {
+          const headline = stripLlmArtifacts(ev.headline)
+          const detail = ev.detail ? stripLlmArtifacts(ev.detail) : null
 
-            <div className="space-y-1.5">
-              {/* 날짜 + 배지 */}
-              <div className="flex flex-wrap items-center gap-2">
-                <time
-                  dateTime={ev.event_date}
-                  className="text-[11px] text-muted-foreground tabular-nums"
-                >
-                  {ev.event_date}
-                </time>
-                {ev.signal_type && (
-                  <span className={cn(
-                    'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                    SIGNAL_STYLE[ev.signal_type] ?? DEFAULT_SIGNAL_STYLE
-                  )}>
-                    {ev.signal_type}
-                  </span>
+          return (
+            <li key={ev.id} className="relative pl-6">
+              {/* 타임라인 점 */}
+              <span
+                className="absolute left-0 top-3 h-3.5 w-3.5 rounded-full border-2 border-border bg-card"
+                aria-hidden="true"
+              />
+
+              <div className="space-y-1.5">
+                {/* 날짜 + 배지 */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <time
+                    dateTime={ev.event_date}
+                    className="text-[11px] text-muted-foreground tabular-nums"
+                  >
+                    {ev.event_date}
+                  </time>
+                  {ev.signal_type && (
+                    <span className={cn(
+                      'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                      SIGNAL_STYLE[ev.signal_type] ?? DEFAULT_SIGNAL_STYLE
+                    )}>
+                      {ev.signal_type}
+                    </span>
+                  )}
+                  {ev.sentiment && (
+                    <span className={cn(
+                      'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                      SENTIMENT_STYLE[ev.sentiment]
+                    )}>
+                      {ev.sentiment}
+                    </span>
+                  )}
+                </div>
+
+                {/* 헤드라인 */}
+                <p className="text-sm font-semibold text-foreground leading-snug">
+                  {headline}
+                </p>
+
+                {/* 상세 */}
+                {detail && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {detail}
+                  </p>
                 )}
-                {ev.sentiment && (
-                  <span className={cn(
-                    'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                    SENTIMENT_STYLE[ev.sentiment]
-                  )}>
-                    {ev.sentiment}
-                  </span>
+
+                {/* 근거 링크 */}
+                {ev.citations.length > 0 && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
+                    {ev.citations.slice(0, 3).map((cid) => (
+                      <Link
+                        key={cid}
+                        href={`/dashboard/contents/${cid}`}
+                        className="text-[11px] text-brand-600 hover:underline"
+                      >
+                        근거 →
+                      </Link>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {/* 헤드라인 */}
-              <p className="text-sm font-semibold text-foreground leading-snug">
-                {ev.headline}
-              </p>
-
-              {/* 상세 */}
-              {ev.detail && (
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {ev.detail}
-                </p>
-              )}
-
-              {/* 근거 링크 */}
-              {ev.citations.length > 0 && (
-                <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
-                  {ev.citations.slice(0, 3).map((cid) => (
-                    <Link
-                      key={cid}
-                      href={`/dashboard/contents/${cid}`}
-                      className="text-[11px] text-brand-600 hover:underline"
-                    >
-                      근거 →
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ol>
     </div>
   )

@@ -25,6 +25,7 @@ import {
   RELEVANCE_CLS,
 } from '@/lib/insight/card-meta'
 import { BUCKET_CHIP_CLS, type TagBucket } from '@/lib/tag-buckets'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import InsightCardNewsList from './InsightCardNewsList'
 
 // ─── 직렬화 가능 타입 ──────────────────────────────────────────────────────────
@@ -56,6 +57,19 @@ function formatPeriod(start: string, end: string): string {
 type InsightView = 'cardnews' | 'analysis'
 const VIEW_KEY = 'io:insight-view'
 
+function stripNullableText(text: string | null | undefined): string | null | undefined {
+  return text ? stripLlmArtifacts(text) : text
+}
+
+function stripInsightCardText(card: InsightCard): InsightCard {
+  return {
+    ...card,
+    headline: stripLlmArtifacts(card.headline),
+    card_headline: stripNullableText(card.card_headline),
+    implication: stripNullableText(card.implication) ?? null,
+  }
+}
+
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -67,6 +81,12 @@ interface Props {
 }
 
 export default function InsightCardsSectionClient({ groups, contentMap, bucketByTopic, boxed = false }: Props) {
+  // 293 — LLM 서술 필드는 이 경계에서 통합 정제한다. 하위 카드 렌더러는 정제된 card만 받는다.
+  const sanitizedGroups = groups.map((group) => ({
+    ...group,
+    cards: group.cards.map(stripInsightCardText),
+  }))
+
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
   const [view, setView] = useState<InsightView>(() => {
@@ -92,7 +112,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
   const hasPersonalization = ctx.serviceIds.length > 0 || ctx.watchlist.length > 0
 
   // 렌즈 필터/정렬 — 두 뷰 공유
-  const visibleGroups = groups.map((g, idx) => {
+  const visibleGroups = sanitizedGroups.map((g, idx) => {
     const lensedCards = g.cards
       .map(card => {
         const target: LensTarget = { names: [card.topic, card.headline] }

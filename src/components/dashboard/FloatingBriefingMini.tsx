@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Radio, X, Play, Pause, ChevronDown, ChevronUp, SkipBack } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -143,6 +144,8 @@ export default function FloatingBriefingMini() {
   const progress  = duration > 0 ? currentTime / duration : 0
   const hasAudio  = !!briefing?.audio_url
   const isLoading = briefing === undefined
+  const briefingTitle = briefing?.title ? stripLlmArtifacts(briefing.title) : null
+  const briefingScript = briefing?.script ? stripLlmArtifacts(briefing.script) : null
 
   return (
     <div ref={cardRef} className="fixed bottom-6 right-6 z-50">
@@ -185,7 +188,7 @@ export default function FloatingBriefingMini() {
               <>
                 <p className="text-[10px] text-zinc-500">{dateLabel(briefing.briefing_date)}</p>
                 <p className="mt-1 line-clamp-2 text-xs font-medium leading-snug text-zinc-100">
-                  {briefing.title ?? '모닝브리핑'}
+                  {briefingTitle ?? '모닝브리핑'}
                 </p>
 
                 {/* 진행 바 */}
@@ -212,7 +215,7 @@ export default function FloatingBriefingMini() {
                 </div>
 
                 {/* 스크립트 폴백 (오디오 없을 때) */}
-                {!hasAudio && briefing.script && (
+                {!hasAudio && briefingScript && (
                   <div className="mt-2">
                     <p className="mb-1 text-[10px] text-zinc-500">오디오 준비 전 · 스크립트 제공</p>
                     <button
@@ -224,7 +227,7 @@ export default function FloatingBriefingMini() {
                     </button>
                     {scriptOpen && (
                       <p className="mt-1.5 max-h-24 overflow-y-auto text-[10px] leading-relaxed text-zinc-400">
-                        {briefing.script}
+                        {briefingScript}
                       </p>
                     )}
                   </div>

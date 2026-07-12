@@ -20,6 +20,7 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import { ISSUE_STATUS_TONE } from '@/lib/admin/status-style'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,14 @@ const STATUS_LABEL: Record<IssueStatus, string> = {
   draft:     '초안',
   published: '발행',
   archived:  '보관',
+}
+
+function sanitizeIssueRow(issue: IssueRow): IssueRow {
+  return {
+    ...issue,
+    title: stripLlmArtifacts(issue.title),
+    summary: issue.summary ? stripLlmArtifacts(issue.summary) : issue.summary,
+  }
 }
 
 // ─── 키워드 칩 입력 ────────────────────────────────────────────────────────
@@ -165,7 +174,7 @@ export default function IssueManager() {
       return
     }
 
-    const rows = (data ?? []) as IssueRow[]
+    const rows = ((data ?? []) as IssueRow[]).map(sanitizeIssueRow)
 
     // 배정 콘텐츠 수 일괄 집계
     if (rows.length > 0) {
@@ -271,9 +280,16 @@ export default function IssueManager() {
 
     setIsSaving(true)
     try {
+      const cleanTitle = stripLlmArtifacts(form.title.trim())
+      if (!cleanTitle) {
+        setFormError('제목을 입력해주세요.')
+        return
+      }
+      const cleanSummary = form.summary.trim() ? stripLlmArtifacts(form.summary.trim()) : null
+
       const payload = {
-        title:          form.title.trim(),
-        summary:        form.summary.trim() || null,
+        title:          cleanTitle,
+        summary:        cleanSummary,
         status:         form.status,
         match_keywords: form.match_keywords,
       }

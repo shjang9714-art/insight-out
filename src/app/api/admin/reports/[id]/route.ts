@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeReportHtml } from '@/lib/reports/sanitize-html'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -78,10 +79,16 @@ export async function GET(
     .map((s) => (s as { content_id: string | null }).content_id)
     .filter((v): v is string => Boolean(v))
 
-  // 어드민 미리보기도 sanitize 우회 금지(276 §7) — 클라이언트는 서버가 살균한 HTML만 받는다.
-  const bodyHtmlSanitized = data.body_html ? sanitizeReportHtml(data.body_html) : null
+  const report = {
+    ...data,
+    summary: data.summary ? stripLlmArtifacts(data.summary) : null,
+    body_md: data.body_md ? stripLlmArtifacts(data.body_md) : null,
+  }
 
-  return NextResponse.json({ report: data, bodyHtmlSanitized, sourceIssueIds, contentIds })
+  // 어드민 미리보기도 sanitize 우회 금지(276 §7) — 클라이언트는 서버가 살균한 HTML만 받는다.
+  const bodyHtmlSanitized = data.body_html ? sanitizeReportHtml(stripLlmArtifacts(data.body_html)) : null
+
+  return NextResponse.json({ report, bodyHtmlSanitized, sourceIssueIds, contentIds })
 }
 
 /**

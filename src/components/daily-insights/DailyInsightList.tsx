@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 interface DailyInsightListProps {
   insights: DailyInsightRow[]
@@ -48,10 +49,10 @@ export default function DailyInsightList({ insights }: DailyInsightListProps) {
               >
                 {item.category && <CategoryBadge category={item.category} />}
                 <p className="mt-1.5 font-semibold text-foreground leading-snug transition-colors group-hover:text-brand-700">
-                  {item.headline}
+                  {stripLlmArtifacts(item.headline)}
                 </p>
                 <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground leading-relaxed">
-                  {item.summary_ko}
+                  {stripLlmArtifacts(item.summary_ko)}
                 </p>
               </Link>
             ))}

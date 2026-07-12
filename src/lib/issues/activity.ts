@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -133,8 +134,8 @@ export function computeIssueActivity(
 
     return {
       id: issue.id,
-      title: issue.title,
-      summary: issue.summary,
+      title: stripLlmArtifacts(issue.title),
+      summary: issue.summary ? stripLlmArtifacts(issue.summary) : issue.summary,
       recentCount: cur,
       prevCount: prev,
       changePct,

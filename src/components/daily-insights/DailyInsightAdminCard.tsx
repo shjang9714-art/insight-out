@@ -17,6 +17,7 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { DAILY_INSIGHT_CATEGORIES } from '@/lib/daily-insights/constants'
 import { DAILY_INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 const STATUS_LABEL: Record<DailyInsightRow['status'], string> = {
   published: '게시됨',
@@ -210,8 +211,8 @@ export default function DailyInsightAdminCard({
       ) : (
         <div className="space-y-3">
           <div>
-            <p className="font-semibold text-foreground leading-snug">{card.headline}</p>
-            <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{card.summary_ko}</p>
+            <p className="font-semibold text-foreground leading-snug">{stripLlmArtifacts(card.headline)}</p>
+            <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{stripLlmArtifacts(card.summary_ko)}</p>
           </div>
 
           {(
@@ -223,7 +224,7 @@ export default function DailyInsightAdminCard({
           ).map(([key, label]) =>
             card[key] ? (
               <p key={key} className="text-sm text-foreground leading-relaxed border-l-2 border-brand-600/40 pl-3">
-                <span className="font-medium">{label}</span> — {card[key]}
+                <span className="font-medium">{label}</span> — {stripLlmArtifacts(card[key] ?? '')}
               </p>
             ) : null
           )}

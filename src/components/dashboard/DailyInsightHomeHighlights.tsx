@@ -3,6 +3,7 @@ import { ArrowUpRight, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getKstDateString } from '@/lib/date'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 /** day_of('YYYY-MM-DD')는 이미 생성 시점에 getKstDateString 으로 확정된 KST 달력일 —
  * 재변환 없이 그대로 쪼개야 Date 재구성 과정에서 생기는 자정 근처 하루 밀림을 피한다. */
@@ -86,10 +87,10 @@ export default async function DailyInsightHomeHighlights() {
                 </span>
               )}
               <h3 className="text-[17px] font-bold leading-snug tracking-tight text-foreground transition-colors group-hover:text-brand-700">
-                {card.headline}
+                {stripLlmArtifacts(card.headline)}
               </h3>
               <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">
-                {card.summary_ko}
+                {stripLlmArtifacts(card.summary_ko)}
               </p>
             </Link>
           </li>

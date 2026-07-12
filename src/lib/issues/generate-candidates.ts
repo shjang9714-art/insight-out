@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { llmComplete } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { tokenizeTitle, jaccardSimilarity, keywordsJaccard } from '@/lib/feed-dedup'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 공개 타입 ────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,8 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
 1. 추측 금지 — 제공된 사실만 기술.
 2. content_ids는 반드시 입력 목록에 존재하는 id만.
 3. match_keywords는 이슈를 자동 감지할 핵심 단어 5~8개.
-4. JSON 객체만 출력.
+4. title·summary 서술문 안에 <quote> 같은 태그나 [content_id]·[uuid] 형태의 근거 ID를 절대 쓰지 마라. 근거는 content_ids 배열로만 표현한다.
+5. JSON 객체만 출력.
 
 출력 스키마:
 {
@@ -67,8 +69,8 @@ function parseCandidate(raw: string, validIdSet: Set<string>): Omit<IssueCandida
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
   const obj = parsed as Record<string, unknown>
 
-  const title = typeof obj.title === 'string' ? obj.title.trim() : ''
-  const summary = typeof obj.summary === 'string' ? obj.summary.trim() : ''
+  const title = typeof obj.title === 'string' ? stripLlmArtifacts(obj.title.trim()) : ''
+  const summary = typeof obj.summary === 'string' ? stripLlmArtifacts(obj.summary.trim()) : ''
   if (!title || !summary) return null
 
   const match_keywords = Array.isArray(obj.match_keywords)

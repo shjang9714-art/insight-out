@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, startTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,8 @@ export default function MorningBriefingPlayer({ briefing: briefingProp }: Mornin
   const progress   = duration > 0 ? currentTime / duration : 0
   const dashOffset = WHEEL_CIRC * (1 - progress)
   const hasAudio   = !!briefing?.audio_url
+  const briefingTitle = briefing?.title ? stripLlmArtifacts(briefing.title) : null
+  const briefingScript = briefing?.script ? stripLlmArtifacts(briefing.script) : null
 
   const dateLabel = briefing
     ? new Date(briefing.briefing_date + 'T00:00:00').toLocaleDateString('ko-KR', {
@@ -167,7 +170,7 @@ export default function MorningBriefingPlayer({ briefing: briefingProp }: Mornin
       <div className="mb-4 rounded-xl bg-gray-900/90 px-3 py-3 dark:bg-gray-950/90">
         <p className="text-[10px] text-gray-400">{dateLabel}</p>
         <p className="mt-0.5 truncate text-xs font-semibold leading-snug text-white">
-          {briefing.title ?? '모닝브리핑'}
+          {briefingTitle ?? '모닝브리핑'}
         </p>
         <p className="mt-1 text-[10px] tabular-nums text-gray-400">
           {hasAudio
@@ -277,7 +280,7 @@ export default function MorningBriefingPlayer({ briefing: briefingProp }: Mornin
       )}
 
       {/* 스크립트 접힘/펼침 */}
-      {briefing.script && (
+      {briefingScript && (
         <div className="mt-3">
           <button
             type="button"
@@ -289,7 +292,7 @@ export default function MorningBriefingPlayer({ briefing: briefingProp }: Mornin
           {scriptOpen && (
             <div className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-gray-900/80 px-3 py-2.5 dark:bg-gray-950/80">
               <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-gray-200">
-                {briefing.script}
+                {briefingScript}
               </p>
             </div>
           )}

@@ -5,6 +5,7 @@ import PageContainer from '@/components/PageContainer'
 import DailyInsightDetail from '@/components/daily-insights/DailyInsightDetail'
 import { createClient } from '@/lib/supabase/server'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -16,8 +17,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { data } = await supabase.from('daily_insights').select('headline, summary_ko').eq('id', id).single()
 
   return {
-    title: data ? `${data.headline} | Insight Out` : '핵심 Insight | Insight Out',
-    description: data?.summary_ko ?? 'LG U+ B2B 시장 정보 핵심 Insight',
+    title: data ? `${stripLlmArtifacts(data.headline)} | Insight Out` : '핵심 Insight | Insight Out',
+    description: data?.summary_ko ? stripLlmArtifacts(data.summary_ko) : 'LG U+ B2B 시장 정보 핵심 Insight',
   }
 }
 

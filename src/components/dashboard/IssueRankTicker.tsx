@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export interface TickerIssue {
   id: string
@@ -47,6 +48,7 @@ function HashtagPill({ topHashtag }: { topHashtag: string | null | undefined }) 
 
 function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
   const sentimentTotal = issue.sentimentPos + issue.sentimentNeg
+  const title = stripLlmArtifacts(issue.title)
   return (
     <Link
       href={issue.contentId ? `/dashboard/contents/${issue.contentId}` : `/dashboard/issues/${issue.id}`}
@@ -66,7 +68,7 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
 
       {/* 제목 */}
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground group-hover:text-brand-600 transition-colors">
-        {issue.title}
+        {title}
       </span>
 
       {/* 오늘 발행 건수 + 논조 */}
@@ -93,6 +95,8 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
 
 // 실검 스트립용 한 줄 로우 — 순위 + 제목만, 작은 변화 표식. 카드/배지 없이 담백하게.
 function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
+  const title = stripLlmArtifacts(issue.title)
+
   return (
     <Link
       href={issue.contentId ? `/dashboard/contents/${issue.contentId}` : `/dashboard/issues/${issue.id}`}
@@ -112,7 +116,7 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
         </span>
       )}
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors group-hover:text-brand-600">
-        {issue.title}
+        {title}
       </span>
       <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
         오늘 {issue.todayCount}건

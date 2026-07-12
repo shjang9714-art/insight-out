@@ -19,6 +19,7 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import InfoHelp from '@/components/admin/ui/InfoHelp'
 import { INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
 import { INSIGHT_GENERATION_HELP, COMPANY_INSIGHT_HELP } from '@/lib/admin/help'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 상태 배지 ────────────────────────────────────────────────────────────────
 
@@ -338,7 +339,7 @@ export default function InsightsAdminPage() {
                     </span>
                   </div>
                   <p className="text-sm font-semibold text-foreground leading-snug">
-                    {card.headline}
+                    {stripLlmArtifacts(card.headline)}
                   </p>
                 </div>
                 {/* 액션 버튼 */}
@@ -383,7 +384,7 @@ export default function InsightsAdminPage() {
               {/* 시사점 */}
               {card.implication && (
                 <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-brand-600/30 pl-3">
-                  {card.implication}
+                  {stripLlmArtifacts(card.implication)}
                 </p>
               )}
 

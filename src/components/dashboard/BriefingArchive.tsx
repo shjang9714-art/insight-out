@@ -5,6 +5,7 @@ import { Volume2, FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import MorningBriefingPlayer from '@/components/dashboard/MorningBriefingPlayer'
 import { cn } from '@/lib/utils'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 interface Briefing {
   id: string
@@ -28,12 +29,21 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
   weekday: 'short',
 })
 
+function sanitizeBriefing(briefing: Briefing): Briefing {
+  return {
+    ...briefing,
+    title: briefing.title ? stripLlmArtifacts(briefing.title) : briefing.title,
+    script: briefing.script ? stripLlmArtifacts(briefing.script) : briefing.script,
+  }
+}
+
 export default function BriefingArchive({ briefings }: Props) {
+  const sanitizedBriefings = briefings.map(sanitizeBriefing)
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    briefings[0]?.id
+    sanitizedBriefings[0]?.id
   )
 
-  if (briefings.length === 0) {
+  if (sanitizedBriefings.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
         아직 공개된 브리핑이 없습니다.
@@ -41,13 +51,13 @@ export default function BriefingArchive({ briefings }: Props) {
     )
   }
 
-  const selected = briefings.find((b) => b.id === selectedId) ?? briefings[0]
+  const selected = sanitizedBriefings.find((b) => b.id === selectedId) ?? sanitizedBriefings[0]
 
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]">
       {/* 목록 */}
       <div className="space-y-2">
-        {briefings.map((briefing) => {
+        {sanitizedBriefings.map((briefing) => {
           const isSelected = briefing.id === selectedId
           const isArchived = briefing.status === 'archived'
 

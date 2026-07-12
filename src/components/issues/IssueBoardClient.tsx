@@ -15,6 +15,7 @@ import {
 import LensSwitcher from '@/components/lens/LensSwitcher'
 import type { IssueCard } from '@/lib/issues/activity'
 import { buildIssueInsight, buildIssueRelevance } from '@/lib/issues/interpret'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 렌즈 배지 라벨 ────────────────────────────────────────────────────────────
 
@@ -54,6 +55,11 @@ interface Props {
 
 export default function IssueBoardClient({ cards, showLensSwitcher = true }: Props) {
   const ctx = useLensContext()
+  const sanitizedCards = cards.map((card) => ({
+    ...card,
+    title: stripLlmArtifacts(card.title),
+    summary: card.summary ? stripLlmArtifacts(card.summary) : card.summary,
+  }))
   const [activeLens, setActiveLens] = useActiveLens()
   const [sortBy, setSortBy] = useState<SortKey>(() => {
     if (typeof window === 'undefined') return 'surge'
@@ -69,7 +75,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
     try { localStorage.setItem(SORT_STORAGE_KEY, key) } catch { /* noop */ }
   }
 
-  const withLens = cards.map(card => {
+  const withLens = sanitizedCards.map(card => {
     const target: LensTarget = { names: [card.title] }
     const score   = lensScore(activeLens, ctx, target)
     const matched = activeLens !== 'all' && matchesLens(activeLens, ctx, target)
@@ -127,7 +133,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
       <div className="mb-4">
         <p className="text-sm text-muted-foreground">
           시장 주요 이슈를 추적합니다.
-          {cards.length > 0 && ` ${cards.length}개 이슈 모니터링 중`}
+          {sanitizedCards.length > 0 && ` ${sanitizedCards.length}개 이슈 모니터링 중`}
         </p>
       </div>
 

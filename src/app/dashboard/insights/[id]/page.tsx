@@ -16,6 +16,7 @@ import {
   RELEVANCE_LABEL,
   RELEVANCE_CLS,
 } from '@/lib/insight/card-meta'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const dynamic = 'force-dynamic'
 
@@ -120,6 +121,9 @@ export default async function InsightDetailPage({ params }: PageProps) {
   const relatedKeywords = computeRelatedKeywords(card, Object.fromEntries(
     Object.entries(contentMap).map(([cid, meta]) => [cid, { matchedKeywords: meta.matched_keywords }])
   ))
+  const cardHeadline = card.card_headline ? stripLlmArtifacts(card.card_headline) : null
+  const headline = stripLlmArtifacts(card.headline)
+  const implication = card.implication ? stripLlmArtifacts(card.implication) : null
 
   const backHref = card.scope === 'company' ? '/dashboard/entities?view=watchlist' : '/dashboard/ai-analysis'
 
@@ -151,18 +155,18 @@ export default async function InsightDetailPage({ params }: PageProps) {
           </span>
         </div>
         <h1 className="text-2xl font-bold text-foreground leading-snug">
-          {card.card_headline ?? card.headline}
+          {cardHeadline ?? headline}
         </h1>
-        {card.card_headline && card.card_headline !== card.headline && (
-          <p className="text-base text-muted-foreground leading-relaxed">{card.headline}</p>
+        {cardHeadline && cardHeadline !== headline && (
+          <p className="text-base text-muted-foreground leading-relaxed">{headline}</p>
         )}
       </div>
 
       {/* 시사점 */}
-      {card.implication && (
+      {implication && (
         <div className="mb-8 space-y-1.5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">시사점</h2>
-          <p className="text-base text-foreground leading-relaxed">{card.implication}</p>
+          <p className="text-base text-foreground leading-relaxed">{implication}</p>
         </div>
       )}
 

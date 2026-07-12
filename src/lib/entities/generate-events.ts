@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── signal_type enum (content_signals와 동일) ────────────────────────────────
 
@@ -44,7 +45,8 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
 3. citations는 반드시 입력 목록에 존재하는 content_id만 사용.
 4. event_date는 YYYY-MM-DD 형식.
 5. signal_type은 다음 중 하나(해당 없으면 null): 경쟁사동향, 규제, 정부, 신제품, 출시, 투자, M&A, 기술트렌드.
-6. JSON 배열만 출력. 최대 15개 사건.
+6. headline·detail 서술문 안에 <quote> 같은 태그나 [content_id]·[uuid] 형태의 근거 ID를 절대 쓰지 마라. 근거는 citations 배열로만 표현한다.
+7. JSON 배열만 출력. 최대 15개 사건.
 
 출력 스키마 (배열):
 [
@@ -93,7 +95,7 @@ function parseAndValidate(raw: string, validIdSet: Set<string>): EntityEvent[] {
     if (isNaN(parsedDate.getTime())) continue
 
     // headline 필수
-    const headline = typeof ev.headline === 'string' ? ev.headline.trim() : ''
+    const headline = typeof ev.headline === 'string' ? stripLlmArtifacts(ev.headline.trim()) : ''
     if (!headline) continue
 
     // signal_type enum 가드
@@ -101,7 +103,9 @@ function parseAndValidate(raw: string, validIdSet: Set<string>): EntityEvent[] {
     const signal_type = rawSignal && VALID_SIGNAL_TYPES.has(rawSignal) ? rawSignal : null
 
     // detail
-    const detail = typeof ev.detail === 'string' && ev.detail.trim() ? ev.detail.trim() : null
+    const detail = typeof ev.detail === 'string' && ev.detail.trim()
+      ? stripLlmArtifacts(ev.detail.trim())
+      : null
 
     // sentiment
     const rawSentiment = typeof ev.sentiment === 'string' ? ev.sentiment.trim() : null

@@ -13,6 +13,7 @@ import EntityEventTimeline, {
 } from '@/components/entities/EntityEventTimeline'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
 import PageContainer from '@/components/PageContainer'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const dynamic = 'force-dynamic'
 
@@ -160,8 +161,8 @@ async function loadEntityEvents(
       id: row.id,
       event_date: row.event_date,
       signal_type: row.signal_type,
-      headline: row.headline,
-      detail: row.detail,
+      headline: stripLlmArtifacts(row.headline),
+      detail: row.detail ? stripLlmArtifacts(row.detail) : row.detail,
       sentiment: row.sentiment,
       citations: Array.isArray(row.citations) ? row.citations : [],
     }))
@@ -526,7 +527,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
                 href={`/dashboard/issues/${issue.id}`}
                 className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-brand-600/40 hover:text-brand-600"
               >
-                {issue.title}
+                {stripLlmArtifacts(issue.title)}
               </Link>
             ))}
           </div>

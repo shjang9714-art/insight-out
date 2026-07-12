@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { llmComplete } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 공개 타입 ────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,8 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
 1. 추측 금지 — 제공된 사실만 기술.
 2. 각 주장의 근거 content_id를 citations 배열에 명시.
 3. citations는 반드시 입력 목록에 존재하는 content_id만 사용.
-4. JSON만 출력. 다른 텍스트 포함 금지.
+4. situation·drivers·sentiment_read·implications 등 서술 필드에는 <quote> 같은 태그나 대괄호 id([...])를 절대 넣지 말 것. 근거는 citations 배열로만 제공한다.
+5. JSON만 출력. 다른 텍스트 포함 금지.
 
 출력 스키마:
 {
@@ -96,7 +98,13 @@ function parseAndValidate(raw: string, validIdSet: Set<string>): IssueBrief | nu
   // 핵심 필드 비면 실패
   if (!situation || drivers.length === 0 || implications.length === 0) return null
 
-  return { situation, drivers, sentiment_read, implications, citations }
+  return {
+    situation: stripLlmArtifacts(situation),
+    drivers: drivers.map(stripLlmArtifacts),
+    sentiment_read: stripLlmArtifacts(sentiment_read),
+    implications: implications.map(stripLlmArtifacts),
+    citations,
+  }
 }
 
 // ─── 메인 함수 ────────────────────────────────────────────────────────────────

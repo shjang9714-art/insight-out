@@ -2,6 +2,7 @@ import 'server-only'
 
 import { llmComplete } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 공개 타입 ────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,8 @@ const SYSTEM_PROMPT =
   '   (c) detail — 헤드라인을 뒷받침하는 애널리스트 분석 정확히 2문장, 한국어 75~130자. 첫 문장은 왜 이것이 당사에 기회/위협인지(구도·동인), 둘째 문장은 당사가 무엇을 준비·대응해야 하는지 구체적 함의. 완결된 서술문으로 각 문장을 마침표로 끝낸다.\n' +
   '4. 입력에 없는 사실·수치 창작 금지. 반드시 서로 다른 기사에서 정확히 3건을 뽑아라(입력 기사가 3건 미만일 때만 그만큼). 같은 기사 중복 금지.\n' +
   '5. 각 인사이트에 근거 기사의 content_id를 정확히 매핑한다. 목록에 없는 id 사용 금지.\n' +
-  '6. JSON만 출력.\n\n' +
+  '6. keyword·insight·detail 서술문 안에 <quote> 같은 태그나 [content_id]·[uuid] 형태의 근거 ID를 절대 쓰지 마라. 근거는 content_id 필드로만 표현한다.\n' +
+  '7. JSON만 출력.\n\n' +
   '출력 스키마:\n' +
   '{"highlights":[{"content_id":"<입력 id>","keyword":"임팩트 키워드","insight":"헤드라인 한 줄","detail":"뒷받침 분석 2문장"}]}'
 
@@ -61,12 +63,12 @@ function parseAndValidate(raw: string, validIds: Set<string>): BriefingHighlight
     const h = item as Record<string, unknown>
 
     const contentId = typeof h.content_id === 'string' ? h.content_id.trim() : ''
-    const insight = typeof h.insight === 'string' ? h.insight.trim() : ''
+    const insight = typeof h.insight === 'string' ? stripLlmArtifacts(h.insight.trim()) : ''
     // 뒷받침 분석 2문장. 없으면 빈 문자열(카드에서 dek 숨김).
-    const detail = typeof h.detail === 'string' ? h.detail.trim() : ''
+    const detail = typeof h.detail === 'string' ? stripLlmArtifacts(h.detail.trim()) : ''
     // 키워드: 대괄호·따옴표 등 장식 제거 후 12자 이내로 절단. 없으면 빈 문자열(카드에서 태그 숨김).
     const keyword = typeof h.keyword === 'string'
-      ? h.keyword.trim().replace(/^[[\("'‘“]+|[\]\)"'’”]+$/g, '').trim().slice(0, 12)
+      ? stripLlmArtifacts(h.keyword.trim()).replace(/^[[\("'‘“]+|[\]\)"'’”]+$/g, '').trim().slice(0, 12)
       : ''
 
     if (!contentId || !insight) continue

@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { BRIEFING_STATUS_TONE } from '@/lib/admin/status-style'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 type BriefingStatus = 'draft' | 'published' | 'archived' | 'failed'
 
@@ -272,6 +273,8 @@ export default function BriefingManager() {
             const isExpanded = expandedIds.has(briefing.id)
             const isRowPending = pendingId === briefing.id
             const rowError = rowErrors[briefing.id]
+            const briefingTitle = briefing.title ? stripLlmArtifacts(briefing.title) : null
+            const briefingScript = briefing.script ? stripLlmArtifacts(briefing.script) : null
 
             return (
               <div
@@ -288,7 +291,7 @@ export default function BriefingManager() {
                       <StatusBadge tone={BRIEFING_STATUS_TONE[briefing.status]} label={STATUS_LABELS[briefing.status]} />
                     </div>
                     <p className="mt-1 font-semibold text-foreground line-clamp-1">
-                      {briefing.title ?? '제목 없음'}
+                      {briefingTitle ?? '제목 없음'}
                     </p>
                     {briefing.status === 'failed' && briefing.error_reason && (
                       <p className="mt-1 flex items-start gap-1 text-xs text-destructive">
@@ -435,9 +438,9 @@ export default function BriefingManager() {
                   </button>
                   {isExpanded && (
                     <div className="px-5 pb-5">
-                      {briefing.script ? (
+                      {briefingScript ? (
                         <div className="max-h-60 overflow-y-auto rounded-lg bg-muted px-4 py-3 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                          {briefing.script}
+                          {briefingScript}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">스크립트 없음</p>

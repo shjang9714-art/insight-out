@@ -7,6 +7,7 @@ import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminCompetitorWeeklyGenerate from '@/components/admin/AdminCompetitorWeeklyGenerate'
 import AdminCompetitorWeeklySchedule from '@/components/admin/AdminCompetitorWeeklySchedule'
 import { cn } from '@/lib/utils'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { ListChecks } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -90,7 +91,7 @@ export default async function CompetitorWeeklyAdminPage() {
                     )}
                   </div>
                   {r.summary && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">{r.summary}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{stripLlmArtifacts(r.summary)}</p>
                   )}
                 </div>
               </div>

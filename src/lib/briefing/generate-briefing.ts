@@ -5,6 +5,7 @@ import { llmCompleteDetailed } from '@/lib/llm'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { generateHighlights } from '@/lib/briefing/highlights'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 // ─── 환경변수 기본값 ─────────────────────────────────────────────────────────
 // 윈도우 48h: 일일 크롤이 배치로 들어와 24h 창은 후보가 한 자릿수까지 떨어진다(라이브 확인: h24=7, h48=128).
@@ -128,6 +129,7 @@ const SYSTEM_PROMPT =
   '- 딱딱한 보도체·억지 통신 연결·공허한 미사여구 금지. 차분하고 신뢰감 있되 통찰이 담긴 진행자.\n\n' +
   '규칙:\n' +
   '- TTS 로 읽힐 글이다. 마크다운·이모지·불릿·따옴표·괄호 메모 금지. 순수 문장만.\n' +
+  '- 스크립트 서술문 안에 <quote> 같은 태그나 [content_id]·[uuid] 형태의 근거 ID를 절대 쓰지 마라. 근거는 별도 데이터로 처리된다.\n' +
   '- 영어 약어·숫자는 자연스러운 한국어 구어로(예: "AI" 는 "에이아이", "5G" 는 "파이브지"). 단위·금액도 읽기 쉽게.\n' +
   '- 사실만. 입력에 없는 수치·사건 추측·창작 금지. 다만 입력된 사실에 근거한 해석·시사점은 적극적으로 제시하라. 회사명·출처는 입력대로.\n' +
   '- 전체 분량 1,500~2,200자(약 4~5분 낭독). 문장은 짧고 끊어 읽기 쉽게.\n' +
@@ -306,7 +308,7 @@ function buildUserPrompt(articles: ContentCandidate[], dateParts: { year: number
 function cleanScript(raw: string): string {
   let s = raw.trim()
   s = s.replace(/^(스크립트|Script)\s*[:：]\s*/i, '')
-  return s.trim()
+  return stripLlmArtifacts(s).trim()
 }
 
 // ─── 메인 함수 ───────────────────────────────────────────────────────────────

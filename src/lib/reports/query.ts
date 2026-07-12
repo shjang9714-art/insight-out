@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AiReportType, AiReportStatus } from '@/lib/types'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export interface PublishedReportCard {
   id: string
@@ -29,7 +30,10 @@ export async function getPublishedReports(supabase: SupabaseClient): Promise<Pub
       }
       return []
     }
-    return (data ?? []) as PublishedReportCard[]
+    return ((data ?? []) as PublishedReportCard[]).map((report) => ({
+      ...report,
+      summary: report.summary ? stripLlmArtifacts(report.summary) : null,
+    }))
   } catch (e) {
     console.error('[reports] getPublishedReports 실패:', e)
     return []

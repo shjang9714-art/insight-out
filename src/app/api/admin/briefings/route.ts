@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,46 @@ function getKstPeriod(): string {
     year: 'numeric',
     month: '2-digit',
   }).format(new Date())
+}
+
+interface BriefingHighlight {
+  content_id: string
+  keyword?: string
+  insight: string
+  detail?: string
+}
+
+interface BriefingRow {
+  title: string | null
+  script: string | null
+  highlights: BriefingHighlight[] | null
+}
+
+function sanitizeHighlights(highlights: unknown): BriefingHighlight[] | null {
+  if (!Array.isArray(highlights)) return null
+
+  return highlights
+    .filter((item): item is BriefingHighlight => (
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as BriefingHighlight).content_id === 'string' &&
+      typeof (item as BriefingHighlight).insight === 'string'
+    ))
+    .map((item) => ({
+      ...item,
+      keyword: typeof item.keyword === 'string' ? stripLlmArtifacts(item.keyword) : item.keyword,
+      insight: stripLlmArtifacts(item.insight),
+      detail: typeof item.detail === 'string' ? stripLlmArtifacts(item.detail) : item.detail,
+    }))
+}
+
+function sanitizeBriefing<T extends BriefingRow>(briefing: T): T {
+  return {
+    ...briefing,
+    title: briefing.title ? stripLlmArtifacts(briefing.title) : briefing.title,
+    script: briefing.script ? stripLlmArtifacts(briefing.script) : briefing.script,
+    highlights: sanitizeHighlights(briefing.highlights),
+  }
 }
 
 async function verifyAdmin() {
@@ -84,7 +125,9 @@ export async function GET() {
     return NextResponse.json({
       period,
       tts: { used, cap },
-      briefings: briefingsResult.data ?? [],
+      briefings: (briefingsResult.data ?? []).map((briefing) =>
+        sanitizeBriefing(briefing as BriefingRow)
+      ),
     })
   } catch (err) {
     console.error('[GET /api/admin/briefings] 오류:', err)
