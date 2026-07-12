@@ -1,0 +1,158 @@
+// 190 — MCP 토큰 발급·조회·폐기 API (어드민 전용)
+//
+// 평문 토큰은 발급 응답에서 딱 1번만 돌려준다. DB 에는 sha256 해시만 남으므로
+// 이후에는 어드민도 원문을 볼 수 없다 — 분실 시 재발급이 유일한 방법.
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { generateToken, hashToken, tokenPrefix, MCP_SCOPES, type McpScope } from '@/lib/mcp/auth'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+const TABLE_MISSING_CODE = '42P01'
+
+/** 로그인 + admin 확인. 통과 시 현재 어드민의 user id 반환. */
+async function verifyAdmin(): Promise<{ userId: string } | NextResponse> {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+        },
+      },
+    }
+  )
+
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) {
+    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+  }
+
+  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
+  if (!profile || profile.role !== 'admin') {
+    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
+  }
+
+  return { userId: user.id }
+}
+
+function tableMissing() {
+  return NextResponse.json(
+    { error: 'mcp_tokens 테이블이 없습니다. docs/sql-handoff/190-mcp-tokens.sql 을 Supabase 에 적용해주세요.' },
+    { status: 503 }
+  )
+}
+
+/** GET — 발급된 토큰 목록(평문 없음) + 토큰을 줄 수 있는 팀원 목록 */
+export async function GET() {
+  const auth = await verifyAdmin()
+  if (auth instanceof NextResponse) return auth
+
+  const admin = createAdminClient()
+
+  const [tokensRes, usersRes] = await Promise.all([
+    admin
+      .from('mcp_tokens')
+      .select('id, label, token_prefix, scopes, last_used_at, expires_at, revoked_at, created_at, users!inner(id, name, email)')
+      .order('created_at', { ascending: false }),
+    admin.from('users').select('id, name, email').order('name', { ascending: true }),
+  ])
+
+  if (tokensRes.error) {
+    if (tokensRes.error.code === TABLE_MISSING_CODE) return tableMissing()
+    return NextResponse.json({ error: tokensRes.error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    tokens: tokensRes.data ?? [],
+    users:  usersRes.data ?? [],
+  })
+}
+
+/** POST — 팀원에게 새 토큰 발급. 평문은 이 응답에서만 노출된다. */
+export async function POST(req: NextRequest) {
+  const auth = await verifyAdmin()
+  if (auth instanceof NextResponse) return auth
+
+  let body: { user_id?: string; label?: string; scopes?: string[]; expires_at?: string | null }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: '잘못된 요청 형식입니다.' }, { status: 400 })
+  }
+
+  const { user_id, label, scopes, expires_at } = body
+  if (!user_id) {
+    return NextResponse.json({ error: '토큰을 발급할 팀원(user_id)을 지정해주세요.' }, { status: 400 })
+  }
+
+  const validScopes = (scopes ?? ['read', 'ops']).filter((s): s is McpScope =>
+    (MCP_SCOPES as readonly string[]).includes(s)
+  )
+  if (validScopes.length === 0) {
+    return NextResponse.json({ error: '유효한 스코프를 하나 이상 선택해주세요.' }, { status: 400 })
+  }
+
+  const plain = generateToken()
+  const admin = createAdminClient()
+
+  const { data, error } = await admin
+    .from('mcp_tokens')
+    .insert({
+      user_id,
+      label:        label ?? '',
+      token_hash:   hashToken(plain),
+      token_prefix: tokenPrefix(plain),
+      scopes:       validScopes,
+      expires_at:   expires_at ?? null,
+      created_by:   auth.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    if (error.code === TABLE_MISSING_CODE) return tableMissing()
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    id: (data as { id: string }).id,
+    token: plain, // ⚠️ 최초 1회만. 다시는 조회 불가.
+    scopes: validScopes,
+  })
+}
+
+/** PATCH — 토큰 폐기 (삭제가 아니라 revoked_at 기록 — 감사 이력 보존) */
+export async function PATCH(req: NextRequest) {
+  const auth = await verifyAdmin()
+  if (auth instanceof NextResponse) return auth
+
+  let body: { id?: string; action?: 'revoke' }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: '잘못된 요청 형식입니다.' }, { status: 400 })
+  }
+
+  if (!body.id) return NextResponse.json({ error: 'id 가 필요합니다.' }, { status: 400 })
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('mcp_tokens')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('id', body.id)
+
+  if (error) {
+    if (error.code === TABLE_MISSING_CODE) return tableMissing()
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
+}

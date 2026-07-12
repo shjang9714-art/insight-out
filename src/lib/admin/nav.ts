@@ -27,6 +27,7 @@ import {
   FileText,
   CalendarClock,
   History,
+  KeyRound,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -241,6 +242,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '홈 화면 구성',
         description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.',
         icon: LayoutTemplate,
+      },
+      {
+        href: '/admin/mcp',
+        label: 'MCP 토큰',
+        description: '팀원이 각자의 Claude에서 인사이트 아웃에 기록할 수 있도록 토큰을 발급·폐기합니다.',
+        icon: KeyRound,
       },
       {
         href: '/admin/maintenance',

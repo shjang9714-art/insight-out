@@ -1,207 +1,65 @@
+// 190 — 인사이트 아웃 MCP 서버 (/api/mcp)
+//
+// 목적: 팀원 각자의 Claude(Code/Desktop)가 인사이트 아웃에 직접 기록한다.
+//   · 작업계획/결과   → ops_requests (post_type='work')
+//   · 전략보고서      → ai_reports + ai_report_sources
+//   · 핵심인사이트    → key_insights
+//   · 근거 조회·검색  → contents / issues / entities
+//
+// 인증(188 → 190 변경):
+//   188 은 팀 공용 단일 MCP_TOKEN 하나였다. "누가 썼는지"를 알 수 없어
+//   ai_reports.user_id(NOT NULL FK) 같은 테이블에는 애초에 쓸 수 없었다.
+//   190 은 mcp_tokens 테이블로 1인 1토큰. 토큰 → user_id 가 확정되므로
+//   작성자 기록·본인 글 수정 제한·감사 추적이 모두 가능해진다.
+//
+// 발행 게이트:
+//   기본은 초안(보고서 published_at=null / 인사이트 needs_review).
+//   토큰에 publish 스코프가 있어야만 서비스에 즉시 노출되는 상태로 저장된다.
+//   → 에이전트가 실수로 사용자 화면에 글을 올리는 사고를 구조적으로 차단.
+
 import { createMcpHandler, withMcpAuth } from 'mcp-handler'
-import { z } from 'zod'
-import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  REQUEST_STATUSES,
-  ANNOUNCEMENT_STATUSES,
-  REQUEST_KINDS,
-  type OpsRequestRow,
-} from '@/lib/admin/ops-requests'
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
+import { authenticateToken } from '@/lib/mcp/auth'
+import { registerReadTools } from '@/lib/mcp/tools/read'
+import { registerOpsTools } from '@/lib/mcp/tools/ops'
+import { registerReportTools } from '@/lib/mcp/tools/reports'
+import { registerInsightTools } from '@/lib/mcp/tools/insights'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const POST_TYPES = ['request', 'announcement'] as const
-const ALL_STATUSES = [...REQUEST_STATUSES, ...ANNOUNCEMENT_STATUSES]
-const TABLE_MISSING_CODE = '42P01'
-
-function textResult(text: string) {
-  return { content: [{ type: 'text' as const, text }] }
-}
-
-function tableMissingResult() {
-  return textResult('ops_requests 테이블이 아직 적용되지 않았습니다(42P01). 187 SQL 핸드오프 적용 후 다시 시도해주세요.')
-}
-
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
+// 툴은 요청과 무관하게 1회 등록된다. 권한(스코프) 검사는 각 툴 콜백 안에서
+// extra.authInfo 를 읽어 수행한다 — 등록 시점에는 호출자가 누구인지 알 수 없다.
 const mcpHandler = createMcpHandler(
   (server) => {
-    server.registerTool(
-      'ops_request_list',
-      {
-        title: '운영 요청/공지 목록 조회',
-        description:
-          '운영 게시판(ops_requests)에서 요청 또는 공지 목록을 조회합니다. ' +
-          'post_type 기본값은 request이며, status 미지정 시 요청은 미완료(대기+진행)만 반환합니다.',
-        inputSchema: {
-          post_type: z.enum(POST_TYPES).optional(),
-          status: z.string().optional(),
-          owner: z.string().optional(),
-          limit: z.number().int().min(1).max(100).optional(),
-        },
-      },
-      async ({ post_type, status, owner, limit }) => {
-        const postType = post_type ?? 'request'
-        try {
-          const admin = createAdminClient()
-          let query = admin
-            .from('ops_requests')
-            .select('*')
-            .eq('post_type', postType)
-            .order('pinned', { ascending: false })
-            .order('updated_at', { ascending: false })
-            .limit(limit ?? 20)
-
-          if (status) {
-            query = query.eq('status', status)
-          } else if (postType === 'request') {
-            query = query.in('status', ['pending', 'in_progress'])
-          }
-          if (owner) query = query.eq('owner', owner)
-
-          const { data, error } = await query
-          if (error) {
-            if (error.code === TABLE_MISSING_CODE) return tableMissingResult()
-            throw error
-          }
-
-          const rows = (data ?? []) as OpsRequestRow[]
-          if (rows.length === 0) return textResult('조건에 맞는 게시글이 없습니다.')
-
-          const lines = rows.map((r) =>
-            `- [${r.status}] ${r.title} (종류:${r.kind}, 담당:${r.owner ?? '-'}, ref:${r.ref ?? '-'}, 업데이트:${r.updated_at}) id=${r.id}`
-          )
-          return textResult(lines.join('\n'))
-        } catch (err) {
-          return textResult(`조회 실패: ${errMessage(err)}`)
-        }
-      }
-    )
-
-    server.registerTool(
-      'ops_request_create',
-      {
-        title: '운영 요청/공지 생성',
-        description: '운영 게시판에 새 요청(SQL·인프라·설정 등) 또는 공지를 등록합니다.',
-        inputSchema: {
-          title: z.string().min(1),
-          body: z.string().optional(),
-          kind: z.enum(REQUEST_KINDS).optional(),
-          owner: z.string().optional(),
-          ref: z.string().optional(),
-          post_type: z.enum(POST_TYPES).optional(),
-          created_by: z.string().optional(),
-        },
-      },
-      async ({ title, body, kind, owner, ref, post_type, created_by }) => {
-        const postType = post_type ?? 'request'
-        const payload = {
-          post_type:  postType,
-          title,
-          body:       body ?? null,
-          kind:       kind ?? 'other',
-          status:     postType === 'announcement' ? 'active' : 'pending',
-          owner:      owner ?? null,
-          ref:        ref ?? null,
-          pinned:     false,
-          created_by: created_by ?? null,
-        }
-        try {
-          const admin = createAdminClient()
-          const { data, error } = await admin
-            .from('ops_requests')
-            .insert(payload)
-            .select('id')
-            .single()
-
-          if (error) {
-            if (error.code === TABLE_MISSING_CODE) return tableMissingResult()
-            throw error
-          }
-          return textResult(`생성 완료. id=${(data as { id: string }).id}`)
-        } catch (err) {
-          return textResult(`생성 실패: ${errMessage(err)}`)
-        }
-      }
-    )
-
-    server.registerTool(
-      'ops_request_update',
-      {
-        title: '운영 요청/공지 갱신',
-        description:
-          '상태·담당·참조·고정 여부를 갱신합니다. status=done 전환 시 resolved_at은 DB 트리거가 자동 기록합니다. ' +
-          '삭제 툴은 제공하지 않습니다 — 종료 처리는 status 변경(done/archived)으로 합니다.',
-        inputSchema: {
-          id: z.string().uuid(),
-          status: z.string().optional(),
-          owner: z.string().optional(),
-          ref: z.string().optional(),
-          pinned: z.boolean().optional(),
-          note: z.string().optional(),
-        },
-      },
-      async ({ id, status, owner, ref, pinned, note }) => {
-        if (status && !ALL_STATUSES.includes(status as typeof ALL_STATUSES[number])) {
-          return textResult(`유효하지 않은 status 값입니다: ${status} (허용: ${ALL_STATUSES.join(', ')})`)
-        }
-
-        try {
-          const admin = createAdminClient()
-          const updatePayload: Record<string, unknown> = {}
-          if (status !== undefined) updatePayload.status = status
-          if (owner  !== undefined) updatePayload.owner  = owner
-          if (ref    !== undefined) updatePayload.ref    = ref
-          if (pinned !== undefined) updatePayload.pinned = pinned
-
-          if (note) {
-            const { data: existing, error: fetchErr } = await admin
-              .from('ops_requests')
-              .select('body')
-              .eq('id', id)
-              .single()
-            if (fetchErr) {
-              if (fetchErr.code === TABLE_MISSING_CODE) return tableMissingResult()
-              throw fetchErr
-            }
-            const prevBody = (existing as { body: string | null } | null)?.body ?? ''
-            const stamp = new Date().toISOString()
-            updatePayload.body = prevBody ? `${prevBody}\n\n[${stamp}] ${note}` : `[${stamp}] ${note}`
-          }
-
-          if (Object.keys(updatePayload).length === 0) {
-            return textResult('변경할 필드가 없습니다(status/owner/ref/pinned/note 중 하나 이상 필요).')
-          }
-
-          const { data, error } = await admin
-            .from('ops_requests')
-            .update(updatePayload)
-            .eq('id', id)
-            .select('*')
-            .single()
-
-          if (error) {
-            if (error.code === TABLE_MISSING_CODE) return tableMissingResult()
-            throw error
-          }
-          return textResult(`갱신 완료. id=${id}, status=${(data as OpsRequestRow).status}`)
-        } catch (err) {
-          return textResult(`갱신 실패: ${errMessage(err)}`)
-        }
-      }
-    )
+    registerReadTools(server)
+    registerOpsTools(server)
+    registerReportTools(server)
+    registerInsightTools(server)
   },
-  {},
+  {
+    serverInfo: { name: 'insight-out', version: '190' },
+  },
   { basePath: '/api', maxDuration: 60, verboseLogs: false }
 )
 
-async function verifyToken(_req: Request, bearerToken?: string) {
-  const expected = process.env.MCP_TOKEN
-  if (!expected || !bearerToken || bearerToken !== expected) return undefined
-  return { token: bearerToken, clientId: 'insight-out-admin', scopes: ['ops_requests'] }
+/**
+ * Bearer 토큰 → mcp_tokens 조회 → 호출자 확정.
+ * 반환값이 각 툴 콜백의 extra.authInfo 로 전달된다.
+ * undefined 를 반환하면 withMcpAuth 가 401 로 응답한다(안전 기본값).
+ */
+async function verifyToken(_req: Request, bearerToken?: string): Promise<AuthInfo | undefined> {
+  if (!bearerToken) return undefined
+
+  const actor = await authenticateToken(bearerToken)
+  if (!actor) return undefined
+
+  return {
+    token:    bearerToken,
+    clientId: actor.userId,
+    scopes:   actor.scopes,
+    extra:    { ...actor }, // ← 툴이 actorFrom(extra) 로 꺼내 쓴다
+  }
 }
 
 const authedHandler = withMcpAuth(mcpHandler, verifyToken, { required: true })
