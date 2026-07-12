@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
+  AlertTriangle,
+  CheckCircle2,
   FileUp,
   Loader2,
   Plus,
@@ -78,6 +80,15 @@ interface SourceForm {
   is_active: boolean
 }
 
+interface FeedValidationResponse {
+  ok: boolean
+  httpStatus: number | null
+  itemCount: number
+  latestPublishedAt: string | null
+  sampleTitles: string[]
+  error: string | null
+}
+
 const FORM_INIT: SourceForm = {
   name:                   '',
   type:                   'news_site',
@@ -106,6 +117,29 @@ function needsRssUrl(type: SourceType): boolean {
   return type === 'news_site' || type === 'youtube_channel' || type === 'web_insight'
 }
 
+function formatFeedDate(iso: string | null): string {
+  if (!iso) return '날짜 없음'
+  return new Date(iso).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
+function feedErrorMessage(result: FeedValidationResponse): string {
+  if (result.error?.startsWith('http_')) {
+    const status = result.httpStatus ?? result.error.replace('http_', '')
+    if (status === 404 || status === '404') return 'HTTP 404 — 주소가 유효하지 않습니다.'
+    return `HTTP ${status} — 피드 요청에 실패했습니다.`
+  }
+  if (result.error === 'timeout') return '검증 시간이 초과되었습니다.'
+  if (result.error === 'not_xml') return 'RSS 또는 Atom 형식으로 파싱할 수 없습니다.'
+  if (result.error === 'no_items') return '피드에 수집 가능한 항목이 없습니다.'
+  if (result.error === 'invalid_url') return 'http 또는 https 주소를 입력해주세요.'
+  return '피드를 가져올 수 없습니다.'
+}
+
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function SourceManager() {
@@ -122,6 +156,9 @@ export default function SourceManager() {
   const [formError,  setFormError]  = useState<string | null>(null)
   const [isSaving,   setIsSaving]   = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [feedValidation, setFeedValidation] = useState<FeedValidationResponse | null>(null)
+  const [feedValidationUrl, setFeedValidationUrl] = useState('')
+  const [isValidatingFeed, setIsValidatingFeed] = useState(false)
 
   // 유형 필터 상태 (§A) — 단일 탭
   const [selectedType, setSelectedType] = useState<SourceType | 'all'>('all')
@@ -154,6 +191,8 @@ export default function SourceManager() {
     setForm(FORM_INIT)
     setEditingId(null)
     setFormError(null)
+    setFeedValidation(null)
+    setFeedValidationUrl('')
     setShowForm(true)
   }
 
@@ -169,6 +208,8 @@ export default function SourceManager() {
     })
     setEditingId(src.id)
     setFormError(null)
+    setFeedValidation(null)
+    setFeedValidationUrl('')
     setShowForm(true)
   }
 
@@ -176,6 +217,8 @@ export default function SourceManager() {
     setShowForm(false)
     setEditingId(null)
     setFormError(null)
+    setFeedValidation(null)
+    setFeedValidationUrl('')
   }
 
   // ── 폼 저장 ───────────────────────────────────────────────────────────────
@@ -187,6 +230,19 @@ export default function SourceManager() {
     if (!form.name.trim()) {
       setFormError('이름을 입력해주세요.')
       return
+    }
+
+    const currentRssUrl = form.rss_url.trim()
+    if (
+      currentRssUrl &&
+      feedValidationUrl === currentRssUrl &&
+      feedValidation &&
+      !feedValidation.ok
+    ) {
+      const confirmed = window.confirm(
+        `방금 검증한 RSS 피드가 실패했습니다.\n\n${feedErrorMessage(feedValidation)}\n\n그래도 저장하시겠습니까?`
+      )
+      if (!confirmed) return
     }
 
     setIsSaving(true)
@@ -222,6 +278,35 @@ export default function SourceManager() {
       setFormError(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleValidateFeed() {
+    const url = form.rss_url.trim()
+    if (!url) {
+      setFormError('검증할 RSS URL을 입력해주세요.')
+      return
+    }
+
+    setFormError(null)
+    setFeedValidation(null)
+    setFeedValidationUrl(url)
+    setIsValidatingFeed(true)
+    try {
+      const res = await fetch('/api/admin/sources/validate-feed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const data = await res.json() as FeedValidationResponse | { error?: string }
+      if (!res.ok) {
+        throw new Error('error' in data && data.error ? data.error : '피드 검증에 실패했습니다.')
+      }
+      setFeedValidation(data as FeedValidationResponse)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : '피드 검증 중 오류가 발생했습니다.')
+    } finally {
+      setIsValidatingFeed(false)
     }
   }
 
@@ -424,18 +509,68 @@ export default function SourceManager() {
                       <span className="text-xs font-normal text-muted-foreground">(선택)</span>
                     )}
                   </Label>
-                  <Input
-                    id="src-rss"
-                    type="url"
-                    value={form.rss_url}
-                    onChange={(e) => setForm(p => ({ ...p, rss_url: e.target.value }))}
-                    placeholder="https://.../rss"
-                    className={cn(rssWarning && 'border-amber-400 focus-visible:ring-amber-200')}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="src-rss"
+                      type="url"
+                      value={form.rss_url}
+                      onChange={(e) => {
+                        setForm(p => ({ ...p, rss_url: e.target.value }))
+                        setFeedValidation(null)
+                        setFeedValidationUrl('')
+                      }}
+                      placeholder="https://.../rss"
+                      className={cn('min-w-0 flex-1', rssWarning && 'border-amber-400 focus-visible:ring-amber-200')}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleValidateFeed}
+                      disabled={isValidatingFeed || !form.rss_url.trim()}
+                      className="shrink-0"
+                    >
+                      {isValidatingFeed ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          검증 중
+                        </>
+                      ) : (
+                        '피드 검증'
+                      )}
+                    </Button>
+                  </div>
                   {rssWarning && (
                     <p className="text-[11px] text-amber-600">
                       RSS URL이 없으면 자동 수집이 되지 않습니다.
                     </p>
+                  )}
+                  {feedValidation && feedValidationUrl === form.rss_url.trim() && (
+                    <div className={cn(
+                      'rounded-lg border px-3 py-2 text-xs leading-relaxed',
+                      feedValidation.ok
+                        ? 'border-positive/30 bg-positive-soft text-positive'
+                        : 'border-destructive/30 bg-destructive/10 text-destructive'
+                    )}>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        {feedValidation.ok ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                        )}
+                        {feedValidation.ok
+                          ? `정상 · ${feedValidation.itemCount.toLocaleString()}건 · 최신 ${formatFeedDate(feedValidation.latestPublishedAt)}`
+                          : feedErrorMessage(feedValidation)}
+                      </div>
+                      {feedValidation.ok && feedValidation.sampleTitles.length > 0 && (
+                        <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
+                          {feedValidation.sampleTitles.map((title) => (
+                            <li key={title} className="truncate">
+                              “{title}”
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   )}
                 </div>
                 )}

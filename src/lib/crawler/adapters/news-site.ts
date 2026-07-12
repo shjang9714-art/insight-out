@@ -46,6 +46,44 @@ function extractThumbnail(item: RssItem): string | undefined {
   return undefined
 }
 
+export async function parseNewsSiteFeedXml(xml: string, since: string): Promise<RawItem[]> {
+  const feed = await parser.parseString(xml)
+  const items: RawItem[] = []
+
+  for (const item of feed.items) {
+    // 당일 발행 정책: 발행일 누락·파싱 실패·기준일 이전 항목은 제외
+    const pubDateStr = item.isoDate ?? item.pubDate
+    const publishedAt = getPublishedAtSince(pubDateStr, since)
+    if (!publishedAt) continue
+
+    const originalUrl = item.link ?? item.guid
+    if (!originalUrl) continue
+
+    // 본문은 RSS 제공분(content > snippet)만 사용.
+    // 풀페이지 본문 추출은 수집 후 enrichment 단계(orchestrator.enrichRecentContents)에서 진행.
+    const rawBody = item.content ?? item.contentSnippet ?? ''
+    // 저장 전 HTML 정리: &nbsp; 등 엔티티·태그 제거 → 카드/피드/요약 입력 모두 깨끗하게
+    const cleanBody = rawBody ? cleanBodyText(htmlToPlainText(rawBody)) : ''
+
+    // 출처 접미사 제거(" - 매체명" / " | 매체명") — 보수적 정규식, 미매칭 시 원본 유지
+    const title = stripSourceSuffix(item.title ?? '')
+    if (!title) continue
+    const author = item.creator ?? item['dc:creator'] ?? item.author ?? undefined
+
+    items.push({
+      original_url: originalUrl,
+      title,
+      body: cleanBody || undefined,
+      author: typeof author === 'string' ? author : undefined,
+      published_at: publishedAt,
+      thumbnail_url: extractThumbnail(item),
+      language: detectLanguage(title + ' ' + cleanBody),
+    })
+  }
+
+  return items
+}
+
 const newsSiteAdapter: SourceAdapter = {
   type: 'news_site',
 
@@ -56,41 +94,7 @@ const newsSiteAdapter: SourceAdapter = {
     }
 
     const xml = await fetchFeedText(source.rss_url)
-    const feed = await parser.parseString(xml)
-    const items: RawItem[] = []
-
-    for (const item of feed.items) {
-      // 당일 발행 정책: 발행일 누락·파싱 실패·기준일 이전 항목은 제외
-      const pubDateStr = item.isoDate ?? item.pubDate
-      const publishedAt = getPublishedAtSince(pubDateStr, since)
-      if (!publishedAt) continue
-
-      const originalUrl = item.link ?? item.guid
-      if (!originalUrl) continue
-
-      // 본문은 RSS 제공분(content > snippet)만 사용.
-      // 풀페이지 본문 추출은 수집 후 enrichment 단계(orchestrator.enrichRecentContents)에서 진행.
-      const rawBody = item.content ?? item.contentSnippet ?? ''
-      // 저장 전 HTML 정리: &nbsp; 등 엔티티·태그 제거 → 카드/피드/요약 입력 모두 깨끗하게
-      const cleanBody = rawBody ? cleanBodyText(htmlToPlainText(rawBody)) : ''
-
-      // 출처 접미사 제거(" - 매체명" / " | 매체명") — 보수적 정규식, 미매칭 시 원본 유지
-      const title = stripSourceSuffix(item.title ?? '')
-      if (!title) continue
-      const author = item.creator ?? item['dc:creator'] ?? item.author ?? undefined
-
-      items.push({
-        original_url: originalUrl,
-        title,
-        body: cleanBody || undefined,
-        author: typeof author === 'string' ? author : undefined,
-        published_at: publishedAt,
-        thumbnail_url: extractThumbnail(item),
-        language: detectLanguage(title + ' ' + cleanBody),
-      })
-    }
-
-    return items
+    return parseNewsSiteFeedXml(xml, since)
   },
 }
 

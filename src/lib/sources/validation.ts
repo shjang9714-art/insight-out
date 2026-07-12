@@ -1,8 +1,8 @@
 import 'server-only'
 
-import Parser from 'rss-parser'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeUrl } from '@/lib/crawler/normalize'
+import { validateFeedUrl } from '@/lib/sources/feed-validation'
 import {
   isImportSourceType,
   type ParsedSourceRow,
@@ -13,7 +13,6 @@ import type {
   SourceImportSummary,
 } from '@/lib/sources/types'
 
-const parser = new Parser()
 const FETCH_CONCURRENCY = 5
 const FETCH_TIMEOUT_MS = 7_000
 
@@ -170,35 +169,16 @@ function validateBasicRow(
 }
 
 async function validateFeed(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml',
-        'User-Agent': 'InsightOut/1.0 RSS Validator',
-      },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      return `피드 요청 실패: HTTP ${response.status}`
-    }
-
-    const feed = await parser.parseString(await response.text())
-    if (!feed.items || feed.items.length < 1) {
-      return '피드에 item 또는 entry가 없습니다.'
-    }
-    return null
-  } catch (error) {
-    if (
-      error instanceof Error
-      && (error.name === 'TimeoutError' || error.name === 'AbortError')
-    ) {
-      return '피드 검증 시간이 7초를 초과했습니다.'
-    }
-    console.error(`[sources/import] 피드 파싱 실패 (${url}):`, error)
-    return 'RSS 또는 Atom 피드를 파싱할 수 없습니다.'
+  const result = await validateFeedUrl(url, FETCH_TIMEOUT_MS)
+  if (result.ok) return null
+  if (result.error?.startsWith('http_')) {
+    return `피드 요청 실패: HTTP ${result.httpStatus ?? result.error.replace('http_', '')}`
   }
+  if (result.error === 'timeout') return '피드 검증 시간이 7초를 초과했습니다.'
+  if (result.error === 'no_items') return '피드에 item 또는 entry가 없습니다.'
+  if (result.error === 'invalid_url') return 'RSS URL은 http 또는 https 주소여야 합니다.'
+  if (result.error === 'not_xml') return 'RSS 또는 Atom 피드를 파싱할 수 없습니다.'
+  return '피드를 가져올 수 없습니다.'
 }
 
 async function mapWithConcurrency<T, R>(
