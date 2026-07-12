@@ -7,9 +7,6 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
 import { X, Loader2, LayoutGrid, List } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import BookmarkButton from '@/components/bookmark/BookmarkButton'
-import ArchiveButton from '@/components/archive/ArchiveButton'
-import { htmlToPlainText, cleanBodyText } from '@/lib/contents/clean-body'
 import PageContainer from '@/components/PageContainer'
 import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
@@ -26,6 +23,7 @@ interface ContentItem {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   category: ContentCategory
   published_at: string | null
   file_path: string | null
@@ -329,15 +327,10 @@ function ContentsContent() {
         return
       }
 
-      // ③ 메인 쿼리 — relevant='1'이면 서비스 태그 있는 콘텐츠만 노출 (inner join)
-      const serviceJoin = relevant === '1'
-        ? 'content_services!inner(services(name))'
-        : 'content_services(services(name))'
-
       let q = supabase
         .from('contents')
         .select(
-          'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url',
+          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url',
           { count: 'exact' }
         )
         .eq('status', 'published')
@@ -649,7 +642,7 @@ function ContentsContent() {
                           key={item.id}
                           id={item.id}
                           title={item.title}
-                          excerpt={toExcerpt(item.summary_ko, null)}
+                          excerpt={toExcerpt(item.summary_ko, item.body_original)}
                           category={item.category}
                           publishedAt={displayDate(item, sortByCollected)}
                           originalUrl={item.original_url}
@@ -671,6 +664,7 @@ function ContentsContent() {
                           id={item.id}
                           title={item.title}
                           summaryKo={item.summary_ko}
+                          bodyOriginal={item.body_original}
                           category={item.category}
                           publishedAt={displayDate(item, sortByCollected)}
                           originalUrl={item.original_url}
@@ -712,7 +706,7 @@ function ContentsContent() {
                   key={item.id}
                   id={item.id}
                   title={item.title}
-                  excerpt={toExcerpt(item.summary_ko, null)}
+                  excerpt={toExcerpt(item.summary_ko, item.body_original)}
                   category={item.category}
                   publishedAt={displayDate(item, sortByCollected)}
                   originalUrl={item.original_url}
@@ -734,6 +728,7 @@ function ContentsContent() {
                   id={item.id}
                   title={item.title}
                   summaryKo={item.summary_ko}
+                  bodyOriginal={item.body_original}
                   category={item.category}
                   publishedAt={displayDate(item, sortByCollected)}
                   originalUrl={item.original_url}

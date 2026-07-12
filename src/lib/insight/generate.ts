@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { createAdminClient } from '@/lib/supabase/admin'
 import { llmComplete } from '@/lib/llm'
 import { insightAutoPublish, insightCompanyAutoPublish } from '@/lib/insight/auto-publish'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -11,6 +10,7 @@ interface ContentRow {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   matched_groups: string[] | null
   importance_score: number | null
   cluster_id: string | null
@@ -28,6 +28,8 @@ interface GenerateOptions {
   days?: number
   maxThemes?: number
 }
+
+const BODY_FALLBACK_MAX_CHARS = 700
 
 // ─── KST 날짜 유틸 ────────────────────────────────────────────────────────────
 
@@ -56,9 +58,19 @@ implication: 2~3문장으로 구체적으로 쓰라. ①LG U+ B2B에 왜 중요�
 근거 없는 주장 금지 — 각 핵심 주장은 입력 기사에서 15단어 이내 인용과 그 content_id를 citations로 제시.
 JSON만 출력: {"headline":"","card_headline":"","implication":"","citations":[{"content_id":"","quote":""}]}`
 
+function promptExcerpt(summaryKo: string | null, bodyOriginal: string | null): string {
+  const summary = summaryKo?.trim()
+  if (summary) return summary
+  const body = bodyOriginal
+    ?.replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return body ? body.slice(0, BODY_FALLBACK_MAX_CHARS) : ''
+}
+
 function buildUserPrompt(topic: string, articles: ContentRow[]): string {
   const lines = articles
-    .map((a) => `[${a.id}] ${a.title}\n${a.summary_ko ?? ''}`)
+    .map((a) => `[${a.id}] ${a.title}\n${promptExcerpt(a.summary_ko, a.body_original)}`)
     .join('\n\n')
   return `주제: ${topic}\n\n${lines}`
 }
@@ -136,7 +148,7 @@ export async function generateIndustryInsightCards(
   // 1. 후보 수집
   const { data: rawContents, error: contentsError } = await adminClient
     .from('contents')
-    .select('id, title, summary_ko, matched_groups, importance_score, cluster_id, collected_at')
+    .select('id, title, summary_ko, body_original, matched_groups, importance_score, cluster_id, collected_at')
     .eq('status', 'published')
     .gte('collected_at', sinceIso)
     .not('matched_groups', 'is', null)
@@ -248,6 +260,7 @@ interface CompanyArticleRow {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   cluster_id: string | null
   importance_score: number | null
   collected_at: string
@@ -341,7 +354,7 @@ async function loadCompanyPrompt(adminClient: SupabaseClient): Promise<string> {
 
 function buildCompanyUserPrompt(company: string, articles: CompanyArticleRow[]): string {
   const lines = articles
-    .map((a) => `[${a.id}] ${a.title}\n${a.summary_ko ?? ''}`)
+    .map((a) => `[${a.id}] ${a.title}\n${promptExcerpt(a.summary_ko, a.body_original)}`)
     .join('\n\n')
   return `기업: ${company}\n\n${lines}`
 }
@@ -389,7 +402,7 @@ export async function generateCompanyInsightCards(
 
       const { data: rawArticles } = await adminClient
         .from('contents')
-        .select('id, title, summary_ko, cluster_id, importance_score, collected_at')
+        .select('id, title, summary_ko, body_original, cluster_id, importance_score, collected_at')
         .eq('status', 'published')
         .gte('collected_at', sinceIso)
         .or(orClause)

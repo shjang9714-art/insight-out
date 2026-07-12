@@ -124,11 +124,24 @@ interface ContentRow {
   id: string
   title: string
   summary_ko: string | null
+  body_original: string | null
   matched_groups: string[] | null
   lgu_impact: string | null
   cluster_id: string | null
   importance_score: number | null
   collected_at: string
+}
+
+const BODY_FALLBACK_MAX_CHARS = 700
+
+function promptExcerpt(summaryKo: string | null, bodyOriginal: string | null): string {
+  const summary = summaryKo?.trim()
+  if (summary) return summary
+  const body = bodyOriginal
+    ?.replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return body ? body.slice(0, BODY_FALLBACK_MAX_CHARS) : ''
 }
 
 async function loadWeekContents(
@@ -139,7 +152,7 @@ async function loadWeekContents(
   const baseQuery = () =>
     admin
       .from('contents')
-      .select('id, title, summary_ko, matched_groups, lgu_impact, cluster_id, importance_score, collected_at')
+      .select('id, title, summary_ko, body_original, matched_groups, lgu_impact, cluster_id, importance_score, collected_at')
       .eq('status', 'published')
       .gte('collected_at', sinceIso)
       .lt('collected_at', untilIso)
@@ -151,7 +164,7 @@ async function loadWeekContents(
     // lgu_impact 컬럼 미적용(241 SQL 전) — 컬럼 제외 후 재시도(graceful)
     const retry = await admin
       .from('contents')
-      .select('id, title, summary_ko, matched_groups, cluster_id, importance_score, collected_at')
+      .select('id, title, summary_ko, body_original, matched_groups, cluster_id, importance_score, collected_at')
       .eq('status', 'published')
       .gte('collected_at', sinceIso)
       .lt('collected_at', untilIso)
@@ -242,7 +255,7 @@ function buildAreaUserPrompt(areaLabel: string, articles: ContentRow[]): string 
   const lines = articles
     .map((a) => {
       const hint = a.lgu_impact ? ` (LGU+ 관점 힌트: ${a.lgu_impact})` : ''
-      return `[${a.id}] ${a.title}${hint}\n${a.summary_ko ?? ''}`
+      return `[${a.id}] ${a.title}${hint}\n${promptExcerpt(a.summary_ko, a.body_original)}`
     })
     .join('\n\n')
   return `영역: ${areaLabel}\n\n${lines}`
@@ -324,7 +337,7 @@ export async function generateCompetitorWeeklyReport(
 
   // 3. 경쟁사 관련 기사만 필터(우리가 판정 — LLM 아님)
   const competitorRows = contents.filter((c) => {
-    const text = `${c.title} ${c.summary_ko ?? ''}`.toLowerCase()
+    const text = `${c.title} ${promptExcerpt(c.summary_ko, c.body_original)}`.toLowerCase()
     return compTerms.some((t) => text.includes(t))
   })
   if (competitorRows.length === 0) {
