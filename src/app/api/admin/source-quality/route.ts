@@ -121,10 +121,19 @@ function toStat(row: RpcRow): SourceQualityStat {
   }
 }
 
+/** RPC 미적용 등으로 품질 지표를 계산할 수 없을 때의 신호(312) — UI 는 '—' 대신 이 사실을 드러내야 한다. */
+export interface SourceQualityUnavailable {
+  unavailable: true
+  reason: 'rpc_missing' | 'error'
+}
+
+export type SourceQualityResponse = Record<string, SourceQualityStat> | SourceQualityUnavailable
+
 /**
  * GET /api/admin/source-quality?days=7|14|30
  * RPC source_quality_stats(p_days) 호출 → source_id 별 품질 집계.
- * RPC 미적용(42883 등) 또는 오류 시 graceful 빈 결과({}) — UI는 품질 열만 숨김.
+ * RPC 미적용(42883 등) 또는 오류 시 — console.error 를 남기고 { unavailable: true } 를 반환한다.
+ * 312 이전에는 빈 객체({})를 조용히 반환해 "품질 지표가 전부 —"인 사고를 아무도 못 봤다.
  */
 export async function GET(req: NextRequest) {
   const authError = await verifyAdmin()
@@ -138,8 +147,10 @@ export async function GET(req: NextRequest) {
     const { data, error } = await admin.rpc('source_quality_stats', { p_days: pDays })
 
     if (error) {
-      // RPC 미존재(42883 undefined_function) 등 — graceful
-      return NextResponse.json({})
+      // RPC 미존재(42883 undefined_function) 등 — 화면에 드러나야 한다(조용히 삼키지 않는다).
+      console.error('[/api/admin/source-quality] source_quality_stats RPC 호출 실패(186 SQL 미적용 가능):', error.message)
+      const body: SourceQualityUnavailable = { unavailable: true, reason: 'rpc_missing' }
+      return NextResponse.json(body)
     }
 
     const result: Record<string, SourceQualityStat> = {}
@@ -148,7 +159,8 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[/api/admin/source-quality] 오류(graceful):', err)
-    return NextResponse.json({})
+    console.error('[/api/admin/source-quality] 오류:', err)
+    const body: SourceQualityUnavailable = { unavailable: true, reason: 'error' }
+    return NextResponse.json(body)
   }
 }

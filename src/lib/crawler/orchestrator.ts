@@ -8,6 +8,7 @@ import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
 import { isAdLike, isExcludedByGroups, effectiveLength, bodyLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, matchExclusion, MIN_EFFECTIVE_LENGTH, DEFAULT_MIN_BODY_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason, type ExclusionRule } from './quality'
 import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
+import { zeroRejectedBy } from './types'
 import type { ContentCategory, Source, SourceType } from '@/lib/types'
 import {
   selectCrawlSources,
@@ -291,7 +292,12 @@ async function withRetry<T>(
   throw lastError
 }
 
-/** crawl_logs 테이블에 수집 결과 기록 */
+/**
+ * crawl_logs 테이블에 수집 결과 기록.
+ * rejected_count/rejected_by(312)는 SQL 핸드오프(312-crawl_logs-rejected.sql) 미적용 시
+ * undefined_column(42703)으로 insert 전체가 실패할 수 있어 — 그 경우 두 컬럼을 빼고 재시도한다
+ * (기존 컬럼 기록까지 막히면 안 된다).
+ */
 async function writeCrawlLog(
   admin: SupabaseClient,
   sourceId: string,
@@ -301,7 +307,7 @@ async function writeCrawlLog(
   finishedAt: string,
   errorMessage?: string
 ): Promise<void> {
-  const { error } = await admin.from('crawl_logs').insert({
+  const baseRow = {
     source_id: sourceId,
     status,
     fetched_count: counts.fetched,
@@ -311,7 +317,23 @@ async function writeCrawlLog(
     error_message: errorMessage ?? null,
     started_at: startedAt,
     finished_at: finishedAt,
+  }
+
+  const { error } = await admin.from('crawl_logs').insert({
+    ...baseRow,
+    rejected_count: counts.rejected,
+    rejected_by: counts.rejectedBy,
   })
+
+  if (error?.code === '42703') {
+    console.error('[크롤러] crawl_logs.rejected_count/rejected_by 컬럼 미적용(312 SQL 미실행) — 해당 컬럼 없이 기록:', error.message)
+    const { error: retryError } = await admin.from('crawl_logs').insert(baseRow)
+    if (retryError) {
+      console.error('[크롤러] crawl_logs 기록 오류(재시도):', retryError.message)
+    }
+    return
+  }
+
   if (error) {
     console.error('[크롤러] crawl_logs 기록 오류:', error.message)
   }
@@ -387,14 +409,31 @@ async function processCrawlItem(
     }
     // 키워드/회사 seed 검색(Google News RSS) 아이템은 본문 최소길이 게이트 면제(위 ItemSourceCtx
     // 주석 참고) — 정규 소스 폴링 아이템은 그대로 적용.
-    if (
-      isAdLike(qText) ||
-      isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
-      effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH ||
-      (!src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength) ||  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
-      exclusionMatch?.action === 'reject'
-    ) {
+    // 312 — 판정 순서·결과는 기존 || 체인과 동일(첫 매칭에서 즉시 reject). 어느 사유로
+    // 걸렸는지만 if/else 로 분리해 rejectedBy 에 기록한다(세는 방식만 바꾼다, 회귀 가드).
+    if (isAdLike(qText)) {
       counts.rejected++
+      counts.rejectedBy.ad++
+      return {}
+    }
+    if (isExcludedByGroups(item.title, groups)) {  // keyword_groups.exclude_patterns 기반
+      counts.rejected++
+      counts.rejectedBy.excludedGroup++
+      return {}
+    }
+    if (effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH) {
+      counts.rejected++
+      counts.rejectedBy.tooShort++
+      return {}
+    }
+    if (!src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength) {  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
+      counts.rejected++
+      counts.rejectedBy.bodyTooShort++
+      return {}
+    }
+    if (exclusionMatch?.action === 'reject') {
+      counts.rejected++
+      counts.rejectedBy.excludeRule++
       return {}
     }
 
@@ -668,7 +707,7 @@ async function crawlOne(
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
-  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let crawlStatus: 'success' | 'partial' | 'failed' = 'success'
   let errorMessage: string | undefined
 
@@ -744,7 +783,7 @@ async function crawlYoutube(
   transcriptBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
-  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let crawlStatus: 'success' | 'partial' | 'failed' = 'success'
   let errorMessage: string | undefined
 
@@ -877,7 +916,7 @@ async function crawlKeywordSearch(
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
   deadline?: number
 ): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean }> {
-  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let hadError = false
   let truncated = false
   const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
@@ -979,7 +1018,7 @@ async function crawlCompanySearch(
   budgetMs: number,
   overallDeadline?: number
 ): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number }> {
-  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let hadError = false
   let processedSeeds = 0
   // 이 phase 자체 예산(budgetMs)과 크롤 전체 소프트 데드라인 중 먼저 오는 쪽을 따른다.

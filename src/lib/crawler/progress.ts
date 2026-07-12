@@ -1,3 +1,6 @@
+import type { RejectedBy } from './types'
+import { zeroRejectedBy } from './types'
+
 export interface CrawlJob {
   jobId: string
   startedAt: string
@@ -10,6 +13,9 @@ export interface CrawlProgressLog {
   inserted_count: number
   duplicate_count: number
   held_count: number
+  /** 312 — SQL(312-crawl_logs-rejected.sql) 미적용 로그는 undefined/null 일 수 있다. */
+  rejected_count?: number | null
+  rejected_by?: RejectedBy | null
   sources: { name: string } | null
 }
 
@@ -25,6 +31,8 @@ export interface CrawlProgress {
   inserted: number
   duplicates: number
   held: number
+  rejected: number
+  rejectedBy: RejectedBy
   latestSource: string | null
   message: string | null
 }
@@ -60,6 +68,17 @@ export function summarizeCrawlProgress(
     message = `${partial}개 소스가 일부 항목만 처리되었습니다.`
   }
 
+  const rejectedBy = zeroRejectedBy()
+  for (const log of relevantLogs) {
+    const by = log.rejected_by
+    if (!by) continue
+    rejectedBy.ad += by.ad ?? 0
+    rejectedBy.excludedGroup += by.excludedGroup ?? 0
+    rejectedBy.tooShort += by.tooShort ?? 0
+    rejectedBy.bodyTooShort += by.bodyTooShort ?? 0
+    rejectedBy.excludeRule += by.excludeRule ?? 0
+  }
+
   return {
     status,
     startedAt,
@@ -75,6 +94,8 @@ export function summarizeCrawlProgress(
       0
     ),
     held: relevantLogs.reduce((sum, log) => sum + log.held_count, 0),
+    rejected: relevantLogs.reduce((sum, log) => sum + (log.rejected_count ?? 0), 0),
+    rejectedBy,
     latestSource: relevantLogs[0]?.sources?.name ?? null,
     message,
   }

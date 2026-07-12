@@ -134,14 +134,29 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const { data, error } = await admin
+    let { data, error } = await admin
       .from('crawl_logs')
       .select(`
         status, fetched_count, inserted_count, duplicate_count,
-        held_count, error_message, started_at, finished_at, sources(name)
+        held_count, rejected_count, rejected_by, error_message, started_at, finished_at, sources(name)
       `)
       .gte('started_at', startedAt)
       .order('finished_at', { ascending: false })
+
+    // 312 SQL(rejected_count/rejected_by) 미적용 시 undefined_column — 해당 컬럼 없이 재조회.
+    if (error?.code === '42703') {
+      console.error('[/api/admin/crawl-now] crawl_logs.rejected_count/rejected_by 컬럼 미적용(312 SQL 미실행) — 해당 컬럼 없이 조회:', error.message)
+      const retry = await admin
+        .from('crawl_logs')
+        .select(`
+          status, fetched_count, inserted_count, duplicate_count,
+          held_count, error_message, started_at, finished_at, sources(name)
+        `)
+        .gte('started_at', startedAt)
+        .order('finished_at', { ascending: false })
+      data = retry.data as unknown as typeof data
+      error = retry.error
+    }
 
     if (error) throw error
 

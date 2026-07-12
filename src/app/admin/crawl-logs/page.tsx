@@ -46,13 +46,27 @@ export default async function CrawlLogsPage() {
     }
   )
 
-  const { data } = await supabase
+  let { data, error } = await supabase
     .from('crawl_logs')
     .select(
-      'id, status, fetched_count, inserted_count, duplicate_count, held_count, error_message, started_at, finished_at, created_at, source_id, sources(name, type)'
+      'id, status, fetched_count, inserted_count, duplicate_count, held_count, rejected_count, rejected_by, error_message, started_at, finished_at, created_at, source_id, sources(name, type)'
     )
     .order('created_at', { ascending: false })
     .limit(100)
+
+  // 312 SQL(rejected_count/rejected_by) 미적용 시 undefined_column — 해당 컬럼 없이 재조회.
+  if (error?.code === '42703') {
+    console.error('[/admin/crawl-logs] crawl_logs.rejected_count/rejected_by 컬럼 미적용(312 SQL 미실행) — 해당 컬럼 없이 조회:', error.message)
+    const retry = await supabase
+      .from('crawl_logs')
+      .select(
+        'id, status, fetched_count, inserted_count, duplicate_count, held_count, error_message, started_at, finished_at, created_at, source_id, sources(name, type)'
+      )
+      .order('created_at', { ascending: false })
+      .limit(100)
+    data = retry.data as unknown as typeof data
+    error = retry.error
+  }
 
   const logs = (data ?? []) as unknown as CrawlLogRow[]
 
@@ -68,6 +82,9 @@ export default async function CrawlLogsPage() {
   const partialCount  = summaryLogs.filter((l) => l.status === 'partial').length
   const failedCount   = summaryLogs.filter((l) => l.status === 'failed').length
   const totalInserted = summaryLogs.reduce((s, l) => s + l.inserted_count, 0)
+  // rejected_count 가 하나라도 null(SQL 미적용)이면 합계 자체가 의미 없으므로 '—' 표시.
+  const rejectedKnown = summaryLogs.every((l) => l.rejected_count != null)
+  const totalRejected = summaryLogs.reduce((s, l) => s + (l.rejected_count ?? 0), 0)
   const lastRunAt     = logs[0]?.created_at ?? null
 
   // ── 요약 카드 데이터 ──────────────────────────────────────────────────────
@@ -77,6 +94,7 @@ export default async function CrawlLogsPage() {
     { label: '부분',          value: `${partialCount}건`,  accent: partialCount > 0 ? 'text-yellow-600' : '' },
     { label: '실패',          value: `${failedCount}건`,   accent: failedCount > 0 ? 'text-negative font-semibold' : '' },
     { label: '신규 적재(합)', value: `${totalInserted.toLocaleString()}건` },
+    { label: '제외(합)',      value: rejectedKnown ? `${totalRejected.toLocaleString()}건` : '—' },
   ]
 
   return (
@@ -85,7 +103,7 @@ export default async function CrawlLogsPage() {
       <AdminPageHeader />
 
       {/* 요약 카드 */}
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {summaryCards.map((card) => (
           <div
             key={card.label}

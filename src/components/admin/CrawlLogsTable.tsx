@@ -14,6 +14,7 @@ import type { SourceType, ContentStatus } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
 import { CONTENT_STATUS_TONE, CRAWL_STATUS_TONE } from '@/lib/admin/status-style'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import type { RejectedBy } from '@/lib/crawler/types'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -26,12 +27,32 @@ export interface CrawlLogRow {
   inserted_count: number
   duplicate_count: number
   held_count: number
+  /** 312 SQL(rejected_count/rejected_by) 미적용 로그는 null/undefined. */
+  rejected_count?: number | null
+  rejected_by?: RejectedBy | null
   error_message: string | null
   started_at: string | null
   finished_at: string | null
   created_at: string
   source_id: string | null
   sources: { name: string; type: SourceType } | null
+}
+
+// 제외 사유 한글 라벨(312) — orchestrator.ts 의 RejectedBy 키와 1:1
+const REJECT_REASON_LABEL: Record<keyof RejectedBy, string> = {
+  ad:            '광고성',
+  excludedGroup: '그룹제외',
+  tooShort:      '길이미달',
+  bodyTooShort:  '본문짧음',
+  excludeRule:   '제외규칙',
+}
+
+function rejectedByTooltip(by: RejectedBy | null | undefined): string {
+  if (!by) return ''
+  const parts = (Object.keys(REJECT_REASON_LABEL) as (keyof RejectedBy)[])
+    .filter((k) => by[k] > 0)
+    .map((k) => `${REJECT_REASON_LABEL[k]} ${by[k]}`)
+  return parts.join(' · ')
 }
 
 interface ContentRow {
@@ -286,6 +307,7 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
                 <th className="px-4 py-3 text-right">신규</th>
                 <th className="px-4 py-3 text-right">중복</th>
                 <th className="px-4 py-3 text-right">보류</th>
+                <th className="px-4 py-3 text-right">제외</th>
                 <th className="px-4 py-3 text-right">소요</th>
                 <th className="px-4 py-3">에러</th>
               </tr>
@@ -362,6 +384,17 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
                         </button>
                       ) : (
                         <span className="text-muted-foreground">{log.held_count.toLocaleString()}</span>
+                      )}
+                    </td>
+
+                    {/* 제외 — 사유 분해(312), rejected_count 없으면 '—'(SQL 미적용) */}
+                    <td className="px-4 py-3 text-right text-xs tabular-nums text-muted-foreground">
+                      {log.rejected_count == null ? (
+                        '—'
+                      ) : (
+                        <span title={rejectedByTooltip(log.rejected_by) || undefined}>
+                          {log.rejected_count.toLocaleString()}
+                        </span>
                       )}
                     </td>
 

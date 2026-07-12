@@ -20,8 +20,10 @@ import { Ban, CheckCircle2, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
 import type { SourceType } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
 import type { CrawlJob, CrawlProgress } from '@/lib/crawler/progress'
+import type { RejectedBy } from '@/lib/crawler/types'
+import { zeroRejectedBy } from '@/lib/crawler/types'
 import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
-import type { SourceQualityStat } from '@/app/api/admin/source-quality/route'
+import type { SourceQualityStat, SourceQualityResponse } from '@/app/api/admin/source-quality/route'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { REVIEW_REASON_LABEL, type Tone } from '@/lib/admin/status-style'
@@ -36,6 +38,54 @@ function qualityTone(pendingRate: number): Tone {
   if (pendingRate > 0.4) return 'negative'
   if (pendingRate > 0.2) return 'risk'
   return 'positive'
+}
+
+// 312 — 제외 사유 한글 라벨 (orchestrator.ts 의 RejectedBy 키와 1:1)
+const REJECT_REASON_LABEL: Record<keyof RejectedBy, string> = {
+  ad:            '광고성',
+  excludedGroup: '그룹제외',
+  tooShort:      '길이미달',
+  bodyTooShort:  '본문짧음',
+  excludeRule:   '제외규칙',
+}
+
+function rejectedByTooltip(by: RejectedBy): string {
+  const parts = (Object.keys(REJECT_REASON_LABEL) as (keyof RejectedBy)[])
+    .filter((k) => by[k] > 0)
+    .map((k) => `${REJECT_REASON_LABEL[k]} ${by[k]}`)
+  return parts.join(' · ')
+}
+
+// 312 — 경고 피로 해소: "저활성"(정상, 필터가 거를 뿐)과 "고장"(사고)을 분리.
+type HealthTier = 'broken' | 'low' | 'ok' | 'unknown'
+
+const BROKEN_MAX_SUCCESS_AGE_DAYS = 3
+const BROKEN_MIN_CONSECUTIVE_FAILURES = 3
+
+function healthTier(isActive: boolean, status: SourceStatusInfo | undefined, nowMs: number): HealthTier {
+  if (!status) return 'unknown'
+  const lastSuccessAgeDays = status.lastSuccessAt
+    ? (nowMs - new Date(status.lastSuccessAt).getTime()) / (24 * 60 * 60 * 1000)
+    : Infinity
+  if (status.consecutiveFailures >= BROKEN_MIN_CONSECUTIVE_FAILURES || lastSuccessAgeDays > BROKEN_MAX_SUCCESS_AGE_DAYS) {
+    return 'broken'
+  }
+  if (isActive && status.inserted7d === 0) return 'low'
+  return 'ok'
+}
+
+const HEALTH_TIER_ORDER: Record<HealthTier, number> = { broken: 0, low: 1, unknown: 2, ok: 3 }
+
+/** 저활성 소스의 "왜 0건인지" 한 줄 요약(312 §3-5) — 클릭 없이 원인을 보여준다. */
+function lowActivityReason(status: SourceStatusInfo | undefined): string | null {
+  if (!status || status.fetched7d === 0) return status && status.fetched7d === 0 ? '가져온 원문 자체가 없음(피드가 비어 있을 수 있음)' : null
+  const parts = [`가져옴 ${status.fetched7d}`]
+  if (status.rejected7d > 0) {
+    const reasonLabel = status.topRejectReason ? REJECT_REASON_LABEL[status.topRejectReason] : null
+    parts.push(`제외 ${status.rejected7d}${reasonLabel ? `(${reasonLabel})` : ''}`)
+  }
+  if (status.duplicate7d > 0) parts.push(`중복 ${status.duplicate7d}`)
+  return parts.join(' · ')
 }
 
 interface SourceLite {
@@ -72,13 +122,22 @@ export default function SourceQualityManager() {
 
   // 소스별 수집 상태 (crawl_logs 7일 집계)
   const [sourceStatusMap, setSourceStatusMap] = useState<Map<string, SourceStatusInfo>>(new Map())
+  // 312 — 고장 판정(마지막 성공 > 3일)에 쓰는 "지금". Date.now() 는 렌더 중 호출이 금지(순수성 규칙)돼
+  // loadSourceStatus 가 데이터를 받아온 시점(일반 비동기 함수, effect 본문 아님)에 함께 기록한다.
+  const [nowMs, setNowMs] = useState(0)
 
   // 소스별 수집 품질 (RPC source_quality_stats, 기간 선택)
   const [qualityDays, setQualityDays] = useState<QualityDays>(30)
   const [sourceQualityMap, setSourceQualityMap] = useState<Map<string, SourceQualityStat>>(new Map())
+  // 312 — RPC 미적용(186 SQL 미실행) 등으로 품질 지표를 계산할 수 없을 때. '—' 대신 눈에 띄게 알린다.
+  const [qualityUnavailable, setQualityUnavailable] = useState(false)
 
   // 저품질 소스 "도메인 제외" 원클릭
   const [excludingId, setExcludingId] = useState<string | null>(null)
+
+  // 312 — 경고 피로 해소: 기본 정렬은 고장 먼저, 이름순 옵션 유지. "고장만 보기" 필터.
+  const [sortMode, setSortMode] = useState<'health' | 'name'>('health')
+  const [showBrokenOnly, setShowBrokenOnly] = useState(false)
 
   async function handleExcludeDomain(src: SourceLite) {
     const raw = src.rss_url || src.url
@@ -129,21 +188,28 @@ export default function SourceQualityManager() {
       if (!res.ok) return
       const data = await res.json() as Record<string, SourceStatusInfo>
       setSourceStatusMap(new Map(Object.entries(data)))
+      setNowMs(Date.now())
     } catch {
       // 비차단 — 상태 열만 '—' 표시
     }
   }
 
-  // ── 소스 품질 로드 — RPC 미적용 시 graceful 빈 결과 ─────────────────────────
+  // ── 소스 품질 로드 — RPC 미적용 시 '—' 대신 눈에 띄게 알림(312) ─────────────
 
   async function loadSourceQuality(days: QualityDays) {
     try {
       const res = await fetch(`/api/admin/source-quality?days=${days}`)
       if (!res.ok) return
-      const data = await res.json() as Record<string, SourceQualityStat>
+      const data = await res.json() as SourceQualityResponse
+      if ('unavailable' in data && data.unavailable) {
+        setQualityUnavailable(true)
+        setSourceQualityMap(new Map())
+        return
+      }
+      setQualityUnavailable(false)
       setSourceQualityMap(new Map(Object.entries(data)))
     } catch {
-      // 비차단 — 품질 열만 숨김
+      // 네트워크 오류 등 — 이건 비차단으로 둔다(재시도 여지 있음). RPC 미존재는 위에서 이미 명시적으로 처리.
     }
   }
 
@@ -246,6 +312,8 @@ export default function SourceQualityManager() {
             inserted: 0,
             duplicates: 0,
             held: 0,
+            rejected: 0,
+            rejectedBy: zeroRejectedBy(),
             latestSource: null,
             message: pollError instanceof Error
               ? pollError.message
@@ -368,6 +436,20 @@ export default function SourceQualityManager() {
       ? 100
       : 0
 
+  // 312 — 경고 피로 해소: 상태 정렬·필터. 기본은 고장 먼저, 이름순 옵션도 남겨둔다.
+  const sourceRows = sources.map((src) => {
+    const status = sourceStatusMap.get(src.id)
+    return { src, status, quality: sourceQualityMap.get(src.id), tier: healthTier(src.is_active, status, nowMs) }
+  })
+  const tierCounts = { broken: 0, low: 0, ok: 0, unknown: 0 }
+  for (const row of sourceRows) tierCounts[row.tier]++
+
+  const filteredRows = showBrokenOnly ? sourceRows.filter((r) => r.tier === 'broken') : sourceRows
+  // Array.sort 는 안정 정렬(stable) — 동일 tier 내에서는 쿼리의 order/name 정렬이 그대로 유지된다.
+  const displayRows = sortMode === 'health'
+    ? [...filteredRows].sort((a, b) => HEALTH_TIER_ORDER[a.tier] - HEALTH_TIER_ORDER[b.tier])
+    : filteredRows
+
   return (
     <div className="space-y-6">
       {error && (
@@ -433,6 +515,53 @@ export default function SourceQualityManager() {
           RSS 특성상 피드에 남아있는 기사까지만 수집됩니다. 기간이 길면 시간이 걸릴 수 있습니다.
         </p>
       )}
+      {qualityUnavailable && (
+        <p className="-mt-3 text-[11px] font-medium text-negative">
+          ⚠️ 품질 지표를 계산할 수 없습니다 — source_quality_stats RPC 미적용(SQL 186 미실행). 수희에게 핸드오프 요청 필요.
+        </p>
+      )}
+
+      {/* ── 상태 요약 배너 + 정렬/필터(312) — 경고 60개가 진짜 경고 4개를 묻지 않게 ── */}
+      {!isLoading && sources.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-xs">
+          <p className="font-medium text-foreground">
+            <span className="text-negative">🔴 고장 {tierCounts.broken}</span>
+            <span className="mx-2 text-muted-foreground">·</span>
+            <span className="text-amber-700">⚠️ 저활성 {tierCounts.low}</span>
+            <span className="mx-2 text-muted-foreground">·</span>
+            <span className="text-positive">✅ 정상 {tierCounts.ok}</span>
+            {tierCounts.unknown > 0 && (
+              <>
+                <span className="mx-2 text-muted-foreground">·</span>
+                <span className="text-muted-foreground">미상 {tierCounts.unknown}</span>
+              </>
+            )}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowBrokenOnly((v) => !v)}
+              className={cn(
+                'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                showBrokenOnly
+                  ? 'bg-negative text-white'
+                  : 'bg-muted text-muted-foreground hover:bg-accent'
+              )}
+            >
+              고장만 보기
+            </button>
+            <Select value={sortMode} onValueChange={(v) => setSortMode(v as 'health' | 'name')}>
+              <SelectTrigger className="h-7 w-[110px] text-[11px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="health">상태순</SelectItem>
+                <SelectItem value="name">이름순</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       {/* ── 목록 테이블 ── */}
       {isLoading ? (
@@ -443,6 +572,10 @@ export default function SourceQualityManager() {
       ) : sources.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           등록된 소스가 없습니다.
+        </div>
+      ) : displayRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+          고장 상태인 소스가 없습니다.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -458,8 +591,7 @@ export default function SourceQualityManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sources.map(src => {
-                const q = sourceQualityMap.get(src.id)
+              {displayRows.map(({ src, status: s, quality: q, tier }) => {
                 const isLowQuality = Boolean(q && q.total > 0 && qualityTone(q.pendingRate) !== 'positive')
                 return (
                 <tr key={src.id} className="hover:bg-accent/50 transition-colors">
@@ -471,12 +603,18 @@ export default function SourceQualityManager() {
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {(() => {
-                      const s = sourceStatusMap.get(src.id)
                       if (!s) return <span className="text-muted-foreground">—</span>
-                      if (s.consecutiveFailures >= 2) {
+                      if (tier === 'broken') {
                         return (
                           <div>
-                            <StatusBadge tone="negative" label={`🔴 연속실패 ${s.consecutiveFailures}`} />
+                            <StatusBadge
+                              tone="negative"
+                              label={
+                                s.consecutiveFailures >= BROKEN_MIN_CONSECUTIVE_FAILURES
+                                  ? `🔴 연속실패 ${s.consecutiveFailures}`
+                                  : '🔴 마지막 성공 3일 초과'
+                              }
+                            />
                             {s.lastError && (
                               <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
                                 {s.lastError}
@@ -485,15 +623,16 @@ export default function SourceQualityManager() {
                           </div>
                         )
                       }
-                      if (src.is_active && s.inserted7d === 0) {
+                      if (tier === 'low') {
+                        const reason = lowActivityReason(s)
                         return (
                           <div>
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                              ⚠️ 점검 필요
+                              ⚠️ 저활성(7일 신규 0)
                             </span>
-                            {s.lastError && (
-                              <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
-                                {s.lastError}
+                            {reason && (
+                              <p className="mt-0.5 max-w-[220px] truncate text-[11px] text-muted-foreground" title={reason}>
+                                {reason}
                               </p>
                             )}
                           </div>
@@ -508,6 +647,13 @@ export default function SourceQualityManager() {
                   </td>
                   <td className="admin-cell-wrap px-4 py-3 text-xs">
                     {(() => {
+                      if (qualityUnavailable) {
+                        return (
+                          <span className="text-[11px] font-medium text-negative">
+                            품질 지표를 계산할 수 없습니다 (SQL 186 미적용)
+                          </span>
+                        )
+                      }
                       if (!q || q.total === 0) return <span className="text-muted-foreground/40">—</span>
                       const pendingPct = Math.round(q.pendingRate * 100)
                       const bodyFullPct = Math.round(q.bodyFullRate * 100)
@@ -616,7 +762,7 @@ export default function SourceQualityManager() {
             />
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
             <div className="rounded-lg bg-muted px-2 py-2">
               <p className="text-[10px] text-muted-foreground">가져옴</p>
               <p className="text-xs font-semibold text-foreground">
@@ -633,6 +779,22 @@ export default function SourceQualityManager() {
               <p className="text-[10px] text-muted-foreground">중복</p>
               <p className="text-xs font-semibold text-foreground">
                 {crawlProgress.duplicates}
+              </p>
+            </div>
+            {/* 보류·제외 — 312 이전엔 안 보이던 나머지 건수(가져옴 = 신규+중복+보류+제외) */}
+            <div className="rounded-lg bg-muted px-2 py-2">
+              <p className="text-[10px] text-muted-foreground">보류</p>
+              <p className="text-xs font-semibold text-foreground">
+                {crawlProgress.held}
+              </p>
+            </div>
+            <div
+              className="rounded-lg bg-muted px-2 py-2"
+              title={rejectedByTooltip(crawlProgress.rejectedBy) || undefined}
+            >
+              <p className="text-[10px] text-muted-foreground">제외</p>
+              <p className="text-xs font-semibold text-foreground">
+                {crawlProgress.rejected}
               </p>
             </div>
             <div className="rounded-lg bg-negative-soft px-2 py-2">
