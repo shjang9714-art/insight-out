@@ -48,6 +48,18 @@ function extLabel(filename: string): string {
   return map[ext] ?? ext.toUpperCase()
 }
 
+/** 표지 실패 사유 한글화(291) */
+const COVER_REASON_LABEL: Record<string, string> = {
+  render_failed:  '1페이지 렌더 실패',
+  blank_page:     '1페이지가 비어 있음(스캔 PDF일 수 있음)',
+  upload_failed:  '저장 실패',
+  update_failed:  '저장 실패',
+}
+function coverReasonLabel(reason?: string): string {
+  if (!reason) return '알 수 없는 오류'
+  return COVER_REASON_LABEL[reason] ?? reason
+}
+
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
 interface Source {
@@ -102,9 +114,13 @@ export default function ReportUploadForm() {
     issues?: number
     reason?: string
     message?: string
+    coverSet?: boolean
+    coverReason?: string
   } | null>(null)
   const [coverGenerated, setCoverGenerated] = useState(false)
   const [coverFile, setCoverFile] = useState<File | null>(null)
+  // 표지 결과 표시용(291) — coverFile은 성공 화면 렌더 전 초기화되므로 별도 보관.
+  const [manualCoverUsed, setManualCoverUsed] = useState(false)
 
   // DB 메타데이터 로드
   useEffect(() => {
@@ -204,6 +220,7 @@ export default function ReportUploadForm() {
 
     setIsUploading(true)
     setError(null)
+    setManualCoverUsed(false)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -291,6 +308,7 @@ export default function ReportUploadForm() {
           const ext = coverFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
           await uploadCover(supabase, contentId, coverFile, ext)
           setCoverGenerated(true)
+          setManualCoverUsed(true)
         } catch (coverErr) {
           console.error('[upload] 커버 업로드 실패:', coverErr)
         }
@@ -378,13 +396,24 @@ export default function ReportUploadForm() {
             ) : (
               <p>본문 추출을 건너뜀 ({extractResult.reason ?? '비 PDF'})</p>
             )}
-            {coverGenerated && (
-              <p className="mt-1.5 text-xs opacity-80">표지 이미지 생성 완료</p>
+            {manualCoverUsed ? (
+              <p className="mt-1.5 text-xs opacity-80">표지 직접 지정됨</p>
+            ) : coverGenerated || extractResult.coverSet ? (
+              <p className="mt-1.5 text-xs opacity-80">· 표지 자동 추출 완료</p>
+            ) : (
+              <p className="mt-1.5 text-xs text-amber-700">
+                · 표지 자동 추출 실패({coverReasonLabel(extractResult.coverReason)}) — 콘텐츠 검수에서 표지를 직접 올려주세요
+              </p>
             )}
           </div>
         )}
 
-        <Button onClick={() => { setSuccess(false); setExtractResult(null); setCoverGenerated(false) }}>다른 파일 업로드</Button>
+        <Button onClick={() => {
+          setSuccess(false)
+          setExtractResult(null)
+          setCoverGenerated(false)
+          setManualCoverUsed(false)
+        }}>다른 파일 업로드</Button>
       </Card>
     )
   }

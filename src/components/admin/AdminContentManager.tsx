@@ -73,6 +73,7 @@ interface EditState {
   bodyOriginal: string
   bodyMarkdown: string
   thumbnailUrl: string | null
+  filePath: string | null
 }
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
@@ -132,6 +133,19 @@ function toDateInput(value: string | null | undefined): string {
   return value.slice(0, 10)
 }
 
+/** PDF 표지 실패 사유 한글화(291) */
+const COVER_REASON_LABEL: Record<string, string> = {
+  render_failed: '1페이지 렌더 실패',
+  blank_page:    '1페이지가 비어 있음(스캔 PDF일 수 있음)',
+  upload_failed: '저장 실패',
+  update_failed: '저장 실패',
+  not_pdf:       'PDF 파일이 아님',
+}
+function coverReasonLabel(reason?: string): string {
+  if (!reason) return '알 수 없는 오류'
+  return COVER_REASON_LABEL[reason] ?? reason
+}
+
 export default function AdminContentManager() {
   const supabase = createClient()
   const searchParams = useSearchParams()
@@ -158,6 +172,8 @@ export default function AdminContentManager() {
   const [status,        setStatus]        = useState(() => searchParams.get('status') ?? 'all')
   const [todayOnly,     setTodayOnly]     = useState(() => searchParams.get('from') === 'today')
   const [bookmarkedOnly, setBookmarkedOnly] = useState(() => searchParams.get('bookmarked') === '1')
+  // 291 — 표지(thumbnail_url) 없는 콘텐츠만 모아보는 필터. "사람이 개입할 길"의 핵심.
+  const [coverFilter,   setCoverFilter]   = useState<'all' | 'missing'>('all')
   const [searchTerm,    setSearchTerm]    = useState('')
   const [debouncedTerm, setDebouncedTerm] = useState('')
 
@@ -181,6 +197,9 @@ export default function AdminContentManager() {
   // 편집 모달 — 썸네일 업로드/교체 (211)
   const [isUploadingThumb, setIsUploadingThumb] = useState(false)
   const [thumbError,       setThumbError]       = useState<string | null>(null)
+
+  // 편집 모달 — PDF 1페이지 다시 가져오기 (291)
+  const [isRefetchingCover, setIsRefetchingCover] = useState(false)
 
   // 본문 상태 필터 + body_len degrade 추적
   const [bodyFilter,      setBodyFilter]      = useState<'all' | 'full' | 'snippet' | 'none'>('all')
@@ -245,6 +264,7 @@ export default function AdminContentManager() {
         if (debouncedTerm.trim())         q = q.ilike('title', `%${debouncedTerm.trim()}%`)
         if (todayOnly)                    q = q.gte('collected_at', getKstTodayStartIso())
         if (bookmarkedOnly)               q = q.gt('bookmark_count', 0)
+        if (coverFilter === 'missing')    q = q.is('thumbnail_url', null)
         return q
       }
 
@@ -295,7 +315,7 @@ export default function AdminContentManager() {
       setIsLoading(false)
     }
     void run()
-  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter, coverFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -344,7 +364,7 @@ export default function AdminContentManager() {
     setWorkingId(content.id)
     const { data, error: loadError } = await supabase
       .from('contents')
-      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, body_markdown, thumbnail_url')
+      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, body_markdown, thumbnail_url, file_path')
       .eq('id', content.id)
       .single()
     setWorkingId(null)
@@ -366,6 +386,7 @@ export default function AdminContentManager() {
       bodyMarkdown: (data.body_markdown ?? '') ||
                     cleanBodyText(htmlToPlainText(data.body_original ?? '')),
       thumbnailUrl: data.thumbnail_url ?? null,
+      filePath:     data.file_path ?? null,
     })
   }
 
@@ -460,6 +481,33 @@ export default function AdminContentManager() {
   const handleThumbnailRemove = () => {
     setThumbError(null)
     setEdit((p) => p && { ...p, thumbnailUrl: null })
+  }
+
+  // ── 편집 모달 — PDF 1페이지 다시 가져오기 (291) ─────────────────────────
+  // 이 버튼만은 thumbnail_url이 있어도 강제로 덮어쓴다(사용자가 명시적으로 누름).
+  const handleRefetchPdfCover = async () => {
+    if (!edit) return
+    if (!window.confirm('1페이지를 다시 가져오면 현재 표지(수동 등록분 포함)가 새 이미지로 교체됩니다. 계속할까요?')) {
+      return
+    }
+
+    setIsRefetchingCover(true)
+    setThumbError(null)
+    try {
+      const res = await fetch(`/api/admin/contents/${edit.id}/pdf-cover`, { method: 'POST' })
+      const data: { ok: boolean; url?: string; reason?: string; error?: string } = await res.json()
+      if (!res.ok) {
+        setThumbError(data.error ?? '1페이지 다시 가져오기에 실패했습니다.')
+      } else if (!data.ok) {
+        setThumbError(`1페이지 다시 가져오기 실패: ${coverReasonLabel(data.reason)}`)
+      } else if (data.url) {
+        setEdit((p) => p && { ...p, thumbnailUrl: data.url! })
+      }
+    } catch (err) {
+      setThumbError(err instanceof Error ? err.message : '1페이지 다시 가져오기 중 오류가 발생했습니다.')
+    } finally {
+      setIsRefetchingCover(false)
+    }
   }
 
   // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
@@ -626,6 +674,15 @@ export default function AdminContentManager() {
             <SelectItem value="none">미시도</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={coverFilter} onValueChange={(v) => { setCoverFilter(v as 'all' | 'missing'); setPage(1) }}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="표지" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 표지</SelectItem>
+            <SelectItem value="missing">표지 없음</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1) }}>
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -639,8 +696,15 @@ export default function AdminContentManager() {
       </div>
 
       {/* ── 활성 필터 칩 ── */}
-      {(todayOnly || bookmarkedOnly || sourceId !== SOURCE_ALL || (category !== 'all' && !categoryTabs.some((t) => t.value === category))) && (
+      {(todayOnly || bookmarkedOnly || coverFilter === 'missing' || sourceId !== SOURCE_ALL || (category !== 'all' && !categoryTabs.some((t) => t.value === category))) && (
         <div className="flex flex-wrap gap-2">
+          {coverFilter === 'missing' && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              표지 없음
+              <button type="button" onClick={() => { setCoverFilter('all'); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="표지 필터 제거">×</button>
+            </span>
+          )}
           {todayOnly && (
             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
               오늘 수집
@@ -1138,6 +1202,22 @@ export default function AdminContentManager() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">이미지 파일, 2MB 이하. 비우면 기본 표지가 표시됩니다.</p>
+                    {/* 291 — PDF 콘텐츠에 한해 1페이지 재렌더 경로 노출. thumbnail_url 유무 무관하게 강제 덮어씀. */}
+                    {edit.filePath?.toLowerCase().endsWith('.pdf') && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isRefetchingCover}
+                        onClick={handleRefetchPdfCover}
+                        className="w-fit"
+                      >
+                        {isRefetchingCover
+                          ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                          : null}
+                        1페이지 다시 가져오기
+                      </Button>
+                    )}
                     {thumbError && <p className="text-xs text-destructive">{thumbError}</p>}
                   </div>
                 </div>

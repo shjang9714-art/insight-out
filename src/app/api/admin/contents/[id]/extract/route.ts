@@ -100,13 +100,16 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
   //   표지 이미지는 멀쩡한, 커버 자동추출의 가장 큰 이득 케이스다.
   //   thumbnail_url 이 이미 있으면(수동 커버 등) 절대 덮지 않는다.
   let coverSet = false
+  let coverReason: string | undefined
   const existingThumbnailUrl = (content as { thumbnail_url: string | null }).thumbnail_url
   if (!existingThumbnailUrl) {
     try {
-      const coverUrl = await coverFromPdfFirstPage(admin, id, buffer)
-      coverSet = coverUrl !== null
+      const coverResult = await coverFromPdfFirstPage(admin, id, buffer)
+      coverSet = coverResult.ok
+      if (!coverResult.ok) coverReason = coverResult.reason
     } catch (e) {
       console.error('[extract] PDF 커버 생성 실패 (계속 진행):', e)
+      coverReason = 'render_failed'
     }
   }
 
@@ -116,7 +119,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
     bodyText = await extractPdfText(buffer)
   } catch (e) {
     console.error('[extract] PDF 텍스트 추출 실패:', e)
-    return NextResponse.json({ error: 'PDF 텍스트 추출에 실패했습니다.', coverSet }, { status: 500 })
+    return NextResponse.json({ error: 'PDF 텍스트 추출에 실패했습니다.', coverSet, coverReason }, { status: 500 })
   }
 
   // 4. 스캔 PDF 임계 확인
@@ -127,6 +130,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
       message: '텍스트 추출 결과가 너무 짧습니다. 스캔(이미지) PDF로 추정됩니다. OCR 처리가 필요합니다.',
       chars: bodyText.length,
       coverSet,
+      coverReason,
     })
   }
 
@@ -262,5 +266,6 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
     entities: entityCount,
     issues: issueCount,
     coverSet,
+    coverReason,
   })
 }

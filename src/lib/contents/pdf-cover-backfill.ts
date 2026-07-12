@@ -63,8 +63,8 @@ async function processOne(admin: SupabaseClient, row: PdfContentRow): Promise<'f
       console.warn(`[PDF 커버 백필] 다운로드 실패(id=${row.id}, path=${row.file_path}):`, dlErr?.message)
     } else {
       const buffer = new Uint8Array(await fileData.arrayBuffer())
-      const coverUrl = await coverFromPdfFirstPage(admin, row.id, buffer)
-      filled = coverUrl !== null
+      const result = await coverFromPdfFirstPage(admin, row.id, buffer)
+      filled = result.ok
     }
   } catch (e) {
     console.error(`[PDF 커버 백필] 처리 오류(id=${row.id}):`, e instanceof Error ? e.message : String(e))
