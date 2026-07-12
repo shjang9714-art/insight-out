@@ -199,6 +199,14 @@ function isDuplicateEvent(a: TrendingEvent, b: TrendingEvent): boolean {
   return a.entityChip !== null && a.entityChip === b.entityChip && sim >= DEDUP_SIM
 }
 
+/** recentCount 내림차순, 동률 시 changePct 내림차순(null은 최우선) — 특정사건·degrade 항목 통합 정렬에 공용. */
+function compareByRecentCountDesc(a: TrendingEvent, b: TrendingEvent): number {
+  if (b.recentCount !== a.recentCount) return b.recentCount - a.recentCount
+  const aScore = a.changePct === null ? Infinity : a.changePct
+  const bScore = b.changePct === null ? Infinity : b.changePct
+  return bScore - aScore
+}
+
 // ─── 메인 계산 (unstable_cache로 래핑) ────────────────────────────────────────
 
 interface IssueArticleRow {
@@ -339,12 +347,7 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     }
   }
 
-  specificEvents.sort((a, b) => {
-    if (b.recentCount !== a.recentCount) return b.recentCount - a.recentCount
-    const aScore = a.changePct === null ? Infinity : a.changePct
-    const bScore = b.changePct === null ? Infinity : b.changePct
-    return bScore - aScore
-  })
+  specificEvents.sort(compareByRecentCountDesc)
 
   const primary: TrendingEvent[] = []
   for (const ev of specificEvents) {
@@ -391,6 +394,12 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
         break // 이슈당 backfill 항목 최대 1개
       }
     }
+
+    // degrade 항목은 이슈 전체 recentCount를 쓰므로 특정사건보다 커질 수 있다 — 단순히 뒤에
+    // 이어붙이기만 하면 "특정사건이 항상 앞"이 되어 recentCount 내림차순이 깨진다(실측 확인,
+    // 2026-07-12: recentCount=2인 특정사건이 recentCount=54인 degrade 항목보다 위에 노출됨).
+    // 전체를 다시 정렬해 최종 리스트가 항상 recentCount 내림차순을 유지하게 한다.
+    final.sort(compareByRecentCountDesc)
   }
 
   return { events: final, asOfDateKst }
