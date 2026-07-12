@@ -88,6 +88,7 @@ const TYPE_COLOR: Record<EntityType, string> = {
 const COMPETITOR_COLOR  = '#EF4444'
 const LINK_COLOR        = 'rgba(120,120,120,0.60)'
 const LINK_COLOR_HI     = 'rgba(99,102,241,0.85)'
+const LINK_COLOR_DIM    = 'rgba(120,120,120,0.20)' // 290 — 선 선택 시 나머지 선 디밍
 const LENS_RING_COLOR   = '#E6007E'   // canvas 렌즈 링 (canvas hex 예외)
 const SELECTED_RING_COLOR = '#6366F1' // canvas 선택 노드 링 (canvas hex 예외)
 
@@ -207,6 +208,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const initNoNeighbors  = loadedKey === expectedKey && loadStatus === 'no-neighbors'
   const activeTooltip    = edgeTooltip?.forLoadedKey === loadedKey ? edgeTooltip : null
   const activeLockedEdge = lockedEdge?.forLoadedKey === loadedKey ? lockedEdge : null
+  // 290 — 선택된 선의 두 끝 노드 id (pairKey = "a|b" 정렬 문자열이므로 분리하면 집합이 나온다)
+  const activeLockedEdgeNodeIds = activeLockedEdge ? new Set(activeLockedEdge.pairKey.split('|')) : null
   const maxNodesReached  = maxNodesReachedKey === loadedKey && loadedKey !== ''
 
   // ResizeObserver
@@ -219,6 +222,17 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     ro.observe(el)
     setDimensions({ width: el.offsetWidth, height: 520 })
     return () => ro.disconnect()
+  }, [])
+
+  // Esc — 선택된 선·노드 해제(290)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setLockedEdge(null)
+      setSelectedNodeId(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   // ── 초기/리셋 로드 (동기 setState 없음) ───────────────────────────────────
@@ -339,7 +353,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       if (charge?.strength) charge.strength(-280)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const link = (fg as any).d3Force?.('link')
-      if (link?.distance) link.distance(80)
+      // 290 — 상수 거리 폐지: 강한 관계(weight 큼)일수록 목표 거리를 짧게 해 "가까움 = 관련 깊음"이 실제 의미를 갖게 한다.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (link?.distance) link.distance((l: any) => 140 - Math.min(80, Math.log2((l.weight ?? 1) + 1) * 20))
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(fg as any).d3ReheatSimulation?.()
     }, 150)
@@ -779,23 +795,36 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
       {/* 타입 필터 범례 + 렌즈 안내 */}
       <div className="mb-3">
-        <p className="mb-3 text-xs text-muted-foreground">
-          점=기업·기술·인물, 선=함께 뉴스에 등장한 관계. 점을 누르면 관련 기사가 보여요.
-        </p>
+        <div className="mb-2 space-y-0.5 text-xs text-muted-foreground">
+          <p>점 = 기업·기술·인물 등 엔티티 · 크기 = 언급 횟수</p>
+          <p>선 = 함께 뉴스에 등장한 관계 · 굵기·가까움 = 관계 강도</p>
+          <p>점을 누르면 관련 기사, 선을 누르면 두 엔티티의 관계가 보여요.</p>
+        </div>
+        <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">유형 필터 (누르면 숨김)</p>
         <div className="flex flex-wrap gap-2">
-          {TYPE_ENTRIES.map(({ type, label, color }) => (
-            <button
-              key={type}
-              onClick={() => toggleType(type)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-opacity',
-                hiddenTypes.has(type) ? 'opacity-30' : 'opacity-100'
-              )}
-            >
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-              {label}
-            </button>
-          ))}
+          {TYPE_ENTRIES.map(({ type, label, color }) => {
+            const count = nodes.filter((n) => n.type === type).length
+            const isHidden = hiddenTypes.has(type)
+            const isCenterType = rootEnt?.entity_type === type
+            const disabled = count === 0
+            return (
+              <button
+                key={type}
+                onClick={() => toggleType(type)}
+                disabled={disabled}
+                title={isCenterType ? '중심 노드는 숨겨지지 않습니다' : undefined}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  disabled && 'cursor-not-allowed opacity-40',
+                  !disabled && isHidden && 'border-muted-foreground/30 bg-muted text-muted-foreground line-through',
+                )}
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                {label}
+                <span className="text-muted-foreground/70">{count}</span>
+              </button>
+            )
+          })}
           <button className="flex cursor-default items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-70">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
             경쟁사
@@ -808,6 +837,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           )}
         </div>
       </div>
+
+      {/* 290 — 데스크톱(lg+): 그래프 + 우측 고정 인스펙터 2열. 모바일: 1열(그래프 아래 카드, DOM 순서 그대로). */}
+      <div className="lg:grid lg:grid-cols-[1fr_320px] lg:items-start lg:gap-4">
 
       {/* 그래프 캔버스 */}
       <div
@@ -860,10 +892,13 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               const radius = Math.max(4, n.val * 2.5)
               const color = nodeColor(n)
               const isExpanded = expandedIdsRef.current.has(n.id)
+              // 290 — 선 선택 시 양 끝 노드 외에는 디밍(호버는 디밍하지 않는다)
+              const isDimmedBySelection = activeLockedEdgeNodeIds ? !activeLockedEdgeNodeIds.has(n.id) : false
 
               ctx.save()
 
-              if (!isExpanded) ctx.globalAlpha = 0.6
+              if (isDimmedBySelection) ctx.globalAlpha = 0.35
+              else if (!isExpanded) ctx.globalAlpha = 0.6
 
               ctx.beginPath()
               ctx.arc(n.x, n.y, radius, 0, 2 * Math.PI)
@@ -871,7 +906,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               ctx.fill()
 
               if (n.isCenter) {
-                ctx.globalAlpha = 1
+                ctx.globalAlpha = isDimmedBySelection ? 0.35 : 1
                 ctx.lineWidth = 3
                 ctx.strokeStyle = '#ffffff'
                 ctx.stroke()
@@ -890,7 +925,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                 ctx.setLineDash([])
               }
 
-              ctx.globalAlpha = 1
+              ctx.globalAlpha = isDimmedBySelection ? 0.4 : 1
 
               // 렌즈 링
               const lt: LensTarget = { names: [n.label], isCompetitor: n.isCompetitor, entityId: n.id }
@@ -927,15 +962,19 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               ctx.restore()
             }}
             nodeCanvasObjectMode={() => 'replace'}
+            linkHoverPrecision={10}
             linkColor={(link) => {
               const raw = link as { source?: unknown; target?: unknown }
               const pk = mkLinkKey(getLinkEndId(raw.source), getLinkEndId(raw.target))
+              // 290 — 선택(잠금) 중엔 선택된 선만 강조하고 나머지는 디밍. 호버는 디밍하지 않는다(탐색 보조에 그침).
+              if (activeLockedEdge) return activeLockedEdge.pairKey === pk ? LINK_COLOR_HI : LINK_COLOR_DIM
               return activeTooltip?.pairKey === pk ? LINK_COLOR_HI : LINK_COLOR
             }}
             linkWidth={(link) => {
               const raw = link as { weight?: number; source?: unknown; target?: unknown }
               const base = linkWidthFromWeight(raw.weight ?? 1)
               const pk = mkLinkKey(getLinkEndId(raw.source), getLinkEndId(raw.target))
+              if (activeLockedEdge) return activeLockedEdge.pairKey === pk ? Math.max(4, base * 2.5) : base
               return activeTooltip?.pairKey === pk ? base + 1.5 : base
             }}
             onNodeClick={handleNodeClick}
@@ -1001,9 +1040,11 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         )}
       </div>
 
+      {/* 290 — 우측 고정 인스펙터(lg+) / 그래프 아래 카드(모바일) — 선택 노드 패널 · 엣지 잠금 패널 */}
+      <div className="mt-3 lg:sticky lg:top-4 lg:mt-0">
       {/* 선택 노드 패널 */}
       {selectedNode && (
-        <div className="mt-3 rounded-xl border bg-card p-4 space-y-3">
+        <div className="rounded-xl border bg-card p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-foreground">{selectedNode.label}</p>
@@ -1084,7 +1125,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
       {/* 엣지 클릭 잠금 패널 */}
       {activeLockedEdge && !selectedNode && (
-        <div className="mt-3 rounded-xl border bg-card p-4 space-y-2">
+        <div className="rounded-xl border bg-card p-4 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-foreground">
@@ -1127,6 +1168,14 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           )}
         </div>
       )}
+
+      {!selectedNode && !activeLockedEdge && (
+        <div className="hidden lg:flex lg:h-[200px] lg:items-center lg:justify-center lg:rounded-xl lg:border lg:border-dashed lg:p-4 lg:text-center lg:text-xs lg:text-muted-foreground">
+          점이나 선을 클릭하면 여기에 상세 정보가 표시돼요.
+        </div>
+      )}
+      </div>
+      </div>
 
       <p className="mt-2 text-right text-xs text-muted-foreground">
         중심: {rootEnt?.canonical_name ?? '없음'} · 노드 {visibleNodes.length} · 확장 {expandCount}단계
