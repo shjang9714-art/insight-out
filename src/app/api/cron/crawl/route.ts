@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { runCrawl } from '@/lib/crawler/orchestrator'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { runJob } from '@/lib/jobs/run-job'
 
 // Node.js 런타임 사용 (Edge 런타임은 crypto 모듈 미지원)
 export const runtime = 'nodejs'
@@ -25,13 +27,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 소급 수집(최초 구축·검증용): ?days=N (1~30). 미지정이면 당일분만.
-    // 라우트가 CRON_SECRET 으로 인증되므로 인증된 호출자만 사용 가능.
-    const daysParam = request.nextUrl.searchParams.get('days')
-    const parsedDays = daysParam ? parseInt(daysParam, 10) : NaN
-    const options = Number.isFinite(parsedDays) ? { backfillDays: parsedDays } : undefined
+    const admin = createAdminClient()
+    const summary = await runJob(admin, { key: 'cron:crawl', trigger: 'cron' }, async () => {
+      // 소급 수집(최초 구축·검증용): ?days=N (1~30). 미지정이면 당일분만.
+      // 라우트가 CRON_SECRET 으로 인증되므로 인증된 호출자만 사용 가능.
+      const daysParam = request.nextUrl.searchParams.get('days')
+      const parsedDays = daysParam ? parseInt(daysParam, 10) : NaN
+      const options = Number.isFinite(parsedDays) ? { backfillDays: parsedDays } : undefined
 
-    const summary = await runCrawl(options)
+      return runCrawl(options)
+    })
     return Response.json(summary)
   } catch (err) {
     // 이 라우트는 CRON_SECRET 으로 이미 인증됨(비밀키 보유자만 도달).

@@ -69,3 +69,18 @@ export const DAILY_INSIGHT_STATUS_TONE = {
   published: 'positive',
   rejected:  'negative',
 } as const
+
+// 작업 이력(job_runs, 289) — skipped(안 돌 이유가 있어 안 돎)는 실패가 아니다, 혼동 주의.
+export const JOB_RUN_STATUS_TONE = {
+  running:   'info',
+  succeeded: 'positive',
+  failed:    'negative',
+  skipped:   'neutral',
+} as const
+
+export const JOB_RUN_STATUS_LABEL = {
+  running:   '실행 중',
+  succeeded: '성공',
+  failed:    '실패',
+  skipped:   '스킵',
+} as const

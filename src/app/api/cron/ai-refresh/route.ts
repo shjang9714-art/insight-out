@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib/insight/generate'
@@ -7,6 +8,7 @@ import { generateEntityEvents } from '@/lib/entities/generate-events'
 import { generateIssueBrief } from '@/lib/issues/brief'
 import { backfillSentiment } from '@/lib/insight/sentiment-backfill'
 import { issueAutoPublish } from '@/lib/insight/auto-publish'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,24 +16,22 @@ export const maxDuration = 300
 
 const DRAIN_LIMIT = 15
 
-export async function GET(request: NextRequest) {
-  // CRON_SECRET 인증
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
+interface AiRefreshFullResult {
+  ok: boolean
+  insights: number
+  companyInsights: number
+  candidates: number
+  timelines: number
+  briefs: number
+  sentiments: number
+  errors: string[]
+}
 
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return Response.json({ ok: false, error: '인증 실패' }, { status: 401 })
-  }
-
-  // LLM 키 없으면 전체 skip
-  if (!LLM_PROVIDERS.some(p => p.isConfigured())) {
-    return Response.json({ ok: true, skipped: true, reason: 'LLM 키 없음' })
-  }
-
+/** 기존 GET 로직 그대로 — Response.json() 래핑만 바깥(GET)으로 옮김(289, runJob 계측용). */
+async function runAiRefresh(admin: SupabaseClient): Promise<AiRefreshFullResult> {
   const deadline = Date.now() + 270_000
-  const admin = createAdminClient()
 
-  const result = {
+  const result: AiRefreshFullResult = {
     ok: true,
     insights: 0,
     companyInsights: 0,
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     timelines: 0,
     briefs: 0,
     sentiments: 0,
-    errors: [] as string[],
+    errors: [],
   }
 
   // ── ① 인사이트 카드 생성 ──────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
   if (Date.now() >= deadline) {
     console.log('[ai-refresh] 데드라인 초과 — insights 이후 중단')
-    return Response.json(result)
+    return result
   }
 
   // ── ①b 주요 기업 카드 생성(254 — curated 41개사, deadline 분할) ───────────
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
 
   if (Date.now() >= deadline) {
     console.log('[ai-refresh] 데드라인 초과 — companyInsights 이후 중단')
-    return Response.json(result)
+    return result
   }
 
   // ── ② 이슈 후보 생성 + draft insert ─────────────────────────────────────
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
 
   if (Date.now() >= deadline) {
     console.log('[ai-refresh] 데드라인 초과 — candidates 이후 중단')
-    return Response.json(result)
+    return result
   }
 
   // ── ③ 사건 타임라인 드레인 (stalest 먼저) ──────────────────────────────
@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
 
   if (Date.now() >= deadline) {
     console.log('[ai-refresh] 데드라인 초과 — timelines 이후 중단')
-    return Response.json(result)
+    return result
   }
 
   // ── ④ 이슈 브리핑 드레인 (brief_generated_at ASC NULLS FIRST) ────────────
@@ -232,5 +232,25 @@ export async function GET(request: NextRequest) {
   }
 
   console.log('[ai-refresh] 완료:', JSON.stringify(result))
+  return result
+}
+
+export async function GET(request: NextRequest) {
+  // CRON_SECRET 인증
+  const authHeader = request.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return Response.json({ ok: false, error: '인증 실패' }, { status: 401 })
+  }
+
+  const admin = createAdminClient()
+  const result = await runJob(admin, { key: 'cron:ai-refresh', trigger: 'cron' }, async () => {
+    // LLM 키 없으면 전체 skip
+    if (!LLM_PROVIDERS.some(p => p.isConfigured())) {
+      return { ok: true, skipped: true, reason: 'LLM 키 없음' }
+    }
+    return runAiRefresh(admin)
+  })
   return Response.json(result)
 }

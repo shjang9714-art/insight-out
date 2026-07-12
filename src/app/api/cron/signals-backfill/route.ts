@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { drainSignals } from '@/lib/contents/classify-signals'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,11 +23,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient()
-    const result = await drainSignals(admin, {
-      limit: 10,
-      deadline: Date.now() + 270_000,
+    const result = await runJob(admin, { key: 'cron:signals-backfill', trigger: 'cron' }, async () => {
+      const r = await drainSignals(admin, {
+        limit: 10,
+        deadline: Date.now() + 270_000,
+      })
+      return { ok: true, ...r }
     })
-    return Response.json({ ok: true, ...result })
+    return Response.json(result)
   } catch (err) {
     console.error('[크론/signals-backfill] 오류:', err)
     const detail = err instanceof Error ? err.message : String(err)

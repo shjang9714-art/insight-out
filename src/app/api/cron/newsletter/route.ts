@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { runNewsletterDispatch } from '@/lib/newsletter/dispatch'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,7 +16,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await runNewsletterDispatch({ triggeredBy: 'cron' })
+    const admin = createAdminClient()
+    const result = await runJob(admin, { key: 'cron:newsletter', trigger: 'cron' }, async () => {
+      return runNewsletterDispatch({ triggeredBy: 'cron' })
+    })
     return Response.json(result)
   } catch (err) {
     console.error('[크론/newsletter] 발송 오류:', err)

@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { generateKeyInsightBatch, isThursdayKst } from '@/lib/key-insights/generate'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,30 +23,35 @@ export async function GET(request: NextRequest) {
     return Response.json({ ok: false, error: '인증 실패' }, { status: 401 })
   }
 
-  const force = request.nextUrl.searchParams.get('force') === '1'
-
-  if (!force && !isThursdayKst()) {
-    return Response.json({
-      ok: true,
-      generated: 0,
-      skipped: true,
-      failed: false,
-      reason: '목요일 아님(KST) — 자동 실행 스킵',
-    })
-  }
+  const admin = createAdminClient()
 
   try {
-    const result = await generateKeyInsightBatch({ force })
-    const skipped = result.skipped === true
-    const failed = !result.ok && !skipped
+    const result = await runJob(admin, { key: 'cron:key-insights', trigger: 'cron' }, async () => {
+      const force = request.nextUrl.searchParams.get('force') === '1'
 
-    return Response.json({
-      ...result,
-      weekOf: result.weekOf,
-      generated: result.savedCount ?? 0,
-      skipped,
-      failed,
+      if (!force && !isThursdayKst()) {
+        return {
+          ok: true,
+          generated: 0,
+          skipped: true,
+          failed: false,
+          reason: '목요일 아님(KST) — 자동 실행 스킵',
+        }
+      }
+
+      const batchResult = await generateKeyInsightBatch({ force })
+      const skipped = batchResult.skipped === true
+      const failed = !batchResult.ok && !skipped
+
+      return {
+        ...batchResult,
+        weekOf: batchResult.weekOf,
+        generated: batchResult.savedCount ?? 0,
+        skipped,
+        failed,
+      }
     })
+    return Response.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[크론/key-insights] ${new Date().toISOString()} 생성 오류:`, message)

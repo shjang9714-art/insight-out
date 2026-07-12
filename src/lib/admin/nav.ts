@@ -27,6 +27,7 @@ import {
   LayoutTemplate,
   FileText,
   CalendarClock,
+  History,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -59,6 +60,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '운영 게시판',
         description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.',
         icon: ClipboardList,
+      },
+      {
+        href: '/admin/job-runs',
+        label: '작업 이력',
+        description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.',
+        icon: History,
       },
     ],
   },

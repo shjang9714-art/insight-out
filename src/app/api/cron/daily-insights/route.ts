@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { generateDailyInsightBatch } from '@/lib/daily-insights/generate'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,7 +22,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await generateDailyInsightBatch()
+    const admin = createAdminClient()
+    const result = await runJob(admin, { key: 'cron:daily-insights', trigger: 'cron' }, async () => {
+      return generateDailyInsightBatch()
+    })
     return Response.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

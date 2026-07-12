@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { generateBriefing } from '@/lib/briefing/generate-briefing'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,10 +16,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const force = request.nextUrl.searchParams.get('force') === '1'
-    const date = request.nextUrl.searchParams.get('date') ?? undefined
+    const admin = createAdminClient()
+    const result = await runJob(admin, { key: 'cron:briefing', trigger: 'cron' }, async () => {
+      const force = request.nextUrl.searchParams.get('force') === '1'
+      const date = request.nextUrl.searchParams.get('date') ?? undefined
 
-    const result = await generateBriefing({ force, date, autoPublish: true })
+      return generateBriefing({ force, date, autoPublish: true })
+    })
     return Response.json(result)
   } catch (err) {
     console.error('[크론/briefing] 브리핑 생성 오류:', err)

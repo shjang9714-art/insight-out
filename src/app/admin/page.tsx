@@ -12,6 +12,7 @@ import AdminOpsSignals, { type LlmProviderUsage, type OpsSignalCounts } from '@/
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
 import AiRefreshButton from '@/components/admin/AiRefreshButton'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import AdminFailedJobsCard, { type FailedJobRow } from '@/components/admin/AdminFailedJobsCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +69,8 @@ export default async function AdminPage() {
     issuesCountRes, entitiesCountRes, insightCardsCountRes, aiReportsCountRes, contentSignalsRes,
     // 콘텐츠 건강
     bodyFullRes, bodySnippetRes, bodyNoneRes, sentMissingRes, untaggedRes, brokenLinkRes, deadLinksRes,
+    // 신규 — 최근 실패한 작업(289)
+    failedJobsRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }),
@@ -125,6 +128,10 @@ export default async function AdminPage() {
     supabase.from('contents').select('*', { count: 'exact', head: true }).is('matched_groups', null),
     supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').ilike('original_url', '%news.google.com%'),
     supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').eq('link_ok', false),
+    // 최근 24시간 내 실패한 작업(job_runs, 289) — 테이블 미적용(42P01) 시 error → 카드 숨김(graceful)
+    admin
+      ? admin.from('job_runs').select('id, job_key, error, started_at').eq('status', 'failed').gte('started_at', yesterday).order('started_at', { ascending: false }).limit(20)
+      : Promise.resolve({ data: [], error: null }),
   ])
 
   // ── 카테고리 집계 ──────────────────────────────────────────────────────────
@@ -235,6 +242,10 @@ export default async function AdminPage() {
     deadLinks:         deadLinksRes.error ? 0 : (deadLinksRes.count ?? 0),
   }
 
+  // ── 최근 실패한 작업(job_runs, 289) — 42P01(테이블 미적용) 시 카드 숨김 ──────
+  const jobRunsReady = !failedJobsRes.error
+  const failedJobs: FailedJobRow[] = jobRunsReady ? ((failedJobsRes.data ?? []) as FailedJobRow[]) : []
+
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
   const chartData: ChartData = {
@@ -254,6 +265,9 @@ export default async function AdminPage() {
   return (
     <div className="space-y-10">
       <AdminPageHeader />
+
+      {/* 최근 실패한 작업(289) — 크론 10개 계측. 있으면 눈에 띄게, 없으면 조용히 */}
+      <AdminFailedJobsCard jobs={failedJobs} ready={jobRunsReady} />
 
       {/* ① 오늘 할 일 */}
       <AdminTodoBlock

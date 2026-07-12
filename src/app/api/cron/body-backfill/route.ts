@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { drainBackfill } from '@/lib/contents/enrich-body'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,11 +23,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient()
-    const result = await drainBackfill(admin, {
-      limit: 30,
-      deadline: Date.now() + 270_000,
+    const result = await runJob(admin, { key: 'cron:body-backfill', trigger: 'cron' }, async () => {
+      const r = await drainBackfill(admin, {
+        limit: 30,
+        deadline: Date.now() + 270_000,
+      })
+      return { ok: true, ...r }
     })
-    return Response.json({ ok: true, ...result })
+    return Response.json(result)
   } catch (err) {
     console.error('[크론/body-backfill] 오류:', err)
     const message = err instanceof Error ? err.message : String(err)
