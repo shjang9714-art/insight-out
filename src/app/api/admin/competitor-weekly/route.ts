@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateCompetitorWeeklyReport } from '@/lib/competitor-weekly/generate'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,7 @@ async function verifyAdmin() {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
+    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }), userId: null }
   }
 
   const { data: profile } = await supabase
@@ -37,10 +38,10 @@ async function verifyAdmin() {
     .single()
 
   if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
+    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }), userId: null }
   }
 
-  return { error: null }
+  return { error: null, userId: user.id }
 }
 
 /**
@@ -50,7 +51,7 @@ async function verifyAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { error: authError } = await verifyAdmin()
+    const { error: authError, userId } = await verifyAdmin()
     if (authError) return authError
 
     let weekStart: string | undefined
@@ -61,7 +62,9 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient()
     const deadline = Date.now() + 270_000
-    const result = await generateCompetitorWeeklyReport(admin, { weekStart, deadline })
+    const result = await runJob(admin, { key: 'admin:competitor-weekly', trigger: 'admin', startedBy: userId ?? undefined }, () =>
+      generateCompetitorWeeklyReport(admin, { weekStart, deadline })
+    )
     return NextResponse.json(result)
   } catch (err) {
     console.error('[POST /api/admin/competitor-weekly] 오류:', err)

@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { backfillSentiment } from '@/lib/insight/sentiment-backfill'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ async function verifyAdmin() {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
+    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }), userId: null }
   }
 
   const { data: profile } = await supabase
@@ -36,10 +37,10 @@ async function verifyAdmin() {
     .single()
 
   if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
+    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }), userId: null }
   }
 
-  return { error: null }
+  return { error: null, userId: user.id }
 }
 
 /**
@@ -49,7 +50,7 @@ async function verifyAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { error: authError } = await verifyAdmin()
+    const { error: authError, userId } = await verifyAdmin()
     if (authError) return authError
 
     let days = 14
@@ -61,7 +62,9 @@ export async function POST(request: NextRequest) {
     } catch { /* body 파싱 실패 시 기본값 사용 */ }
 
     const supabase = createAdminClient()
-    const result = await backfillSentiment(supabase, { days, max })
+    const result = await runJob(supabase, { key: 'admin:sentiment', trigger: 'admin', startedBy: userId ?? undefined }, () =>
+      backfillSentiment(supabase, { days, max })
+    )
     return NextResponse.json(result)
   } catch (err) {
     console.error('[sentiment backfill]', err)

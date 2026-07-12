@@ -32,6 +32,15 @@ const RESET_ITEMS: ResetItemConfig[] = [
       `유튜브 영상 ${count.toLocaleString()}건을 삭제합니다.\n되돌릴 수 없습니다.`,
     resultLabel: (deleted) => `유튜브 ${deleted.toLocaleString()}건 삭제 완료`,
   },
+  {
+    key: 'job_runs',
+    title: '작업 이력 정리',
+    description: '90일 초과된 작업 이력(job_runs)만 삭제합니다. 최근 이력은 보존됩니다.',
+    purgeUrl: '/api/admin/job-runs/cleanup',
+    confirmLabel: (count) =>
+      `90일 초과 작업 이력 ${count.toLocaleString()}건을 삭제합니다.\n되돌릴 수 없습니다.`,
+    resultLabel: (deleted) => `작업 이력 ${deleted.toLocaleString()}건 삭제 완료`,
+  },
 ]
 
 type Phase = 'idle' | 'confirming' | 'working'

@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { drainThumbnailBackfill } from '@/lib/contents/thumbnail-backfill'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,7 @@ async function verifyAdmin() {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }), userId: null }
   }
 
   const { data: profile } = await supabase
@@ -37,10 +38,10 @@ async function verifyAdmin() {
     .single()
 
   if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
+    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }), userId: null }
   }
 
-  return null
+  return { error: null, userId: user.id }
 }
 
 /**
@@ -50,8 +51,8 @@ async function verifyAdmin() {
  * thumbnail_fetched_at 컬럼 미적용(42703) 시 { ready: false }(219 SQL 적용 필요).
  */
 export async function POST(request: NextRequest) {
-  const denied = await verifyAdmin()
-  if (denied) return denied
+  const { error: authError, userId } = await verifyAdmin()
+  if (authError) return authError
 
   const sp = request.nextUrl.searchParams
   const limitParam = sp.get('limit')
@@ -61,6 +62,8 @@ export async function POST(request: NextRequest) {
   const mode = sp.get('mode') === 'retry' ? 'retry' : 'fresh'
 
   const admin = createAdminClient()
-  const result = await drainThumbnailBackfill(admin, { limit, from, to, mode })
+  const result = await runJob(admin, { key: 'admin:thumbnail-backfill', trigger: 'admin', mode, startedBy: userId ?? undefined }, () =>
+    drainThumbnailBackfill(admin, { limit, from, to, mode })
+  )
   return NextResponse.json(result)
 }

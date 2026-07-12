@@ -8,6 +8,7 @@ import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { JOB_RUN_STATUS_TONE, JOB_RUN_STATUS_LABEL } from '@/lib/admin/status-style'
+import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
 import { cn } from '@/lib/utils'
 import { History } from 'lucide-react'
 
@@ -127,6 +128,35 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
   const ready = !error || error.code !== '42P01'
   const runs = (ready ? (data ?? []) : []) as JobRunRow[]
 
+  // 292 — 계측 누락("EXPECTED_CRONS 에 있는데 job_runs 에 기록이 없음") + "안 돈 크론"
+  // (기록은 있는데 maxAgeHours 초과) 을 한 장치로 감지. skipped 도 "돌았다"로 친다(§4 가드).
+  type CronTone = 'ok' | 'stale' | 'missing'
+  interface CronStatus { key: string; label: string; tone: CronTone; lastAt: string | null }
+  let cronStatuses: CronStatus[] = []
+  if (ready) {
+    // Date.now() purity 규칙 회피 (§120 cutoffDate 패턴과 동일) — 루프 밖에서 한 번만 스냅샷.
+    const nowMs = new Date().getTime()
+    cronStatuses = await Promise.all(
+      EXPECTED_CRONS.map(async (c) => {
+        const { data: row } = await admin
+          .from('job_runs')
+          .select('started_at')
+          .eq('job_key', c.key)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        const lastAt = (row as { started_at: string } | null)?.started_at ?? null
+        let tone: CronTone = 'missing'
+        if (lastAt) {
+          const ageHours = (nowMs - new Date(lastAt).getTime()) / 3_600_000
+          tone = ageHours <= c.maxAgeHours ? 'ok' : 'stale'
+        }
+        return { key: c.key, label: c.label, tone, lastAt }
+      })
+    )
+  }
+  const allCronsNormal = cronStatuses.length > 0 && cronStatuses.every((c) => c.tone === 'ok')
+
   return (
     <div className="space-y-6">
       <AdminPageHeader />
@@ -138,6 +168,36 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
         />
       ) : (
         <>
+          {cronStatuses.length > 0 && (
+            <div className="rounded-xl border border-border p-3">
+              {allCronsNormal ? (
+                <p className="text-xs text-muted-foreground">
+                  <span className="mr-1 text-positive">●</span>
+                  크론 상태: {cronStatuses.length}개 모두 정상
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="mb-1 text-xs font-medium text-foreground">크론 상태</p>
+                  {cronStatuses.map((c) => (
+                    <p
+                      key={c.key}
+                      className={cn(
+                        'text-xs',
+                        c.tone === 'ok' && 'text-muted-foreground',
+                        c.tone === 'stale' && 'text-amber-600',
+                        c.tone === 'missing' && 'text-destructive'
+                      )}
+                    >
+                      {c.tone === 'ok' ? '●' : '▲'} {c.label}
+                      {c.tone === 'missing' && ' — 계측 안 됨 또는 한 번도 안 돎'}
+                      {c.tone === 'stale' && ` — 안 돈 지 오래됨 (마지막: ${formatKST(c.lastAt)})`}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-1.5">
               {STATUS_FILTERS.map((f) => (

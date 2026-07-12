@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { drainSignals } from '@/lib/contents/classify-signals'
+import { runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,7 @@ async function verifyAdmin() {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }), userId: null }
   }
 
   const { data: profile } = await supabase
@@ -37,10 +38,10 @@ async function verifyAdmin() {
     .single()
 
   if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
+    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }), userId: null }
   }
 
-  return null
+  return { error: null, userId: user.id }
 }
 
 /**
@@ -49,15 +50,17 @@ async function verifyAdmin() {
  * limit: 1~20, 기본 10.
  */
 export async function POST(request: NextRequest) {
-  const denied = await verifyAdmin()
-  if (denied) return denied
+  const { error: authError, userId } = await verifyAdmin()
+  if (authError) return authError
 
   const sp = request.nextUrl.searchParams
   const limitParam = sp.get('limit')
   const limit = Math.min(Math.max(parseInt(limitParam || '10', 10) || 10, 1), 20)
 
   const admin = createAdminClient()
-  const result = await drainSignals(admin, { limit })
+  const result = await runJob(admin, { key: 'admin:signals-backfill', trigger: 'admin', startedBy: userId ?? undefined }, () =>
+    drainSignals(admin, { limit })
+  )
 
   if (result.remaining === -1) {
     return NextResponse.json(
