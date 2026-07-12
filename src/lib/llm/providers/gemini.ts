@@ -1,4 +1,5 @@
 import type { LlmProvider, LlmResult } from '@/lib/llm/types'
+import { LlmRateLimitError } from '@/lib/llm/types'
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -28,6 +29,12 @@ const geminiProvider: LlmProvider = {
     const idx = Math.floor(Math.random() * keys.length)
     const orderedKeys = [keys[idx], ...keys.filter((_, i) => i !== idx).slice(0, 1)]
 
+    // 시도한 키가 전부 401/429(한도소진)였는지 — 그렇다면 상위(completeWithRetry)가
+    // 같은 provider 를 재시도하지 않고 즉시 다음 provider·쿨다운으로 넘어가게 throw한다.
+    // (openai-compat 프로바이더와 동일 계약. 이게 없으면 Gemini 만 쿨다운이 안 걸려
+    //  크롤 매 요약 호출마다 재시도되는 "재시도 지옥"이 발생 — 2026-07-12 504 원인.)
+    let sawHardLimit = false
+
     for (const key of orderedKeys) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${key}`
@@ -44,7 +51,10 @@ const geminiProvider: LlmProvider = {
         if (!res.ok) {
           const body = await res.text().catch(() => '')
           console.error(`[gemini] HTTP ${res.status}: ${body.slice(0, 500)}`)
-          if (res.status === 401 || res.status === 429) continue
+          if (res.status === 401 || res.status === 429) {
+            sawHardLimit = true
+            continue
+          }
           return null
         }
 
@@ -64,6 +74,7 @@ const geminiProvider: LlmProvider = {
       }
     }
 
+    if (sawHardLimit) throw new LlmRateLimitError('gemini')
     return null
   },
 }

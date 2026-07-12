@@ -17,7 +17,7 @@ import {
   TRANSLATION_SEPARATOR,
   translateToKorean,
 } from '@/lib/translate'
-import { summarizeKo, summarizeYoutubeKo } from './summarize'
+import { SUMMARY_MIN_BODY_LEN } from './summarize'
 import { classifyRelevance } from './classify'
 import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
@@ -25,8 +25,6 @@ import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
-const MAX_SUMMARIES_PER_CRAWL = 60
-const SUMMARY_MIN_BODY_LEN = 200
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
 // 265 — 유튜브 자막 수집(비공식 엔드포인트, rate limit 위험) 크롤당 상한. 나머지는 어드민 백필로.
 const MAX_TRANSCRIPTS_PER_CRAWL = 15
@@ -47,6 +45,10 @@ const googleNewsRss = (q: string) =>
 // ── 회사 seed 검색 수집(259) 상수 ───────────────────────────────────────
 const MAX_COMPANY_SEEDS = 120
 const COMPANY_SEARCH_BUDGET_MS = 20_000
+
+// maxDuration(300초) 안에서 우아하게 멈추기 위한 크롤 전체 소프트 데드라인.
+// 하드킬(강제종료)과 달리 여기 걸리면 runJob 이 정상적으로 succeeded/partial 로 기록한다.
+const CRAWL_SOFT_DEADLINE_MS = 270_000
 
 interface TranslationBudget {
   remaining: number
@@ -322,6 +324,12 @@ interface ItemSourceCtx {
   id: string | null
   type: SourceType
   trust_tier: number
+  /** 키워드/회사 seed 검색(Google News RSS) 경로 아이템 — source_id=null 로만 구분되던 것을
+   *  명시적 플래그로 노출. RSS description 이 실제 본문이 아니라 제목을 감싼 링크라 본문
+   *  최소길이(minBodyLength) 게이트를 구조적으로 통과 못 해 전량 rejected 되던 문제(2026-07-12
+   *  §5 재검증) 때문에, 이 아이템만 그 게이트를 면제한다. insert 후 enrichRecentContents 가
+   *  풀본문을 채운다. 정규 소스 폴링 아이템의 품질 게이팅은 그대로 유지된다. */
+  isSearchSourced?: boolean
 }
 
 /**
@@ -340,7 +348,6 @@ async function processCrawlItem(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
-  summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   counts: CrawlCounts,
   aliasMap: Map<string, string> = new Map(),
@@ -378,11 +385,13 @@ async function processCrawlItem(
     if (exclusionMatch) {
       exclusionHits.set(exclusionMatch.ruleId, (exclusionHits.get(exclusionMatch.ruleId) ?? 0) + 1)
     }
+    // 키워드/회사 seed 검색(Google News RSS) 아이템은 본문 최소길이 게이트 면제(위 ItemSourceCtx
+    // 주석 참고) — 정규 소스 폴링 아이템은 그대로 적용.
     if (
       isAdLike(qText) ||
       isExcludedByGroups(item.title, groups) ||  // keyword_groups.exclude_patterns 기반
       effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH ||
-      bodyLength(item.body ?? null) < minBodyLength ||  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
+      (!src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength) ||  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
       exclusionMatch?.action === 'reject'
     ) {
       counts.rejected++
@@ -627,25 +636,8 @@ async function processCrawlItem(
           console.error('[크롤러] issue_contents 적재 실패(SQL 101 미적용 가능):', e)
         }
 
-        // post-insert: 한국어 요약 (B3-1) — published·본문충분·예산 조건
-        if (contentStatus === 'published' && summarizeBudget.remaining > 0) {
-          const bodyKo = translatedContent?.body ?? item.body ?? ''
-          if (bodyKo.length >= SUMMARY_MIN_BODY_LEN) {
-            summarizeBudget.remaining--
-            try {
-              const summary = await summarizeKo(row.title, bodyKo)
-              if (summary) {
-                const { error: sumErr } = await admin
-                  .from('contents')
-                  .update({ summary_ko: summary })
-                  .eq('id', newId)
-                if (sumErr) console.error('[크롤러] 요약 적재 실패:', sumErr.message)
-              }
-            } catch (e) {
-              console.error('[크롤러] 요약 생성 실패:', e)
-            }
-          }
-        }
+        // 한국어 요약(B3-1)은 크롤 크리티컬 패스에서 제외 — /api/cron/summary-backfill(05:20 KST)로 이관.
+        // summary_ko IS NULL 인 published 콘텐츠는 그 배치가 채운다(지시서_20260712_크롤-요약분리).
       }
     }
 
@@ -668,7 +660,6 @@ async function crawlOne(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
-  summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
@@ -707,7 +698,7 @@ async function crawlOne(
 
     for (const item of rawItems) {
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+        admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -750,7 +741,6 @@ async function crawlYoutube(
   source: Source,
   groups: ScoringGroup[],
   aliasMap: Map<string, string>,
-  summarizeBudget: TranslationBudget,
   transcriptBudget: TranslationBudget
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
@@ -821,22 +811,7 @@ async function crawlYoutube(
         if (mirrorId) {
           await tagYoutubeContent(admin, mirrorId, item.title, groups, aliasMap)
 
-          // 유튜브 요약 1회 생성(266) — summary_ko 있으면 스킵(멱등), budget 소진 시 스킵(다음 백필에서 재시도)
-          if (summarizeBudget.remaining > 0) {
-            summarizeBudget.remaining--
-            try {
-              const summary = await summarizeYoutubeKo(item.title, feedTitle)
-              if (summary) {
-                const { error: sumErr } = await admin
-                  .from('contents')
-                  .update({ summary_ko: summary })
-                  .eq('id', mirrorId)
-                if (sumErr) console.error('[크롤러] 유튜브 요약 적재 실패:', sumErr.message)
-              }
-            } catch (e) {
-              console.error('[크롤러] 유튜브 요약 생성 실패:', e)
-            }
-          }
+          // 유튜브 요약(266)은 크롤 크리티컬 패스에서 제외 — /api/cron/summary-backfill 로 이관.
 
           // 자막 수집·번역 1회 시도(265) — budget 소진 시 스킵(나머지는 어드민 백필에서 처리)
           if (transcriptBudget.remaining > 0) {
@@ -883,6 +858,10 @@ async function crawlYoutube(
  * - seeds: keyword_groups.search_seeds 합집합(중복제거, 상한적용)
  * - 기존 파이프라인(processCrawlItem)을 그대로 재사용 — 중복·게이트 자동 처리.
  * - source_id=null, trust_tier=1(게이트 적용).
+ * - seed 가 순차(for-of) 처리라 seed 1개당 RSS fetch + 아이템별 dedup 쿼리(최대 3회)가
+ *   전부 직렬로 쌓인다. seed 수가 더 늘면(현재 MAX_SEARCH_SEEDS=30) deadline 안에도
+ *   못 끝날 수 있으니, 그때는 회사 seed 검색처럼 Promise.allSettled 기반 병렬 처리로
+ *   바꾸는 걸 검토할 것(2026-07-12 §5 재검증 — 30 seed 기준 아직은 순차로 충분).
  */
 async function crawlKeywordSearch(
   admin: SupabaseClient,
@@ -890,21 +869,27 @@ async function crawlKeywordSearch(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
-  summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
-  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
-): Promise<{ counts: CrawlCounts; hadError: boolean }> {
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  deadline?: number
+): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
+  let truncated = false
   const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
   const adapter = getAdapter('news_site')!
-  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1 }
+  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }
 
   for (const seed of seeds) {
+    if (deadline !== undefined && Date.now() >= deadline) {
+      // 소프트 데드라인 초과 — 남은 seed 는 건너뜀(다음 크롤 회차에서 이어감). 하드킬 대신 우아한 중단.
+      truncated = true
+      break
+    }
     try {
       // news-site 어댑터 재사용: rss_url 만 실제로 사용됨
       const syntheticSource = {
@@ -921,7 +906,7 @@ async function crawlKeywordSearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
         if (result.partial) hadError = true
       }
@@ -934,7 +919,7 @@ async function crawlKeywordSearch(
     }
   }
 
-  return { counts, hadError }
+  return { counts, hadError, truncated }
 }
 
 /** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
@@ -976,6 +961,8 @@ function rotateSeedsForToday(seeds: string[]): string[] {
  * 검색 seed 로 사용, crawlKeywordSearch 와 동일 파이프라인(processCrawlItem)을 재사용한다.
  * - 니치 회사(기사 자체가 드묾)의 코퍼스를 채워 254/258 회사 인사이트 생성이 기사를 확보하게 한다.
  * - budgetMs 초과 시 남은 seed 는 건너뜀 — 크래시 없음, 다음 회차에 rotateSeedsForToday 로 이어감.
+ * - 이 phase 도 seed 순차(for-of) 처리 — seed 가 더 늘면(현재 MAX_COMPANY_SEEDS=120) 병렬화 검토
+ *   (2026-07-12 §5 재검증. 지금은 budgetMs 자체 상한 + rotateSeedsForToday 회전으로 버팀).
  */
 async function crawlCompanySearch(
   admin: SupabaseClient,
@@ -983,22 +970,25 @@ async function crawlCompanySearch(
   keywords: CrawlKeyword[],
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
-  summarizeBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   aliasMap: Map<string, string>,
   issueList: IssueMatchDef[],
   exclusionRules: ExclusionRule[],
   exclusionHits: Map<string, number>,
   minBodyLength: number,
-  budgetMs: number
+  budgetMs: number,
+  overallDeadline?: number
 ): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0 }
   let hadError = false
   let processedSeeds = 0
-  const deadline = Date.now() + budgetMs
+  // 이 phase 자체 예산(budgetMs)과 크롤 전체 소프트 데드라인 중 먼저 오는 쪽을 따른다.
+  const deadline = overallDeadline !== undefined
+    ? Math.min(Date.now() + budgetMs, overallDeadline)
+    : Date.now() + budgetMs
   const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
   const adapter = getAdapter('news_site')!
-  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1 }
+  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }
 
   for (const seed of seeds) {
     if (Date.now() >= deadline) break
@@ -1019,7 +1009,7 @@ async function crawlCompanySearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, summarizeBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
         if (result.partial) hadError = true
       }
@@ -1049,10 +1039,6 @@ interface EnrichRow {
   id: string
   original_url: string
   body_original: string | null
-  title: string
-  status: string
-  original_language: string
-  body_translated_ko: string | null
 }
 
 /**
@@ -1097,18 +1083,19 @@ export async function mergeByCanonical(admin: SupabaseClient, rowId: string, can
 /**
  * 이번 수집 런에서 신규 적재된 콘텐츠의 풀본문을 best-effort 로 추출한다.
  * - body_fetched_at IS NULL + original_url 있음 + 이번 런 이후 수집분만 대상.
- * - 추출 성공 시 body_original 갱신 + published 이면 요약 재생성.
+ * - 추출 성공 시 body_original 갱신. 요약(summary_ko)은 여기서 만들지 않음 —
+ *   /api/cron/summary-backfill 이 이 결과(개선된 본문)를 그대로 읽어 채운다.
  * - 실패·타임아웃이어도 body_fetched_at = now 마킹(재시도 방지) + 크롤 결과 보존.
  */
 async function enrichRecentContents(
   admin: SupabaseClient,
   runStartedAt: string,
-  summarizeBudget: TranslationBudget
+  deadline?: number
 ): Promise<void> {
   try {
     const { data: rows, error } = await admin
       .from('contents')
-      .select('id, original_url, body_original, title, status, original_language, body_translated_ko')
+      .select('id, original_url, body_original')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
       .gte('collected_at', runStartedAt)
@@ -1124,6 +1111,10 @@ async function enrichRecentContents(
     console.log(`[보강] 풀본문 추출 대상: ${rows.length}건`)
 
     for (const row of rows as EnrichRow[]) {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        // 소프트 데드라인 초과 — 남은 행은 body_fetched_at 이 여전히 null 이라 다음 크롤에서 재시도됨.
+        break
+      }
       try {
         const resolved = await resolveArticleUrl(row.original_url)
 
@@ -1164,28 +1155,6 @@ async function enrichRecentContents(
             .from('contents')
             .update({ body_original: extracted, body_fetched_at: new Date().toISOString() })
             .eq('id', row.id)
-
-          // 요약 재생성: published + 예산 있음 + 한국어 본문 확보
-          if (row.status === 'published' && summarizeBudget.remaining > 0) {
-            const bodyKo =
-              row.original_language === 'ko'
-                ? extracted
-                : (row.body_translated_ko ?? null)
-            if (bodyKo && bodyKo.length >= SUMMARY_MIN_BODY_LEN) {
-              summarizeBudget.remaining--
-              try {
-                const summary = await summarizeKo(row.title, bodyKo)
-                if (summary) {
-                  await admin
-                    .from('contents')
-                    .update({ summary_ko: summary })
-                    .eq('id', row.id)
-                }
-              } catch (e) {
-                console.error('[보강] 요약 재생성 실패 (id:', row.id, '):', e)
-              }
-            }
-          }
         } else {
           // 추출 실패 또는 스니펫이 더 길면 재시도 방지용 마킹
           await admin
@@ -1208,6 +1177,7 @@ async function enrichRecentContents(
  *  @param options.sourceIds 지정 시 해당 소스만 수집, 키워드 검색 skip. */
 export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSummary> {
   const runStartedAt = new Date().toISOString()
+  const softDeadline = Date.now() + CRAWL_SOFT_DEADLINE_MS
   const backfillDays =
     options.backfillDays && options.backfillDays > 0
       ? Math.min(Math.floor(options.backfillDays), 30)
@@ -1359,9 +1329,6 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const translationBudget: TranslationBudget = {
     remaining: MAX_TRANSLATIONS_PER_CRAWL,
   }
-  const summarizeBudget: TranslationBudget = {
-    remaining: MAX_SUMMARIES_PER_CRAWL,
-  }
   const classifyBudget: TranslationBudget = {
     remaining: MAX_LLM_CLASSIFY_PER_CRAWL,
   }
@@ -1383,7 +1350,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const results = await Promise.allSettled(
     dueSources.map(s =>
       s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap, summarizeBudget, transcriptBudget)
+        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget)
         : crawlOne(
             admin,
             s,
@@ -1391,7 +1358,6 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             keywords,
             groups,
             translationBudget,
-            summarizeBudget,
             classifyBudget,
             aliasMap,
             issueList,
@@ -1453,8 +1419,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+      admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
     )
+    if (kwResult.truncated) console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted
     totalDuplicates += kwResult.counts.duplicate
@@ -1475,7 +1442,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && companySeeds.length > 0) {
     console.log(`[크롤러] 회사 seed 수집 시작: ${companySeeds.length}개 시드(날짜 회전 적용)`)
     const companyResult = await crawlCompanySearch(
-      admin, companySeeds, keywords, groups, translationBudget, summarizeBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS
+      admin, companySeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS, softDeadline
     )
     totalFetched    += companyResult.counts.fetched
     totalInserted   += companyResult.counts.inserted
@@ -1506,8 +1473,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     }
   }
 
-  // enrichment tail — 신규 적재분 풀본문 추출·요약 재생성 (실패해도 크롤 결과 보존)
-  await enrichRecentContents(admin, runStartedAt, summarizeBudget)
+  // enrichment tail — 신규 적재분 풀본문 추출 (실패해도 크롤 결과 보존)
+  await enrichRecentContents(admin, runStartedAt, softDeadline)
 
   return {
     ok: failedCount === 0,

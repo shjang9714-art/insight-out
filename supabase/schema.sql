@@ -1641,3 +1641,9 @@ do update set
 -- create index if not exists contents_youtube_transcript_pending_idx
 --   on public.contents (collected_at desc)
 --   where category = '유튜브' and transcript_fetched_at is null;
+
+-- contents 요약 시도 마커 (293, 크롤-요약분리, docs/sql-handoff/293-summary-attempted-at.sql)
+-- alter table public.contents add column if not exists summary_attempted_at timestamptz;
+-- create index if not exists contents_summary_pending_idx
+--   on public.contents (collected_at desc)
+--   where status = 'published' and summary_ko is null and summary_attempted_at is null;

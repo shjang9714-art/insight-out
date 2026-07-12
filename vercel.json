@@ -6,6 +6,10 @@
       "schedule": "0 20 * * *"
     },
     {
+      "path": "/api/cron/summary-backfill",
+      "schedule": "20 20 * * *"
+    },
+    {
       "path": "/api/cron/briefing",
       "schedule": "0 21 * * *"
     },
@@ -35,7 +39,7 @@
     },
     {
       "path": "/api/cron/daily-insights",
-      "schedule": "30 13 * * *"
+      "schedule": "30 21 * * *"
     },
     {
       "path": "/api/cron/competitor-weekly",

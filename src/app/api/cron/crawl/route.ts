@@ -7,8 +7,11 @@ import { runJob } from '@/lib/jobs/run-job'
 export const runtime = 'nodejs'
 // 크론 라우트는 캐시 제외
 export const dynamic = 'force-dynamic'
-// Vercel Pro 기준 최대 실행 시간 60초
-export const maxDuration = 60
+// body-backfill/signals-backfill 등 다른 크론과 동일하게 300초.
+// 요약(LLM)을 크롤에서 뺀 뒤에도 키워드/회사 seed 검색(순차 처리, 아이템당 dedup 쿼리 최대 3회)만으로
+// 210초 안팎이 걸려 60초로는 애초에 부족했음(2026-07-12 §5 재검증). runCrawl 내부에 소프트 데드라인이
+// 있어 이 300초 안에서 우아하게 멈춘다 — 하드킬로 job_runs 미기록되는 사고를 방지.
+export const maxDuration = 300
 
 /**
  * GET /api/cron/crawl

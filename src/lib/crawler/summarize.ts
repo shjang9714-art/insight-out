@@ -3,6 +3,9 @@ import { llmComplete } from '@/lib/llm'
 
 const SUMMARY_INPUT_MAXCHARS = 2000
 
+/** 요약 생성 최소 본문 길이 — 크롤(품질 게이트)과 summary-backfill 드레인이 공유. */
+export const SUMMARY_MIN_BODY_LEN = 200
+
 const SYSTEM_PROMPT =
   '당신은 B2B 텔레콤/엔터프라이즈 시장 정보 요약가다. ' +
   '입력 기사를 한국어 2~3문장으로 핵심만 요약하라. ' +
