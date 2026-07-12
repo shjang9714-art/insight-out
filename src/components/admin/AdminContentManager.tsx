@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Check, ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Search, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
@@ -41,6 +41,7 @@ import { useResizableColumns, type ResizableColumnDef } from '@/lib/admin/use-re
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import ContentCard from '@/components/dashboard/ContentCard'
 
 interface AdminContentRow {
   id: string
@@ -53,6 +54,7 @@ interface AdminContentRow {
   body_len: number | null
   review_reason: string | null
   sources: { name: string } | null
+  matched_keywords?: string[] | null
   thumbnail_url?: string | null
 }
 
@@ -72,9 +74,13 @@ interface EditState {
   publishedAt: string // 'YYYY-MM-DD' 또는 ''
   bodyOriginal: string
   bodyMarkdown: string
+  keywords: string[]
   thumbnailUrl: string | null
   filePath: string | null
 }
+
+type EditSaveAction = 'stay' | 'next' | 'publish' | 'reject' | 'close'
+type EditTab = 'card' | 'body'
 
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
@@ -133,6 +139,47 @@ function toDateInput(value: string | null | undefined): string {
   return value.slice(0, 10)
 }
 
+function normalizeKeywords(keywords: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of keywords) {
+    const keyword = raw.trim().replace(/^#+/, '').trim()
+    if (!keyword || seen.has(keyword)) continue
+    seen.add(keyword)
+    out.push(keyword)
+  }
+  return out
+}
+
+function serializeEditState(edit: EditState): string {
+  return JSON.stringify({
+    ...edit,
+    title: edit.title.trim(),
+    summary: edit.summary.trim(),
+    author: edit.author.trim(),
+    bodyMarkdown: edit.bodyMarkdown.trim(),
+    keywords: normalizeKeywords(edit.keywords),
+  })
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+function buildReviewChecks(edit: EditState): { label: string; ok: boolean; detail: string }[] {
+  const plainBody = stripMarkdown(edit.bodyMarkdown).trim()
+  return [
+    { label: '제목', ok: Boolean(edit.title.trim()), detail: '목록과 카드에 표시됩니다.' },
+    { label: '키워드', ok: normalizeKeywords(edit.keywords).length > 0, detail: '사용자 카드의 해시태그로 표시됩니다.' },
+    { label: '요약', ok: Boolean(edit.summary.trim()), detail: '카드와 상세 상단에 표시됩니다.' },
+    { label: '커버', ok: Boolean(edit.thumbnailUrl || edit.title.trim()), detail: edit.thumbnailUrl ? '등록 이미지 사용' : '기본 이미지로 표시' },
+    { label: '발행일', ok: Boolean(edit.publishedAt), detail: '발행일 미상 표기를 줄입니다.' },
+    { label: '본문', ok: Boolean(plainBody), detail: '상세 화면과 검색 본문에 사용됩니다.' },
+  ]
+}
+
 /** PDF 표지 실패 사유 한글화(291) */
 const COVER_REASON_LABEL: Record<string, string> = {
   render_failed: '1페이지 렌더 실패',
@@ -144,6 +191,71 @@ const COVER_REASON_LABEL: Record<string, string> = {
 function coverReasonLabel(reason?: string): string {
   if (!reason) return '알 수 없는 오류'
   return COVER_REASON_LABEL[reason] ?? reason
+}
+
+function KeywordChipInput({
+  keywords,
+  onChange,
+}: {
+  keywords: string[]
+  onChange: (keywords: string[]) => void
+}) {
+  const [inputValue, setInputValue] = useState('')
+
+  const commit = (raw: string = inputValue) => {
+    const additions = raw
+      .split(',')
+      .map((v) => v.trim().replace(/^#+/, '').trim())
+      .filter(Boolean)
+    if (additions.length === 0) {
+      setInputValue('')
+      return
+    }
+    onChange(normalizeKeywords([...keywords, ...additions]))
+    setInputValue('')
+  }
+
+  const remove = (keyword: string) => {
+    onChange(keywords.filter((item) => item !== keyword))
+  }
+
+  return (
+    <div className="rounded-lg border border-input bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring">
+      <div className="flex min-h-7 flex-wrap items-center gap-1.5">
+        {keywords.map((keyword) => (
+          <span
+            key={keyword}
+            className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+          >
+            #{keyword}
+            <button
+              type="button"
+              onClick={() => remove(keyword)}
+              className="rounded-full p-0.5 text-brand-700/70 hover:bg-brand-100 hover:text-brand-700 dark:hover:bg-brand-900"
+              aria-label={`${keyword} 키워드 제거`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={() => commit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+              e.preventDefault()
+              commit()
+            } else if (e.key === 'Backspace' && !inputValue && keywords.length > 0) {
+              onChange(keywords.slice(0, -1))
+            }
+          }}
+          placeholder={keywords.length === 0 ? '키워드 입력 후 Enter' : ''}
+          className="min-w-32 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+    </div>
+  )
 }
 
 export default function AdminContentManager() {
@@ -193,6 +305,11 @@ export default function AdminContentManager() {
   const [edit,        setEdit]        = useState<EditState | null>(null)
   const [isSaving,    setIsSaving]    = useState(false)
   const [editError,   setEditError]   = useState<string | null>(null)
+  const [editNotice,  setEditNotice]  = useState<string | null>(null)
+  const [editTab,     setEditTab]     = useState<EditTab>('card')
+  const [editDirty,   setEditDirty]   = useState(false)
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false)
+  const editSnapshotRef = useRef<string | null>(null)
 
   // 편집 모달 — 썸네일 업로드/교체 (211)
   const [isUploadingThumb, setIsUploadingThumb] = useState(false)
@@ -208,6 +325,30 @@ export default function AdminContentManager() {
 
   // review_reason 컬럼 가용 여부 (178, body_len 과 동일한 degrade 패턴)
   const reviewReasonRef = useRef(true)
+
+  function hasUnsavedEdit(): boolean {
+    return Boolean(edit && editSnapshotRef.current !== serializeEditState(edit))
+  }
+
+  function confirmDiscardEdit(): boolean {
+    if (!hasUnsavedEdit()) return true
+    return window.confirm('저장하지 않은 변경사항이 있습니다. 계속하면 변경사항이 사라집니다.')
+  }
+
+  function closeEdit() {
+    if (!confirmDiscardEdit()) return
+    setEdit(null)
+    editSnapshotRef.current = null
+    setEditError(null)
+    setEditNotice(null)
+    setThumbError(null)
+    setEditDirty(false)
+    setSaveMenuOpen(false)
+  }
+
+  useEffect(() => {
+    setEditDirty(Boolean(edit && editSnapshotRef.current !== serializeEditState(edit)))
+  }, [edit])
 
   // ── 검색 디바운스 (300ms) ────────────────────────────────────────────────
   useEffect(() => {
@@ -245,7 +386,7 @@ export default function AdminContentManager() {
 
       const withLen = bodyLenRef.current
       const withReason = reviewReasonRef.current
-      const BASE_COLS = 'id, title, category, status, collected_at, bookmark_count, body_fetched_at'
+      const BASE_COLS = 'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords'
 
       const buildBase = (sel: string) => {
         let q = supabase
@@ -361,10 +502,12 @@ export default function AdminContentManager() {
   // ── 편집 모달 열기 (행 전체 메타 로드) ──────────────────────────────────
   const openEdit = async (content: AdminContentRow) => {
     setEditError(null)
+    setEditNotice(null)
+    setSaveMenuOpen(false)
     setWorkingId(content.id)
     const { data, error: loadError } = await supabase
       .from('contents')
-      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, body_markdown, thumbnail_url, file_path')
+      .select('id, title, summary_ko, category, source_id, author, published_at, body_original, body_markdown, matched_keywords, thumbnail_url, file_path')
       .eq('id', content.id)
       .single()
     setWorkingId(null)
@@ -374,7 +517,8 @@ export default function AdminContentManager() {
       return
     }
     setThumbError(null)
-    setEdit({
+    setEditTab('card')
+    const nextEdit: EditState = {
       id:           data.id,
       title:        data.title ?? '',
       summary:      data.summary_ko ?? '',
@@ -385,22 +529,33 @@ export default function AdminContentManager() {
       bodyOriginal: data.body_original ?? '',
       bodyMarkdown: (data.body_markdown ?? '') ||
                     cleanBodyText(htmlToPlainText(data.body_original ?? '')),
+      keywords:     normalizeKeywords(Array.isArray(data.matched_keywords) ? data.matched_keywords : []),
       thumbnailUrl: data.thumbnail_url ?? null,
       filePath:     data.file_path ?? null,
-    })
+    }
+    editSnapshotRef.current = serializeEditState(nextEdit)
+    setEditDirty(false)
+    setEdit(nextEdit)
   }
 
   // ── 편집 저장 ────────────────────────────────────────────────────────────
-  const handleEditSave = async () => {
-    if (!edit) return
+  const handleEditSave = async (action: EditSaveAction = 'stay') => {
+    if (!edit) return false
     const title = edit.title.trim()
-    if (!title) { setEditError('제목을 입력해주세요.'); return }
+    if (!title) { setEditError('제목을 입력해주세요.'); return false }
 
     setIsSaving(true)
     setEditError(null)
+    setEditNotice(null)
+    setSaveMenuOpen(false)
 
     // 217 — 마크다운 원본(상세 렌더용) + stripMarkdown 평문(검색·스니펫용) 동기 기록
     const md = edit.bodyMarkdown.trim()
+    const keywords = normalizeKeywords(edit.keywords)
+    const nextStatus: ContentStatus | null =
+      action === 'publish' ? 'published' :
+      action === 'reject' ? 'rejected' :
+      null
     const updatePayload: Record<string, unknown> = {
       title,
       summary_ko:    edit.summary.trim() || null,
@@ -410,8 +565,10 @@ export default function AdminContentManager() {
       published_at:  edit.publishedAt || null,
       body_markdown: md || null,
       body_original: md ? (stripMarkdown(md).trim() || null) : null,
+      matched_keywords: keywords,
       thumbnail_url: edit.thumbnailUrl,
     }
+    if (nextStatus) updatePayload.status = nextStatus
 
     let { error: updateError } = await supabase
       .from('contents')
@@ -430,26 +587,71 @@ export default function AdminContentManager() {
     if (updateError) {
       setEditError(`저장에 실패했습니다: ${updateError.message}`)
       setIsSaving(false)
-      return
+      return false
     }
 
     // 목록에 반영 (제목·카테고리·소스명·썸네일)
     const nextSourceName = edit.sourceId
       ? (sources.find((s) => s.id === edit.sourceId)?.name ?? null)
       : null
+    const previousRow = contents.find((item) => item.id === edit.id)
     setContents((prev) => prev.map((item) =>
       item.id === edit.id
         ? {
             ...item,
             title,
             category: edit.category,
+            status: nextStatus ?? item.status,
             sources: nextSourceName ? { name: nextSourceName } : null,
+            matched_keywords: keywords,
             thumbnail_url: edit.thumbnailUrl,
           }
         : item
     ))
+
+    if (nextStatus && previousRow?.status === 'pending') {
+      setPendingCount((c) => (c !== null ? Math.max(0, c - 1) : c))
+    }
+
     setIsSaving(false)
-    setEdit(null)
+
+    const savedEdit: EditState = {
+      ...edit,
+      title,
+      summary: edit.summary.trim(),
+      author: edit.author.trim(),
+      bodyMarkdown: md,
+      keywords,
+    }
+
+    if (action === 'close') {
+      setEdit(null)
+      editSnapshotRef.current = null
+      setEditDirty(false)
+      return true
+    }
+
+    if (action === 'next') {
+      const currentIndex = contents.findIndex((item) => item.id === edit.id)
+      const nextContent = currentIndex >= 0 ? contents[currentIndex + 1] : null
+      if (nextContent) {
+        editSnapshotRef.current = serializeEditState(savedEdit)
+        await openEdit(nextContent)
+        return true
+      }
+      setEditNotice('저장했습니다. 현재 페이지의 다음 콘텐츠가 없습니다.')
+    } else if (action === 'publish') {
+      setEditNotice('저장하고 노출 상태로 변경했습니다.')
+    } else if (action === 'reject') {
+      setEditNotice('저장하고 숨김 상태로 변경했습니다.')
+    } else {
+      setEditNotice('저장했습니다.')
+    }
+
+    editSnapshotRef.current = serializeEditState(savedEdit)
+    setEditDirty(false)
+    setEdit(savedEdit)
+    return true
   }
 
   // ── 편집 모달 — 썸네일 업로드/교체·제거 (211) ──────────────────────────
@@ -509,6 +711,36 @@ export default function AdminContentManager() {
       setIsRefetchingCover(false)
     }
   }
+
+  const handleCoverDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    if (isUploadingThumb) return
+    const file = event.dataTransfer.files?.[0]
+    if (file) void handleThumbnailUpload(file)
+  }
+
+  const handleEditNavigate = async (delta: -1 | 1) => {
+    if (!edit) return
+    const currentIndex = contents.findIndex((item) => item.id === edit.id)
+    const nextContent = currentIndex >= 0 ? contents[currentIndex + delta] : null
+    if (!nextContent) return
+    if (!confirmDiscardEdit()) return
+    await openEdit(nextContent)
+  }
+
+  useEffect(() => {
+    if (!edit) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      if (isTypingTarget(event.target)) return
+      event.preventDefault()
+      void handleEditNavigate(event.key === 'ArrowLeft' ? -1 : 1)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [edit, contents]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
   const allPageIds  = contents.map((c) => c.id)
@@ -601,6 +833,274 @@ export default function AdminContentManager() {
   const EDIT_CATEGORY_OPTIONS: ContentCategory[] = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서']
   const editCategoryExtra =
     edit && !EDIT_CATEGORY_OPTIONS.includes(edit.category) ? [edit.category] : []
+  const editIndex = edit ? contents.findIndex((item) => item.id === edit.id) : -1
+  const editPosition = editIndex >= 0 ? editIndex + 1 : 0
+  const canEditPrev = editIndex > 0
+  const canEditNext = editIndex >= 0 && editIndex < contents.length - 1
+  const editSourceName = edit?.sourceId
+    ? (sources.find((s) => s.id === edit.sourceId)?.name ?? null)
+    : null
+  const editReviewChecks = edit ? buildReviewChecks(edit) : []
+  const editReviewWarnings = editReviewChecks.filter((check) => !check.ok)
+  const editLeftPanel = edit ? (
+    <div className="space-y-5">
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-foreground">카드 미리보기</h3>
+          <span className="text-[11px] text-muted-foreground">클릭 이동 차단</span>
+        </div>
+        <div className="pointer-events-none">
+          <ContentCard
+            id={edit.id}
+            title={edit.title.trim() || '제목 미입력'}
+            summaryKo={edit.summary.trim() || null}
+            category={edit.category}
+            sourceName={editSourceName}
+            publishedAt={edit.publishedAt ? `${edit.publishedAt}T00:00:00+09:00` : null}
+            thumbnailUrl={edit.thumbnailUrl}
+            href={null}
+            keywords={normalizeKeywords(edit.keywords)}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-foreground">검수 체크</h3>
+          {editReviewWarnings.length > 0 ? (
+            <span className="rounded-full bg-risk-soft px-2 py-0.5 text-[11px] font-medium text-risk">
+              {editReviewWarnings.length}개 확인
+            </span>
+          ) : (
+            <span className="rounded-full bg-positive-soft px-2 py-0.5 text-[11px] font-medium text-positive">
+              통과
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {editReviewChecks.map((check) => (
+            <div
+              key={check.label}
+              className={cn(
+                'rounded-lg border px-3 py-2',
+                check.ok ? 'border-border bg-muted/40' : 'border-risk/30 bg-risk-soft/50'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                {check.ok ? (
+                  <Check className="h-3.5 w-3.5 text-positive" />
+                ) : (
+                  <X className="h-3.5 w-3.5 text-risk" />
+                )}
+                <span className="text-xs font-medium text-foreground">{check.label}</span>
+              </div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{check.detail}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          누락 경고는 저장을 막지 않습니다.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">커버 이미지</h3>
+        <div
+          onDrop={handleCoverDrop}
+          onDragOver={(event) => event.preventDefault()}
+          className="overflow-hidden rounded-xl border border-dashed border-border bg-muted/40"
+        >
+          <div className="flex aspect-[16/9] items-center justify-center bg-muted">
+            {edit.thumbnailUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={edit.thumbnailUrl} alt="커버 미리보기" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <ImageIcon className="h-8 w-8" />
+                <span className="text-xs">기본 이미지로 표시됩니다</span>
+              </div>
+            )}
+          </div>
+          <div className="space-y-2 p-3">
+            <div className="flex flex-wrap gap-2">
+              <label className={cn(
+                'inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted',
+                isUploadingThumb && 'pointer-events-none opacity-50'
+              )}>
+                {isUploadingThumb ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                이미지 변경
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={isUploadingThumb}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handleThumbnailUpload(file)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {edit.filePath?.toLowerCase().endsWith('.pdf') && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isRefetchingCover}
+                  onClick={handleRefetchPdfCover}
+                >
+                  {isRefetchingCover && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  1페이지 다시 가져오기
+                </Button>
+              )}
+              {edit.thumbnailUrl && (
+                <Button type="button" size="sm" variant="ghost" onClick={handleThumbnailRemove}>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  기본 이미지로 되돌리기
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              JPG/PNG/WebP, 2MB 이하. 파일을 이 영역에 끌어 놓아도 됩니다.
+            </p>
+            {thumbError && <p className="text-xs text-destructive">{thumbError}</p>}
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <Label htmlFor="edit-summary">요약</Label>
+        <textarea
+          data-slot="textarea"
+          id="edit-summary"
+          value={edit.summary}
+          onChange={(e) => setEdit((p) => p && { ...p, summary: e.target.value })}
+          placeholder="핵심 내용을 입력해주세요"
+          rows={5}
+          className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </section>
+
+      <section className="space-y-2">
+        <Label>키워드</Label>
+        <KeywordChipInput
+          keywords={edit.keywords}
+          onChange={(keywords) => setEdit((p) => p && { ...p, keywords })}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Enter 또는 쉼표로 추가합니다. 저장 시 `matched_keywords`에 그대로 반영됩니다.
+        </p>
+      </section>
+    </div>
+  ) : null
+  const editRightPanel = edit ? (
+    <div className="flex min-h-full flex-col gap-5">
+      <section className="space-y-2">
+        <Label htmlFor="edit-title">
+          제목 <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="edit-title"
+          value={edit.title}
+          onChange={(e) => setEdit((p) => p && { ...p, title: e.target.value })}
+          placeholder="제목을 입력해주세요"
+          className="text-base font-medium"
+        />
+      </section>
+
+      <section className="flex min-h-[620px] flex-1 flex-col gap-2">
+        <Label>
+          본문 <span className="text-xs font-normal text-muted-foreground">(마크다운·선택)</span>
+        </Label>
+        <div className="min-h-0 flex-1 [&_textarea]:min-h-[560px] [&_textarea]:resize-none">
+          <MarkdownEditor
+            value={edit.bodyMarkdown}
+            onChange={(v) => setEdit((p) => p && { ...p, bodyMarkdown: v })}
+            placeholder="본문을 입력·편집하세요. 툴바로 서식을 넣을 수 있어요."
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          서식(마크다운)은 상세 화면에 그대로 반영됩니다. 검색·요약에는 서식을 제거한 본문이 사용됩니다.
+        </p>
+      </section>
+
+      <details className="rounded-xl border border-border bg-muted/30 px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold text-foreground">
+          출처·발행 정보
+        </summary>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-category">카테고리</Label>
+            <Select
+              value={edit.category}
+              onValueChange={(v) => setEdit((p) => p && { ...p, category: v as ContentCategory })}
+            >
+              <SelectTrigger id="edit-category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EDIT_CATEGORY_OPTIONS.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {CONTENT_CATEGORY_LABEL[c]}
+                  </SelectItem>
+                ))}
+                {editCategoryExtra.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {CONTENT_CATEGORY_LABEL[c]} (구)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-published">발행일</Label>
+            <Input
+              id="edit-published"
+              type="date"
+              value={edit.publishedAt}
+              onChange={(e) => setEdit((p) => p && { ...p, publishedAt: e.target.value })}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-author">저자/기관</Label>
+            <Input
+              id="edit-author"
+              value={edit.author}
+              onChange={(e) => setEdit((p) => p && { ...p, author: e.target.value })}
+              placeholder="예: Gartner Research"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-source">발행처</Label>
+            <Select
+              value={edit.sourceId || EMPTY_SOURCE_VALUE}
+              onValueChange={(v) => setEdit((p) => p && {
+                ...p,
+                sourceId: v === EMPTY_SOURCE_VALUE ? '' : v,
+              })}
+            >
+              <SelectTrigger id="edit-source">
+                <SelectValue placeholder="선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_SOURCE_VALUE}>없음</SelectItem>
+                {sources.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </details>
+    </div>
+  ) : null
 
   if (isLoading && contents.length === 0) {
     return (
@@ -1052,227 +1552,187 @@ export default function AdminContentManager() {
       )}
 
       {/* ── 편집 모달 ── */}
-      <Dialog open={edit !== null} onOpenChange={(open) => { if (!open) { setEdit(null); setEditError(null) } }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>콘텐츠 수정</DialogTitle>
+      <Dialog open={edit !== null} onOpenChange={(open) => { if (!open) closeEdit() }}>
+        <DialogContent
+          className="flex h-[calc(100vh-24px)] max-h-[960px] w-[calc(100vw-24px)] max-w-none flex-col overflow-hidden p-0 sm:h-[calc(100vh-48px)] sm:w-[min(1440px,calc(100vw-64px))]"
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            closeEdit()
+          }}
+        >
+          <DialogHeader className="mb-0 shrink-0 border-b border-border px-5 py-4 pr-12">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <DialogTitle>콘텐츠 검수</DialogTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  현재 페이지 {editPosition || '-'} / {contents.length || 0}
+                  {pendingCount !== null ? ` · 검토 대기 ${pendingCount}건` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!canEditPrev || isSaving}
+                  onClick={() => { void handleEditNavigate(-1) }}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  이전
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!canEditNext || isSaving}
+                  onClick={() => { void handleEditNavigate(1) }}
+                >
+                  다음
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
           </DialogHeader>
 
           {edit && (
-            <div className="space-y-4">
-              {editError && (
-                <AdminErrorBox>
-                  {editError}
-                </AdminErrorBox>
-              )}
-
-              {/* 제목 */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-title">
-                  제목 <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="edit-title"
-                  value={edit.title}
-                  onChange={(e) => setEdit((p) => p && { ...p, title: e.target.value })}
-                  placeholder="제목을 입력해주세요"
-                />
-              </div>
-
-              {/* 카테고리 + 발행일 */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-category">카테고리</Label>
-                  <Select
-                    value={edit.category}
-                    onValueChange={(v) => setEdit((p) => p && { ...p, category: v as ContentCategory })}
-                  >
-                    <SelectTrigger id="edit-category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EDIT_CATEGORY_OPTIONS.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {CONTENT_CATEGORY_LABEL[c]}
-                        </SelectItem>
-                      ))}
-                      {editCategoryExtra.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {CONTENT_CATEGORY_LABEL[c]} (구)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-published">
-                    발행일{' '}
-                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                  </Label>
-                  <Input
-                    id="edit-published"
-                    type="date"
-                    value={edit.publishedAt}
-                    onChange={(e) => setEdit((p) => p && { ...p, publishedAt: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* 저자 + 발행처 */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-author">
-                    저자/기관{' '}
-                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                  </Label>
-                  <Input
-                    id="edit-author"
-                    value={edit.author}
-                    onChange={(e) => setEdit((p) => p && { ...p, author: e.target.value })}
-                    placeholder="예: Gartner Research"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-source">
-                    발행처{' '}
-                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                  </Label>
-                  <Select
-                    value={edit.sourceId || EMPTY_SOURCE_VALUE}
-                    onValueChange={(v) => setEdit((p) => p && {
-                      ...p,
-                      sourceId: v === EMPTY_SOURCE_VALUE ? '' : v,
-                    })}
-                  >
-                    <SelectTrigger id="edit-source">
-                      <SelectValue placeholder="선택" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={EMPTY_SOURCE_VALUE}>없음</SelectItem>
-                      {sources.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* 썸네일 (211) */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-thumbnail">
-                  썸네일{' '}
-                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                </Label>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
-                    {edit.thumbnailUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={edit.thumbnailUrl} alt="썸네일 미리보기" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="px-2 text-center text-[11px] text-muted-foreground">기본 표지 사용 중</span>
-                    )}
+            <>
+              <div className="shrink-0 border-b border-border px-5 py-3">
+                {editError && (
+                  <AdminErrorBox>
+                    {editError}
+                  </AdminErrorBox>
+                )}
+                {!editError && editNotice && (
+                  <div className="rounded-lg border border-positive/20 bg-positive-soft px-3 py-2 text-sm text-positive">
+                    {editNotice}
                   </div>
-                  <div className="flex flex-1 flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="edit-thumbnail"
-                        type="file"
-                        accept="image/*"
-                        disabled={isUploadingThumb}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) void handleThumbnailUpload(file)
-                          e.target.value = ''
-                        }}
-                        className="max-w-xs"
-                      />
-                      {isUploadingThumb && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
-                      {edit.thumbnailUrl && !isUploadingThumb && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleThumbnailRemove}
-                        >
-                          <Trash2 className="mr-1 h-3.5 w-3.5" />
-                          제거
-                        </Button>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">이미지 파일, 2MB 이하. 비우면 기본 표지가 표시됩니다.</p>
-                    {/* 291 — PDF 콘텐츠에 한해 1페이지 재렌더 경로 노출. thumbnail_url 유무 무관하게 강제 덮어씀. */}
-                    {edit.filePath?.toLowerCase().endsWith('.pdf') && (
-                      <Button
+                )}
+                {editDirty && (
+                  <p className="mt-2 text-xs text-amber-600">
+                    저장하지 않은 변경사항이 있습니다.
+                  </p>
+                )}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <div className="hidden h-full grid-cols-[minmax(380px,0.38fr)_minmax(0,1fr)] lg:grid">
+                  <div className="min-h-0 overflow-y-auto border-r border-border bg-muted/20 px-5 py-5">
+                    {editLeftPanel}
+                  </div>
+                  <div className="min-h-0 overflow-y-auto px-6 py-5">
+                    {editRightPanel}
+                  </div>
+                </div>
+
+                <div className="flex h-full flex-col lg:hidden">
+                  <div className="shrink-0 border-b border-border px-4 py-3">
+                    <div className="grid grid-cols-2 rounded-lg bg-muted p-1">
+                      <button
                         type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={isRefetchingCover}
-                        onClick={handleRefetchPdfCover}
-                        className="w-fit"
+                        onClick={() => setEditTab('card')}
+                        className={cn(
+                          'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                          editTab === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                        )}
                       >
-                        {isRefetchingCover
-                          ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                          : null}
-                        1페이지 다시 가져오기
-                      </Button>
-                    )}
-                    {thumbError && <p className="text-xs text-destructive">{thumbError}</p>}
+                        카드·설정
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditTab('body')}
+                        className={cn(
+                          'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                          editTab === 'body' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                        )}
+                      >
+                        본문 편집
+                      </button>
+                    </div>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                    {editTab === 'card' ? editLeftPanel : editRightPanel}
                   </div>
                 </div>
               </div>
-
-              {/* 요약 */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-summary">
-                  요약{' '}
-                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                </Label>
-                <textarea
-                  data-slot="textarea"
-                  id="edit-summary"
-                  value={edit.summary}
-                  onChange={(e) => setEdit((p) => p && { ...p, summary: e.target.value })}
-                  placeholder="핵심 내용을 입력해주세요"
-                  rows={4}
-                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-
-              {/* 본문 */}
-              <div className="flex flex-col gap-1.5">
-                <Label>
-                  본문{' '}
-                  <span className="text-xs font-normal text-muted-foreground">(마크다운·선택)</span>
-                </Label>
-                <MarkdownEditor
-                  value={edit.bodyMarkdown}
-                  onChange={(v) => setEdit((p) => p && { ...p, bodyMarkdown: v })}
-                  placeholder="본문을 입력·편집하세요. 툴바로 서식을 넣을 수 있어요."
-                />
-                <p className="text-xs text-muted-foreground">
-                  서식(마크다운)은 상세 화면에 그대로 반영됩니다. 검색·요약에는 서식을 제거한 본문이 사용됩니다.
-                </p>
-              </div>
-            </div>
+            </>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="mt-0 shrink-0 items-center justify-between border-t border-border px-5 py-3">
             <Button
               type="button"
               variant="ghost"
               disabled={isSaving}
-              onClick={() => { setEdit(null); setEditError(null) }}
+              onClick={closeEdit}
             >
               취소
             </Button>
-            <Button type="button" disabled={isSaving} onClick={handleEditSave}>
-              {isSaving
-                ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />저장 중…</>
-                : '저장'
-              }
-            </Button>
+            <div className="relative flex items-center gap-2">
+              <Button
+                type="button"
+                disabled={isSaving}
+                onClick={() => { void handleEditSave(canEditNext ? 'next' : 'stay') }}
+              >
+                {isSaving ? (
+                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />저장 중…</>
+                ) : canEditNext ? (
+                  '저장 후 다음 콘텐츠'
+                ) : (
+                  '저장'
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={isSaving}
+                aria-label="저장 옵션"
+                aria-expanded={saveMenuOpen}
+                onClick={() => setSaveMenuOpen((v) => !v)}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+              {saveMenuOpen && (
+                <div className="absolute bottom-full right-0 z-20 mb-2 w-52 overflow-hidden rounded-lg border border-border bg-popover p-1 text-sm shadow-lg">
+                  <button
+                    type="button"
+                    className="w-full rounded-md px-3 py-2 text-left hover:bg-accent"
+                    onClick={() => { void handleEditSave('stay') }}
+                  >
+                    저장
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canEditNext}
+                    className="w-full rounded-md px-3 py-2 text-left hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+                    onClick={() => { void handleEditSave('next') }}
+                  >
+                    저장 후 다음 콘텐츠
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full rounded-md px-3 py-2 text-left hover:bg-accent"
+                    onClick={() => { void handleEditSave('publish') }}
+                  >
+                    저장 후 노출
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full rounded-md px-3 py-2 text-left hover:bg-accent"
+                    onClick={() => { void handleEditSave('reject') }}
+                  >
+                    저장 후 숨김
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full rounded-md px-3 py-2 text-left hover:bg-accent"
+                    onClick={() => { void handleEditSave('close') }}
+                  >
+                    저장 후 목록으로
+                  </button>
+                </div>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
