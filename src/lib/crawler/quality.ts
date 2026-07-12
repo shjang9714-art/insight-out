@@ -224,11 +224,34 @@ export interface IssueMatchDef {
   match_keywords: string[]
 }
 
-/** 이슈 match_keywords 텍스트 부분일치 → 매칭된 issue_id 배열. matchKeywordGroups 미러. */
+// 이슈 과잉매칭 정밀화(지시서_20260712_급상승-이슈과잉매칭-정밀화) — 실측(2026-07-12, published
+// 이슈 39건 전수조사)으로 확정된 범용 토큰만 포함(추정 금지). 이 토큰들은 여러 이슈에 걸쳐
+// 반복 등장해(예: "AI" 28/39건) 이슈를 서로 구분하는 신호가 되지 못하고, AI/B2B 도메인
+// 기사는 본문에 거의 다 등장하므로 이 토큰만으로 매칭되면 한 기사가 15~20개 이슈에
+// 동시 배정되는 문제가 있었다("오늘의 급상승"에 같은 사건이 여러 이슈로 쪼개져 노출되는
+// 근본 원인). 새 범용 토큰이 늘어나면 DB를 재조회해 이 목록도 갱신할 것 — 추정 추가 금지.
+export const GENERIC_MATCH_TOKENS = new Set(
+  ['AI', '인공지능', '클라우드', '경쟁', '협력', '디지털 전환', '디지털전환', '플랫폼', '데이터', '기술', '사업', '산업', 'B2B', '솔루션']
+    .map(t => t.toLowerCase())
+)
+
+/** true면 GENERIC_MATCH_TOKENS만으론 이슈 배정이 성립하지 않음 — 최소 1개는 특정 키워드여야 함. */
+export const REQUIRE_SPECIFIC_KEYWORD = true
+
+/**
+ * 이슈 match_keywords 텍스트 부분일치 → 매칭된 issue_id 배열. matchKeywordGroups 미러.
+ * REQUIRE_SPECIFIC_KEYWORD=true면 범용 토큰(GENERIC_MATCH_TOKENS)은 매칭 판정에서 아예
+ * 제외 — 이슈의 match_keywords가 전부 범용 토큰뿐이면 그 이슈는 영구히 배정되지 않는다.
+ */
 export function matchIssues(title: string, body: string, issues: IssueMatchDef[]): string[] {
   const text = `${title} ${body}`.toLowerCase()
   return issues
-    .filter(issue => issue.match_keywords.some(kw => kw && text.includes(kw.toLowerCase())))
+    .filter(issue => issue.match_keywords.some(kw => {
+      if (!kw) return false
+      const kwLower = kw.toLowerCase()
+      if (REQUIRE_SPECIFIC_KEYWORD && GENERIC_MATCH_TOKENS.has(kwLower)) return false
+      return text.includes(kwLower)
+    }))
     .map(issue => issue.id)
 }
 
