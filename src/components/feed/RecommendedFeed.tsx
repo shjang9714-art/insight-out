@@ -24,13 +24,6 @@ export interface FeedItem {
   matched_keywords: string[]
 }
 
-interface Section {
-  slot: 'personalized' | 'trending' | 'editor'
-  label: string
-  quota: number
-  items: FeedItem[]
-}
-
 interface RecommendedFeedProps {
   fallbackTrending: boolean
   initialCategoryKeys: string[]
@@ -61,7 +54,9 @@ function CardSkeleton() {
 }
 
 // 슬롯 비율 60/20/10. fallbackTrending(건너뛰기) 시에는 personalized 대신 trending이 60%를 차지.
-function buildSlotMeta(fallbackTrending: boolean): { slot: Section['slot']; label: string; quota: number }[] {
+function buildSlotMeta(
+  fallbackTrending: boolean
+): { slot: 'personalized' | 'trending' | 'editor'; label: string; quota: number }[] {
   const dominant = fallbackTrending
     ? { slot: 'trending' as const, label: '트렌딩', quota: 6 }
     : { slot: 'personalized' as const, label: '맞춤 추천', quota: 6 }
@@ -83,7 +78,7 @@ export default function RecommendedFeed({
 }: RecommendedFeedProps) {
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
-  const [sections, setSections] = useState<Section[]>([])
+  const [items, setItems] = useState<FeedItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -110,33 +105,30 @@ export default function RecommendedFeed({
       )
 
       const dominantAll = (results[0]?.items ?? []) as FeedItem[]
-      const built: Section[] = slotMeta.map((meta, i) => ({
-        ...meta,
-        items: i === 0 ? dominantAll.slice(0, meta.quota) : ((results[i]?.items ?? []) as FeedItem[]),
-      }))
+      const perSlotItems: FeedItem[][] = slotMeta.map((meta, i) =>
+        i === 0 ? dominantAll.slice(0, meta.quota) : ((results[i]?.items ?? []) as FeedItem[])
+      )
 
       // 빈 슬롯(예: editor 0건)은 1차 요청에 이미 확보해둔 1순위 여유분(dominantAll)에서
       // 보충 — 추가 네트워크 왕복 없음
-      const shortfall = built
+      const shortfall = slotMeta
         .slice(1)
-        .reduce((sum, section) => sum + Math.max(0, section.quota - section.items.length), 0)
+        .reduce((sum, meta, idx) => sum + Math.max(0, meta.quota - perSlotItems[idx + 1].length), 0)
 
       if (shortfall > 0) {
-        const existingIds = new Set(built[0].items.map((item) => item.id))
+        const existingIds = new Set(perSlotItems[0].map((item) => item.id))
         const extra = dominantAll.filter((item) => !existingIds.has(item.id)).slice(0, shortfall)
-        built[0] = { ...built[0], items: [...built[0].items, ...extra] }
+        perSlotItems[0] = [...perSlotItems[0], ...extra]
       }
 
-      // 슬롯간 글로벌 dedup: 우선순위 순으로 합쳐 dedup 후 각 슬롯에서 제거된 항목 필터
-      const allItems = built.flatMap((s) => s.items)
-      const kept = dedupSimilarItems(allItems)
-      const keptIds = new Set(kept.map((item) => item.id))
-      for (const section of built) {
-        section.items = section.items.filter((item) => keptIds.has(item.id))
-      }
+      // 슬롯간 글로벌 dedup: 우선순위 순으로 합쳐 dedup한 평탄화 리스트를 그대로 사용.
+      // (과거에는 dedup 후 각 슬롯에 되돌려 id 멤버십으로만 재필터링했는데, 같은 content_id가
+      // 여러 슬롯에 걸쳐 나타나면 keptIds가 섹션 구분 없이 둘 다 통과시켜 동일 기사가
+      // 중복 노출되는 버그가 있었음 — 섹션 재분배 없이 dedup 결과를 바로 렌더한다)
+      const items = dedupSimilarItems(perSlotItems.flat())
 
       if (!cancelled) {
-        setSections(built.filter((section) => section.items.length > 0))
+        setItems(items)
         setIsLoading(false)
       }
     }
@@ -175,7 +167,7 @@ export default function RecommendedFeed({
             (_, i) => <CardSkeleton key={i} />
           )}
         </FeedCarousel>
-      ) : sections.length === 0 ? (
+      ) : items.length === 0 ? (
         fallbackItems.length > 0 ? (
           <div>
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
@@ -206,22 +198,20 @@ export default function RecommendedFeed({
         )
       ) : (
         <FeedCarousel cardWidth={300} cardHeight={364}>
-          {sections.flatMap((section) =>
-            section.items.map((item) => (
-              <ContentCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                summaryKo={toExcerpt(item.summary_ko, item.body_original)}
-                category={item.category}
-                sourceName={item.sources?.name ?? null}
-                publishedAt={item.published_at}
-                thumbnailUrl={coverUrlFor(item)}
-                href={item.category === '유튜브' ? null : undefined}
-                keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-              />
-            ))
-          )}
+          {items.map((item) => (
+            <ContentCard
+              key={item.id}
+              id={item.id}
+              title={item.title}
+              summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+              category={item.category}
+              sourceName={item.sources?.name ?? null}
+              publishedAt={item.published_at}
+              thumbnailUrl={coverUrlFor(item)}
+              href={item.category === '유튜브' ? null : undefined}
+              keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+            />
+          ))}
         </FeedCarousel>
       )}
     </div>
