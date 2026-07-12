@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -12,7 +12,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { FEED_CATEGORIES, hashtagsForCategories } from '@/lib/feed/categories'
+import { FEED_CATEGORIES, FEED_CATEGORY_KEYS } from '@/lib/feed/categories'
 
 interface FeedCategoryModalProps {
   open: boolean
@@ -26,7 +26,7 @@ interface FeedCategoryModalProps {
 /**
  * 관심 카테고리 다중 선택 팝업.
  * 사용자는 카테고리만 고르고, 선택한 카테고리에 속한 해시태그 전체가
- * 미리보기(읽기 전용 칩)로 노출된다. 저장 시 카테고리 키를 서버에 보낸다.
+ * 백엔드 매칭에 쓰인다. 저장 시 카테고리 키를 서버에 보낸다.
  */
 export default function FeedCategoryModal({
   open,
@@ -45,12 +45,17 @@ export default function FeedCategoryModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open 전환 시점에만 프리필
   }, [open])
 
-  const hashtags = useMemo(() => hashtagsForCategories(selected), [selected])
+  const allSelected = FEED_CATEGORY_KEYS.every((key) => selected.includes(key))
 
   function toggleCategory(key: string) {
     setSelected((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     )
+  }
+
+  // "전체 선택"은 실제 카테고리가 아닌 프론트 전용 가상 옵션 — 클릭 시 전체를 토글
+  function toggleAll() {
+    setSelected(allSelected ? [] : [...FEED_CATEGORY_KEYS])
   }
 
   async function handleSave() {
@@ -93,8 +98,21 @@ export default function FeedCategoryModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* 카테고리 다중 선택 */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {/* 카테고리 다중 선택 (+ 전체 선택은 가상 옵션 — DB에 저장되지 않음) */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={toggleAll}
+            aria-pressed={allSelected}
+            className={
+              'rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ' +
+              (allSelected
+                ? 'border-brand-600 bg-brand-50 text-brand-700'
+                : 'border-border bg-card text-foreground hover:border-brand-300')
+            }
+          >
+            전체 선택
+          </button>
           {FEED_CATEGORIES.map((category) => {
             const active = selected.includes(category.key)
             return (
@@ -115,25 +133,6 @@ export default function FeedCategoryModal({
             )
           })}
         </div>
-
-        {/* 선택 카테고리의 해시태그 미리보기 (읽기 전용) */}
-        {hashtags.length > 0 && (
-          <div className="mt-4 rounded-xl border border-dashed border-border p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              포함 해시태그 ({hashtags.length})
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {hashtags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         <DialogFooter>
           <span className="mr-auto self-center text-xs text-muted-foreground">
