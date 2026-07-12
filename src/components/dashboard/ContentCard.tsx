@@ -3,6 +3,9 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover, { CATEGORY_COLOR } from '@/components/dashboard/BrandedCover'
 import { extractVideoId } from '@/lib/youtube'
 
+// 카드 폭(≈300px) 기준 한 줄에 무리 없이 들어가는 해시태그 개수 — 나머지는 "+N"으로 뭉침
+const MAX_VISIBLE_KEYWORDS = 3
+
 // ─── timeAgo ────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string | null): string {
@@ -126,14 +129,19 @@ export default function ContentCard({
           )}
         </div>
 
-        {/* 해시태그 */}
+        {/* 해시태그 — 카드 폭 기준 한 줄 초과분은 "+N"으로 표시(줄바꿈으로 카드 높이 들쭉날쭉해지는 것 방지) */}
         {keywords && keywords.length > 0 && (
-          <div className="mb-1.5 flex flex-wrap gap-1">
-            {keywords.map((kw) => (
-              <span key={kw} className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300">
+          <div className="mb-1.5 flex flex-nowrap items-center gap-1 overflow-hidden">
+            {keywords.slice(0, MAX_VISIBLE_KEYWORDS).map((kw) => (
+              <span key={kw} className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                 #{kw}
               </span>
             ))}
+            {keywords.length > MAX_VISIBLE_KEYWORDS && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                +{keywords.length - MAX_VISIBLE_KEYWORDS}
+              </span>
+            )}
           </div>
         )}
 

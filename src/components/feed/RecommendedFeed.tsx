@@ -170,21 +170,16 @@ export default function RecommendedFeed({
       </div>
 
       {isLoading ? (
-        <div className="space-y-6">
-          {buildSlotMeta(fallbackTrending).map((meta) => (
-            <div key={meta.slot}>
-              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{meta.label}</h3>
-              <FeedCarousel cardHeight={196} autoplay={false}>
-                {Array.from({ length: meta.quota }).map((_, i) => <CardSkeleton key={i} />)}
-              </FeedCarousel>
-            </div>
-          ))}
-        </div>
+        <FeedCarousel cardWidth={300} cardHeight={364} autoplay={false}>
+          {Array.from({ length: buildSlotMeta(fallbackTrending).reduce((sum, m) => sum + m.quota, 0) }).map(
+            (_, i) => <CardSkeleton key={i} />
+          )}
+        </FeedCarousel>
       ) : sections.length === 0 ? (
         fallbackItems.length > 0 ? (
           <div>
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
-            <FeedCarousel cardHeight={196}>
+            <FeedCarousel cardWidth={300} cardHeight={364}>
               {fallbackItems.map((item) => (
                 <ContentCard
                   key={item.id}
@@ -210,29 +205,24 @@ export default function RecommendedFeed({
           </p>
         )
       ) : (
-        <div className="space-y-6">
-          {sections.map((section) => (
-            <div key={section.slot}>
-              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{section.label}</h3>
-              <FeedCarousel cardHeight={196}>
-                {section.items.map((item) => (
-                  <ContentCard
-                    key={item.id}
-                    id={item.id}
-                    title={item.title}
-                    summaryKo={toExcerpt(item.summary_ko, item.body_original)}
-                    category={item.category}
-                    sourceName={item.sources?.name ?? null}
-                    publishedAt={item.published_at}
-                    thumbnailUrl={coverUrlFor(item)}
-                    href={item.category === '유튜브' ? null : undefined}
-                    keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-                  />
-                ))}
-              </FeedCarousel>
-            </div>
-          ))}
-        </div>
+        <FeedCarousel cardWidth={300} cardHeight={364}>
+          {sections.flatMap((section) =>
+            section.items.map((item) => (
+              <ContentCard
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+                category={item.category}
+                sourceName={item.sources?.name ?? null}
+                publishedAt={item.published_at}
+                thumbnailUrl={coverUrlFor(item)}
+                href={item.category === '유튜브' ? null : undefined}
+                keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+              />
+            ))
+          )}
+        </FeedCarousel>
       )}
     </div>
   )
