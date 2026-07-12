@@ -28,6 +28,12 @@ interface FeedCategoryModalProps {
  * 사용자는 카테고리만 고르고, 선택한 카테고리에 속한 해시태그 전체가
  * 백엔드 매칭에 쓰인다. 저장 시 카테고리 키를 서버에 보낸다.
  */
+// 저장 이력이 없는 경우(빈 배열 — 신규/스킵 사용자)의 기본값: 전체 선택.
+// 한 번이라도 저장한 적 있는 사용자는 그 값을 그대로 프리필한다.
+function defaultSelection(keys: string[]): string[] {
+  return keys.length > 0 ? keys : [...FEED_CATEGORY_KEYS]
+}
+
 export default function FeedCategoryModal({
   open,
   onOpenChange,
@@ -35,13 +41,13 @@ export default function FeedCategoryModal({
   onSaved,
 }: FeedCategoryModalProps) {
   const router = useRouter()
-  const [selected, setSelected] = useState<string[]>(initialCategoryKeys)
+  const [selected, setSelected] = useState<string[]>(() => defaultSelection(initialCategoryKeys))
   const [isSaving, setIsSaving] = useState(false)
 
   // 열릴 때마다 기존 선택으로 초기화(모달 open 전환 시점 1회 동기화 — 허용 패턴)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- open 토글 시 프리필 동기화
-    if (open) setSelected(initialCategoryKeys)
+    if (open) setSelected(defaultSelection(initialCategoryKeys))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open 전환 시점에만 프리필
   }, [open])
 
