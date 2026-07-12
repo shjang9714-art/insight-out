@@ -15,8 +15,10 @@ import BackLink from '@/components/BackLink'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
+import ReportBodyTabs from '@/components/contents/ReportBodyTabs'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
+import { buildReportDownloadName } from '@/lib/contents/report-filename'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
 import FeedCarousel from '@/components/feed/FeedCarousel'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
@@ -176,12 +178,21 @@ export default async function ContentDetailPage({ params }: PageProps) {
     Boolean(content.body_translated_ko)
 
   let signedUrl: string | null = null
+  let downloadUrl: string | null = null
+  let downloadFileName: string | null = null
   let isPdf = false
 
   if (isReport) {
-    // 비공개 버킷 서명 URL 생성 (실패 시 null → 폴백 메시지)
-    signedUrl = await getReportSignedUrl(content.file_path!)
     isPdf = content.file_path!.toLowerCase().endsWith('.pdf')
+    downloadFileName = buildReportDownloadName(content.title, content.sources?.name ?? null, content.file_path!)
+    // 비공개 버킷 서명 URL 생성 (실패 시 null → 폴백 메시지). 뷰어용과 다운로드용을 분리 —
+    // 다운로드용은 Content-Disposition으로 파일명을 지정해야 해 별도 서명이 필요하다.
+    const [viewerUrl, dlUrl] = await Promise.all([
+      getReportSignedUrl(content.file_path!),
+      getReportSignedUrl(content.file_path!, downloadFileName),
+    ])
+    signedUrl = viewerUrl
+    downloadUrl = dlUrl
   }
   // 뉴스 분기: ensureFullBody 는 ArticleBody 안에서 스트리밍 — 이 시점엔 호출하지 않음
 
@@ -441,27 +452,20 @@ export default async function ContentDetailPage({ params }: PageProps) {
                   </p>
                 )}
 
-                {signedUrl && isPdf ? (
-              /* PDF iframe 미리보기 */
-                  <div>
-                    <iframe
-                      src={signedUrl}
-                      className="w-full rounded-lg border border-border"
-                      style={{ height: '80vh' }}
-                      title={content.title}
-                    />
-                    <div className="mt-3 flex justify-end">
-                      <a
-                        href={signedUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        새 탭에서 열기
-                      </a>
-                    </div>
-                  </div>
+                {signedUrl && isPdf && downloadUrl && downloadFileName ? (
+              /* 인라인 PDF 뷰어 + 텍스트 탭 + 다운로드(307) */
+                  <ReportBodyTabs
+                    contentId={content.id}
+                    signedUrl={signedUrl}
+                    downloadUrl={downloadUrl}
+                    downloadFileName={downloadFileName}
+                    textBody={
+                      content.body_original
+                        ? cleanBodyText(htmlToPlainText(content.body_original))
+                        : null
+                    }
+                    markdownBody={bodyMarkdown}
+                  />
                 ) : signedUrl && !isPdf ? (
               /* PDF 외 파일: 다운로드 안내 */
                   <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-12 text-center">

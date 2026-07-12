@@ -1,0 +1,33 @@
+/* pdf.js TextLayer(v6) 최소 스타일(307) — pdfjs-dist/web/pdf_viewer.css의 .textLayer 규칙 중
+   canvas 위 투명 텍스트 오버레이(선택·복사·Ctrl+F)에 필요한 부분만 옮김. */
+.textLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.textLayer span[role='img'] {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 100, 255, 0.3);
+}
