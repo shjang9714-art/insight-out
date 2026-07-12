@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover, { CATEGORY_COLOR } from '@/components/dashboard/BrandedCover'
 import { extractVideoId } from '@/lib/youtube'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 // 카드 폭(≈300px) 기준 한 줄에 무리 없이 들어가는 해시태그 개수 — 나머지는 "+N"으로 뭉침
 const MAX_VISIBLE_KEYWORDS = 3
@@ -37,6 +38,8 @@ interface ContentCardProps {
   /** 외부(새 탭) 이동 링크 — 있으면 href/id 라우트보다 우선(유튜브 등) */
   externalHref?: string | null
   keywords?: string[]
+  /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
+  lguImpact?: string | null
 }
 
 // ─── 썸네일 영역 ─────────────────────────────────────────────────────────────
@@ -104,6 +107,7 @@ export default function ContentCard({
   href,
   externalHref,
   keywords,
+  lguImpact,
 }: ContentCardProps) {
   const catColor = CATEGORY_COLOR[category] ?? 'bg-muted text-muted-foreground'
   // 252 — 유튜브는 externalHref(원본 URL)를 썸네일 추출용으로만 쓰고, 클릭은 인앱 상세로(이탈 방지).
@@ -122,6 +126,7 @@ export default function ContentCard({
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}>
             {CONTENT_CATEGORY_LABEL[category] ?? category}
           </span>
+          <LguImpactBadge impact={lguImpact} />
           {sourceName && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
               {sourceName}

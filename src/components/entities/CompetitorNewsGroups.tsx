@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { CompGroupBucket } from '@/lib/entities/competitor-news'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 function formatCompArticleDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ko-KR', {
@@ -34,18 +35,14 @@ export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerC
                 {group.results.length}개사 · {group.articleTotal}건
               </span>
               <div className="flex-1" />
-              {(group.impactDist['위기'] + group.impactDist['기회'] + group.impactDist['관망'] > 0) && (
+              {(group.impactDist['위기'] + group.impactDist['기회'] > 0) && (
                 <div className="flex items-center gap-1">
-                  {group.impactDist['위기'] > 0 && (
-                    <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold bg-negative-soft text-negative">위기 {group.impactDist['위기']}</span>
-                  )}
-                  {group.impactDist['기회'] > 0 && (
-                    <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">기회 {group.impactDist['기회']}</span>
-                  )}
+                  <LguImpactBadge impact="위기" count={group.impactDist['위기']} />
+                  <LguImpactBadge impact="기회" count={group.impactDist['기회']} />
                 </div>
               )}
               {hiddenCount > 0 && seeAllHref && (
-                <Link href={seeAllHref} className="text-xs font-medium text-brand-600 hover:underline">
+                <Link href={seeAllHref} className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                   +{hiddenCount}개사 더 →
                 </Link>
               )}
@@ -54,20 +51,14 @@ export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerC
               {visibleResults.map(({ name, articles, articleTotal, impactDist }) => (
                 <div
                   key={name}
-                  className="rounded-lg border border-border bg-card p-3.5 hover:border-brand-200 transition-colors"
+                  className="rounded-lg border border-border bg-card p-3.5"
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-sm font-bold text-foreground truncate">{name}</span>
+                    <span className="text-sm font-semibold text-foreground truncate">{name}</span>
                     <div className="flex items-center gap-1 shrink-0">
-                      {impactDist['위기'] > 0 && (
-                        <span className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold bg-negative-soft text-negative">위기 {impactDist['위기']}</span>
-                      )}
-                      {impactDist['기회'] > 0 && (
-                        <span className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">기회 {impactDist['기회']}</span>
-                      )}
-                      {impactDist['관망'] > 0 && (
-                        <span className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold bg-muted text-muted-foreground">관망 {impactDist['관망']}</span>
-                      )}
+                      <LguImpactBadge impact="위기" count={impactDist['위기']} />
+                      <LguImpactBadge impact="기회" count={impactDist['기회']} />
+                      <LguImpactBadge impact="관망" count={impactDist['관망']} />
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -78,7 +69,7 @@ export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerC
                           key={a.id}
                           href={`/dashboard/contents/${a.id}`}
                           className={cn(
-                            'flex items-center gap-2 py-1.5 text-xs text-foreground/80 hover:text-brand-600',
+                            'flex items-center gap-2 py-1.5 text-xs text-foreground/80 hover:text-foreground hover:underline',
                             i > 0 && 'border-t border-dashed border-border'
                           )}
                         >
@@ -94,7 +85,7 @@ export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerC
                     })}
                   </div>
                   {articleTotal > articlesPerCard && (
-                    <p className="mt-1 text-[11px] font-medium text-brand-600">기사 {articleTotal - articlesPerCard}건 더 →</p>
+                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">기사 {articleTotal - articlesPerCard}건 더 →</p>
                   )}
                 </div>
               ))}

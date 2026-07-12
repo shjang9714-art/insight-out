@@ -16,6 +16,8 @@ import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
+import LensSwitcher from '@/components/lens/LensSwitcher'
+import { useActiveLens, useLensContext } from '@/lib/lens'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,8 @@ interface ContentItem {
   importance_score: number
   collected_at: string
   thumbnail_url: string | null
+  /** LG U+ 관점 위기/기회(313) — 컬럼 미적용 시 undefined 취급(lguImpactAvailable=false) */
+  lgu_impact?: string | null
 }
 
 interface ClusterMember {
@@ -85,6 +89,14 @@ const CONTENT_SOURCE_TABS = [
   { label: '웹인사이트', value: '웹인사이트' as ContentCategory },
   { label: '리서치',    value: '리서치'    as ContentCategory },
 ] as const
+
+// LG U+ 관점 위기/기회 필터(313) — '관망'은 필터 대상에 넣지 않는다(신호가 흔해지면 신호가 아니다)
+const IMPACT_OPTIONS = [
+  { value: '',   label: '전체' },
+  { value: '위기', label: '🔴 위기' },
+  { value: '기회', label: '🟢 기회' },
+] as const
+type ImpactFilter = (typeof IMPACT_OPTIONS)[number]['value']
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -213,6 +225,19 @@ function ContentsContent() {
   const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
   const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10)))
   const sort     = (searchParams.get('sort') ?? 'published') as 'published' | 'collected'
+  const impact   = (searchParams.get('impact') ?? '') as ImpactFilter
+
+  // ── 렌즈(309) ────────────────────────────────────────────────────────────────
+  const [lens] = useActiveLens()
+  const lensCtx = useLensContext()
+  const lensServiceIdsKey = lensCtx.serviceIds.join(',')
+  const lensWatchEntityIdsKey = lensCtx.watchlistEntityIds.join(',')
+  const lensWatchlistKey = lensCtx.watchlist.join(',')
+
+  // 렌즈 전환 시 1페이지부터 다시 (서버 필터가 바뀌므로 누적 items 초기화 필요)
+  useEffect(() => {
+    startTransition(() => setPage(1))
+  }, [lens])
 
   const isReportCategory = category === '리포트' || category === 'AI보고서'
   const sortByCollected  = sort === 'collected' || isReportCategory
@@ -227,6 +252,8 @@ function ContentsContent() {
   const [groupByDay, setGroupByDay]   = useState(false)
   // null = 카테고리 미선택(전체 출처 노출)
   const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
+  // lgu_impact 컬럼 미적용(42703) 시 false — 필터 UI 숨김 + select 에서 제외(313)
+  const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
 
   // localStorage에서 뷰 설정 복원 (SSR 가드)
   useEffect(() => {
@@ -308,17 +335,38 @@ function ContentsContent() {
       setLoading(true)
       const supabase = createClient()
 
-      // ① 서비스 멀티셀렉트 필터: 선택된 svcIds 중 하나라도 매핑된 content_ids
-      let svcContentIds: string[] | null = null
-      if (svcIds.length > 0) {
-        const { data } = await supabase
-          .from('content_services')
-          .select('content_id')
-          .in('service_id', svcIds)
-        svcContentIds = [...new Set(data?.map((r) => r.content_id) ?? [])]
+      // ① 서비스 필터(사업 드롭다운) + 렌즈(309) 'mine'/'watch' — 대상은 service_id/entity_id 같은
+      //    "작은" id 목록(최대 수십 개)이라 .in() 폭발이 없다. content_id 왕복(전체 목록 조회 후
+      //    .in('id', [...]))은 하지 않는다 — PostgREST 기본 max-rows 에서 조용히 잘리고,
+      //    수천 개 UUID 를 .in() 에 넣으면 URL 이 터진다(309 후속 버그 수정).
+      //    실제 필터는 contents 쿼리에 embedded !inner 조인으로 건다(313 citations.ts 패턴 재사용).
+      //    PostgREST 임베딩은 부모 행을 곱하지 않는다(관계는 JSON 서브쿼리로 집계) — count 부풀림 없음.
+      let serviceIdsForJoin: string[] | null = null   // null = content_services 조인 불필요
+      if (svcIds.length > 0 && lens === 'mine') {
+        const svcSet = new Set(svcIds)
+        serviceIdsForJoin = lensCtx.serviceIds.filter((id) => svcSet.has(id))
+      } else if (svcIds.length > 0) {
+        serviceIdsForJoin = svcIds
+      } else if (lens === 'mine') {
+        serviceIdsForJoin = lensCtx.serviceIds
       }
 
-      if (svcContentIds?.length === 0) {
+      let entityIdsForJoin: string[] | null = null    // null = content_entities 조인 불필요
+      let watchTitleFallback: string[] = []           // entity_id 미연결 레거시 watchlist — title ILIKE
+      if (lens === 'watch') {
+        if (lensCtx.watchlistEntityIds.length > 0) {
+          entityIdsForJoin = lensCtx.watchlistEntityIds
+        } else {
+          watchTitleFallback = lensCtx.watchlist
+        }
+      }
+
+      // 조인 대상이 확정적으로 0개 → 쿼리 없이 바로 빈 결과(disabled 렌즈 chip 상태와 일치)
+      const definitelyEmpty =
+        (serviceIdsForJoin !== null && serviceIdsForJoin.length === 0) ||
+        (lens === 'watch' && entityIdsForJoin === null && watchTitleFallback.length === 0)
+
+      if (definitelyEmpty) {
         if (!cancelled) {
           if (page === 1) setItems([])
           setTotal(0)
@@ -327,31 +375,57 @@ function ContentsContent() {
         return
       }
 
-      let q = supabase
-        .from('contents')
-        .select(
-          'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url',
-          { count: 'exact' }
-        )
-        .eq('status', 'published')
+      // 313 — lgu_impact 컬럼(select·필터)은 가용성 플래그에 따라 켜고 끈다(42703 graceful).
+      const baseFields = 'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url'
 
-      q = sortByCollected
-        ? q.order('collected_at', { ascending: false })
-        : q.order('published_at', { ascending: false, nullsFirst: false })
+      const buildQuery = (withLguImpact: boolean) => {
+        const selectParts = [withLguImpact ? `${baseFields}, lgu_impact` : baseFields]
+        if (serviceIdsForJoin) selectParts.push('content_services!inner(service_id)')
+        if (entityIdsForJoin)  selectParts.push('content_entities!inner(entity_id)')
 
-      q = q.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+        let query = supabase
+          .from('contents')
+          .select(selectParts.join(', '), { count: 'exact' })
+          .eq('status', 'published')
 
-      if (category) {
-        const dbCats = getCategoryDbValues(category as ContentCategory)
-        q = q.in('category', dbCats)
+        query = sortByCollected
+          ? query.order('collected_at', { ascending: false })
+          : query.order('published_at', { ascending: false, nullsFirst: false })
+
+        query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+
+        if (category) {
+          const dbCats = getCategoryDbValues(category as ContentCategory)
+          query = query.in('category', dbCats)
+        }
+        if (srcIds.length > 0) query = query.in('source_id', srcIds)
+
+        const dateStart = getDateStart(date)
+        if (dateStart) query = query.gte(sortByCollected ? 'collected_at' : 'published_at', dateStart)
+
+        if (serviceIdsForJoin) query = query.in('content_services.service_id', serviceIdsForJoin)
+        if (entityIdsForJoin)  query = query.in('content_entities.entity_id', entityIdsForJoin)
+        if (watchTitleFallback.length > 0) {
+          const orFilter = watchTitleFallback
+            .map((w) => `title.ilike."%${w.replace(/"/g, '')}%"`)
+            .join(',')
+          query = query.or(orFilter)
+        }
+        if (withLguImpact && impact) query = query.eq('lgu_impact', impact)
+
+        return query
       }
-      if (srcIds.length > 0) q = q.in('source_id', srcIds)
 
-      const dateStart = getDateStart(date)
-      if (dateStart)      q = q.gte(sortByCollected ? 'collected_at' : 'published_at', dateStart)
-      if (svcContentIds)  q = q.in('id', svcContentIds)
+      let { data, count, error } = await buildQuery(lguImpactAvailable)
 
-      const { data, count, error } = await q
+      // lgu_impact 컬럼 미적용(313 SQL 전) — 컬럼 없이 재조회, 필터 UI 도 숨긴다.
+      if (error?.code === '42703') {
+        if (!cancelled) setLguImpactAvailable(false)
+        const retry = await buildQuery(false)
+        data = retry.data
+        count = retry.count
+        error = retry.error
+      }
 
       if (!cancelled) {
         if (error) {
@@ -367,7 +441,8 @@ function ContentsContent() {
 
     fetchContents()
     return () => { cancelled = true }
-  }, [category, date, svcIds, srcIds, relevant, page, sort, sortByCollected])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, date, svcIds, srcIds, relevant, page, sort, sortByCollected, lens, lensServiceIdsKey, lensWatchEntityIdsKey, lensWatchlistKey, impact])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
@@ -416,6 +491,12 @@ function ContentsContent() {
     key: 'date',
     label: DATE_OPTIONS.find((d) => d.value === date)?.label ?? date,
     onRemove: () => updateParam('date', ''),
+  })
+
+  if (impact) activeFilters.push({
+    key: 'impact',
+    label: IMPACT_OPTIONS.find((o) => o.value === impact)?.label ?? impact,
+    onRemove: () => updateParam('impact', ''),
   })
 
   for (const id of svcIds) {
@@ -559,6 +640,29 @@ function ContentsContent() {
       <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
         <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
 
+          {/* 렌즈 전환(309) */}
+          <LensSwitcher />
+
+          {/* LG U+ 관점 위기/기회 필터(313) — 컬럼 미적용 시 숨김 */}
+          {lguImpactAvailable && (
+            <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+              {IMPACT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => updateParam('impact', opt.value)}
+                  className={cn(
+                    'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                    impact === opt.value
+                      ? 'bg-brand-solid text-white'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* 출처 팝오버 — 우측 끝 (카테고리 있으면 해당 카테고리 출처만) */}
           <div className="ml-auto">
             <SourcePopover
@@ -632,6 +736,7 @@ function ContentsContent() {
                           thumbnailUrl={coverUrlFor(item)}
                           externalHref={item.original_url}
                           keywords={item.matched_keywords ?? []}
+                          lguImpact={item.lgu_impact ?? null}
                         />
                       ))}
                     </div>
@@ -653,6 +758,7 @@ function ContentsContent() {
                           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                           clusterMembers={members.length > 0 ? members : undefined}
                           thumbnailUrl={coverUrlFor(item)}
+                          lguImpact={item.lgu_impact ?? null}
                         />
                       ))}
                     </div>
@@ -674,6 +780,7 @@ function ContentsContent() {
                           sourceName={item.sources?.name ?? null}
                           keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                           clusterMembers={members.length > 0 ? members : undefined}
+                          lguImpact={item.lgu_impact ?? null}
                         />
                       ))}
                     </div>
@@ -696,6 +803,7 @@ function ContentsContent() {
                   thumbnailUrl={coverUrlFor(item)}
                   externalHref={item.original_url}
                   keywords={item.matched_keywords ?? []}
+                  lguImpact={item.lgu_impact ?? null}
                 />
               ))}
             </div>
@@ -717,6 +825,7 @@ function ContentsContent() {
                   tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   clusterMembers={members.length > 0 ? members : undefined}
                   thumbnailUrl={coverUrlFor(item)}
+                  lguImpact={item.lgu_impact ?? null}
                 />
               ))}
             </div>
@@ -738,6 +847,7 @@ function ContentsContent() {
                   sourceName={item.sources?.name ?? null}
                   keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
                   clusterMembers={members.length > 0 ? members : undefined}
+                  lguImpact={item.lgu_impact ?? null}
                 />
               ))}
             </div>

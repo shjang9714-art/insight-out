@@ -1,13 +1,7 @@
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
 import type { CompetitorWeeklyCardRow } from '@/lib/competitor-weekly/query'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
-
-const IMPACT_CHIP: Record<string, string> = {
-  위기: 'bg-negative-soft text-negative',
-  기회: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  관망: 'bg-muted text-muted-foreground',
-}
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 function formatWeekRange(weekStart: string, weekEnd: string): string {
   const fmt = (d: string, withYear: boolean) => {
@@ -36,15 +30,11 @@ export default function CompetitorWeeklyCard({ report }: Props) {
         <span className="text-xs font-medium text-muted-foreground">
           {formatWeekRange(week_start, week_end)}
         </span>
-        {overall_impact && (
-          <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', IMPACT_CHIP[overall_impact] ?? 'bg-muted text-muted-foreground')}>
-            {overall_impact}
-          </span>
-        )}
+        <LguImpactBadge impact={overall_impact} showNeutral />
       </div>
 
       {summary && (
-        <p className="mb-2 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
+        <p className="mb-2 line-clamp-3 text-sm font-medium leading-snug text-foreground">
           {stripLlmArtifacts(summary)}
         </p>
       )}

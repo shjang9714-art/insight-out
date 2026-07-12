@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover from '@/components/dashboard/BrandedCover'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 function formatDate(d: string | null) {
   if (!d) return null
@@ -36,6 +37,8 @@ interface ContentListCardProps {
   tags: string[]
   clusterMembers?: ClusterMember[]
   thumbnailUrl?: string | null
+  /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
+  lguImpact?: string | null
 }
 
 export default function ContentListCard({
@@ -52,6 +55,7 @@ export default function ContentListCard({
   tags,
   clusterMembers,
   thumbnailUrl,
+  lguImpact,
 }: ContentListCardProps) {
   const [expanded, setExpanded] = useState(false)
   const dateStr     = formatDate(publishedAt)
@@ -79,6 +83,7 @@ export default function ContentListCard({
           <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {CONTENT_CATEGORY_LABEL[category] ?? category}
           </span>
+          <LguImpactBadge impact={lguImpact} />
           {tags.map((kw) => (
             <span
               key={kw}

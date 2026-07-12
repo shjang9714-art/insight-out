@@ -2,9 +2,10 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { CompetitorWeeklyTimelineEntry } from '@/lib/competitor-weekly/query'
 
+// 색상은 LguImpactBadge(공용 배지, 313)와 동일한 토큰 — 점(dot) 형태라 배지 컴포넌트 자체는 못 쓴다.
 const IMPACT_DOT: Record<string, string> = {
   위기: 'bg-negative',
-  기회: 'bg-blue-600 dark:bg-blue-400',
+  기회: 'bg-positive',
   관망: 'bg-muted-foreground/40',
 }
 

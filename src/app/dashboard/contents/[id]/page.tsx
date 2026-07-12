@@ -20,6 +20,9 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { buildReportDownloadName } from '@/lib/contents/report-filename'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
+import { getContentCitations } from '@/lib/contents/citations'
+import CitationsBlock from '@/components/contents/CitationsBlock'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import FeedCarousel from '@/components/feed/FeedCarousel'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
 import PageContainer from '@/components/PageContainer'
@@ -106,7 +109,7 @@ const getContentRow = cache(async (id: string) => {
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
-  const [{ data, error }, { data: lh }, { data: md }, { data: tr }] = await Promise.all([
+  const [{ data, error }, { data: lh }, { data: md }, { data: tr }, { data: lg }] = await Promise.all([
     supabase
       .from('contents')
       .select(`
@@ -127,13 +130,16 @@ const getContentRow = cache(async (id: string) => {
     supabase.from('contents').select('body_markdown').eq('id', id).single(),
     // 별도 가드 쿼리: 유튜브 자막(265, 컬럼 없으면 null→스크립트 섹션 생략, 42703 graceful)
     supabase.from('contents').select('transcript, transcript_ko, transcript_lang').eq('id', id).single(),
+    // 별도 가드 쿼리: lgu_impact(313, 컬럼 없으면 null→배지 생략, 42703 graceful)
+    supabase.from('contents').select('lgu_impact').eq('id', id).single(),
   ])
 
   const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
   const bodyMarkdown = (md as { body_markdown: string | null } | null)?.body_markdown ?? null
   const transcriptRow = tr as { transcript: string | null; transcript_ko: string | null; transcript_lang: string | null } | null
+  const lguImpact = (lg as { lgu_impact: string | null } | null)?.lgu_impact ?? null
 
-  return { data, error, linkDead, bodyMarkdown, transcriptRow, supabase }
+  return { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase }
 })
 
 // ─── 메타데이터 ───────────────────────────────────────────────────────────────
@@ -153,7 +159,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ContentDetailPage({ params }: PageProps) {
   const { id } = await params
-  const { data, error, linkDead, bodyMarkdown, transcriptRow, supabase } = await getContentRow(id)
+  const { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase } = await getContentRow(id)
 
   if (error || !data) {
     notFound()
@@ -202,7 +208,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
     matched_groups: content.matched_groups,
     cluster_id: content.cluster_id,
   }
-  const [grouped, youtubeRelated, entityRes] = await Promise.all([
+  const [grouped, youtubeRelated, entityRes, citations] = await Promise.all([
     getRelatedGrouped(supabase, currentMeta),
     getRelatedYoutube(supabase, currentMeta),
     supabase
@@ -210,6 +216,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
       .select('entities(id, canonical_name, entity_type, is_competitor)')
       .eq('content_id', id)
       .limit(20),
+    getContentCitations(supabase, id),
   ])
 
   type EntityRow = { id: string; canonical_name: string; entity_type: EntityType; is_competitor: boolean }
@@ -270,6 +277,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
               >
                 {CONTENT_CATEGORY_LABEL[content.category] ?? content.category}
               </span>
+              <LguImpactBadge impact={lguImpact} />
               {content.original_language === 'en' && (
                 <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                   영어 원문
@@ -356,6 +364,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
             serviceNames={serviceNames}
             keywordNames={keywordNames}
             hashtags={isYoutube ? youtubeHashtags : undefined}
+            lguImpact={lguImpact}
             actions={
               <>
                 <BookmarkButton contentId={content.id} />
@@ -539,6 +548,9 @@ export default async function ContentDetailPage({ params }: PageProps) {
           </div>
         </div>
       </article>
+
+      {/* 이 기사를 인용한 리포트·인사이트(313 역참조) — 비어 있으면 CitationsBlock 자체가 렌더 안 함 */}
+      <CitationsBlock citations={citations} />
 
       {/* 관련 엔티티 칩 */}
       {relatedEntities.length > 0 && (

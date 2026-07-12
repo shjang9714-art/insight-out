@@ -11,7 +11,12 @@ export const metadata: Metadata = {
   description: '공개된 모닝브리핑을 다시 듣고 스크립트를 확인하세요.',
 }
 
-export default async function BriefingsPage() {
+interface PageProps {
+  searchParams: Promise<{ briefing?: string }>
+}
+
+export default async function BriefingsPage({ searchParams }: PageProps) {
+  const { briefing: initialId } = await searchParams
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,7 +59,7 @@ export default async function BriefingsPage() {
         </p>
       </div>
 
-      <BriefingArchive briefings={briefings} />
+      <BriefingArchive briefings={briefings} initialId={initialId} />
     </PageContainer>
   )
 }

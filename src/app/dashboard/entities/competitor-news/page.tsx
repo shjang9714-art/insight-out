@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 
 export const dynamic = 'force-dynamic'
@@ -54,15 +55,9 @@ export default async function CompetitorNewsPage() {
         {(overallImpactDist['위기'] + overallImpactDist['기회'] + overallImpactDist['관망'] > 0) && (
           <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span>LG U+ 관점:</span>
-            {overallImpactDist['위기'] > 0 && (
-              <span className="rounded-full px-2 py-0.5 bg-negative-soft text-negative font-semibold">위기 {overallImpactDist['위기']}</span>
-            )}
-            {overallImpactDist['기회'] > 0 && (
-              <span className="rounded-full px-2 py-0.5 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-semibold">기회 {overallImpactDist['기회']}</span>
-            )}
-            {overallImpactDist['관망'] > 0 && (
-              <span className="rounded-full px-2 py-0.5 bg-muted text-muted-foreground font-semibold">관망 {overallImpactDist['관망']}</span>
-            )}
+            <LguImpactBadge impact="위기" count={overallImpactDist['위기']} />
+            <LguImpactBadge impact="기회" count={overallImpactDist['기회']} />
+            <LguImpactBadge impact="관망" count={overallImpactDist['관망']} />
           </div>
         )}
       </div>

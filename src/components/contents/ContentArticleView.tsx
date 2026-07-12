@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 border-blue-100',
@@ -25,6 +26,8 @@ interface Props {
   keywordNames?: string[]
   /** 카테고리 뱃지 옆에 노출하는 해시태그(엔티티 등) — 클릭 시 topics 모아보기로 이동 */
   hashtags?: { label: string; href: string }[]
+  /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
+  lguImpact?: string | null
   actions?: React.ReactNode
   children: React.ReactNode
 }
@@ -44,6 +47,7 @@ export default function ContentArticleView({
   serviceNames = [],
   keywordNames = [],
   hashtags = [],
+  lguImpact,
   actions,
   children,
 }: Props) {
@@ -58,6 +62,7 @@ export default function ContentArticleView({
         >
           {CONTENT_CATEGORY_LABEL[category] ?? category}
         </span>
+        <LguImpactBadge impact={lguImpact} />
         {originalLanguage === 'en' && (
           <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
             영어 원문

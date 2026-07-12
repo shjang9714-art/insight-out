@@ -1,29 +1,8 @@
 import Link from 'next/link'
 import { ExternalLink } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import type { CompetitorWeeklyReportRow } from '@/lib/competitor-weekly/query'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
-
-const IMPACT_CHIP: Record<string, string> = {
-  위기: 'bg-negative-soft text-negative',
-  기회: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-  관망: 'bg-muted text-muted-foreground',
-}
-
-function ImpactChip({ impact, size = 'sm' }: { impact: string | null; size?: 'sm' | 'md' }) {
-  if (!impact) return null
-  return (
-    <span
-      className={cn(
-        'rounded-full font-semibold',
-        size === 'md' ? 'px-2.5 py-1 text-xs' : 'px-2 py-0.5 text-[11px]',
-        IMPACT_CHIP[impact] ?? 'bg-muted text-muted-foreground',
-      )}
-    >
-      {impact}
-    </span>
-  )
-}
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 function formatWeekRange(weekStart: string, weekEnd: string): string {
   const fmt = (d: string) => {
@@ -49,7 +28,7 @@ export default function CompetitorWeeklyReport({ report }: Props) {
           <span className="text-xs font-medium text-muted-foreground">
             {formatWeekRange(week_start, week_end)} 주간 경쟁사 동향
           </span>
-          <ImpactChip impact={overall_impact} size="md" />
+          <LguImpactBadge impact={overall_impact} showNeutral size="md" />
         </div>
         {summary && (
           <p className="text-base font-semibold text-foreground leading-snug">{stripLlmArtifacts(summary)}</p>
@@ -74,7 +53,7 @@ export default function CompetitorWeeklyReport({ report }: Props) {
           <div key={section.area_key} className="rounded-xl border border-border bg-card p-5 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-[15px] font-bold text-foreground">{section.area_label}</h3>
-              <ImpactChip impact={section.impact} />
+              <LguImpactBadge impact={section.impact} showNeutral />
               {section.companies.length > 0 && (
                 <div className="flex flex-wrap gap-1 ml-1">
                   {section.companies.map((c, i) => (

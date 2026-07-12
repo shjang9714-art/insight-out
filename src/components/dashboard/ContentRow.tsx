@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { toExcerpt } from '@/lib/contents/excerpt'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
@@ -48,6 +49,8 @@ interface Props {
   sourceName: string | null
   keywords: string[]
   clusterMembers?: ClusterMember[]
+  /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
+  lguImpact?: string | null
 }
 
 export default function ContentRow({
@@ -63,6 +66,7 @@ export default function ContentRow({
   author,
   sourceName,
   keywords,
+  lguImpact,
   clusterMembers,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
@@ -79,6 +83,7 @@ export default function ContentRow({
         <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${catStyle}`}>
           {CONTENT_CATEGORY_LABEL[category] ?? category}
         </span>
+        <LguImpactBadge impact={lguImpact} className="shrink-0" />
         {isEditorPick && (
           <span className="shrink-0 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
             ⭐ 에디터 픽

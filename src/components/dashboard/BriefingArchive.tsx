@@ -20,6 +20,8 @@ interface Briefing {
 
 interface Props {
   briefings: Briefing[]
+  /** 콘텐츠 상세 역참조(313) 등에서 특정 브리핑으로 바로 진입시키기 위한 초기 선택 id */
+  initialId?: string
 }
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
@@ -37,10 +39,12 @@ function sanitizeBriefing(briefing: Briefing): Briefing {
   }
 }
 
-export default function BriefingArchive({ briefings }: Props) {
+export default function BriefingArchive({ briefings, initialId }: Props) {
   const sanitizedBriefings = briefings.map(sanitizeBriefing)
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    sanitizedBriefings[0]?.id
+    (initialId && sanitizedBriefings.some((b) => b.id === initialId))
+      ? initialId
+      : sanitizedBriefings[0]?.id
   )
 
   if (sanitizedBriefings.length === 0) {

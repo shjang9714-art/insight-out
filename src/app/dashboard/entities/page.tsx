@@ -8,6 +8,7 @@ import PageContainer from '@/components/PageContainer'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { getMajorCompaniesData } from '@/lib/entities/major-companies'
 import MajorCompanyGroups from '@/components/entities/MajorCompanyGroups'
 import {
@@ -126,15 +127,9 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
                   {(overallImpactDist['위기'] + overallImpactDist['기회'] + overallImpactDist['관망'] > 0) && (
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <span>LG U+ 관점:</span>
-                      {overallImpactDist['위기'] > 0 && (
-                        <span className="rounded-full px-2 py-0.5 bg-negative-soft text-negative font-semibold">위기 {overallImpactDist['위기']}</span>
-                      )}
-                      {overallImpactDist['기회'] > 0 && (
-                        <span className="rounded-full px-2 py-0.5 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-semibold">기회 {overallImpactDist['기회']}</span>
-                      )}
-                      {overallImpactDist['관망'] > 0 && (
-                        <span className="rounded-full px-2 py-0.5 bg-muted text-muted-foreground font-semibold">관망 {overallImpactDist['관망']}</span>
-                      )}
+                      <LguImpactBadge impact="위기" count={overallImpactDist['위기']} />
+                      <LguImpactBadge impact="기회" count={overallImpactDist['기회']} />
+                      <LguImpactBadge impact="관망" count={overallImpactDist['관망']} />
                     </div>
                   )}
                   <Link href="/dashboard/entities/competitor-news" className="text-xs font-medium text-brand-600 hover:underline">
