@@ -1,0 +1,44 @@
+-- 313 LG U+ 관점 시사점 — contents.lgu_implication (서술문)
+-- 핸드오프: 수희 → Supabase SQL Editor. **에디터를 완전히 비우고**(Cmd+A → Delete) 붙여넣고 RUN. 멱등.
+-- 전제: 241(lgu_impact 컬럼) 적용됨.
+--
+-- 배경:
+--   lgu_impact('위기'|'기회'|'관망') 라벨은 241에서 이미 만들었지만,
+--   **서술문이 없고 사용자 화면에 한 번도 노출된 적이 없다**(경쟁사 주간 생성 프롬프트 입력으로만 사용).
+--
+--   313은 요약 LLM 호출에 시사점을 얹어 한 번에 생성한다.
+--   (별도 호출로 만들면 토큰 2배 — 본문을 두 번 넣게 된다)
+--
+--   ⛔ null 이 정상이다. 대부분의 기사는 LG U+ 와 직접 관련이 없다.
+--      억지 시사점은 없느니만 못하다.
+
+begin;
+
+alter table public.contents
+  add column if not exists lgu_implication text;
+
+comment on column public.contents.lgu_implication is
+  'LG U+ 관점의 시사점 1~2문장(313). null = 관련 없음(정상). lgu_impact(241) 라벨과 한 쌍.';
+
+commit;
+
+-- ── 확인용 ───────────────────────────────────────────────────────────────────
+-- 컬럼이 생겼는지:
+--   select column_name, data_type
+--     from information_schema.columns
+--    where table_schema = 'public' and table_name = 'contents'
+--      and column_name in ('lgu_impact', 'lgu_implication');
+--
+-- 313 배포 + 요약 백필 후 — 시사점이 붙는 비율(너무 높으면 억지 시사점을 만들고 있다는 뜻):
+--   select
+--     count(*)                                          as 요약있음,
+--     count(*) filter (where lgu_implication is not null) as 시사점있음,
+--     round(100.0 * count(*) filter (where lgu_implication is not null) / nullif(count(*),0), 1) as 비율,
+--     count(*) filter (where lgu_impact = '위기')        as 위기,
+--     count(*) filter (where lgu_impact = '기회')        as 기회,
+--     count(*) filter (where lgu_impact = '관망')        as 관망
+--   from public.contents
+--   where summary_ko is not null
+--     and collected_at > now() - interval '7 days';
+--
+--   → 비율이 80%를 넘으면 프롬프트가 억지로 만들고 있는 것이다. 대부분은 null 이어야 정상.
