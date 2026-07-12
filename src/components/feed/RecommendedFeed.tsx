@@ -7,6 +7,7 @@ import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
 import { type ContentCategory } from '@/lib/types'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
+import { hashtagsForCategories } from '@/lib/feed/categories'
 import EditPreferencesButton from './EditPreferencesButton'
 import FeedCategoryModal from './FeedCategoryModal'
 import FeedCarousel from './FeedCarousel'
@@ -82,6 +83,11 @@ export default function RecommendedFeed({
   const [isLoading, setIsLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
+  // 사용자가 실제로 카테고리를 선택한 상태인지(건너뛰기/신규 사용자는 해당 없음) —
+  // 선택했는데도 매칭 콘텐츠가 희소한 경우와, 애초에 선택을 안 한 경우를 구분해
+  // 빈 상태 메시지를 다르게 보여주기 위함.
+  const hasSelection = !fallbackTrending && hashtagsForCategories(initialCategoryKeys).length > 0
+
   useEffect(() => {
     let cancelled = false
 
@@ -108,6 +114,23 @@ export default function RecommendedFeed({
       const perSlotItems: FeedItem[][] = slotMeta.map((meta, i) =>
         i === 0 ? dominantAll.slice(0, meta.quota) : ((results[i]?.items ?? []) as FeedItem[])
       )
+
+      // 선택한 카테고리의 personalized 후보가 아예 없으면(=희소 카테고리), 트렌딩/에디터픽
+      // 슬롯(원래는 다양성을 위한 소수 비중용)이 화면 전체를 차지하며 카테고리와 완전히
+      // 무관한 기사로 채워버리는 문제가 있었다. personalized가 비어있을 때만, 선택한
+      // 해시태그와 최소한의 연관(matched_keywords/matched_groups 겹침)조차 없는 트렌딩/
+      // 에디터픽 항목을 제외한다. personalized가 정상적으로 채워지는 카테고리는 트렌딩/
+      // 에디터픽을 원래 설계대로(무관해도 다양성 목적) 그대로 둔다.
+      if (hasSelection && dominantAll.length === 0) {
+        const hashtags = hashtagsForCategories(initialCategoryKeys)
+        const isRelevant = (item: FeedItem) =>
+          [...(item.matched_keywords ?? []), ...(item.matched_groups ?? [])].some((tag) =>
+            hashtags.includes(tag)
+          )
+        for (let i = 1; i < perSlotItems.length; i++) {
+          perSlotItems[i] = perSlotItems[i].filter(isRelevant)
+        }
+      }
 
       // 빈 슬롯(예: editor 0건)은 1차 요청에 이미 확보해둔 1순위 여유분(dominantAll)에서
       // 보충 — 추가 네트워크 왕복 없음
@@ -137,7 +160,7 @@ export default function RecommendedFeed({
     return () => {
       cancelled = true
     }
-  }, [fallbackTrending, reloadKey])
+  }, [fallbackTrending, reloadKey, hasSelection, initialCategoryKeys])
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -168,7 +191,11 @@ export default function RecommendedFeed({
           )}
         </FeedCarousel>
       ) : items.length === 0 ? (
-        fallbackItems.length > 0 ? (
+        hasSelection ? (
+          <p className="py-8 text-center text-xs text-muted-foreground">
+            이 카테고리에 아직 매칭되는 콘텐츠가 충분하지 않습니다
+          </p>
+        ) : fallbackItems.length > 0 ? (
           <div>
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
             <FeedCarousel cardWidth={300} cardHeight={364}>
