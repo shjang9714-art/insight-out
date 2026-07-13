@@ -24,9 +24,22 @@ export const NAV_TABS = [
 // 관리자 전용 '실험실' 퀵링크 — 숨김 처리된 하위 카테고리를 모아 보는 별도 페이지
 // (/dashboard/lab, LabBoard.tsx) 하나로 이동. 현재/향후 실험 탭은 그 페이지 안에서 관리.
 
+// Lv.2 탭 유지(§지시서 20260713)로 일부 상세 라우트가 Lv.1 섹션과 다른 최상위 경로
+// 세그먼트를 쓰게 됨(예: daily-insights/[id]는 AI인사이트 소속이지만 /dashboard/issues
+// 하위가 아님) — href 접두사 매칭만으로는 이런 라우트에서 어떤 탭도 active가 안 돼
+// #l1-active-label이 아예 없어지고, NavGroupAlign이 marginLeft:0으로 폴백해 Lv.2 탭
+// 위치가 어긋난다(§지시서 20260713-Lv2탭-위치일관성). 여기에 별칭 경로를 등록해 보정.
+const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
+  '/dashboard/issues':   ['/dashboard/daily-insights'],
+  '/dashboard/entities': ['/dashboard/insights'],
+}
+
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
-  return pathname === href || pathname.startsWith(href + '/')
+  if (pathname === href || pathname.startsWith(href + '/')) return true
+  return (NAV_ALIAS_PREFIXES[href] ?? []).some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + '/')
+  )
 }
 
 // ─── 유틸 ──────────────────────────────────────────────────────────────────────
@@ -325,7 +338,14 @@ export default function DashboardHeader({ onMenuClick }: Props) {
       >
         <div id="l1-nav-row" className="mx-auto flex w-full max-w-6xl items-stretch justify-start gap-9 px-4 sm:px-5 tracking-[-0.01em]">
 	          {NAV_TABS.map((tab) => {
-	            const active = isTabActive(tab.href, tab.exact, pathname)
+	            // entities/[id]는 경로상 기업동향 소속이지만, AI인사이트 키워드 탭에서
+	            // 진입한 경우(origin=issues)엔 그 페이지가 AI인사이트 Lv.2 탭을 렌더하므로
+	            // NavGroupAlign 기준점도 AI인사이트가 active여야 위치가 맞는다.
+	            const isEntityDetailFromIssues =
+	              pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
+	            const active = isEntityDetailFromIssues
+	              ? tab.href === '/dashboard/issues'
+	              : isTabActive(tab.href, tab.exact, pathname)
 	            return (
 	              // prefetch-ok: 네비 탭 — 개수 고정, 이동 잦음
 	              <Link
