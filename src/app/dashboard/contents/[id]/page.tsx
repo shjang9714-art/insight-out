@@ -12,6 +12,9 @@ import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ViewTracker from '@/components/contents/ViewTracker'
 import BackLink from '@/components/BackLink'
+import InsightViewTabs from '@/components/analysis/InsightViewTabs'
+import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
+import EntityTabs from '@/components/entities/EntityTabs'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
@@ -33,7 +36,12 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ category?: string; origin?: string; view?: string }>
 }
+
+// 콘텐츠 목록(contents/page.tsx)과 동일한 4개 소스타입 탭 — 상세 페이지에서는
+// 상태 전환이 아니라 목록으로의 라우팅형 탭이라 href를 직접 채운다.
+const CONTENT_SOURCE_TAB_VALUES: ContentCategory[] = ['뉴스', '유튜브', '웹인사이트', '리서치']
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -157,8 +165,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 // ─── 페이지 ───────────────────────────────────────────────────────────────────
 
-export default async function ContentDetailPage({ params }: PageProps) {
+export default async function ContentDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
+  const { category, origin, view } = await searchParams
   const { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase } = await getContentRow(id)
 
   if (error || !data) {
@@ -241,6 +250,21 @@ export default async function ContentDetailPage({ params }: PageProps) {
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
+
+      {origin === 'entities' ? (
+        <EntityTabs value={view ?? 'competitor'} />
+      ) : (
+        <NavGroupAlign className="-mt-3 mb-6">
+          <InsightViewTabs
+            items={CONTENT_SOURCE_TAB_VALUES.map((v) => ({
+              id: v,
+              label: CONTENT_CATEGORY_LABEL[v] ?? v,
+              href: `/dashboard/contents?category=${encodeURIComponent(v)}`,
+            }))}
+            value={(category as ContentCategory) || content.category}
+          />
+        </NavGroupAlign>
+      )}
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
       <ViewTracker contentId={content.id} />

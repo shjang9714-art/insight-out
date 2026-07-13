@@ -13,12 +13,15 @@ import EntityEventTimeline, {
 } from '@/components/entities/EntityEventTimeline'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
 import PageContainer from '@/components/PageContainer'
+import EntityTabs from '@/components/entities/EntityTabs'
+import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ origin?: string; view?: string }>
 }
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -208,8 +211,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 // ─── 페이지 ───────────────────────────────────────────────────────────────────
 
-export default async function EntityDetailPage({ params }: PageProps) {
+export default async function EntityDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
+  const { origin, view } = await searchParams
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
@@ -378,6 +382,12 @@ export default async function EntityDetailPage({ params }: PageProps) {
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
+
+      {origin === 'issues' ? (
+        <AiInsightTabs value={view ?? 'keyword'} />
+      ) : (
+        <EntityTabs value="watchlist" />
+      )}
 
       {/* 헤더 */}
       <div className="mb-8">

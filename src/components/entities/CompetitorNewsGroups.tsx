@@ -68,7 +68,7 @@ export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerC
                       return (
                         <Link
                           key={a.id}
-                          href={`/dashboard/contents/${a.id}`}
+                          href={`/dashboard/contents/${a.id}?origin=entities&view=competitor`}
                           prefetch={false}
                           className={cn(
                             'flex items-center gap-2 py-1.5 text-xs text-foreground/80 hover:text-foreground hover:underline',

@@ -266,7 +266,7 @@ export default function AiInsightBoard({
                 return (
                   <Link
                     key={item.entityId}
-                    href={`/dashboard/entities/${item.entityId}`}
+                    href={`/dashboard/entities/${item.entityId}?origin=issues&view=keyword`}
                     prefetch={false}
                     className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40"
                   >
