@@ -44,7 +44,6 @@ export interface AdminNavGroup {
   items: AdminNavItem[]
 }
 
-// 지시서 278 — 어드민 IA v2 Phase 1: 8그룹 평탄화(기존 7그룹 + 하단 접이식 '시스템' 해체)
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '운영센터',
@@ -79,6 +78,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         icon: Rss,
       },
       {
+        href: '/admin/source-quality',
+        label: '소스 품질',
+        description: '소스별 수집 상태·품질 지표를 확인하고 크롤을 실행합니다.',
+        icon: Gauge,
+      },
+      {
         href: '/admin/crawl-logs',
         label: '크롤 실행 로그',
         description: '소스별 크롤 성공/실패, 수집량, 중복, 오류를 확인합니다.',
@@ -91,33 +96,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         icon: Ban,
       },
       {
-        href: '/admin/source-quality',
-        label: '소스 품질',
-        description: '소스별 수집 상태·품질 지표를 확인하고 크롤을 실행합니다.',
-        icon: Gauge,
-      },
-      {
         href: '/admin/crawl-settings',
         label: '수집 설정',
         description: '크롤 수집 시 적용되는 품질 기준(최소 본문 길이)을 조정합니다.',
         icon: Filter,
-      },
-    ],
-  },
-  {
-    group: '콘텐츠·분류',
-    items: [
-      {
-        href: '/admin/contents',
-        label: '콘텐츠 검수',
-        description: '수집·업로드된 콘텐츠의 상태, 품질, 발행 여부를 검수합니다.',
-        icon: Newspaper,
-      },
-      {
-        href: '/admin/upload',
-        label: '콘텐츠 추가',
-        description: '리포트 업로드, 텍스트 붙여넣기, URL 가져오기로 콘텐츠를 수동 등록합니다.',
-        icon: FilePlus,
       },
       {
         href: '/admin/keywords',
@@ -137,7 +119,29 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: '기업, 조직, 인물 등 엔티티와 별칭, 정규화 기준을 관리합니다.',
         icon: Boxes,
       },
-      // Phase 3 후보(신규 route 아님, 문서 TODO): 큐레이션 기업 화면 — ADMIN_RESTRUCTURE_PLAN.md 참고
+    ],
+  },
+  {
+    group: '콘텐츠 검수',
+    items: [
+      {
+        href: '/admin/contents',
+        label: '콘텐츠 검수',
+        description: '수집·업로드된 콘텐츠의 상태, 품질, 발행 여부를 검수합니다.',
+        icon: Newspaper,
+      },
+      {
+        href: '/admin/upload',
+        label: '콘텐츠 추가',
+        description: '리포트 업로드, 텍스트 붙여넣기, URL 가져오기로 콘텐츠를 수동 등록합니다.',
+        icon: FilePlus,
+      },
+      {
+        href: '/admin/enrich',
+        label: '데이터 보강 재처리',
+        description: '수집된 콘텐츠의 누락 본문, URL, 썸네일, 자막, 표지, 관련기사, 유튜브 태그를 재처리합니다.',
+        icon: Wrench,
+      },
     ],
   },
   {
@@ -157,9 +161,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       },
       {
         href: '/admin/ai-jobs',
-        label: '일괄 작업 관리',
-        description: '콘텐츠의 AI 분석, 데이터 보강, 재수집·재처리 작업을 실행하고 진행 상태를 관리합니다.',
-        icon: Wrench,
+        label: 'AI 콘텐츠 보강',
+        description: 'LLM을 사용하는 논조, 위기·기회, 유튜브 요약, 뉴스 요약, 신호 분류 작업을 실행합니다.',
+        icon: Sparkles,
       },
       // Phase 2/3 후보(신규 route 아님, 문서 TODO): 프롬프트 관리 — ADMIN_RESTRUCTURE_PLAN.md 참고
     ],

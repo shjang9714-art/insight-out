@@ -13,6 +13,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import InfoHelp from '@/components/admin/ui/InfoHelp'
+import { YOUTUBE_TAGGING_HELP } from '@/lib/admin/help'
+import { requireEnrichJob, type EnrichJobKey, type EnrichJobMeta } from '@/lib/admin/enrich-jobs'
 
 // 207 — 풀본문 채우기 기간 팝업 프리셋
 const ENRICH_RANGE_PRESETS: { label: string; days: number | null }[] = [
@@ -22,7 +25,41 @@ const ENRICH_RANGE_PRESETS: { label: string; days: number | null }[] = [
   { label: '전체',      days: null },
 ]
 
-export default function AdminContentProcessing() {
+interface JobResult {
+  analyzed: number
+  candidates: number
+  reason?: string
+}
+
+interface Props {
+  jobs: readonly EnrichJobMeta[]
+}
+
+const DATA_JOB_RENDERERS: EnrichJobKey[] = [
+  'admin:body-backfill',
+  'admin:canonical-backfill',
+  'admin:thumbnail-backfill',
+  'admin:youtube-transcript',
+  'admin:pdf-cover-backfill',
+  'admin:cluster-backfill',
+  'admin:youtube-tagging',
+]
+
+export default function AdminContentProcessing({ jobs }: Props) {
+  for (const job of jobs) {
+    if (!DATA_JOB_RENDERERS.includes(job.key)) {
+      throw new Error(`[enrich-jobs] data 화면에 ${job.key} 렌더러가 없습니다.`)
+    }
+  }
+
+  const bodyBackfillJob = requireEnrichJob(jobs, 'admin:body-backfill', 'data')
+  const canonicalBackfillJob = requireEnrichJob(jobs, 'admin:canonical-backfill', 'data')
+  const thumbnailBackfillJob = requireEnrichJob(jobs, 'admin:thumbnail-backfill', 'data')
+  const youtubeTranscriptJob = requireEnrichJob(jobs, 'admin:youtube-transcript', 'data')
+  const pdfCoverBackfillJob = requireEnrichJob(jobs, 'admin:pdf-cover-backfill', 'data')
+  const clusterBackfillJob = requireEnrichJob(jobs, 'admin:cluster-backfill', 'data')
+  const youtubeTaggingJob = requireEnrichJob(jobs, 'admin:youtube-tagging', 'data')
+
   const [error, setError] = useState<string | null>(null)
 
   // 풀본문 채우기
@@ -32,11 +69,6 @@ export default function AdminContentProcessing() {
   const [enrichFrom,       setEnrichFrom]       = useState('')
   const [enrichTo,         setEnrichTo]         = useState('')
   const stopRef = useRef(false)
-
-  // 신호 분류
-  const [isSignalling,  setIsSignalling]  = useState(false)
-  const [signalResult,  setSignalResult]  = useState<string | null>(null)
-  const signalStopRef = useRef(false)
 
   // 원문 URL 정규화
   const [isCanonicalizing,  setIsCanonicalizing]  = useState(false)
@@ -63,10 +95,9 @@ export default function AdminContentProcessing() {
   const [clusterResult, setClusterResult] = useState<string | null>(null)
   const clusterStopRef = useRef(false)
 
-  // 뉴스 요약 백필 — 310/311, 크론(05:20) 안 기다리고 즉시 확인
-  const [isSummarizing, setIsSummarizing] = useState(false)
-  const [summaryResult, setSummaryResult] = useState<string | null>(null)
-  const summaryStopRef = useRef(false)
+  // 유튜브 태그 생성
+  const [isYoutubeTagging, setIsYoutubeTagging] = useState(false)
+  const [youtubeTaggingResult, setYoutubeTaggingResult] = useState<JobResult | null>(null)
 
   const handleEnrich = async ({ from, to }: { from: string | null; to: string | null }) => {
     stopRef.current = false
@@ -80,7 +111,7 @@ export default function AdminContentProcessing() {
         const params = new URLSearchParams({ limit: '30' })
         if (from) params.set('from', from)
         if (to) params.set('to', to)
-        const url = `/api/admin/body-backfill?${params.toString()}`
+        const url = `${bodyBackfillJob.endpoint}?${params.toString()}`
         const res = await fetch(url, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '기사 본문 수집 실패')
         const { processed, improved, skipped, remaining } = await res.json() as {
@@ -110,38 +141,6 @@ export default function AdminContentProcessing() {
     }
   }
 
-  const handleSignalClassify = async () => {
-    signalStopRef.current = false
-    setIsSignalling(true)
-    setSignalResult(null)
-    setError(null)
-    const acc = { processed: 0, tagged: 0 }
-    try {
-      while (true) {
-        const res = await fetch('/api/admin/signals-backfill?limit=10', { method: 'POST' })
-        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '신호 분류 실패')
-        const { processed, tagged, remaining } = await res.json() as { processed: number; tagged: number; remaining: number }
-        acc.processed += processed
-        acc.tagged += tagged
-        if (signalStopRef.current) {
-          setSignalResult(`중단됨 · 누적 처리 ${acc.processed} · 신호 ${acc.tagged} · 남은 ${remaining.toLocaleString()}`)
-          break
-        }
-        if (remaining === 0) {
-          setSignalResult(`완료 · 처리 ${acc.processed} · 신호 ${acc.tagged}`)
-          break
-        }
-        if (processed === 0) break
-        setSignalResult(`분류 중… 누적 처리 ${acc.processed} · 신호 ${acc.tagged} · 남은 ${remaining.toLocaleString()}`)
-        await new Promise((r) => setTimeout(r, 300))
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '신호 분류 중 오류가 발생했습니다.')
-    } finally {
-      setIsSignalling(false)
-    }
-  }
-
   const handleCanonicalize = async () => {
     canonicalStopRef.current = false
     setIsCanonicalizing(true)
@@ -150,7 +149,7 @@ export default function AdminContentProcessing() {
     const acc = { processed: 0, resolved: 0, deduped: 0 }
     try {
       while (true) {
-        const res = await fetch('/api/admin/canonical-backfill?limit=15')
+        const res = await fetch(`${canonicalBackfillJob.endpoint}?limit=15`)
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '원문 URL 정규화 실패')
         const { processed, resolved, deduped, remaining, ready } = await res.json() as {
           processed: number; resolved: number; deduped: number; remaining: number; ready: boolean
@@ -191,7 +190,7 @@ export default function AdminContentProcessing() {
     const acc = { processed: 0, filled: 0, skipped: 0 }
     try {
       while (true) {
-        const res = await fetch(`/api/admin/thumbnail-backfill?limit=20&mode=${mode}`, { method: 'POST' })
+        const res = await fetch(`${thumbnailBackfillJob.endpoint}?limit=20&mode=${mode}`, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '썸네일 수집 실패')
         const { processed, filled, skipped, remaining, ready } = await res.json() as {
           processed: number; filled: number; skipped: number; remaining: number; ready: boolean
@@ -232,7 +231,7 @@ export default function AdminContentProcessing() {
     const acc = { processed: 0, fetched: 0, skipped: 0 }
     try {
       while (true) {
-        const res = await fetch(`/api/admin/youtube-transcript?limit=10&mode=${mode}`, { method: 'POST' })
+        const res = await fetch(`${youtubeTranscriptJob.endpoint}?limit=10&mode=${mode}`, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '유튜브 자막 수집 실패')
         const { processed, fetched, skipped, remaining, ready } = await res.json() as {
           processed: number; fetched: number; skipped: number; remaining: number; ready: boolean
@@ -273,7 +272,7 @@ export default function AdminContentProcessing() {
     const acc = { processed: 0, filled: 0, skipped: 0 }
     try {
       while (true) {
-        const res = await fetch(`/api/admin/pdf-cover-backfill?limit=5&mode=${mode}`, { method: 'POST' })
+        const res = await fetch(`${pdfCoverBackfillJob.endpoint}?limit=5&mode=${mode}`, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? 'PDF 표지 수집 실패')
         const { processed, filled, skipped, remaining, ready } = await res.json() as {
           processed: number; filled: number; skipped: number; remaining: number; ready: boolean
@@ -314,7 +313,7 @@ export default function AdminContentProcessing() {
     const acc = { processed: 0, merged: 0, repChanged: 0 }
     try {
       while (true) {
-        const res = await fetch('/api/admin/cluster-backfill?limit=20', { method: 'POST' })
+        const res = await fetch(`${clusterBackfillJob.endpoint}?limit=20`, { method: 'POST' })
         if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '관련기사 다시 묶기 실패')
         const { processed, merged, repChanged, remaining, ready } = await res.json() as {
           processed: number; merged: number; repChanged: number; remaining: number; ready: boolean
@@ -347,44 +346,24 @@ export default function AdminContentProcessing() {
     }
   }
 
-  const handleSummaryBackfill = async () => {
-    summaryStopRef.current = false
-    setIsSummarizing(true)
-    setSummaryResult(null)
+  const handleYoutubeTagging = async () => {
+    if (!window.confirm('기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 생성하시겠습니까?')) return
+    setIsYoutubeTagging(true)
+    setYoutubeTaggingResult(null)
     setError(null)
-    const acc = { processed: 0, filled: 0, notReady: 0 }
     try {
-      while (true) {
-        const res = await fetch('/api/admin/summary-backfill?limit=20', { method: 'POST' })
-        if (!res.ok) throw new Error((await res.json() as { error?: string }).error ?? '뉴스 요약 백필 실패')
-        const { processed, filled, notReady, remaining, rateLimited } = await res.json() as {
-          processed: number; filled: number; notReady: number; remaining: number; rateLimited?: boolean
-        }
-        acc.processed += processed
-        acc.filled    += filled
-        acc.notReady  += notReady
-
-        if (rateLimited) {
-          setSummaryResult(`LLM 한도 소진 — 중단됨. 내일 다시 시도됩니다. · 누적 처리 ${acc.processed} · 요약 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
-          break
-        }
-        if (summaryStopRef.current) {
-          setSummaryResult(`중단됨 · 누적 처리 ${acc.processed} · 요약 ${acc.filled} · 남은 ${remaining.toLocaleString()}`)
-          break
-        }
-        if (remaining === 0) {
-          setSummaryResult(`완료 · 처리 ${acc.processed} · 요약 ${acc.filled} · 준비안됨 ${acc.notReady}`)
-          break
-        }
-        if (processed === 0) break
-
-        setSummaryResult(`요약 중… 누적 처리 ${acc.processed} · 요약 ${acc.filled} · 준비안됨 ${acc.notReady} · 남은 ${remaining.toLocaleString()}`)
-        await new Promise((r) => setTimeout(r, 300))
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '뉴스 요약 백필 중 오류가 발생했습니다.')
+      const res = await fetch(youtubeTaggingJob.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json() as { analyzed?: number; candidates?: number; reason?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? '유튜브 태그 생성 실패')
+      setYoutubeTaggingResult({ analyzed: data.analyzed ?? 0, candidates: data.candidates ?? 0, reason: data.reason })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '유튜브 태그 생성에 실패했습니다.')
     } finally {
-      setIsSummarizing(false)
+      setIsYoutubeTagging(false)
     }
   }
 
@@ -415,7 +394,7 @@ export default function AdminContentProcessing() {
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">누락 기사 본문 수집</p>
+            <p className="admin-card-title text-foreground">{bodyBackfillJob.label}</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               기사 본문을 원문에서 가져와 채웁니다. 기간을 골라 실행합니다.
             </p>
@@ -440,64 +419,11 @@ export default function AdminContentProcessing() {
         </div>
       </div>
 
-      {/* 뉴스 요약 백필 — 310/311 */}
-      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="admin-card-title text-foreground">뉴스 요약 백필</p>
-            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
-              요약이 없는 발행 콘텐츠를 LLM으로 요약합니다. 매일 05:20 크론이 돌지만,
-              지금 바로 채워서 확인하려면 이 버튼을 누르세요.
-            </p>
-            {summaryResult && (
-              <p className="admin-caption mt-2 text-positive">
-                {isSummarizing ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{summaryResult}
-              </p>
-            )}
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            onClick={isSummarizing ? () => { summaryStopRef.current = true } : handleSummaryBackfill}
-          >
-            {isSummarizing ? '중단' : '뉴스 요약 백필'}
-          </Button>
-        </div>
-      </div>
-
-      {/* 신호 분류 */}
-      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="admin-card-title text-foreground">신호 분류</p>
-            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
-              기사를 이벤트 유형(투자·M&A·규제·신제품 등)으로 자동 태깅합니다.
-            </p>
-            {signalResult && (
-              <p className="admin-caption mt-2 text-positive">
-                {isSignalling ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}{signalResult}
-              </p>
-            )}
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            onClick={isSignalling ? () => { signalStopRef.current = true } : handleSignalClassify}
-          >
-            {isSignalling ? '중단' : '신호 분류'}
-          </Button>
-        </div>
-      </div>
-
       {/* 원문 URL 정규화 */}
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">원문 URL 정규화</p>
+            <p className="admin-card-title text-foreground">{canonicalBackfillJob.label}</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               구글뉴스 등 리다이렉트 주소를 실제 원문 주소로 정리합니다.
             </p>
@@ -523,7 +449,7 @@ export default function AdminContentProcessing() {
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">누락 썸네일 다시 수집</p>
+            <p className="admin-card-title text-foreground">{thumbnailBackfillJob.label}</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               썸네일이 없는 크롤 뉴스·웹인사이트의 원문 og:image를 다시 받아옵니다.
               신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
@@ -560,7 +486,7 @@ export default function AdminContentProcessing() {
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">유튜브 자막 수집</p>
+            <p className="admin-card-title text-foreground">{youtubeTranscriptJob.label}</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               유튜브 영상의 자막을 수집해 한글로 번역합니다(비공식 엔드포인트 — 순차 처리, rate limit 주의).
               신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
@@ -597,7 +523,7 @@ export default function AdminContentProcessing() {
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">PDF 표지 수집</p>
+            <p className="admin-card-title text-foreground">{pdfCoverBackfillJob.label}</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               업로드된 PDF의 첫 페이지를 표지로 설정합니다. 표지가 이미 있으면 건너뜁니다.
               신규는 &ldquo;아직 시도 안 함&rdquo;, 과거 실패 재시도는 &ldquo;실패행 재시도&rdquo;를 사용하세요.
@@ -634,7 +560,7 @@ export default function AdminContentProcessing() {
       <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="admin-card-title text-foreground">관련기사 다시 묶기</p>
+            <p className="admin-card-title text-foreground">{clusterBackfillJob.label}</p>
             <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
               제목만으론 못 묶인 같은 사건 기사를 본문 유사도로 재평가해 병합하고, 신호 기반으로 대표를 재선정합니다.
             </p>
@@ -652,6 +578,39 @@ export default function AdminContentProcessing() {
             onClick={isClustering ? () => { clusterStopRef.current = true } : handleClusterBackfill}
           >
             {isClustering ? '중단' : '관련기사 다시 묶기'}
+          </Button>
+        </div>
+      </div>
+
+      {/* 기존 유튜브 태그 생성 */}
+      <div className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="admin-card-title text-foreground">{youtubeTaggingJob.label}</p>
+              <InfoHelp copy={YOUTUBE_TAGGING_HELP} />
+            </div>
+            <p className="admin-caption mt-1 max-w-lg text-muted-foreground">
+              크롤러가 분류 없이 적재한 기존 유튜브 콘텐츠에 뉴스와 동일한 해시태그·관련 엔티티를 붙입니다. 신규 수집분은 자동 태깅됩니다.
+            </p>
+            {youtubeTaggingResult && (
+              <p className="admin-caption mt-2 text-positive">
+                {isYoutubeTagging ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : '✅ '}
+                {youtubeTaggingResult.reason
+                  ? youtubeTaggingResult.reason
+                  : `후보 ${youtubeTaggingResult.candidates}건 중 ${youtubeTaggingResult.analyzed}건 생성 완료`}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => void handleYoutubeTagging()}
+            disabled={isYoutubeTagging}
+          >
+            {isYoutubeTagging ? '생성 중...' : '유튜브 태그 생성 실행'}
           </Button>
         </div>
       </div>
