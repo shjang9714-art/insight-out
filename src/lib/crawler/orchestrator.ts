@@ -34,7 +34,11 @@ const MAX_MERGED_TAGS = 8
 const OPINION_LOOKBACK_DAYS = 7
 
 // enrichment(풀본문 보강) 상수
-const MAX_ENRICH_PER_CRAWL = 30
+// 30→100(2026-07-13): 구글뉴스 신규 인코딩 URL 미해소로 하루 100건 넘게 body_short에 밀리던
+// 문제(resolve-url.ts 디코드 추가로 근본 수정)의 잔여 적체 해소용. 루프 내부 소프트 데드라인
+// (CRAWL_SOFT_DEADLINE_MS, enrichRecentContents 호출부에서 전달)이 총 처리 시간을 이미
+// 보장하므로 상한만 올려도 크롤 1회 시간 초과 위험은 없다.
+const MAX_ENRICH_PER_CRAWL = 100
 const ENRICH_MIN_BODY_LEN = 400
 
 // ── 키워드 검색 수집 상수 ────────────────────────────────────────────────
@@ -1078,7 +1082,13 @@ interface EnrichRow {
   id: string
   original_url: string
   body_original: string | null
+  status: string | null
+  review_reason: string | null
 }
+
+// 본문이 개선됐을 때만 재판정 대상으로 삼는 review_reason — low_relevance/llm_irrelevant/
+// excluded_rule은 본문과 무관한 판정이라 여기서 절대 건드리지 않는다.
+const BODY_REVIEW_REASONS = new Set(['body_short', 'body_missing', 'body_truncated', 'extract_failed'])
 
 /**
  * 교차중복 클러스터 병합(196) — canonical(해소된 원문 URL)이 같은 기존 행이 있으면
@@ -1134,7 +1144,7 @@ async function enrichRecentContents(
   try {
     const { data: rows, error } = await admin
       .from('contents')
-      .select('id, original_url, body_original')
+      .select('id, original_url, body_original, status, review_reason')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
       .gte('collected_at', runStartedAt)
@@ -1190,9 +1200,25 @@ async function enrichRecentContents(
           extracted.length >= ENRICH_MIN_BODY_LEN
 
         if (improved && extracted) {
+          const update: Record<string, unknown> = {
+            body_original: extracted,
+            body_fetched_at: new Date().toISOString(),
+          }
+
+          // 본문이 개선돼 품질 게이트를 통과하고, 갇힌 사유가 본문 계열이었을 때만 재판정해 발행
+          // (실측 버그, 2026-07-13: 보강으로 풀본문을 확보해도 status가 그대로 pending에 갇힘).
+          if (
+            row.review_reason &&
+            BODY_REVIEW_REASONS.has(row.review_reason) &&
+            assessBodyQuality(extracted, { minLen: SUMMARY_MIN_BODY_LEN }) === null
+          ) {
+            update.status = 'published'
+            update.review_reason = null
+          }
+
           await admin
             .from('contents')
-            .update({ body_original: extracted, body_fetched_at: new Date().toISOString() })
+            .update(update)
             .eq('id', row.id)
         } else {
           // 추출 실패 또는 스니펫이 더 길면 재시도 방지용 마킹

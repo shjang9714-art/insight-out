@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrl } from '@/lib/crawler/resolve-url'
 import { copyExternalImageToCover } from '@/lib/contents/cover-from-image'
+import { assessBodyQuality } from '@/lib/crawler/quality'
+import { SUMMARY_MIN_BODY_LEN } from '@/lib/crawler/summarize'
 
 const ENRICH_MIN_BODY_LEN = 400
 
@@ -11,11 +13,16 @@ const ENRICH_MIN_BODY_LEN = 400
 const COVER_MIN_WIDTH = 200
 const COVER_MIN_HEIGHT = 150
 
+// 본문 계열 review_reason만 보강 후 재판정 대상 — low_relevance/llm_irrelevant/excluded_rule은 절대 건드리지 않음.
+const BODY_REVIEW_REASONS = new Set(['body_short', 'body_missing', 'body_truncated', 'extract_failed'])
+
 export interface EnrichBodyRow {
   id: string
   original_url: string
   body_original: string | null
   thumbnail_url?: string | null
+  status?: string | null
+  review_reason?: string | null
 }
 
 export interface DrainOptions {
@@ -86,9 +93,26 @@ export async function enrichOneBody(
       extracted.length >= ENRICH_MIN_BODY_LEN
 
     if (improved && extracted) {
+      const update: Record<string, unknown> = {
+        body_original: extracted,
+        body_fetched_at: new Date().toISOString(),
+      }
+
+      // 본문이 개선돼 품질 게이트를 통과하고, 갇힌 사유가 본문 계열이었을 때만 재판정해 발행.
+      // 관련도 게이트(low_relevance/llm_irrelevant)·제외 규칙(excluded_rule)은 본문과 무관한
+      // 판정이라 여기서 절대 건드리지 않는다 — BODY_REVIEW_REASONS 밖이면 review_reason 그대로 둠.
+      if (
+        row.review_reason &&
+        BODY_REVIEW_REASONS.has(row.review_reason) &&
+        assessBodyQuality(extracted, { minLen: SUMMARY_MIN_BODY_LEN }) === null
+      ) {
+        update.status = 'published'
+        update.review_reason = null
+      }
+
       await admin
         .from('contents')
-        .update({ body_original: extracted, body_fetched_at: new Date().toISOString() })
+        .update(update)
         .eq('id', row.id)
       return 'improved'
     }
@@ -118,7 +142,7 @@ export async function enrichByIds(
 
   const { data: targets } = await admin
     .from('contents')
-    .select('id, original_url, body_original, thumbnail_url')
+    .select('id, original_url, body_original, thumbnail_url, status, review_reason')
     .in('id', limitedIds)
     .not('original_url', 'is', null)
 
@@ -167,7 +191,7 @@ export async function drainBackfill(
 
     let targetQ = admin
       .from('contents')
-      .select('id, original_url, body_original, thumbnail_url')
+      .select('id, original_url, body_original, thumbnail_url, status, review_reason')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
     if (from) targetQ = targetQ.gte('collected_at', from)
