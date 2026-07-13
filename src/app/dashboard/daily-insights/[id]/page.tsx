@@ -34,11 +34,11 @@ export default async function DailyInsightDetailPage({ params }: PageProps) {
   return (
     <PageContainer variant="reading">
       <div className="space-y-6">
+        <AiInsightTabs value="brief" />
         <BackLink
           fallbackHref="/dashboard/issues"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
-        <AiInsightTabs value="brief" className="-mt-2" />
         <DailyInsightDetail insight={data as DailyInsightRow} />
       </div>
     </PageContainer>

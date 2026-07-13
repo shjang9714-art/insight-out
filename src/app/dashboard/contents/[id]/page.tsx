@@ -243,14 +243,6 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   return (
     <PageContainer variant="reading">
 
-      {/* 뒤로가기 */}
-      <div className="mb-6">
-        <BackLink
-          fallbackHref="/dashboard/contents"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-        />
-      </div>
-
       {origin === 'entities' ? (
         <EntityTabs value={view ?? 'competitor'} />
       ) : (
@@ -265,6 +257,14 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
           />
         </NavGroupAlign>
       )}
+
+      {/* 뒤로가기 */}
+      <div className="mb-6">
+        <BackLink
+          fallbackHref="/dashboard/contents"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
+        />
+      </div>
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
       <ViewTracker contentId={content.id} />

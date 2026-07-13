@@ -375,6 +375,12 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   return (
     <PageContainer className="py-8">
 
+      {origin === 'issues' ? (
+        <AiInsightTabs value={view ?? 'keyword'} />
+      ) : (
+        <EntityTabs value="watchlist" />
+      )}
+
       {/* 뒤로가기 */}
       <div className="mb-6">
         <BackLink
@@ -382,12 +388,6 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
-
-      {origin === 'issues' ? (
-        <AiInsightTabs value={view ?? 'keyword'} />
-      ) : (
-        <EntityTabs value="watchlist" />
-      )}
 
       {/* 헤더 */}
       <div className="mb-8">
