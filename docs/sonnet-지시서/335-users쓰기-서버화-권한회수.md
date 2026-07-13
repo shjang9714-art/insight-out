@@ -38,14 +38,18 @@ role 을 보호하는 트리거·정책·GRANT: grep 0건
 
 ### 1.3 `authenticated` 키로 `users`를 쓰는 경로 — **5곳** (전수 확인)
 
+> ⚠️ **정정 (2026-07-13, 337·338 배포 후 재검증)** — 초안은 마이페이지 쓰기를 `:151` 이라고 적었다. **틀렸다.** `:151-152` 는 **42703 폴백 select** 다. 실제 쓰기는 **`:224`** 와 **`:255`** 다. 아래 표가 맞다.
+
 | # | 파일:라인 | 클라이언트 | 쓰는 컬럼 |
 |---|---|---|---|
 | 1 | `src/app/onboarding/page.tsx:51,60` | `@/lib/supabase/client` (브라우저) | `name` · `team` · `default_lens` · `onboarding_completed` |
-| 2 | `src/app/dashboard/mypage/page.tsx:151` | `@/lib/supabase/client` (브라우저) | `name` · `department` · `team` |
-| 3 | `src/app/dashboard/mypage/page.tsx:255` | 〃 | `default_lens` |
+| 2 | **`src/app/dashboard/mypage/page.tsx:224-225`** | `@/lib/supabase/client` (브라우저) | `name` · `department` · `team` |
+| 3 | **`src/app/dashboard/mypage/page.tsx:255-256`** | 〃 | `default_lens` |
 | 4 | `src/app/api/preferences/bootstrap/route.ts:36` | `@/lib/supabase/server` (사용자 세션) | `feed_categories` · `feed_onboarding_skipped` |
 | 5 | `src/app/api/preferences/skip/route.ts:12` | 〃 | `feed_onboarding_skipped` |
 | 6 | `src/app/api/me/seen/route.ts:26` | 〃 | `last_seen_at` |
+
+> ⛔ **`mypage:151-152` 의 select 는 건드리지 말 것.** `default_lens` 컬럼 미적용(42703) 시의 폴백 조회다. **읽기는 회수 대상이 아니다**(§3-2).
 
 > ⚠️ 4~6은 **API 라우트지만 service_role이 아니다.** `@/lib/supabase/server`는 사용자 세션 클라이언트다 — RLS를 그대로 탄다. **서버에 있다고 안전한 게 아니다.**
 

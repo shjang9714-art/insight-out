@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sanitizeCategoryKeys } from '@/lib/feed/categories'
+import { updateOwnProfile } from '@/lib/users/update-profile'
 
 interface BootstrapBody {
   category_keys?: string[]
@@ -31,13 +32,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 선택 카테고리 저장 + 온보딩 완료(스킵 플래그 해제)
-  const { error: updateError } = await supabase
-    .from('users')
-    .update({ feed_categories: categoryKeys, feed_onboarding_skipped: false })
-    .eq('id', user.id)
-  if (updateError) {
-    console.error('[preferences/bootstrap] feed_categories 저장 오류:', updateError)
+  try {
+    await updateOwnProfile(user.id, {
+      feed_categories: categoryKeys,
+      feed_onboarding_skipped: false,
+    })
+  } catch (error) {
+    console.error('[preferences/bootstrap] feed_categories 저장 오류:', error)
     return NextResponse.json({ error: '선호 저장에 실패했습니다.' }, { status: 500 })
   }
 

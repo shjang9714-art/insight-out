@@ -8,6 +8,7 @@ import PageContainer from '@/components/PageContainer'
 import SettingsTab from '@/components/mypage/SettingsTab'
 import BookmarksTab from '@/components/mypage/BookmarksTab'
 import ArchivesTab from '@/components/mypage/ArchivesTab'
+import { saveDefaultLens, saveProfile } from '@/app/dashboard/mypage/actions'
 import type { Department } from '@/lib/types'
 import type { LensKey } from '@/lib/lens'
 import type {
@@ -217,19 +218,12 @@ export default function MyPage() {
     setProfileStatus('saving')
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
-
-      const { error } = await supabase
-        .from('users')
-        .update({
-          name: profile.name,
-          department: profile.department,
-          team: profile.team,
-        })
-        .eq('id', user.id)
-
-      if (error) throw new Error(`저장 실패: ${error.message}`)
+      const result = await saveProfile({
+        name: profile.name,
+        department: profile.department,
+        team: profile.team,
+      })
+      if (result.error) throw new Error(result.error)
 
       setProfileStatus('saved')
       setTimeout(() => setProfileStatus('idle'), 2500)
@@ -248,15 +242,8 @@ export default function MyPage() {
     setLensStatus('saving')
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
-
-      const { error } = await supabase
-        .from('users')
-        .update({ default_lens: nextLens })
-        .eq('id', user.id)
-
-      if (error && error.code !== '42703') throw new Error(`저장 실패: ${error.message}`)
+      const result = await saveDefaultLens(nextLens)
+      if (result.error) throw new Error(result.error)
 
       try {
         localStorage.setItem('io:lens', nextLens)
