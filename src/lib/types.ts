@@ -53,7 +53,6 @@ export interface NewsletterSubscription {
 export interface OnboardingStep1 {
   name: string
   team: string
-  position: string
   default_lens: LensKey
   selected_services: string[]
 }

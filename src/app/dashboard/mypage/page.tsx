@@ -1,74 +1,56 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useEffect, useState, type FormEvent } from 'react'
 import BackLink from '@/components/BackLink'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { ChevronDown, ChevronRight, Mail, Trash2, X, Building2 } from 'lucide-react'
-import type {
-  Department,
-  Service,
-} from '@/lib/types'
 import PageContainer from '@/components/PageContainer'
-import WatchlistManager from '@/components/watchlist/WatchlistManager'
-import { LENS_PRESETS, type LensKey } from '@/lib/lens'
+import SettingsTab from '@/components/mypage/SettingsTab'
+import BookmarksTab from '@/components/mypage/BookmarksTab'
+import ArchivesTab from '@/components/mypage/ArchivesTab'
+import type { Department } from '@/lib/types'
+import type { LensKey } from '@/lib/lens'
+import type {
+  ArchiveWithItems,
+  BookmarkWithItem,
+  MyPageTab,
+  NewsletterForm,
+  ProfileForm,
+  SaveStatus,
+  ServiceOption,
+  WatchlistSummaryItem,
+} from '@/components/mypage/types'
 
-const DEPARTMENTS: Department[] = [
-  'Enterprise사업부문',
-  'SMB사업부문',
-  '공공사업부문',
-  '기술부문',
-  '마케팅부문',
-  '기타',
+const TABS: { id: MyPageTab; label: string }[] = [
+  { id: 'settings', label: '설정' },
+  { id: 'bookmarks', label: '북마크' },
+  { id: 'archives', label: '아카이브' },
 ]
-
-
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
-
-interface ProfileForm {
-  name: string
-  department: Department
-  team: string
-  position: string
-  default_lens: LensKey
-}
-
-interface NewsletterForm {
-  is_active: boolean
-  newsletter_email: string
-}
 
 export default function MyPage() {
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<MyPageTab>('settings')
   const [authEmail, setAuthEmail] = useState('')
 
   const [profile, setProfile] = useState<ProfileForm>({
     name: '',
     department: '기타',
     team: '',
-    position: '',
     default_lens: 'all',
   })
   const [profileStatus, setProfileStatus] = useState<SaveStatus>('idle')
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [lensStatus, setLensStatus] = useState<SaveStatus>('idle')
+  const [lensError, setLensError] = useState<string | null>(null)
 
-  const [services, setServices] = useState<Service[]>([])
+  const [services, setServices] = useState<ServiceOption[]>([])
   const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set())
   const [servicesStatus, setServicesStatus] = useState<SaveStatus>('idle')
   const [servicesError, setServicesError] = useState<string | null>(null)
+
+  const [watchlistItems, setWatchlistItems] = useState<WatchlistSummaryItem[]>([])
 
   const [newsletter, setNewsletter] = useState<NewsletterForm>({
     is_active: true,
@@ -77,69 +59,74 @@ export default function MyPage() {
   const [newsletterStatus, setNewsletterStatus] = useState<SaveStatus>('idle')
   const [newsletterError, setNewsletterError] = useState<string | null>(null)
 
-  // ── 북마크 ──────────────────────────────────────────────────────────────
-  interface BookmarkWithItem {
-    id: string
-    content_id: string | null
-    youtube_video_id: string | null
-    created_at: string
-    contents: {
-      id: string
-      title: string
-      category: string
-      original_url: string | null
-      published_at: string | null
-    } | null
-    youtube_videos: {
-      id: string
-      video_id: string
-      title: string
-      channel_name: string
-      published_at: string | null
-    } | null
-  }
   const [bookmarks, setBookmarks] = useState<BookmarkWithItem[]>([])
   const [bookmarksLoading, setBookmarksLoading] = useState(true)
   const [bookmarkError, setBookmarkError] = useState<string | null>(null)
 
-  // ── 아카이브 ──────────────────────────────────────────────────────────────
-  interface ArchiveWithItems {
-    id: string
-    name: string
-    description: string | null
-    created_at: string
-    items: {
-      content_id: string | null
-      youtube_video_id: string | null
-      added_at: string
-      contents: { id: string; title: string; category: string; original_url: string | null } | null
-    }[]
-  }
-  const [archives, setArchives]             = useState<ArchiveWithItems[]>([])
+  const [archives, setArchives] = useState<ArchiveWithItems[]>([])
   const [archivesLoading, setArchivesLoading] = useState(true)
   const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null)
-  const [archiveError, setArchiveError]     = useState<string | null>(null)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   const [sendingArchiveId, setSendingArchiveId] = useState<string | null>(null)
-  const [sendResult, setSendResult]         = useState<{ archiveId: string; to: string } | null>(null)
+  const [sendResult, setSendResult] = useState<{ archiveId: string; to: string } | null>(null)
   const [emailInputArchiveId, setEmailInputArchiveId] = useState<string | null>(null)
   const [emailInputValue, setEmailInputValue] = useState('')
+
+  async function fetchWatchlistForUser(userId: string): Promise<WatchlistSummaryItem[]> {
+    const { data, error } = await supabase
+      .from('user_watchlist')
+      .select('id, company, entity_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(20)
+
+    if (error?.code === '42703') {
+      const { data: fallback } = await supabase
+        .from('user_watchlist')
+        .select('id, company')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(20)
+      return ((fallback ?? []) as { id: string; company: string }[]).map((row) => ({
+        ...row,
+        entity_id: null,
+      }))
+    }
+
+    if (error) {
+      console.warn('[mypage] 관심 기업 요약 조회 실패:', error.message)
+      return []
+    }
+
+    return (data ?? []) as WatchlistSummaryItem[]
+  }
+
+  async function refreshWatchlistSummary() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    setWatchlistItems(await fetchWatchlistForUser(user.id))
+  }
 
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        setLoading(false)
+        return
+      }
 
       setAuthEmail(user.email ?? '')
 
       const [
         userRes,
-        { data: userServices },
-        { data: allServices },
-        { data: sub },
-        { data: bookmarksData },
-        { data: archivesData },
+        userServicesRes,
+        allServicesRes,
+        subRes,
+        bookmarksRes,
+        archivesRes,
+        watchlistRows,
       ] = await Promise.all([
-        supabase.from('users').select('name, department, team, position, default_lens').eq('id', user.id).single(),
+        supabase.from('users').select('name, department, team, default_lens').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
         supabase.from('services').select('*').order('order'),
         supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
@@ -155,14 +142,14 @@ export default function MyPage() {
           .from('archives')
           .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
           .order('created_at', { ascending: false }),
+        fetchWatchlistForUser(user.id),
       ])
 
-      // default_lens 컬럼 미적용(SQL 309 전, 42703) — 필드 없이 재조회, graceful 'all' 폴백
       let userRow = userRes.data
       if (userRes.error?.code === '42703') {
         const { data: fallback } = await supabase
           .from('users')
-          .select('name, department, team, position')
+          .select('name, department, team')
           .eq('id', user.id)
           .single()
         userRow = fallback ? { ...fallback, default_lens: 'all' as LensKey } : null
@@ -173,42 +160,48 @@ export default function MyPage() {
           name: userRow.name ?? '',
           department: (userRow.department as Department) ?? '기타',
           team: userRow.team ?? '',
-          position: userRow.position ?? '',
           default_lens: (userRow.default_lens as LensKey) ?? 'all',
         })
       }
 
-      if (allServices) setServices(allServices)
-      if (userServices) setSelectedServiceIds(new Set(userServices.map((r) => r.service_id)))
-      if (bookmarksData) setBookmarks(bookmarksData as unknown as BookmarkWithItem[])
+      if (allServicesRes.data) setServices(allServicesRes.data as ServiceOption[])
+      if (userServicesRes.data) setSelectedServiceIds(new Set(userServicesRes.data.map((row) => row.service_id)))
+      setWatchlistItems(watchlistRows)
+
+      if (bookmarksRes.error) setBookmarkError('북마크를 불러오지 못했습니다.')
+      if (bookmarksRes.data) setBookmarks(bookmarksRes.data as unknown as BookmarkWithItem[])
       setBookmarksLoading(false)
-      if (archivesData) setArchives(archivesData as unknown as ArchiveWithItems[])
+
+      if (archivesRes.error) setArchiveError('아카이브를 불러오지 못했습니다.')
+      if (archivesRes.data) setArchives(archivesRes.data as unknown as ArchiveWithItems[])
       setArchivesLoading(false)
 
-      if (sub) {
+      if (subRes.data) {
         setNewsletter({
-          is_active: sub.is_active ?? true,
-          newsletter_email: sub.newsletter_email ?? (user.email ?? ''),
+          is_active: subRes.data.is_active ?? true,
+          newsletter_email: subRes.data.newsletter_email ?? (user.email ?? ''),
         })
       } else {
         setNewsletter((prev) => ({ ...prev, newsletter_email: user.email ?? '' }))
       }
 
+      const hash = window.location.hash.slice(1)
+      if (hash === 'bookmarks' || hash === 'archives') setActiveTab(hash)
+
       setLoading(false)
     }
 
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    if (archivesLoading || bookmarksLoading) return
-    const hash = window.location.hash?.slice(1)
-    if (!hash) return
-    const el = document.getElementById(hash)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [archivesLoading, bookmarksLoading])
+  const handleTabChange = (tab: MyPageTab) => {
+    setActiveTab(tab)
+    const hash = tab === 'settings' ? '' : `#${tab}`
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  }
 
-  const handleProfileSave = async (e: React.FormEvent) => {
+  const handleProfileSave = async (e: FormEvent) => {
     e.preventDefault()
 
     if (!profile.name.trim()) {
@@ -227,30 +220,16 @@ export default function MyPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
 
-      const updatePayload = {
-        name: profile.name,
-        department: profile.department,
-        team: profile.team,
-        position: profile.position || null,
-        default_lens: profile.default_lens,
-      }
-
-      let { error } = await supabase.from('users').update(updatePayload).eq('id', user.id)
-
-      // default_lens 컬럼 미적용(SQL 309 전, 42703) — 필드 제외 후 재시도
-      if (error?.code === '42703') {
-        const { default_lens: _omit, ...fallbackPayload } = updatePayload
-        void _omit
-        ;({ error } = await supabase.from('users').update(fallbackPayload).eq('id', user.id))
-      }
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: profile.name,
+          department: profile.department,
+          team: profile.team,
+        })
+        .eq('id', user.id)
 
       if (error) throw new Error(`저장 실패: ${error.message}`)
-
-      // 저장 즉시 반영(309 §3-4) — localStorage 갱신 + 4개 화면·콘텐츠 목록에 브로드캐스트
-      try {
-        localStorage.setItem('io:lens', profile.default_lens)
-        window.dispatchEvent(new Event('lens:changed'))
-      } catch { /* noop */ }
 
       setProfileStatus('saved')
       setTimeout(() => setProfileStatus('idle'), 2500)
@@ -260,15 +239,40 @@ export default function MyPage() {
     }
   }
 
-  const toggleService = (id: string) => {
-    setSelectedServiceIds((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+  const handleDefaultLensChange = async (nextLens: LensKey) => {
+    if (nextLens === profile.default_lens) return
+
+    const previousLens = profile.default_lens
+    setProfile((prev) => ({ ...prev, default_lens: nextLens }))
+    setLensError(null)
+    setLensStatus('saving')
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
+
+      const { error } = await supabase
+        .from('users')
+        .update({ default_lens: nextLens })
+        .eq('id', user.id)
+
+      if (error && error.code !== '42703') throw new Error(`저장 실패: ${error.message}`)
+
+      try {
+        localStorage.setItem('io:lens', nextLens)
+        window.dispatchEvent(new Event('lens:changed'))
+      } catch { /* noop */ }
+
+      setLensStatus('saved')
+      setTimeout(() => setLensStatus('idle'), 2500)
+    } catch (err) {
+      setProfile((prev) => ({ ...prev, default_lens: previousLens }))
+      setLensError(err instanceof Error ? err.message : '오류가 발생했습니다.')
+      setLensStatus('error')
+    }
   }
 
-  const handleServicesSave = async () => {
+  const handleServicesSave = async (nextIds: string[]): Promise<boolean> => {
     setServicesError(null)
     setServicesStatus('saving')
 
@@ -282,8 +286,8 @@ export default function MyPage() {
         .eq('user_id', user.id)
       if (deleteError) throw new Error(`삭제 실패: ${deleteError.message}`)
 
-      if (selectedServiceIds.size > 0) {
-        const rows = Array.from(selectedServiceIds).map((service_id) => ({
+      if (nextIds.length > 0) {
+        const rows = nextIds.map((service_id) => ({
           user_id: user.id,
           service_id,
           is_pinned: false,
@@ -292,15 +296,18 @@ export default function MyPage() {
         if (insertError) throw new Error(`저장 실패: ${insertError.message}`)
       }
 
+      setSelectedServiceIds(new Set(nextIds))
       setServicesStatus('saved')
       setTimeout(() => setServicesStatus('idle'), 2500)
+      return true
     } catch (err) {
       setServicesError(err instanceof Error ? err.message : '오류가 발생했습니다.')
       setServicesStatus('error')
+      return false
     }
   }
 
-  const handleNewsletterSave = async (e: React.FormEvent) => {
+  const handleNewsletterSave = async (e: FormEvent) => {
     e.preventDefault()
 
     if (newsletter.is_active) {
@@ -342,7 +349,6 @@ export default function MyPage() {
     }
   }
 
-  // ── 북마크 핸들러 ──────────────────────────────────────────────────────
   async function handleRemoveBookmark(bookmarkId: string) {
     setBookmarkError(null)
     const { error } = await supabase.from('bookmarks').delete().eq('id', bookmarkId)
@@ -353,7 +359,6 @@ export default function MyPage() {
     }
   }
 
-  // ── 아카이브 핸들러 ──────────────────────────────────────────────────────
   async function handleDeleteArchive(archiveId: string) {
     if (!window.confirm('아카이브를 삭제하면 담긴 항목도 모두 사라집니다. 계속할까요?')) return
     setArchiveError(null)
@@ -361,7 +366,7 @@ export default function MyPage() {
     if (error) {
       setArchiveError('삭제에 실패했습니다. 잠시 후 다시 시도해주세요.')
     } else {
-      setArchives((prev) => prev.filter((a) => a.id !== archiveId))
+      setArchives((prev) => prev.filter((archive) => archive.id !== archiveId))
       if (expandedArchiveId === archiveId) setExpandedArchiveId(null)
     }
   }
@@ -377,15 +382,15 @@ export default function MyPage() {
       setArchiveError('항목 제거에 실패했습니다.')
     } else {
       setArchives((prev) =>
-        prev.map((a) =>
-          a.id === archiveId
+        prev.map((archive) =>
+          archive.id === archiveId
             ? {
-                ...a,
-                items: a.items.filter((item) =>
+                ...archive,
+                items: archive.items.filter((item) =>
                   contentId ? item.content_id !== contentId : item.youtube_video_id !== youtubeId
                 ),
               }
-            : a
+            : archive
         )
       )
     }
@@ -396,8 +401,9 @@ export default function MyPage() {
     setArchiveError(null)
     setSendResult(null)
     const recipients = recipientsInput
-      ? recipientsInput.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean)
+      ? recipientsInput.split(/[,;\s]+/).map((email) => email.trim()).filter(Boolean)
       : []
+
     try {
       const res = await fetch('/api/email/send-archive', {
         method: 'POST',
@@ -429,478 +435,88 @@ export default function MyPage() {
       <div className="mb-8">
         <BackLink
           fallbackHref="/dashboard"
-          className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-600 transition-colors"
+          className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
         <h1 className="text-xl font-bold text-foreground">마이페이지</h1>
         <p className="mt-1 text-sm text-muted-foreground">{authEmail}</p>
       </div>
 
-      <div className="space-y-6">
-        {/* 프로필 정보 */}
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="mb-5 text-base font-semibold text-foreground">프로필 정보</h2>
-
-          <form onSubmit={handleProfileSave} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="name">이름 <span className="text-red-500">*</span></Label>
-              <Input
-                id="name"
-                value={profile.name}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                placeholder="홍길동"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="department">부문 <span className="text-red-500">*</span></Label>
-                <Select
-                  value={profile.department}
-                  onValueChange={(v) => setProfile({ ...profile, department: v as Department })}
-                >
-                  <SelectTrigger id="department">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DEPARTMENTS.map((d) => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="team">팀 <span className="text-red-500">*</span></Label>
-                <Input
-                  id="team"
-                  value={profile.team}
-                  onChange={(e) => setProfile({ ...profile, team: e.target.value })}
-                  placeholder="예: 솔루션영업1팀"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="position">
-                직책 <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-              </Label>
-              <Input
-                id="position"
-                value={profile.position}
-                onChange={(e) => setProfile({ ...profile, position: e.target.value })}
-                placeholder="예: 팀장, 매니저"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label>콘텐츠 보기 방식</Label>
-              <p className="text-xs text-muted-foreground">
-                📍 콘텐츠·AI인사이트·이슈·기업동향·관계지도에서 이 기준으로 보여줍니다.
-              </p>
-              <div className="flex gap-2">
-                {(['mine', 'watch', 'all'] as const).map((key) => {
-                  const isSelected = profile.default_lens === key
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setProfile({ ...profile, default_lens: key })}
-                      className={cn(
-                        'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all',
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 text-blue-900'
-                          : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
-                      )}
-                    >
-                      {LENS_PRESETS[key].label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {profileError && (
-              <p className="text-xs text-red-500">{profileError}</p>
-            )}
-
-            <Button
-              type="submit"
-              disabled={profileStatus === 'saving'}
-              className="mt-1 w-full h-10"
+      <div className="mb-6 flex items-center gap-5 border-b border-border">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleTabChange(tab.id)}
+              className={cn(
+                'border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors',
+                isActive
+                  ? 'border-brand-600 text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              )}
             >
-              {profileStatus === 'saving' ? '저장 중...' : profileStatus === 'saved' ? '저장되었습니다!' : '프로필 저장'}
-            </Button>
-          </form>
-        </section>
-
-        {/* 담당 서비스 */}
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-base font-semibold text-foreground">담당 서비스</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              담당하거나 관심 있는 서비스를 선택하세요. 인사이동 시 여기서 업데이트하세요.
-            </p>
-          </div>
-
-          {services.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">등록된 서비스가 없습니다.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {services.map((svc) => {
-                const isSelected = selectedServiceIds.has(svc.id)
-                return (
-                  <button
-                    key={svc.id}
-                    type="button"
-                    onClick={() => toggleService(svc.id)}
-                    className={cn(
-                      'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-all',
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50 text-blue-900'
-                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
-                    )}
-                  >
-                    {svc.icon && <span className="text-lg">{svc.icon}</span>}
-                    <span className="text-sm font-medium leading-tight">{svc.name}</span>
-                    {svc.description && (
-                      <span className="text-xs text-muted-foreground line-clamp-1">{svc.description}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {servicesError && (
-            <p className="mt-3 text-xs text-red-500">{servicesError}</p>
-          )}
-
-          <Button
-            type="button"
-            onClick={handleServicesSave}
-            disabled={servicesStatus === 'saving'}
-            className="mt-4 w-full h-10"
-          >
-            {servicesStatus === 'saving' ? '저장 중...' : servicesStatus === 'saved' ? '저장되었습니다!' : '서비스 저장'}
-          </Button>
-        </section>
-
-        {/* 관심업체 워치리스트 */}
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="mb-5 flex items-start gap-2">
-            <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-            <div>
-              <h2 className="text-base font-semibold text-foreground">관심업체</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                동향을 추적할 업체를 검색해서 추가하세요. 검색 결과에 없으면 직접 추가할 수도 있습니다. AI 분석 페이지에서 모아 보여줍니다.
-              </p>
-            </div>
-          </div>
-
-          <WatchlistManager />
-        </section>
-
-        {/* 뉴스레터 설정 */}
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="mb-5 text-base font-semibold text-foreground">뉴스레터 설정</h2>
-
-          <form onSubmit={handleNewsletterSave} className="flex flex-col gap-4">
-            <div className="flex items-center justify-between rounded-xl border border-border p-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">뉴스레터 수신</p>
-                <p className="text-xs text-muted-foreground mt-0.5">어드민 설정 일정에 따라 자동 발송됩니다.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setNewsletter({ ...newsletter, is_active: !newsletter.is_active })}
-                className={cn(
-                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                  newsletter.is_active ? 'bg-blue-600' : 'bg-muted'
-                )}
-                role="switch"
-                aria-checked={newsletter.is_active}
-              >
-                <span
-                  className={cn(
-                    'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-                    newsletter.is_active ? 'translate-x-5' : 'translate-x-0'
-                  )}
-                />
-              </button>
-            </div>
-
-            {newsletter.is_active && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="newsletter-email">
-                  수신 이메일 <span className="text-red-500">*</span>
-                </Label>
-                <p className="text-xs text-muted-foreground">Gmail 또는 사내 이메일로 받아보실 수 있습니다.</p>
-                <Input
-                  id="newsletter-email"
-                  type="email"
-                  value={newsletter.newsletter_email}
-                  onChange={(e) => {
-                    setNewsletter({ ...newsletter, newsletter_email: e.target.value })
-                    setNewsletterError(null)
-                  }}
-                  placeholder="예: name@lguplus.co.kr"
-                />
-              </div>
-            )}
-
-            {newsletterError && (
-              <p className="text-xs text-red-500">{newsletterError}</p>
-            )}
-
-            <Button
-              type="submit"
-              disabled={newsletterStatus === 'saving'}
-              className="mt-1 w-full h-10"
-            >
-              {newsletterStatus === 'saving' ? '저장 중...' : newsletterStatus === 'saved' ? '저장되었습니다!' : '뉴스레터 설정 저장'}
-            </Button>
-          </form>
-        </section>
-
-        {/* 내 북마크 */}
-        <section id="bookmarks" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-base font-semibold text-foreground">내 북마크</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              빠르게 다시 볼 콘텐츠와 영상을 모아둔 목록입니다.
-            </p>
-          </div>
-
-          {bookmarksLoading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
-          ) : bookmarks.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              아직 저장한 북마크가 없습니다. 콘텐츠 상세 페이지에서 &quot;북마크&quot;를 눌러 보세요.
-            </div>
-          ) : (
-            <div className="divide-y divide-border rounded-xl border border-border">
-              {bookmarks.map((bookmark) => {
-                const content = bookmark.contents
-                const video = bookmark.youtube_videos
-                const youtubeUrl = video
-                  ? `https://www.youtube.com/watch?v=${video.video_id}`
-                  : null
-                const date = content?.published_at ?? video?.published_at ?? bookmark.created_at
-
-                return (
-                  <div
-                    key={bookmark.id}
-                    className="flex items-start justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      {content ? (
-                        <Link
-                          href={`/dashboard/contents/${content.id}`}
-                          className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
-                        >
-                          {content.title}
-                        </Link>
-                      ) : video && youtubeUrl ? (
-                        <a
-                          href={youtubeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
-                        >
-                          {video.title}
-                        </a>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">(삭제된 항목)</span>
-                      )}
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {content?.category ?? video?.channel_name ?? '북마크'} ·{' '}
-                        {new Date(date).toLocaleDateString('ko-KR')}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveBookmark(bookmark.id)}
-                      className="shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:text-red-400"
-                      title="북마크 해제"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {bookmarkError && (
-            <p className="mt-3 text-xs text-red-500">{bookmarkError}</p>
-          )}
-        </section>
-
-        {/* 내 아카이브 */}
-        <section id="archives" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-base font-semibold text-foreground">내 아카이브</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              담아둔 콘텐츠 모음입니다. 아카이브 단위로 이메일로 받아볼 수 있습니다.
-            </p>
-          </div>
-
-          {archivesLoading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">불러오는 중...</p>
-          ) : archives.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              아직 담아둔 아카이브가 없습니다. 콘텐츠 상세 페이지에서 &quot;아카이빙 담기&quot;를 눌러 보세요.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {archives.map((archive) => (
-                <div key={archive.id} className="overflow-hidden rounded-xl border border-border">
-                  {/* 아카이브 헤더 */}
-                  <div className="flex items-center justify-between bg-muted px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedArchiveId(
-                          expandedArchiveId === archive.id ? null : archive.id
-                        )
-                      }
-                      className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-brand-600"
-                    >
-                      {expandedArchiveId === archive.id
-                        ? <ChevronDown className="h-4 w-4" />
-                        : <ChevronRight className="h-4 w-4" />}
-                      {archive.name}
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {archive.items.length}건
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-1.5">
-                      {/* 이메일로 받기 */}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (emailInputArchiveId === archive.id) {
-                            setEmailInputArchiveId(null)
-                          } else {
-                            setEmailInputArchiveId(archive.id)
-                            setEmailInputValue(authEmail)
-                            setSendResult(null)
-                            setArchiveError(null)
-                          }
-                        }}
-                        className="h-7 text-xs"
-                      >
-                        <Mail className="mr-1 h-3.5 w-3.5" />
-                        이메일로 받기
-                      </Button>
-                      {/* 삭제 */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteArchive(archive.id)}
-                        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-red-50/80 hover:text-red-500"
-                        title="아카이브 삭제"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* 수신처 입력 */}
-                  {emailInputArchiveId === archive.id && (
-                    <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
-                      <input
-                        type="text"
-                        value={emailInputValue}
-                        onChange={(e) => setEmailInputValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            handleSendEmail(archive.id, emailInputValue)
-                          }
-                        }}
-                        placeholder="수신 이메일 (쉼표로 여러 명)"
-                        className="h-8 flex-1 rounded-md border border-border bg-background px-2.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-brand-600"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => handleSendEmail(archive.id, emailInputValue)}
-                        disabled={sendingArchiveId === archive.id || !emailInputValue.trim()}
-                        className="h-8 bg-brand-solid px-3 text-xs text-white hover:bg-brand-solid-hover"
-                      >
-                        {sendingArchiveId === archive.id ? '발송 중...' : '발송'}
-                      </Button>
-                      <button
-                        type="button"
-                        onClick={() => setEmailInputArchiveId(null)}
-                        className="rounded p-1 text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* 발송 완료 메시지 */}
-                  {sendResult?.archiveId === archive.id && (
-                    <p className="bg-positive-soft px-4 py-2 text-xs text-positive">
-                      {sendResult.to} 으로 발송되었습니다.
-                    </p>
-                  )}
-
-                  {/* 항목 목록 */}
-                  {expandedArchiveId === archive.id && (
-                    <div className="divide-y divide-border">
-                      {archive.items.length === 0 ? (
-                        <p className="px-4 py-3 text-xs text-muted-foreground">담긴 콘텐츠가 없습니다.</p>
-                      ) : (
-                        archive.items.map((item) => (
-                          <div
-                            key={item.content_id ?? item.youtube_video_id}
-                            className="flex items-start justify-between gap-2 px-4 py-3"
-                          >
-                            <div className="min-w-0 flex-1">
-                              {item.contents ? (
-                                <a
-                                  href={`/dashboard/contents/${item.contents.id}`}
-                                  className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
-                                >
-                                  {item.contents.title}
-                                </a>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">(삭제된 콘텐츠)</span>
-                              )}
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {item.contents?.category} ·{' '}
-                                {new Date(item.added_at).toLocaleDateString('ko-KR')}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleRemoveItem(archive.id, item.content_id, item.youtube_video_id)
-                              }
-                              className="shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:text-red-400"
-                              title="목록에서 제거"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {archiveError && (
-            <p className="mt-3 text-xs text-red-500">{archiveError}</p>
-          )}
-        </section>
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
+
+      {activeTab === 'settings' && (
+        <SettingsTab
+          authEmail={authEmail}
+          profile={profile}
+          setProfile={setProfile}
+          profileStatus={profileStatus}
+          profileError={profileError}
+          onProfileSave={handleProfileSave}
+          newsletter={newsletter}
+          setNewsletter={setNewsletter}
+          newsletterStatus={newsletterStatus}
+          newsletterError={newsletterError}
+          onNewsletterSave={handleNewsletterSave}
+          services={services}
+          selectedServiceIds={Array.from(selectedServiceIds)}
+          servicesStatus={servicesStatus}
+          servicesError={servicesError}
+          onServicesSave={handleServicesSave}
+          watchlistItems={watchlistItems}
+          onWatchlistChange={refreshWatchlistSummary}
+          lensStatus={lensStatus}
+          lensError={lensError}
+          onDefaultLensChange={handleDefaultLensChange}
+        />
+      )}
+
+      {activeTab === 'bookmarks' && (
+        <BookmarksTab
+          bookmarks={bookmarks}
+          loading={bookmarksLoading}
+          error={bookmarkError}
+          onRemove={handleRemoveBookmark}
+        />
+      )}
+
+      {activeTab === 'archives' && (
+        <ArchivesTab
+          archives={archives}
+          loading={archivesLoading}
+          error={archiveError}
+          expandedArchiveId={expandedArchiveId}
+          setExpandedArchiveId={setExpandedArchiveId}
+          sendingArchiveId={sendingArchiveId}
+          sendResult={sendResult}
+          emailInputArchiveId={emailInputArchiveId}
+          setEmailInputArchiveId={setEmailInputArchiveId}
+          emailInputValue={emailInputValue}
+          setEmailInputValue={setEmailInputValue}
+          defaultEmail={authEmail}
+          onDeleteArchive={handleDeleteArchive}
+          onRemoveItem={handleRemoveItem}
+          onSendEmail={handleSendEmail}
+          clearSendResult={() => setSendResult(null)}
+        />
+      )}
     </PageContainer>
   )
 }

@@ -13,13 +13,11 @@ export default function OnboardingPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [step1Data, setStep1Data] = useState<OnboardingStep1>({
     name: '',
     team: '',
-    position: '',
     default_lens: 'all',
     selected_services: [],
   })
@@ -32,7 +30,6 @@ export default function OnboardingPage() {
 
   const handleStep1Submit = async (data: OnboardingStep1) => {
     setStep1Data(data)
-    setIsSubmitting(true)
     setError(null)
 
     try {
@@ -45,7 +42,6 @@ export default function OnboardingPage() {
         name: data.name,
         department: '기타',
         team: data.team,
-        position: data.position || null,
         default_lens: data.default_lens,
         onboarding_completed: true,
       }
@@ -121,8 +117,6 @@ export default function OnboardingPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : '오류가 발생했습니다.'
       setError(message)
-    } finally {
-      setIsSubmitting(false)
     }
   }
 

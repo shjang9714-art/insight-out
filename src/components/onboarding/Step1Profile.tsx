@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import type { OnboardingStep1 } from '@/lib/types'
 import { LENS_PRESETS, type LensKey } from '@/lib/lens'
+import ServiceSelectionGrid from '@/components/mypage/ServiceSelectionGrid'
 
 const FILTER_OPTIONS: { value: LensKey; label: string; description: string }[] = (
   ['mine', 'watch', 'all'] as const
@@ -44,15 +45,6 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
     if (validate()) onNext(form)
   }
 
-  const toggleService = (service: string) => {
-    setForm((prev) => {
-      const next = prev.selected_services.includes(service)
-        ? prev.selected_services.filter((s) => s !== service)
-        : [...prev.selected_services, service]
-      return { ...prev, selected_services: next }
-    })
-  }
-
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
@@ -77,16 +69,6 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
           aria-invalid={!!errors.team}
         />
         {errors.team && <p className="text-xs text-red-500">{errors.team}</p>}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="position">직책 <span className="text-muted-foreground font-normal text-xs">(선택)</span></Label>
-        <Input
-          id="position"
-          placeholder="예: 팀장, 매니저"
-          value={form.position}
-          onChange={(e) => setForm({ ...form, position: e.target.value })}
-        />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -121,26 +103,12 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
         {/* 담당 서비스는 항상 노출 — watch/all을 골라도 담당 서비스는 받는다(309) */}
         <div className="flex flex-col gap-2 mt-1">
           <p className="text-xs text-muted-foreground">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
-          <div className="flex flex-wrap gap-2">
-            {SERVICE_OPTIONS.map((service) => {
-              const isSelected = form.selected_services.includes(service)
-              return (
-                <button
-                  key={service}
-                  type="button"
-                  onClick={() => toggleService(service)}
-                  className={cn(
-                    'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
-                    isSelected
-                      ? 'border-blue-500 bg-blue-50 text-blue-900'
-                      : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
-                  )}
-                >
-                  {service}
-                </button>
-              )
-            })}
-          </div>
+          <ServiceSelectionGrid
+            items={SERVICE_OPTIONS.map((name) => ({ id: name, name }))}
+            selectedIds={form.selected_services}
+            onChange={(selected_services) => setForm({ ...form, selected_services })}
+            compact
+          />
           <p className="text-xs text-muted-foreground">
             가입 이후 프로필에서 담당 서비스를 변경할 수 있습니다.
           </p>
