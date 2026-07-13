@@ -54,8 +54,8 @@ interface ArticleRow {
 
 export interface TrendingEventsResult {
   events: TrendingEvent[]
-  /** 랭킹에 반영된 기사들 중 가장 최신 collected_at 기준 KST 날짜('YYYY-MM-DD') —
-   *  오늘자 크론(05:00 KST) 전엔 자동으로 어제 날짜, 크론 완료 후엔 오늘 날짜가 된다. */
+  /** 기준일 KST 날짜('YYYY-MM-DD'). 이제 항상 KST 캘린더 오늘 — 순위·건수 모두 당일 수집분만
+   *  사용하므로 라벨·날짜 선택기와 항상 일치한다(2026-07-13 결정, 구 floating 방식 폐기). */
   asOfDateKst: string
 }
 
@@ -284,11 +284,13 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
 
   if (rowsErr) return null
 
-  // 랭킹에 실제로 반영되는 기사들의 최신 발행일(KST) — "오늘" 라벨·"오늘 N건" 카운트의 기준일.
-  // 오늘자 크론(05:00 KST) 전엔 최신 기사가 어제자뿐이라 자동으로 어제 날짜가 기준이 된다.
-  const asOfDateKst = rows.length > 0
-    ? getKstDateString(new Date(rows.reduce((max, r) => (r.collected_at > max ? r.collected_at : max), rows[0].collected_at)))
-    : getKstDateString()
+  // "오늘의 급상승"은 KST 캘린더 당일만 대상으로 한다(사용자 결정 2026-07-13).
+  // 과거엔 랭킹에 반영된 기사들의 최신 발행일(asOfDateKst, 떠다니는 기준)을 썼지만,
+  // 그 방식은 (a) 당일 크론 전 새벽엔 어제 날짜로 라벨이 뜨고 (b) 날짜 선택기(오늘)와
+  // 헤더 라벨(어제)이 어긋나며 (c) 72h 윈도우로 이전 일자 기사가 순위에 섞이는 문제가 있었다.
+  // 이제 기준일을 KST 오늘로 고정하고, 순위·건수·대표기사 모두 오늘 수집분만 사용한다.
+  // 오늘 기사가 아직 없으면(크론 전) events는 빈 배열로 반환돼 "최근 급상승 이슈가 없습니다."가 뜬다.
+  const todayKst = getKstDateString()
 
   // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
   // content_entities left join으로 한 기사에 엔티티가 여러 개면 뷰에서 같은 content_id가
@@ -318,20 +320,20 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     }
   }
 
-  const kstBasisDayStartIso = getKstDayStartIso(asOfDateKst)
+  const kstBasisDayStartIso = getKstDayStartIso(todayKst)
 
   const specificEvents: TrendingEvent[] = []
   // 이슈별 changePct/changeFlag/오늘 건수 — backfill 단계에서 재사용(중복 계산 방지).
   const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null; todayCount: number }>()
 
   for (const issue of candidates) {
+    // "오늘의 급상승"은 오늘(KST 캘린더 당일) 기사만으로 구성한다 — 클러스터링·건수·대표기사
+    // 이전에 오늘자 기사만 남기고, 이후 모든 계산(subcluster size = 오늘 건수)은 당일 기준.
+    // 72h 윈도우로 들어온 이전 일자 기사는 여기서 전부 제외된다(사용자 결정 2026-07-13).
     const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
-    if (articles.length === 0) continue
-
-    const issueTodayCount = articles.filter(a => a.collectedAt >= kstBasisDayStartIso).length
-    // "오늘의 급상승" 게이트 — 72h 윈도우엔 걸리지만 오늘(asOfDateKst 당일) 기사가 0건인
-    // 이슈는 애초에 순위 진입시키지 않는다(실측 버그, 2026-07-12: todayCount=0 이슈가
-    // 대표기사만 며칠 전 기사로 노출됨). 이슈 레벨 게이트 — 서브클러스터 레벨은 아래 sc.todayCount에서 별도 적용.
+      .filter(a => a.collectedAt >= kstBasisDayStartIso)
+    const issueTodayCount = articles.length
+    // 오늘 기사가 0건인 이슈는 순위 진입 자체를 막는다.
     if (issueTodayCount === 0) continue
 
     const changePct = issue.prev_count > 0
@@ -379,14 +381,17 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
 
     // issueChange엔 issueTodayCount>=1인 이슈만 들어있다(위 이슈 레벨 게이트) — degrade
     // backfill도 오늘 기사가 아예 없는 이슈로는 채우지 않는다(그게 원래 버그의 원인).
+    // 정렬은 72h recent_count가 아니라 오늘 건수(todayCount) 기준 — 순위는 당일 건수만 사용.
     const backfillIssues = candidates
       .filter(c => !usedIssueIds.has(c.issue_id) && issueChange.has(c.issue_id))
-      .sort((a, b) => b.recent_count - a.recent_count)
+      .sort((a, b) =>
+        (issueChange.get(b.issue_id)!.todayCount) - (issueChange.get(a.issue_id)!.todayCount))
 
     for (const issue of backfillIssues) {
       if (final.length >= MIN_DISPLAY) break
 
       const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
+        .filter(a => a.collectedAt >= kstBasisDayStartIso)
         .sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
 
       // 대표는 반드시 오늘 기사여야 한다 — 이미 다른 항목에 쓰여 소진됐으면(이 이슈의 유일한
@@ -406,7 +411,7 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
         headline: todayArticle.title,
         entityChip: dominantEntity([todayArticle]),
         topHashtag: todayArticle.matchedKeywords[0] ?? null,
-        recentCount: issue.recent_count, // 이슈 전체 72h 건수(단일 기사 건수 아님) — degrade는 "이슈 대표" 의미
+        recentCount: change.todayCount, // 이슈 전체 오늘 건수(단일 기사 아님) — degrade는 "이슈 대표" 의미. 순위는 당일 건수 기준이므로 recentCount에도 오늘 건수를 넣는다.
         todayCount: change.todayCount, // 이슈 전체 기사 중 오늘 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
         changePct: change.changePct,
         changeFlag: change.changeFlag,
@@ -422,7 +427,8 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     final.sort(compareByRecentCountDesc)
   }
 
-  return { events: final, asOfDateKst }
+  // asOfDateKst 필드는 하위 호환을 위해 유지하되 값은 KST 캘린더 오늘 — 라벨·선택기와 항상 일치.
+  return { events: final, asOfDateKst: todayKst }
 }
 
 /**
@@ -436,6 +442,6 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
  */
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEvents,
-  ['trending-events-v3'],
+  ['trending-events-v4'],
   { revalidate: CACHE_REVALIDATE_SECONDS },
 )
