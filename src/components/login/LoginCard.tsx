@@ -1,26 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SetPasswordForm } from '@/components/login/SetPasswordForm'
 
-/**
- * LoginCard — 회사 이메일(@lguplus.co.kr) 6자리 OTP 2단계 로그인 (지시서 239)
- * + 관리자 Google 저강조 보조 진입 (지시서 240).
- *
- * - 1단계: signInWithOtp(shouldCreateUser:true) → 도메인 게이팅은 서버 Hook 담당
- *   (클라이언트 도메인 하드검증 금지 — allowlist 예외계정 보호).
- * - 2단계: verifyOtp(type:'email') → 성공 시 /dashboard (콜백 불필요).
- * - 재전송 30s 쿨다운 · 이메일 변경 · 6자리 입력 시 자동 제출.
- * - 관리자 Google: OAuth → /auth/callback (기존 유지). 비관리자는 Hook이 거부.
- */
+const RESEND_COOLDOWN_SECONDS = 60
 
-const RESEND_COOLDOWN_SECONDS = 30
-
-type Step = 'email' | 'otp'
+type Step = 'password' | 'otp-send' | 'otp-verify' | 'set-password'
 
 function GoogleIcon() {
   return (
@@ -51,112 +41,147 @@ function Spinner() {
   )
 }
 
-/** Supabase 에러 → 사용자 친화 한국어 메시지 (지시서 239 §3) */
-function mapAuthError(err: { message?: string; status?: number }): string {
-  const msg = err.message ?? ''
-  if (err.status === 429 || /rate limit|too many/i.test(msg)) {
+function mapAuthError(error: { message?: string; status?: number }): string {
+  const message = error.message ?? ''
+  if (error.status === 429 || /rate limit|too many/i.test(message)) {
     return '요청이 많습니다. 잠시 후 다시 시도해 주세요.'
   }
-  // Before-User-Created Hook 거부(403) — Hook 메시지에 도메인 안내 포함
-  if (err.status === 403 || /lguplus|사내|도메인|not allowed|signups? not allowed/i.test(msg)) {
+  if (error.status === 403 || /lguplus|사내|도메인|not allowed|signups? not allowed/i.test(message)) {
     return '사내 이메일(@lguplus.co.kr) 계정만 로그인할 수 있습니다.'
   }
-  if (/expired|invalid|token/i.test(msg)) {
+  if (/expired|invalid|token/i.test(message)) {
     return '인증 코드가 올바르지 않거나 만료되었습니다. 다시 시도해 주세요.'
   }
   return '전송에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
 export function LoginCard() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackError = searchParams.get('error')
+  const passwordUpdated = searchParams.get('password') === 'updated'
 
-  const [step, setStep] = useState<Step>('email')
+  const [step, setStep] = useState<Step>('password')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [showRecovery, setShowRecovery] = useState(false)
   const [loading, setLoading] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [wasPasswordSet, setWasPasswordSet] = useState(false)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const verifyingRef = useRef(false)
 
-  // 재전송 쿨다운 타이머
   useEffect(() => {
     if (resendCooldown <= 0) return
-    const t = setInterval(() => setResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000)
-    return () => clearInterval(t)
+    const timer = window.setInterval(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1000)
+    return () => window.clearInterval(timer)
   }, [resendCooldown])
 
-  // OTP 단계 진입 시 코드 인풋 포커스
   useEffect(() => {
-    if (step === 'otp') codeInputRef.current?.focus()
+    if (step === 'otp-verify') codeInputRef.current?.focus()
   }, [step])
 
-  const sendCode = useCallback(
-    async (targetEmail: string) => {
-      setLoading(true)
-      setError(null)
-      const supabase = createClient()
-      const { error: authError } = await supabase.auth.signInWithOtp({
-        email: targetEmail,
-        options: { shouldCreateUser: true }, // 최초 임직원 가입 허용 — 도메인 게이팅은 서버 Hook
-      })
-      setLoading(false)
-      if (authError) {
-        setError(mapAuthError(authError))
-        return false
-      }
-      setResendCooldown(RESEND_COOLDOWN_SECONDS)
-      return true
-    },
-    [],
-  )
-
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = email.trim()
-    // 클라이언트는 형식만 가드 — 도메인 판정은 서버 Hook (allowlist 예외 보호)
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+  const handlePasswordLogin = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const normalizedEmail = email.trim()
+    if (!isValidEmail(normalizedEmail)) {
       setError('올바른 이메일 주소를 입력해 주세요.')
       return
     }
-    setEmail(trimmed)
-    const ok = await sendCode(trimmed)
-    if (ok) {
+    if (!password) {
+      setError('비밀번호를 입력해 주세요.')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setShowRecovery(false)
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    })
+    if (authError) {
+      setError('비밀번호가 올바르지 않거나, 아직 설정되지 않았습니다.')
+      setShowRecovery(true)
+      setLoading(false)
+      return
+    }
+
+    router.replace('/dashboard')
+    router.refresh()
+  }
+
+  const sendCode = async (targetEmail: string) => {
+    setLoading(true)
+    setError(null)
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email: targetEmail,
+      options: { shouldCreateUser: true },
+    })
+    setLoading(false)
+    if (authError) {
+      setError(mapAuthError(authError))
+      return false
+    }
+    setResendCooldown(RESEND_COOLDOWN_SECONDS)
+    return true
+  }
+
+  const handleOtpSend = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const normalizedEmail = email.trim()
+    if (!isValidEmail(normalizedEmail)) {
+      setError('올바른 이메일 주소를 입력해 주세요.')
+      return
+    }
+    setEmail(normalizedEmail)
+    if (await sendCode(normalizedEmail)) {
       setCode('')
-      setStep('otp')
+      setStep('otp-verify')
     }
   }
 
-  const verifyCode = useCallback(
-    async (token: string) => {
-      if (verifyingRef.current) return
-      verifyingRef.current = true
-      setLoading(true)
-      setError(null)
-      const supabase = createClient()
-      const { error: authError } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'email',
-      })
-      if (authError) {
-        setError('인증 코드가 올바르지 않거나 만료되었습니다. 다시 시도해 주세요.')
-        setLoading(false)
-        verifyingRef.current = false
-        setCode('')
-        codeInputRef.current?.focus()
-        return
-      }
-      router.push('/dashboard')
-      router.refresh()
-    },
-    [email, router],
-  )
+  const verifyCode = async (token: string) => {
+    if (verifyingRef.current) return
+    verifyingRef.current = true
+    setLoading(true)
+    setError(null)
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+    if (authError) {
+      setError('인증 코드가 올바르지 않거나 만료되었습니다. 다시 시도해 주세요.')
+      setLoading(false)
+      verifyingRef.current = false
+      setCode('')
+      codeInputRef.current?.focus()
+      return
+    }
 
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    const response = await fetch('/api/me/has-password', { cache: 'no-store' })
+    const result = await response.json() as { hasPassword?: boolean; error?: string }
+    if (!response.ok || typeof result.hasPassword !== 'boolean') {
+      await supabase.auth.signOut({ scope: 'local' })
+      setError(result.error ?? '비밀번호 상태를 확인하지 못했습니다. 다시 시도해 주세요.')
+      setLoading(false)
+      verifyingRef.current = false
+      return
+    }
+
+    setWasPasswordSet(result.hasPassword)
+    setLoading(false)
+    setStep('set-password')
+  }
+
+  const handleOtpSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     if (code.length !== 6) {
       setError('6자리 인증 코드를 입력해 주세요.')
       return
@@ -168,7 +193,7 @@ export function LoginCard() {
     const digits = raw.replace(/\D/g, '').slice(0, 6)
     setCode(digits)
     if (error) setError(null)
-    if (digits.length === 6) void verifyCode(digits) // 6자리 채워지면 자동 제출
+    if (digits.length === 6) void verifyCode(digits)
   }
 
   const handleResend = async () => {
@@ -178,13 +203,6 @@ export function LoginCard() {
     codeInputRef.current?.focus()
   }
 
-  const handleChangeEmail = () => {
-    setStep('email')
-    setCode('')
-    setError(null)
-  }
-
-  // 관리자 Google 보조 진입 (지시서 240) — 저강조, Hook이 비관리자 차단
   const handleAdminGoogle = async () => {
     setLoading(true)
     setError(null)
@@ -199,123 +217,109 @@ export function LoginCard() {
     }
   }
 
+  const descriptions: Record<Step, string> = {
+    password: '회사 이메일과 비밀번호로 로그인하세요',
+    'otp-send': '이메일 인증 후 비밀번호를 설정합니다',
+    'otp-verify': '메일로 받은 인증 코드를 입력하세요',
+    'set-password': '앞으로 사용할 비밀번호를 설정하세요',
+  }
+
   return (
     <div className="w-full rounded-[30px] border border-slate-200/70 bg-white/95 p-8 shadow-[0_40px_90px_-30px_rgba(24,39,75,0.30)] backdrop-blur-sm sm:p-10">
-      {/* 카드 타이틀 — 텍스트 중앙 정렬 */}
       <div className="mb-9 flex flex-col items-center">
         <h1 className="text-[26px] font-extrabold tracking-tight text-slate-900">인사이트 아웃</h1>
-        <p className="mt-4 text-sm text-slate-500">
-          {step === 'email' ? '사내 이메일로 로그인하세요' : '메일로 받은 인증 코드를 입력하세요'}
-        </p>
+        <p className="mt-4 text-sm text-slate-500">{descriptions[step]}</p>
       </div>
 
+      {passwordUpdated && step === 'password' && !error && (
+        <div role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+          비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.
+        </div>
+      )}
       {(error || callbackError) && (
-        <div
-          role="alert"
-          className="mb-5 rounded-xl border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {error ?? decodeURIComponent(callbackError!)}
+        <div role="alert" className="mb-5 rounded-xl border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+          {error ?? callbackError}
         </div>
       )}
 
-      {step === 'email' ? (
-        <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+      {step === 'password' && (
+        <form onSubmit={handlePasswordLogin} className="flex flex-col gap-4">
+          <EmailField email={email} setEmail={setEmail} disabled={loading} />
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email" className="text-slate-700">회사 이메일</Label>
-            <div className="relative">
-              <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400">
-                <MailIcon />
-              </span>
-              <Input
-                id="email"
-                type="email"
-                placeholder="name@lguplus.co.kr"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-                className="h-12 rounded-xl border-slate-200 bg-white pl-11 text-[15px] text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
-            <p className="mt-0.5 text-xs text-slate-400">사내 이메일(@lguplus.co.kr)로 로그인하세요</p>
+            <Label htmlFor="password" className="text-slate-700">비밀번호</Label>
+            <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={loading} className="h-12 rounded-xl border-slate-200 bg-white text-[15px] text-slate-900" />
           </div>
-
-          <Button
-            type="submit"
-            disabled={loading}
-            className="mt-2 h-12 w-full gap-2 rounded-xl bg-gradient-to-b from-[#233052] to-[#131c33] text-[15px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(19,28,51,0.55)] transition-transform hover:-translate-y-px hover:from-[#28365c] hover:to-[#182240]"
-          >
-            {loading && <Spinner />}
-            {loading ? '전송 중...' : '인증 코드 받기'}
+          <Button type="submit" disabled={loading} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
+            {loading && <Spinner />}{loading ? '로그인 중...' : '로그인'}
           </Button>
+          {!showRecovery && (
+            <button type="button" onClick={() => { setStep('otp-send'); setError(null); setShowRecovery(false) }} className="rounded text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline">
+              비밀번호를 잊으셨나요? / 처음이신가요?
+            </button>
+          )}
+          {showRecovery && (
+            <button type="button" onClick={() => { setStep('otp-send'); setError(null); setShowRecovery(false) }} className="rounded text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline">
+              이메일로 인증 코드 받기
+            </button>
+          )}
         </form>
-      ) : (
+      )}
+
+      {step === 'otp-send' && (
+        <form onSubmit={handleOtpSend} className="flex flex-col gap-4">
+          <EmailField email={email} setEmail={setEmail} disabled={loading} />
+          <Button type="submit" disabled={loading} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
+            {loading && <Spinner />}{loading ? '전송 중...' : '인증 코드 받기'}
+          </Button>
+          <button type="button" onClick={() => { setStep('password'); setError(null) }} className="rounded text-sm font-medium text-slate-500 hover:text-slate-700 hover:underline">
+            비밀번호 로그인으로 돌아가기
+          </button>
+        </form>
+      )}
+
+      {step === 'otp-verify' && (
         <form onSubmit={handleOtpSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="otp-code" className="text-slate-700">인증 코드</Label>
-            <Input
-              id="otp-code"
-              ref={codeInputRef}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              placeholder="······"
-              value={code}
-              onChange={(e) => handleCodeChange(e.target.value)}
-              disabled={loading}
-              aria-describedby="otp-hint"
-              className="h-14 rounded-xl border-slate-200 bg-white text-center text-[24px] font-bold tracking-[0.5em] text-slate-900 placeholder:tracking-[0.3em] placeholder:text-slate-300"
-            />
-            <p id="otp-hint" className="mt-0.5 text-xs text-slate-400">
-              <span className="font-medium text-slate-500">{email}</span> 로 6자리 코드를 보냈습니다
-            </p>
+            <Input id="otp-code" ref={codeInputRef} type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="······" value={code} onChange={(event) => handleCodeChange(event.target.value)} disabled={loading} aria-describedby="otp-hint" className="h-14 rounded-xl border-slate-200 bg-white text-center text-[24px] font-bold tracking-[0.5em] text-slate-900 placeholder:tracking-[0.3em] placeholder:text-slate-300" />
+            <p id="otp-hint" className="mt-0.5 text-xs text-slate-400"><span className="font-medium text-slate-500">{email}</span> 로 6자리 코드를 보냈습니다</p>
           </div>
-
-          <Button
-            type="submit"
-            disabled={loading || code.length !== 6}
-            className="mt-2 h-12 w-full gap-2 rounded-xl bg-gradient-to-b from-[#233052] to-[#131c33] text-[15px] font-semibold text-white shadow-[0_10px_24px_-10px_rgba(19,28,51,0.55)] transition-transform hover:-translate-y-px"
-          >
-            {loading && <Spinner />}
-            {loading ? '확인 중...' : '확인'}
+          <Button type="submit" disabled={loading || code.length !== 6} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
+            {loading && <Spinner />}{loading ? '확인 중...' : '확인'}
           </Button>
-
           <div className="flex items-center justify-between pt-0.5 text-sm">
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={resendCooldown > 0 || loading}
-              className="rounded font-medium text-[#2563eb] transition-colors hover:text-[#1d4ed8] focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:outline-none disabled:cursor-not-allowed disabled:text-slate-300"
-            >
+            <button type="button" onClick={handleResend} disabled={resendCooldown > 0 || loading} className="rounded font-medium text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-300">
               {resendCooldown > 0 ? `코드 재전송 (${resendCooldown}s)` : '코드 재전송'}
             </button>
-            <button
-              type="button"
-              onClick={handleChangeEmail}
-              disabled={loading}
-              className="rounded font-medium text-slate-500 transition-colors hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:outline-none"
-            >
+            <button type="button" onClick={() => { setStep('otp-send'); setCode(''); setError(null) }} disabled={loading} className="rounded font-medium text-slate-500 hover:text-slate-700">
               이메일 변경
             </button>
           </div>
         </form>
       )}
 
-      {/* 관리자 보조 진입 — 저강조 (지시서 240) */}
-      <div className="mt-8 flex justify-center border-t border-slate-100 pt-5">
-        <button
-          type="button"
-          onClick={handleAdminGoogle}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded text-xs text-slate-400 transition-colors hover:text-slate-600 hover:underline focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:outline-none"
-        >
-          <GoogleIcon />
-          관리자는 Google로 로그인
-        </button>
+      {step === 'set-password' && <SetPasswordForm wasPasswordSet={wasPasswordSet} onLoadingChange={setLoading} />}
+
+      {step !== 'set-password' && (
+        <div className="mt-8 flex justify-center border-t border-slate-100 pt-5">
+          <button type="button" onClick={handleAdminGoogle} disabled={loading} className="inline-flex items-center gap-1.5 rounded text-xs text-slate-400 hover:text-slate-600 hover:underline">
+            <GoogleIcon />관리자는 Google로 로그인
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmailField({ email, setEmail, disabled }: { email: string; setEmail: (email: string) => void; disabled: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor="email" className="text-slate-700">회사 이메일</Label>
+      <div className="relative">
+        <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400"><MailIcon /></span>
+        <Input id="email" type="email" placeholder="name@lguplus.co.kr" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={disabled} className="h-12 rounded-xl border-slate-200 bg-white pl-11 text-[15px] text-slate-900 placeholder:text-slate-400" />
       </div>
+      <p className="mt-0.5 text-xs text-slate-400">사내 이메일(@lguplus.co.kr)로 로그인하세요</p>
     </div>
   )
 }

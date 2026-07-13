@@ -9,6 +9,7 @@ export interface CachedProfile {
   onboardingCompleted: boolean
   role: string
   approvalStatus: string
+  hasPassword: boolean
 }
 
 function getSecret(): string | null {
@@ -74,6 +75,7 @@ export async function parseProfileCookie(value: string, uid: string): Promise<Ca
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(payloadB64))) as CachedProfile & { exp: number }
     if (payload.uid !== uid) return null
     if (payload.exp < Math.floor(Date.now() / 1000)) return null
+    if (typeof payload.hasPassword !== 'boolean') return null
 
     return payload
   } catch {

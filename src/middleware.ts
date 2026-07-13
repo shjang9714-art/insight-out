@@ -47,18 +47,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
-
-  if (user && !isApiRoute && !publicPaths.some((p) => pathname.startsWith(p))) {
-    // gating 필드(onboarding_completed/role/approval_status)를 서명 쿠키로 캐시해
+  if (user && !isApiRoute && (!publicPaths.some((p) => pathname.startsWith(p)) || pathname === '/login')) {
+    // gating 필드를 서명 쿠키로 캐시해
     // 매 페이지 이동마다 붙던 users profile DB 왕복을 생략(지시서 232 Part A).
-    // 온보딩 미완 상태는 캐시하지 않음 — 온보딩 완료는 브라우저에서 직접 DB upsert 후
-    // router.push 로 넘어오므로 서버가 그 전이를 가로채 쿠키를 갱신할 지점이 없음.
+    // 온보딩 미완 상태는 캐시하지 않음 — 완료 직후 전이에서 낡은 false 쿠키가
+    // 대시보드 진입을 가로막지 않도록 완료 상태만 저장한다.
     // 캐시를 완료 후에만 기록하면 그 전이 구간에서 쿠키가 낡은 값(false)으로 대시보드를
     // 막는 사고를 구조적으로 피할 수 있다. 승인취소·강등 등 타 세션발 전이는 TTL(15분) 내 반영.
-    let gate: { onboarding_completed: boolean; role: string; approval_status: string } | null = null
+    let gate: {
+      onboarding_completed: boolean
+      role: string
+      approval_status: string
+      has_password: boolean
+    } | null = null
+    let hasPasswordGateEnabled = true
 
     const cachedCookie = request.cookies.get(PROFILE_COOKIE_NAME)?.value
     if (cachedCookie) {
@@ -68,29 +70,47 @@ export async function middleware(request: NextRequest) {
           onboarding_completed: cached.onboardingCompleted,
           role: cached.role,
           approval_status: cached.approvalStatus,
+          has_password: cached.hasPassword,
         }
       }
     }
 
     if (!gate) {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('users')
-        .select('onboarding_completed, role, approval_status')
+        .select('onboarding_completed, role, approval_status, has_password')
         .eq('id', user.id)
         .single()
 
-      gate = {
-        onboarding_completed: profile?.onboarding_completed ?? false,
-        role: profile?.role ?? 'user',
-        approval_status: profile?.approval_status ?? 'pending',
+      if (profileError?.code === '42703') {
+        hasPasswordGateEnabled = false
+        const { data: fallbackProfile } = await supabase
+          .from('users')
+          .select('onboarding_completed, role, approval_status')
+          .eq('id', user.id)
+          .single()
+        gate = {
+          onboarding_completed: fallbackProfile?.onboarding_completed ?? false,
+          role: fallbackProfile?.role ?? 'user',
+          approval_status: fallbackProfile?.approval_status ?? 'pending',
+          has_password: false,
+        }
+      } else {
+        gate = {
+          onboarding_completed: profile?.onboarding_completed ?? false,
+          role: profile?.role ?? 'user',
+          approval_status: profile?.approval_status ?? 'pending',
+          has_password: profile?.has_password ?? false,
+        }
       }
 
-      if (gate.onboarding_completed) {
+      if (gate.onboarding_completed && hasPasswordGateEnabled) {
         const cookieValue = await buildProfileCookie({
           uid: user.id,
           onboardingCompleted: gate.onboarding_completed,
           role: gate.role,
           approvalStatus: gate.approval_status,
+          hasPassword: gate.has_password,
         })
         if (cookieValue) {
           supabaseResponse.cookies.set(PROFILE_COOKIE_NAME, cookieValue, {
@@ -102,6 +122,25 @@ export async function middleware(request: NextRequest) {
           })
         }
       }
+    }
+
+    const isGoogleUser = user.app_metadata.provider === 'google'
+      || user.identities?.some((identity) => identity.provider === 'google') === true
+    const needsPassword = hasPasswordGateEnabled && !gate.has_password && !isGoogleUser
+
+    if (needsPassword) {
+      if (pathname !== '/set-password') {
+        return NextResponse.redirect(new URL('/set-password', request.url))
+      }
+      return supabaseResponse
+    }
+
+    if (pathname === '/set-password') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+
+    if (pathname === '/login') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
     if (!gate.onboarding_completed && pathname !== '/onboarding') {
