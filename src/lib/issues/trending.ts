@@ -3,7 +3,6 @@ import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
 import { getKstDateString, getKstDayStartIso } from '@/lib/date'
-import { llmCompleteDetailed, type LlmTask } from '@/lib/llm'
 
 /**
  * 쿠키 비의존 anon 클라이언트 — unstable_cache로 요청 간 캐시하려면 특정 사용자
@@ -81,20 +80,6 @@ export interface TrendingEvent {
   todayCount: number
   changePct: number | null
   changeFlag: 'surge' | null
-}
-
-/**
- * §3(LLM 의미 병합) 계산 파이프라인 내부에서만 쓰는 확장 타입 — 병합 시 distinct
- * content_id 재계산·backfill 중복 방지에 필요한 원본 소스 정보를 들고 다닌다.
- * 공개 API(TrendingEventsResult.events)에는 TrendingEvent 형태로만 노출된다.
- */
-interface InternalEvent extends TrendingEvent {
-  /** 이 슬롯을 구성하는 모든 오늘자 기사 content_id(병합 전엔 자기 서브클러스터 것만). */
-  contentIds: string[]
-  /** 이 슬롯이 소비한 모든 issue_id(병합 전엔 자기 이슈 1개) — backfill 중복 방지용. */
-  issueIds: string[]
-  /** 대표 기사 collected_at — 병합 시 대표 재선정 동률 tie-break(최신 우선)에 사용. */
-  representativeCollectedAt: string
 }
 
 const CONCRETE_ENTITY_TYPES = new Set(['company', 'product', 'person'])
@@ -238,10 +223,6 @@ interface SubclusterResult {
   topHashtag: string | null
   count: number
   todayCount: number
-  /** 그룹에 속한 모든(오늘자) 기사 content_id — §3 LLM 병합 시 distinct dedup에 사용. */
-  contentIds: string[]
-  /** 대표 기사 collected_at — §3 병합 대표 재선정 tie-break에 사용. */
-  representativeCollectedAt: string
 }
 
 /** 이슈 하나의 72h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
@@ -281,8 +262,6 @@ function subclusterIssue(articles: ArticleRow[], kstBasisDayStartIso: string): S
         topHashtag: representative.matchedKeywords[0] ?? null,
         count: group.length,
         todayCount: group.filter(a => a.collectedAt >= kstBasisDayStartIso).length,
-        contentIds: group.map(a => a.contentId),
-        representativeCollectedAt: representative.collectedAt,
       }
     })
 }
@@ -328,8 +307,8 @@ function isDuplicateEvent(a: TrendingEvent, b: TrendingEvent): boolean {
  * 않아, 같은 사건이 여러 이슈로 쪼개진 채 backfill로 각각 노출되는 문제가 있었다(§2).
  * 같은 사건으로 판정되면 recentCount가 더 높은 쪽만 남긴다.
  */
-function collapseDuplicateEvents<T extends TrendingEvent>(events: T[]): T[] {
-  const kept: T[] = []
+function collapseDuplicateEvents(events: TrendingEvent[]): TrendingEvent[] {
+  const kept: TrendingEvent[] = []
   for (const ev of events) {
     const dupIndex = kept.findIndex(k => isDuplicateEvent(k, ev))
     if (dupIndex === -1) {
@@ -347,169 +326,6 @@ function compareByRecentCountDesc(a: TrendingEvent, b: TrendingEvent): number {
   const aScore = a.changePct === null ? Infinity : a.changePct
   const bScore = b.changePct === null ? Infinity : b.changePct
   return bScore - aScore
-}
-
-// ─── §3 LLM 의미 기반 근접중복 병합 ───────────────────────────────────────────
-// §2 헤드라인 텍스트 휴리스틱(회사 게이트+핵심어 겹침)의 한계: "SK하이닉스 나스닥 상장"
-// 같은 한 사건이 헤드라인 어휘만 크게 달라(예: "환율 숨통" vs "40조 조달" vs "나스닥
-// 데뷔") keywordOverlap이 낮게 나와 병합되지 않고 여러 칸을 차지하는 실측 사례
-// (2026-07-13, 6칸). 기존 LLM(요약/후보생성에 쓰는 llmCompleteDetailed, task별 라우팅
-// 재사용)에 오늘 상위 후보 헤드라인만 1회 보내 "같은 실제 사건끼리 묶어라"를 판단시켜
-// 이 한계를 보완한다. LLM은 "묶기 판단"만 하고, 순위·건수는 항상 코드에서 distinct
-// content_id로 재계산(실행마다 순위가 LLM 응답 편차로 흔들리지 않게). 실패/파싱 불가/
-// 빈 응답이면 반드시 §2 휴리스틱으로 폴백 — 화면이 깨지거나 빈 채로 나가지 않게.
-const TRENDING_LLM_GROUP_TOP_N = 30
-const TRENDING_LLM_TASK: LlmTask = 'classify'
-
-interface LlmGroupCandidate {
-  index: number
-  headline: string
-  company: string | null
-  todayCount: number
-}
-
-function buildGroupingPrompt(candidates: LlmGroupCandidate[]): { system: string; user: string } {
-  const system = [
-    '너는 오늘자 한국어 뉴스 헤드라인을 같은 실제 사건 단위로 묶는 보조 도구다.',
-    '같은 실제 사건(같은 발표·같은 계약·같은 상장·같은 인물 이슈 등)을 다룬 헤드라인끼리만 묶어라.',
-    '헤드라인 어휘가 서로 달라도 같은 사건을 다룬 것이면 묶어라',
-    '(예: "환율 영향" 기사와 "나스닥 데뷔" 기사가 같은 상장 사건을 다루면 같은 묶음).',
-    '같은 회사를 다뤄도 실제로 다른 사건이면 반드시 나눠라. 확신이 없으면 묶지 말고 단독 그룹으로 둬라(보수적으로 판단).',
-    '출력은 JSON 배열 하나만: 각 원소는 같은 사건으로 묶인 헤드라인들의 index 배열이다.',
-    '모든 index가 정확히 한 번씩만 나와야 한다. 예: [[0,2,5],[1],[3,4]]',
-    '설명·코드펜스·다른 텍스트 없이 JSON 배열만 출력해라.',
-  ].join(' ')
-
-  const lines = candidates
-    .map(c => `${c.index}. ${c.headline}${c.company ? ` (회사: ${c.company})` : ''} — 오늘 ${c.todayCount}건`)
-    .join('\n')
-
-  const user = `다음은 오늘의 급상승 후보 헤드라인 목록이다. 같은 실제 사건끼리 묶어라.\n\n${lines}`
-
-  return { system, user }
-}
-
-/**
- * LLM 응답에서 JSON 배열(예: [[0,2,5],[1],[3,4]])을 관용적으로 추출·검증한다.
- * 후보 전체 index를 정확히 한 번씩 커버하지 못하면(부분 응답·중복·범위 밖 index)
- * 신뢰할 수 없는 응답으로 보고 null — 호출부가 §2 휴리스틱으로 폴백한다.
- */
-function parseGroupingResponse(raw: string, candidateCount: number): number[][] | null {
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(cleaned)
-  } catch {
-    const m = cleaned.match(/\[[\s\S]*\]/)
-    if (!m) return null
-    try {
-      parsed = JSON.parse(m[0])
-    } catch {
-      return null
-    }
-  }
-  if (!Array.isArray(parsed)) return null
-
-  const seen = new Set<number>()
-  const groups: number[][] = []
-  for (const group of parsed) {
-    if (!Array.isArray(group) || group.length === 0) return null
-    const idxs: number[] = []
-    for (const raw of group) {
-      const idx = typeof raw === 'number' ? raw : Number(raw)
-      if (!Number.isInteger(idx) || idx < 0 || idx >= candidateCount || seen.has(idx)) return null
-      seen.add(idx)
-      idxs.push(idx)
-    }
-    groups.push(idxs)
-  }
-  if (seen.size !== candidateCount) return null
-  return groups
-}
-
-async function groupEventsByLlm(candidates: LlmGroupCandidate[]): Promise<number[][] | null> {
-  if (candidates.length === 0) return null
-  const { system, user } = buildGroupingPrompt(candidates)
-  const { text, errorReason } = await llmCompleteDetailed(TRENDING_LLM_TASK, system, user)
-  if (!text) {
-    console.warn(`[trending] LLM 이벤트 그룹핑 호출 실패: ${errorReason ?? '사유 미상'}`)
-    return null
-  }
-  const groups = parseGroupingResponse(text, candidates.length)
-  if (!groups) console.warn('[trending] LLM 이벤트 그룹핑 응답 파싱 실패/불완전 — 폐기')
-  return groups
-}
-
-/**
- * 같은 사건으로 묶인 멤버들을 한 슬롯으로 병합. 같은 기사가 여러 서브클러스터에 걸쳐
- * 이중집계되지 않도록 반드시 content_id 기준 distinct dedup(합산 금지) — 건수 = distinct
- * content_id 개수. 대표 헤드라인/해시태그는 멤버 중 오늘건수 최다(동률이면 최신 collectedAt).
- */
-function mergeEventGroup(members: InternalEvent[]): InternalEvent {
-  const contentIdSet = new Set<string>()
-  const issueIdSet = new Set<string>()
-  for (const m of members) {
-    for (const id of m.contentIds) contentIdSet.add(id)
-    for (const id of m.issueIds) issueIdSet.add(id)
-  }
-
-  const representative = [...members].sort((a, b) => {
-    if (b.todayCount !== a.todayCount) return b.todayCount - a.todayCount
-    return b.representativeCollectedAt.localeCompare(a.representativeCollectedAt)
-  })[0]
-
-  const distinctCount = contentIdSet.size
-
-  return {
-    ...representative,
-    recentCount: distinctCount,
-    todayCount: distinctCount,
-    contentIds: [...contentIdSet],
-    issueIds: [...issueIdSet],
-  }
-}
-
-/**
- * primary 후보 구성: 오늘 건수 상위 N개(TRENDING_LLM_GROUP_TOP_N)만 LLM에 1회 보내
- * "같은 사건 묶기"를 시키고, 성공하면 그 결과로 병합 슬롯을 만든다 — 순위는 LLM이 준
- * 순서가 아니라 병합 후 distinct 건수로 재계산(실행마다 순위 안 흔들리게, §main 5).
- * 상위 N 밖의 나머지 후보는 §2 휴리스틱으로 이어서 근접중복만 억제(LLM 시야 밖 안전망).
- * LLM 실패/파싱 불가면 전체를 §2 휴리스틱으로 그대로 폴백(화면 안 깨지게, §main 3).
- */
-async function buildPrimaryEvents(specificEvents: InternalEvent[]): Promise<InternalEvent[]> {
-  const heuristicDedup = (pool: InternalEvent[]): InternalEvent[] => {
-    const result: InternalEvent[] = []
-    for (const ev of pool) {
-      if (!result.some(k => isDuplicateEvent(k, ev))) result.push(ev)
-    }
-    return result
-  }
-
-  if (specificEvents.length === 0) return []
-
-  const top = specificEvents.slice(0, TRENDING_LLM_GROUP_TOP_N)
-  const rest = specificEvents.slice(TRENDING_LLM_GROUP_TOP_N)
-
-  const llmCandidates: LlmGroupCandidate[] = top.map((ev, index) => ({
-    index,
-    headline: ev.headline,
-    company: extractDominantCompany(ev.headline),
-    todayCount: ev.todayCount,
-  }))
-
-  const groups = await groupEventsByLlm(llmCandidates)
-
-  if (!groups) return heuristicDedup(specificEvents)
-
-  const mergedTop = groups.map(idxs => mergeEventGroup(idxs.map(i => top[i])))
-
-  const primary = [...mergedTop]
-  for (const ev of rest) {
-    if (!primary.some(k => isDuplicateEvent(k, ev))) primary.push(ev)
-  }
-  primary.sort(compareByRecentCountDesc)
-  return primary
 }
 
 // ─── 메인 계산 (unstable_cache로 래핑) ────────────────────────────────────────
@@ -623,7 +439,7 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
 
   const kstBasisDayStartIso = getKstDayStartIso(todayKst)
 
-  const specificEvents: InternalEvent[] = []
+  const specificEvents: TrendingEvent[] = []
   // 이슈별 changePct/changeFlag/오늘 건수 — backfill 단계에서 재사용(중복 계산 방지).
   const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null; todayCount: number }>()
 
@@ -644,12 +460,10 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     const changeFlag = isSurge ? 'surge' as const : null
     issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount })
 
-    let hasSubcluster = false
     for (const sc of subclusterIssue(articles, kstBasisDayStartIso)) {
       // 이슈 자체는 오늘 기사가 있어도, 이 특정 서브클러스터(사건)엔 오늘 기사가 없을 수
       // 있다 — 그 경우 이 사건 단위는 순위에서 제외(같은 이슈의 다른 사건·degrade로 대체).
       if (sc.todayCount === 0) continue
-      hasSubcluster = true
 
       specificEvents.push({
         issueId: issue.issue_id,
@@ -661,40 +475,16 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
         todayCount: sc.todayCount,
         changePct,
         changeFlag,
-        contentIds: sc.contentIds,
-        issueIds: [issue.issue_id],
-        representativeCollectedAt: sc.representativeCollectedAt,
-      })
-    }
-
-    // 이슈 내부에 유사헤드라인 2건 이상 서브클러스터가 없어도(예: 같은 사건이 issue_id별로
-    // 어휘가 다른 단일기사 1건씩으로 쪼개진 경우 — 실측, 2026-07-13: SK하이닉스 나스닥 상장이
-    // 이렇게 6개 issue_id로 쪼개져 6칸 노출), 이 이슈 대표 1건을 §3 LLM 후보 풀에 반드시
-    // 포함시킨다. 이걸 빠뜨리면 이런 이슈들은 전부 backfill(§main degrade) 경로로만 채워져
-    // LLM이 아예 보지 못하고, 서로 다른 issue_id로 쪼개진 같은 사건을 계속 놓치게 된다.
-    if (!hasSubcluster) {
-      const sorted = [...articles].sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
-      const representative = sorted[0]
-      specificEvents.push({
-        issueId: issue.issue_id,
-        contentId: representative.contentId,
-        headline: representative.title,
-        entityChip: dominantEntity(articles),
-        topHashtag: representative.matchedKeywords[0] ?? null,
-        recentCount: issueTodayCount,
-        todayCount: issueTodayCount,
-        changePct,
-        changeFlag,
-        contentIds: articles.map(a => a.contentId),
-        issueIds: [issue.issue_id],
-        representativeCollectedAt: representative.collectedAt,
       })
     }
   }
 
   specificEvents.sort(compareByRecentCountDesc)
 
-  const primary = await buildPrimaryEvents(specificEvents)
+  const primary: TrendingEvent[] = []
+  for (const ev of specificEvents) {
+    if (!primary.some(k => isDuplicateEvent(k, ev))) primary.push(ev)
+  }
 
   const final = primary.slice(0, TRENDING_LIMIT)
 
@@ -702,10 +492,7 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   // 기준으로 전역 distinct 보장 — 같은 기사가 여러 이슈에 교차 태깅돼도 최종 리스트엔 1번만.
   // 한 이슈의 최신 기사가 이미 쓰였으면 그 이슈의 다음 최신 기사로, 그래도 없으면 다음 이슈로.
   if (final.length < MIN_DISPLAY) {
-    // §3 LLM 병합 슬롯은 여러 issue_id를 하나로 흡수할 수 있어, 대표 issueId 하나만으로
-    // "이미 씀"을 판정하면 병합돼 사라진 다른 issue_id가 backfill로 다시 노출될 수 있다
-    // (재발 방지) — 슬롯이 소비한 issueIds 전체를 used 처리.
-    const usedIssueIds = new Set(final.flatMap(f => f.issueIds))
+    const usedIssueIds = new Set(final.map(f => f.issueId))
     const usedContentIds = new Set<string>()
     const usedHeadlines = new Set(final.map(f => normalizeTitle(f.headline)))
 
@@ -745,9 +532,6 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
         todayCount: change.todayCount, // 이슈 전체 기사 중 오늘 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
         changePct: change.changePct,
         changeFlag: change.changeFlag,
-        contentIds: articles.map(a => a.contentId), // 이슈 전체 오늘자 기사 id(recentCount와 정합)
-        issueIds: [issue.issue_id],
-        representativeCollectedAt: todayArticle.collectedAt,
       })
       usedContentIds.add(todayArticle.contentId)
       usedHeadlines.add(todayArticle.normTitle)
@@ -781,6 +565,6 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
  */
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEvents,
-  ['trending-events-v7'],
+  ['trending-events-v6'],
   { revalidate: CACHE_REVALIDATE_SECONDS },
 )
