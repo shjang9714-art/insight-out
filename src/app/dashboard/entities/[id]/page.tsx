@@ -16,6 +16,7 @@ import PageContainer from '@/components/PageContainer'
 import EntityTabs from '@/components/entities/EntityTabs'
 import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { getOrGenerateKeywordInsight } from '@/lib/insight/keyword-insight'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,6 +108,9 @@ function entityStyle(type: EntityType, isCompetitor: boolean): string {
   if (type === 'company' && isCompetitor) return 'border-red-200 bg-red-50 text-red-700'
   return ENTITY_TYPE_STYLE[type]
 }
+
+// 지시서 B — 키워드 상세 해시태그 카테고리(기술/산업/기업, 각 최대 2개 + N)
+const HASHTAG_TYPES: EntityType[] = ['tech', 'industry', 'company']
 
 interface SignalSummaryRow {
   signal_count: number
@@ -214,6 +218,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function EntityDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
   const { origin, view } = await searchParams
+  const isKeywordDetail = origin === 'issues'
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
@@ -319,6 +324,13 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
     .sort((a, b) => b.count - a.count)
     .slice(0, 20)
 
+  // 5b. 키워드 상세용 해시태그 그룹(기술/산업/기업, 각 최대 2개 + N) — origin=issues 전용
+  const sortedAllRelated = [...relatedEntityMap.values()].sort((a, b) => b.count - a.count)
+  const hashtagGroups = HASHTAG_TYPES.map((type) => {
+    const items = sortedAllRelated.filter((r) => r.entity.entity_type === type)
+    return { type, shown: items.slice(0, 2), extra: Math.max(0, items.length - 2) }
+  }).filter((g) => g.shown.length > 0)
+
   // 6. 관련 이슈 — icRes 로 집계 후 topIssueIds 로 2차(의존) 쿼리
   let relatedIssues: IssueRow[] = []
   const issueCountMap = new Map<string, number>()
@@ -371,6 +383,11 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
 
   const typeStyle = entityStyle(e.entity_type, e.is_competitor)
   const typeLabel = ENTITY_TYPE_LABEL[e.entity_type]
+
+  // 9. 키워드 상세 LLM 핵심 인사이트(캐시형, 24시간 1회) — origin=issues 전용
+  const keywordInsight = isKeywordDetail
+    ? await getOrGenerateKeywordInsight(id, e.canonical_name, contents.slice(0, 15).map((c) => ({ title: c.title })))
+    : null
 
   return (
     <PageContainer className="py-8">
@@ -427,6 +444,39 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
         )}
       </div>
 
+      {/* 키워드 상세: 관련엔티티 해시태그 + LLM 핵심 인사이트 1줄 (지시서 B) */}
+      {isKeywordDetail && (hashtagGroups.length > 0 || keywordInsight) && (
+        <div className="mb-8 space-y-3">
+          {hashtagGroups.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {hashtagGroups.map((g) => (
+                <div key={g.type} className="flex flex-wrap items-center gap-1.5">
+                  {g.shown.map(({ entity: re }) => (
+                    <Link
+                      key={re.id}
+                      href={`/dashboard/entities/${re.id}`}
+                      prefetch={false}
+                      className={cn(
+                        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-75',
+                        entityStyle(re.entity_type, re.is_competitor),
+                      )}
+                    >
+                      #{re.canonical_name}
+                    </Link>
+                  ))}
+                  {g.extra > 0 && (
+                    <span className="text-[11px] text-muted-foreground">+{g.extra}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {keywordInsight && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{keywordInsight}</p>
+          )}
+        </div>
+      )}
+
       {/* 사건 타임라인 */}
       <section className="mb-8">
         <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
@@ -444,6 +494,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
         )}
       </section>
 
+      {!isKeywordDetail && (
+      <>
       {/* 시그널 요약 */}
       {signalSummary && (signalSummary.signal_types ?? []).length > 0 && (
         <section className="mb-8 rounded-xl border border-border bg-card p-5">
@@ -639,6 +691,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
         <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
           아직 수집된 콘텐츠가 없습니다.
         </div>
+      )}
+      </>
       )}
     </PageContainer>
   )
