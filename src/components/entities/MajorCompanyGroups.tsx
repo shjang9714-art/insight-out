@@ -49,7 +49,7 @@ export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase }:
                 return (
                   <Link
                     key={card.id}
-                    href={getCardDetailHref(card)}
+                    href={`${getCardDetailHref(card)}?origin=entities&view=watchlist`}
                     prefetch={false}
                     className={cn(
                       'group rounded-xl border bg-card p-4 space-y-2.5 transition-colors hover:border-brand-200',

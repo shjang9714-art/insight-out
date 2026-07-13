@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import BackLink from '@/components/BackLink'
 import PageContainer from '@/components/PageContainer'
+import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import DailyInsightDetail from '@/components/daily-insights/DailyInsightDetail'
 import { createClient } from '@/lib/supabase/server'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
@@ -34,9 +35,10 @@ export default async function DailyInsightDetailPage({ params }: PageProps) {
     <PageContainer variant="reading">
       <div className="space-y-6">
         <BackLink
-          fallbackHref="/dashboard"
+          fallbackHref="/dashboard/issues"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
+        <AiInsightTabs value="brief" className="-mt-2" />
         <DailyInsightDetail insight={data as DailyInsightRow} />
       </div>
     </PageContainer>
