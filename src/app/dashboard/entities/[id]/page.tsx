@@ -373,7 +373,7 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   const typeLabel = ENTITY_TYPE_LABEL[e.entity_type]
 
   return (
-    <PageContainer className="py-8 sm:px-6 lg:px-8">
+    <PageContainer className="py-8">
 
       {/* 뒤로가기 */}
       <div className="mb-6">
