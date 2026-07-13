@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import BriefingArchive from '@/components/dashboard/BriefingArchive'
@@ -15,8 +16,31 @@ interface PageProps {
   searchParams: Promise<{ briefing?: string }>
 }
 
-export default async function BriefingsPage({ searchParams }: PageProps) {
-  const { briefing: initialId } = await searchParams
+function BriefingArchiveSkeleton() {
+  return (
+    <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="space-y-2">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl border border-border bg-card px-4 py-3.5">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-3 w-32 rounded bg-muted animate-pulse" />
+              <div className="h-4 w-10 rounded-full bg-muted animate-pulse" />
+            </div>
+            <div className="h-4 w-3/4 rounded bg-muted animate-pulse" />
+            <div className="mt-2 h-3 w-full rounded bg-muted animate-pulse" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-border bg-card p-5 space-y-3 md:self-start">
+        <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-full rounded bg-muted animate-pulse" />
+        <div className="h-3 w-5/6 rounded bg-muted animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+async function BriefingsContent({ initialId }: { initialId?: string }) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,6 +71,14 @@ export default async function BriefingsPage({ searchParams }: PageProps) {
   }))
 
   return (
+    <BriefingArchive briefings={briefings} initialId={initialId} />
+  )
+}
+
+export default async function BriefingsPage({ searchParams }: PageProps) {
+  const { briefing: initialId } = await searchParams
+
+  return (
     <PageContainer className="py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
         <BackLink
@@ -59,7 +91,9 @@ export default async function BriefingsPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <BriefingArchive briefings={briefings} initialId={initialId} />
+      <Suspense fallback={<BriefingArchiveSkeleton />}>
+        <BriefingsContent initialId={initialId} />
+      </Suspense>
     </PageContainer>
   )
 }

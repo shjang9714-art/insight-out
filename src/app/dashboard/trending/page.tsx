@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { TrendingUp } from 'lucide-react'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
@@ -60,38 +61,31 @@ async function fetchFallbackTop(): Promise<TickerIssue[]> {
 
 type SearchParams = Promise<{ date?: string }>
 
-export default async function TrendingPage({ searchParams }: { searchParams: SearchParams }) {
-  const { date } = await searchParams
-  const todayKst = getKstDateString()
-  const hasExplicitDateParam = Boolean(date && /^\d{4}-\d{2}-\d{2}$/.test(date))
-  const selectedDate = hasExplicitDateParam ? date! : todayKst
-  const isToday = selectedDate === todayKst
-
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) {
-          toSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
+function TrendingRankingSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-2">
+      <div className="space-y-1">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex items-center gap-3 rounded-xl px-3 py-3">
+            <div className="h-5 w-5 rounded bg-muted animate-pulse" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-4 w-3/4 rounded bg-muted animate-pulse" />
+              <div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
+            </div>
+            <div className="h-6 w-14 rounded-full bg-muted animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
   )
+}
 
+async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string; isToday: boolean }) {
   let all: TickerIssue[]
-  // "현재 랭킹" 모드(쿼리 파라미터 없음)에서만 채워짐 — 랭킹에 반영된 기사들의 실제 최신일.
-  // 폴백 집계(뷰 미배포) 시엔 일자 정보가 없어 null로 남고, 라벨은 selectedDate로 대체된다.
-  let currentAsOfDateKst: string | null = null
 
   if (isToday) {
     const trending = await fetchTrendingEvents()
     if (trending) {
-      currentAsOfDateKst = trending.asOfDateKst
       all = trending.events.map(e => ({
         id: e.issueId,
         contentId: e.contentId,
@@ -109,6 +103,22 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
       all = await fetchFallbackTop()
     }
   } else {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(toSet) {
+            toSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          },
+        },
+      }
+    )
+
     const snapshot = await fetchTrendingSnapshot(supabase, selectedDate)
     all = snapshot.map(s => ({
       id: s.issueId,
@@ -124,9 +134,27 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
     }))
   }
 
-  // 현재 랭킹 모드(쿼리 파라미터 없음)엔 랭킹 데이터의 실제 최신일(asOfDateKst)을,
-  // 히스토리 모드(?date=)엔 그 파라미터 값을 그대로 라벨에 쓴다 — 홈(IssueSignals)과 동일 기준.
-  const headerDateLabel = hasExplicitDateParam ? selectedDate : (currentAsOfDateKst ?? selectedDate)
+  if (all.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+        {isToday ? '최근 급상승 이슈가 없습니다.' : '이 날짜는 기록이 없습니다.'}
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-2">
+      <IssueRankTicker issues={all} visibleRows={all.length} />
+    </div>
+  )
+}
+
+export default async function TrendingPage({ searchParams }: { searchParams: SearchParams }) {
+  const { date } = await searchParams
+  const todayKst = getKstDateString()
+  const hasExplicitDateParam = Boolean(date && /^\d{4}-\d{2}-\d{2}$/.test(date))
+  const selectedDate = hasExplicitDateParam ? date! : todayKst
+  const isToday = selectedDate === todayKst
 
   return (
     <PageContainer>
@@ -140,21 +168,15 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <TrendingUp className="h-5 w-5 text-orange-500" />
         <h1 className="text-xl font-bold text-foreground">오늘의 급상승 전체 순위</h1>
-        <span className="text-sm text-muted-foreground">{formatKstMonthDay(headerDateLabel)}</span>
+        <span className="text-sm text-muted-foreground">{formatKstMonthDay(selectedDate)}</span>
         <div className="ml-auto">
           <TrendingHistoryPicker selectedDate={selectedDate} todayKst={todayKst} />
         </div>
       </div>
 
-      {all.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          {isToday ? '최근 급상승 이슈가 없습니다.' : '이 날짜는 기록이 없습니다.'}
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-border bg-card p-2">
-          <IssueRankTicker issues={all} visibleRows={all.length} />
-        </div>
-      )}
+      <Suspense fallback={<TrendingRankingSkeleton />}>
+        <TrendingRanking selectedDate={selectedDate} isToday={isToday} />
+      </Suspense>
     </PageContainer>
   )
 }
