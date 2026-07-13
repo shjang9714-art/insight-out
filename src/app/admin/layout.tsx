@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { AdminSidebar } from '@/components/admin/AdminSidebar'
 import { AdminThemeScope } from '@/components/admin/AdminThemeScope'
+import EnrichJobsProvider from '@/components/admin/EnrichJobsProvider'
+import EnrichJobsDock from '@/components/admin/EnrichJobsDock'
 
 export const metadata: Metadata = {
   title: '어드민 | Insight Out',
@@ -14,10 +16,13 @@ export const metadata: Metadata = {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <AdminThemeScope>
-      <AdminSidebar />
-      <main className="flex-1 min-w-0">
-        <div className="mx-auto max-w-7xl px-8 py-8">{children}</div>
-      </main>
+      <EnrichJobsProvider>
+        <AdminSidebar />
+        <main className="flex-1 min-w-0">
+          <div className="mx-auto max-w-7xl px-8 py-8">{children}</div>
+        </main>
+        <EnrichJobsDock />
+      </EnrichJobsProvider>
     </AdminThemeScope>
   )
 }
