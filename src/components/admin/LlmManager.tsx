@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { Loader2, CheckCircle2, XCircle, FlaskConical } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import { cn } from '@/lib/utils'
 import { CHART_BRAND, CHART_MUTED } from '@/lib/admin/palette'
 
@@ -60,6 +61,39 @@ const TASK_LABELS: Record<string, string> = {
   summarize: '요약',
   report:    '보고서',
 }
+
+const ROUTING_COLUMNS: AdminTableColumn<RoutingRow>[] = [
+  {
+    key: 'priority',
+    header: '우선순위',
+    numeric: true,
+    nowrap: true,
+    cell: row => row.priority,
+  },
+  {
+    key: 'provider',
+    header: 'Provider',
+    nowrap: true,
+    cell: row => <span className="font-medium capitalize">{row.provider}</span>,
+  },
+  {
+    key: 'model',
+    header: '모델',
+    cell: row => (
+      <span className="font-mono text-[11px] text-muted-foreground">{row.model_id}</span>
+    ),
+  },
+  {
+    key: 'status',
+    header: '상태',
+    nowrap: true,
+    cell: row => row.is_active ? (
+      <span className="text-positive">활성</span>
+    ) : (
+      <span className="text-muted-foreground">비활성</span>
+    ),
+  },
+]
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
@@ -134,10 +168,12 @@ export default function LlmManager() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin mr-2" />
-        불러오는 중...
-      </div>
+      <AdminTable
+        columns={ROUTING_COLUMNS}
+        rows={[]}
+        rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
+        loading
+      />
     )
   }
 
@@ -271,51 +307,31 @@ export default function LlmManager() {
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">용도별 라우팅</h2>
         {Object.keys(routingByTask).length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            설정된 라우팅이 없습니다. (폴백 풀 동작 중)
-          </div>
+          <AdminTable
+            columns={ROUTING_COLUMNS}
+            rows={[]}
+            rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
+            empty={{
+              message: '설정된 라우팅이 없습니다.',
+              hint: '폴백 풀로 동작 중입니다.',
+            }}
+          />
         ) : (
           <div className="space-y-4">
             {Object.entries(routingByTask).map(([task, rows]) => (
-              <div key={task} className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="px-4 py-2.5 bg-muted/40 border-b border-border">
+              <div key={task} className="space-y-2">
+                <div className="flex items-center px-1">
                   <span className="text-xs font-semibold text-foreground">
                     {TASK_LABELS[task] ?? task}
                   </span>
                   <span className="ml-2 text-[11px] text-muted-foreground">({task})</span>
                 </div>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="px-4 py-2 font-medium">우선순위</th>
-                      <th className="px-4 py-2 font-medium">Provider</th>
-                      <th className="px-4 py-2 font-medium">모델</th>
-                      <th className="px-4 py-2 font-medium">상태</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, i) => (
-                      <tr
-                        key={i}
-                        className={cn(
-                          'border-b border-border last:border-0',
-                          !row.is_active && 'opacity-50'
-                        )}
-                      >
-                        <td className="px-4 py-2 text-muted-foreground">{row.priority}</td>
-                        <td className="px-4 py-2 font-medium capitalize">{row.provider}</td>
-                        <td className="px-4 py-2 text-muted-foreground font-mono text-[11px]">{row.model_id}</td>
-                        <td className="px-4 py-2">
-                          {row.is_active ? (
-                            <span className="text-positive">활성</span>
-                          ) : (
-                            <span className="text-muted-foreground">비활성</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <AdminTable
+                  columns={ROUTING_COLUMNS}
+                  rows={rows}
+                  rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
+                  rowClassName={row => cn(!row.is_active && 'opacity-50')}
+                />
               </div>
             ))}
           </div>

@@ -11,6 +11,7 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { updateUserRole, promoteByEmail, approveUser, rejectUser } from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 interface UserRow {
   id: string
@@ -324,12 +325,12 @@ export default function UserManager({ initialUsers }: Props) {
                       <button
                         onClick={() => handleToggleRole(u)}
                         disabled={togglingId === u.id || isPending}
-                        className="inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
-                        style={
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40',
                           u.role === 'admin'
-                            ? { background: 'rgb(254 242 242)', color: 'rgb(220 38 38)' }
-                            : { background: 'rgb(240 253 244)', color: 'rgb(22 163 74)' }
-                        }
+                            ? 'bg-destructive/10 text-destructive'
+                            : 'bg-positive-soft text-positive'
+                        )}
                       >
                         {togglingId === u.id ? (
                           <Loader2 className="h-3 w-3 animate-spin" />

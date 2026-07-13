@@ -368,6 +368,10 @@
 .admin-scope tbody td { white-space: nowrap; }
 .admin-scope tbody td.admin-cell-wrap { white-space: normal; }
 
+/* 342 — 마이그레이션된 AdminTable만 기본 줄바꿈. 한 줄 셀은 opt-in으로 유지한다. */
+.admin-scope .admin-table tbody td { white-space: normal; }
+.admin-scope .admin-table tbody td.admin-cell-nowrap { white-space: nowrap; }
+
 /* ─── 어드민 v2 색 토큰 (180, .admin-scope 한정) ────────────────────────────
  * 전역 :root/.dark 는 건드리지 않는다 — 사용자 화면은 무영향.
  * 어드민은 전역 next-themes(html.dark)와 독립적으로 data-admin-theme 속성만 따른다.

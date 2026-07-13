@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { KeyRound, Copy, Check, Ban, AlertTriangle } from 'lucide-react'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import { MCP_SCOPES, MCP_SCOPE_LABEL, MCP_SCOPE_DESC, type McpScope } from '@/lib/mcp/scopes'
 
 interface TokenRow {
@@ -120,6 +121,83 @@ export default function McpTokenBoard() {
     setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
   }
 
+  const tokenColumns: AdminTableColumn<TokenRow>[] = [
+    {
+      key: 'user',
+      header: '팀원',
+      cell: token => (
+        <div>
+          <div className="font-medium text-foreground">{token.users?.name || '-'}</div>
+          <div className="text-sm text-muted-foreground">{token.users?.email}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'label',
+      header: '용도',
+      cell: token => <span className="text-muted-foreground">{token.label || '-'}</span>,
+    },
+    {
+      key: 'token',
+      header: '토큰',
+      nowrap: true,
+      cell: token => <code className="font-mono text-sm">{token.token_prefix}…</code>,
+    },
+    {
+      key: 'scopes',
+      header: '권한',
+      cell: token => (
+        <div className="flex flex-wrap gap-1">
+          {token.scopes.map(scope => (
+            <span
+              key={scope}
+              className={scope === 'publish'
+                ? 'rounded bg-brand-600/10 px-1.5 py-0.5 text-xs text-brand-700'
+                : 'rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground'}
+            >
+              {MCP_SCOPE_LABEL[scope as McpScope] ?? scope}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'lastUsed',
+      header: '마지막 사용',
+      nowrap: true,
+      cell: token => (
+        <span className="text-sm text-muted-foreground">
+          {token.last_used_at ? token.last_used_at.slice(0, 16).replace('T', ' ') : '미사용'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: '상태',
+      nowrap: true,
+      cell: token => token.revoked_at ? (
+        <span className="text-sm text-destructive">폐기됨</span>
+      ) : (
+        <span className="text-sm text-foreground">유효</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: <span className="sr-only">관리</span>,
+      align: 'right',
+      nowrap: true,
+      cell: token => !token.revoked_at && (
+        <button
+          onClick={() => revoke(token.id)}
+          className="ml-auto flex items-center gap-1 text-sm text-destructive hover:underline"
+        >
+          <Ban className="h-4 w-4" />
+          폐기
+        </button>
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-8">
       {error && (
@@ -233,82 +311,15 @@ export default function McpTokenBoard() {
       {/* 발급 목록 */}
       <section>
         <h2 className="mb-3 text-lg font-semibold text-foreground">발급된 토큰</h2>
-
-        {loading ? (
-          <p className="text-base text-muted-foreground">불러오는 중…</p>
-        ) : tokens.length === 0 ? (
-          <p className="text-base text-muted-foreground">아직 발급된 토큰이 없습니다.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-base">
-              <thead className="border-b border-border bg-muted/40 text-sm text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium">팀원</th>
-                  <th className="px-4 py-2.5 text-left font-medium">용도</th>
-                  <th className="px-4 py-2.5 text-left font-medium">토큰</th>
-                  <th className="px-4 py-2.5 text-left font-medium">권한</th>
-                  <th className="px-4 py-2.5 text-left font-medium">마지막 사용</th>
-                  <th className="px-4 py-2.5 text-left font-medium">상태</th>
-                  <th className="px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {tokens.map((t) => {
-                  const revoked = !!t.revoked_at
-                  return (
-                    <tr key={t.id} className={`border-b border-border last:border-0 ${revoked ? 'opacity-50' : ''}`}>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-foreground">{t.users?.name || '-'}</div>
-                        <div className="text-sm text-muted-foreground">{t.users?.email}</div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{t.label || '-'}</td>
-                      <td className="px-4 py-3">
-                        <code className="font-mono text-sm">{t.token_prefix}…</code>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {t.scopes.map((s) => (
-                            <span
-                              key={s}
-                              className={`rounded px-1.5 py-0.5 text-xs ${
-                                s === 'publish'
-                                  ? 'bg-brand-600/10 text-brand-700'
-                                  : 'bg-muted text-muted-foreground'
-                              }`}
-                            >
-                              {MCP_SCOPE_LABEL[s as McpScope] ?? s}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {t.last_used_at ? t.last_used_at.slice(0, 16).replace('T', ' ') : '미사용'}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        {revoked ? (
-                          <span className="text-destructive">폐기됨</span>
-                        ) : (
-                          <span className="text-foreground">유효</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {!revoked && (
-                          <button
-                            onClick={() => revoke(t.id)}
-                            className="flex items-center gap-1 text-sm text-destructive hover:underline"
-                          >
-                            <Ban className="h-4 w-4" />
-                            폐기
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <AdminTable
+          columns={tokenColumns}
+          rows={tokens}
+          rowKey={token => token.id}
+          minWidth="min-w-[900px]"
+          loading={loading}
+          empty={{ message: '아직 발급된 토큰이 없습니다.' }}
+          rowClassName={token => token.revoked_at ? 'opacity-50' : ''}
+        />
       </section>
     </div>
   )

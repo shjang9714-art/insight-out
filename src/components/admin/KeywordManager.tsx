@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -217,6 +218,48 @@ export default function KeywordManager() {
     }
   }
 
+  const keywordColumns: AdminTableColumn<KeywordRow>[] = [
+    {
+      key: 'name',
+      header: '키워드',
+      cell: keyword => <span className="font-medium text-foreground">{keyword.name}</span>,
+    },
+    {
+      key: 'type',
+      header: '구분',
+      nowrap: true,
+      cell: keyword => keyword.is_competitor && (
+        <StatusBadge tone="risk" label="경쟁사" />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '관리',
+      align: 'right',
+      nowrap: true,
+      cell: keyword => (
+        <div className="flex items-center justify-end gap-0.5">
+          <button
+            onClick={() => openEdit(keyword)}
+            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title="수정"
+            aria-label={`${keyword.name} 수정`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => handleDelete(keyword)}
+            className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            title="삭제"
+            aria-label={`${keyword.name} 삭제`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ),
+    },
+  ]
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
@@ -363,14 +406,22 @@ export default function KeywordManager() {
 
       {/* ── 서비스 대분류별 그룹 섹션 ── */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          키워드 목록 로드 중...
-        </div>
+        <AdminTable
+          columns={keywordColumns}
+          rows={[]}
+          rowKey={keyword => keyword.id}
+          loading
+        />
       ) : keywords.length === 0 && services.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-          등록된 키워드가 없습니다. 키워드 추가 버튼으로 첫 번째 키워드를 등록해보세요.
-        </div>
+        <AdminTable
+          columns={keywordColumns}
+          rows={[]}
+          rowKey={keyword => keyword.id}
+          empty={{
+            message: '등록된 키워드가 없습니다.',
+            hint: '키워드 추가 버튼으로 첫 번째 키워드를 등록해보세요.',
+          }}
+        />
       ) : (
         <div className="space-y-6">
           {/* 서비스 대분류 섹션 */}
@@ -405,42 +456,12 @@ export default function KeywordManager() {
                 </div>
 
                 {svcKeywords.length > 0 && (
-                  <div className="overflow-x-auto rounded-xl border border-border bg-card">
-                    <table className="w-full min-w-[400px] text-sm">
-                      <tbody className="divide-y divide-border">
-                        {svcKeywords.map(kw => (
-                          <tr key={kw.id} className="transition-colors hover:bg-accent/50">
-                            <td className="px-4 py-2.5 font-medium text-foreground">{kw.name}</td>
-                            <td className="px-4 py-2.5">
-                              {kw.is_competitor && (
-                                <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                                  경쟁사
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-right">
-                              <div className="flex items-center justify-end gap-0.5">
-                                <button
-                                  onClick={() => openEdit(kw)}
-                                  className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                                  title="수정"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(kw)}
-                                  className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                  title="삭제"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <AdminTable
+                    columns={keywordColumns}
+                    rows={svcKeywords}
+                    rowKey={keyword => keyword.id}
+                    minWidth="min-w-[400px]"
+                  />
                 )}
               </div>
             )
@@ -455,42 +476,12 @@ export default function KeywordManager() {
                   {(keywordsByService.get('') ?? []).length}개
                 </span>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-border bg-card">
-                <table className="w-full min-w-[400px] text-sm">
-                  <tbody className="divide-y divide-border">
-                    {(keywordsByService.get('') ?? []).map(kw => (
-                      <tr key={kw.id} className="transition-colors hover:bg-accent/50">
-                        <td className="px-4 py-2.5 font-medium text-foreground">{kw.name}</td>
-                        <td className="px-4 py-2.5">
-                          {kw.is_competitor && (
-                            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                              경쟁사
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button
-                              onClick={() => openEdit(kw)}
-                              className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                              title="수정"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(kw)}
-                              className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                              title="삭제"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <AdminTable
+                columns={keywordColumns}
+                rows={keywordsByService.get('') ?? []}
+                rowKey={keyword => keyword.id}
+                minWidth="min-w-[400px]"
+              />
             </div>
           )}
         </div>
