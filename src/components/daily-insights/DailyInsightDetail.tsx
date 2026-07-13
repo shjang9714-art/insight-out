@@ -41,6 +41,7 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
       {insight.source_articles && insight.source_articles.length > 0 && (
         <section className="space-y-2 rounded-lg bg-muted/40 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">📰 근거 기사</p>
+          <p className="text-[11px] text-muted-foreground/70">· 지난 24시간 이내 발행</p>
           <ul className="space-y-2">
             {insight.source_articles.map((a) => (
               <li key={a.content_id} className="text-sm">
@@ -70,6 +71,7 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
       {insight.related_past && insight.related_past.length > 0 && (
         <section className="space-y-2 rounded-lg bg-muted/40 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">🕰️ 과거 관련 기사</p>
+          <p className="text-[11px] text-muted-foreground/70">· 지난 6개월 이내 관련 보도</p>
           <ul className="space-y-2">
             {insight.related_past.map((p) => (
               <li key={p.content_id} className="text-xs">
