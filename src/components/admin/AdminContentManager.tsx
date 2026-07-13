@@ -85,6 +85,7 @@ type EditTab = 'card' | 'body'
 const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
+const MAX_BODY_BACKFILL_IDS = 50
 
 // 200 — 콘텐츠 테이블 열 너비 드래그 리사이즈. 선택·관리 열은 고정(제외).
 const COLUMN_WIDTHS_STORAGE_KEY = 'io:admin-contents-col-widths'
@@ -123,6 +124,59 @@ const BODY_STATE_CLASS: Record<'full' | 'snippet' | 'none', string> = {
   full:    'text-positive',
   snippet: 'text-amber-600',
   none:    'text-muted-foreground',
+}
+
+interface BodyBackfillResult {
+  processed: number
+  improved: number
+  skipped: number
+  truncated: boolean
+}
+
+type BodyBackfillNoticeTone = 'success' | 'warning' | 'error'
+
+interface BodyBackfillNotice {
+  message: string
+  tone: BodyBackfillNoticeTone
+}
+
+const BODY_BACKFILL_NOTICE_CLASS: Record<BodyBackfillNoticeTone, string> = {
+  success: 'text-positive',
+  warning: 'text-amber-600',
+  error:   'text-destructive',
+}
+
+const CONTENT_ROW_BASE_SELECT =
+  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, thumbnail_url'
+
+function contentRowSelect(len: boolean, reason: boolean): string {
+  return [
+    CONTENT_ROW_BASE_SELECT,
+    len ? 'body_len' : null,
+    reason ? 'review_reason' : null,
+    'sources(name)',
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
+function parseBodyBackfillResult(raw: unknown): BodyBackfillResult & { error?: string } {
+  const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  return {
+    processed: typeof value.processed === 'number' ? value.processed : 0,
+    improved: typeof value.improved === 'number' ? value.improved : 0,
+    skipped: typeof value.skipped === 'number' ? value.skipped : 0,
+    truncated: value.truncated === true,
+    error: typeof value.error === 'string' ? value.error : undefined,
+  }
+}
+
+async function readJsonSafe(response: Response): Promise<unknown> {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
 }
 
 function formatKst(iso: string): string {
@@ -300,6 +354,11 @@ export default function AdminContentManager() {
   const [workingId,     setWorkingId]     = useState<string | null>(null)
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
   const [isBulkWorking, setIsBulkWorking] = useState(false)
+  const [bodyBackfillId, setBodyBackfillId] = useState<string | null>(null)
+  const [bodyBackfillNotices, setBodyBackfillNotices] =
+    useState<Record<string, BodyBackfillNotice>>({})
+  const [bulkBodyBackfillNotice, setBulkBodyBackfillNotice] =
+    useState<BodyBackfillNotice | null>(null)
 
   // 편집 모달
   const [edit,        setEdit]        = useState<EditState | null>(null)
@@ -382,11 +441,12 @@ export default function AdminContentManager() {
     const run = async () => {
       setIsLoading(true)
       setSelectedIds(new Set())
+      setBodyBackfillNotices({})
+      setBulkBodyBackfillNotice(null)
       setError(null)
 
       const withLen = bodyLenRef.current
       const withReason = reviewReasonRef.current
-      const BASE_COLS = 'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords'
 
       const buildBase = (sel: string) => {
         let q = supabase
@@ -409,11 +469,6 @@ export default function AdminContentManager() {
         return q
       }
 
-      const selectCols = (len: boolean, reason: boolean) =>
-        [BASE_COLS, len ? 'body_len' : null, reason ? 'review_reason' : null, 'sources(name)']
-          .filter(Boolean)
-          .join(', ')
-
       const applyBodyFilter = (query: ReturnType<typeof buildBase>, len: boolean) => {
         if (bodyFilter === 'none')         return query.is('body_fetched_at', null)
         if (len && bodyFilter === 'full')    return query.not('body_fetched_at', 'is', null).gte('body_len', 400)
@@ -422,7 +477,7 @@ export default function AdminContentManager() {
       }
 
       const runQuery = async (len: boolean, reason: boolean) => {
-        let q = applyBodyFilter(buildBase(selectCols(len, reason)), len)
+        let q = applyBodyFilter(buildBase(contentRowSelect(len, reason)), len)
         q = q.range((page - 1) * pageSize, page * pageSize - 1)
         return q
       }
@@ -457,6 +512,112 @@ export default function AdminContentManager() {
     }
     void run()
   }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter, coverFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshPendingCount = async () => {
+    const { count } = await supabase
+      .from('contents')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+    setPendingCount(count ?? 0)
+  }
+
+  const refreshContentRows = async (ids: string[]) => {
+    const uniqueIds = [...new Set(ids)].slice(0, MAX_BODY_BACKFILL_IDS)
+    if (uniqueIds.length === 0) return
+
+    const runQuery = async (len: boolean, reason: boolean) =>
+      supabase
+        .from('contents')
+        .select(contentRowSelect(len, reason))
+        .in('id', uniqueIds)
+
+    const withLen = bodyLenRef.current
+    const withReason = reviewReasonRef.current
+    let r = await runQuery(withLen, withReason)
+
+    if (r.error?.code === '42703' && withReason) {
+      reviewReasonRef.current = false
+      r = await runQuery(withLen, false)
+    }
+    if (r.error?.code === '42703' && withLen) {
+      bodyLenRef.current = false
+      setBodyLenAvailable(false)
+      r = await runQuery(false, reviewReasonRef.current)
+    }
+
+    if (r.error) {
+      setError(`본문 상태 갱신에 실패했습니다: ${r.error.message}`)
+      return
+    }
+
+    const rows = (r.data ?? []) as unknown as AdminContentRow[]
+    const rowMap = new Map(rows.map((row) => [row.id, row]))
+    setContents((prev) => prev.map((item) => rowMap.get(item.id) ?? item))
+    if (!bodyLenRef.current && rows.some((row) => row.body_len != null)) {
+      bodyLenRef.current = true
+      setBodyLenAvailable(true)
+    }
+  }
+
+  const handleBodyBackfill = async (content: AdminContentRow) => {
+    if (getBodyState(content) === 'full') return
+
+    setBodyBackfillId(content.id)
+    setError(null)
+    setBodyBackfillNotices((prev) => {
+      const next = { ...prev }
+      delete next[content.id]
+      return next
+    })
+
+    try {
+      const response = await fetch('/api/admin/body-backfill/by-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [content.id] }),
+      })
+      const result = parseBodyBackfillResult(await readJsonSafe(response))
+
+      if (!response.ok) {
+        throw new Error(result.error ?? '본문 보강에 실패했습니다.')
+      }
+
+      if (result.improved > 0) {
+        const now = new Date().toISOString()
+        setContents((prev) => prev.map((item) =>
+          item.id === content.id
+            ? {
+                ...item,
+                body_fetched_at: now,
+                body_len: bodyLenAvailable ? Math.max(item.body_len ?? 0, 400) : item.body_len,
+              }
+            : item
+        ))
+        setBodyBackfillNotices((prev) => ({
+          ...prev,
+          [content.id]: { message: '본문 보강 완료', tone: 'success' },
+        }))
+        await refreshContentRows([content.id])
+        await refreshPendingCount()
+      } else {
+        await refreshContentRows([content.id])
+        setBodyBackfillNotices((prev) => ({
+          ...prev,
+          [content.id]: { message: '본문을 가져오지 못했습니다', tone: 'warning' },
+        }))
+      }
+    } catch (err) {
+      setBodyBackfillNotices((prev) => ({
+        ...prev,
+        [content.id]: {
+          message: err instanceof Error ? err.message : '본문 보강 중 오류가 발생했습니다.',
+          tone: 'error',
+        },
+      }))
+    } finally {
+      setBodyBackfillId(null)
+    }
+  }
 
   // ── per-row 상태 변경 ────────────────────────────────────────────────────
   const handleStatusChange = async (content: AdminContentRow, nextStatus: ContentStatus) => {
@@ -748,6 +909,7 @@ export default function AdminContentManager() {
   const someSelected = allPageIds.some((id) => selectedIds.has(id)) && !allSelected
 
   const toggleAll = () => {
+    setBulkBodyBackfillNotice(null)
     if (allSelected) {
       setSelectedIds(new Set())
     } else {
@@ -756,6 +918,7 @@ export default function AdminContentManager() {
   }
 
   const toggleRow = (id: string) => {
+    setBulkBodyBackfillNotice(null)
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) { next.delete(id) } else { next.add(id) }
@@ -815,7 +978,81 @@ export default function AdminContentManager() {
     setIsBulkWorking(false)
   }
 
+  const handleBulkBodyBackfill = async () => {
+    const ids = contents
+      .filter((content) => selectedIds.has(content.id) && getBodyState(content) !== 'full')
+      .map((content) => content.id)
+
+    if (ids.length === 0) {
+      setBulkBodyBackfillNotice({
+        message: '보강할 본문이 없습니다.',
+        tone: 'warning',
+      })
+      return
+    }
+
+    setIsBulkWorking(true)
+    setError(null)
+    setBulkBodyBackfillNotice(null)
+
+    try {
+      const response = await fetch('/api/admin/body-backfill/by-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const result = parseBodyBackfillResult(await readJsonSafe(response))
+
+      if (!response.ok) {
+        throw new Error(result.error ?? '본문 보강에 실패했습니다.')
+      }
+
+      const processedIds = ids.slice(0, MAX_BODY_BACKFILL_IDS)
+      if (result.improved > 0) {
+        const now = new Date().toISOString()
+        const processedSet = new Set(processedIds)
+        setContents((prev) => prev.map((item) =>
+          processedSet.has(item.id)
+            ? {
+                ...item,
+                body_fetched_at: now,
+                body_len: bodyLenAvailable ? Math.max(item.body_len ?? 0, 400) : item.body_len,
+              }
+            : item
+        ))
+      }
+      await refreshContentRows(processedIds)
+      if (result.improved > 0) {
+        await refreshPendingCount()
+      }
+
+      const baseMessage = `처리 ${result.processed} · 보강 ${result.improved} · 실패 ${result.skipped}`
+      setBulkBodyBackfillNotice({
+        message: result.truncated
+          ? `${ids.length}건 중 ${MAX_BODY_BACKFILL_IDS}건만 처리했습니다. 다시 실행하세요. ${baseMessage}`
+          : baseMessage,
+        tone: result.improved > 0 ? 'success' : 'warning',
+      })
+    } catch (err) {
+      setBulkBodyBackfillNotice({
+        message: err instanceof Error ? err.message : '본문 보강 중 오류가 발생했습니다.',
+        tone: 'error',
+      })
+    } finally {
+      setIsBulkWorking(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
+  const selectedBackfillCount = contents.filter((content) =>
+    selectedIds.has(content.id) && getBodyState(content) !== 'full'
+  ).length
+  const selectedBackfillHint =
+    selectedBackfillCount === 0
+      ? '선택한 콘텐츠는 모두 풀본문입니다.'
+      : selectedBackfillCount > MAX_BODY_BACKFILL_IDS
+        ? `${MAX_BODY_BACKFILL_IDS}건까지만 처리됩니다.`
+        : null
 
   // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
   const categoryTabs: { value: string; label: string }[] = [
@@ -1287,6 +1524,15 @@ export default function AdminContentManager() {
             <Button
               size="sm"
               variant="outline"
+              disabled={isBulkWorking || selectedBackfillCount === 0}
+              onClick={() => { void handleBulkBodyBackfill() }}
+            >
+              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              본문 보강
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               disabled={isBulkWorking}
               onClick={handleBulkDelete}
               className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
@@ -1295,6 +1541,16 @@ export default function AdminContentManager() {
               삭제
             </Button>
           </div>
+          {selectedBackfillHint && (
+            <span className="text-xs font-medium text-muted-foreground">
+              {selectedBackfillHint}
+            </span>
+          )}
+          {bulkBodyBackfillNotice && (
+            <span className={cn('text-xs font-medium', BODY_BACKFILL_NOTICE_CLASS[bulkBodyBackfillNotice.tone])}>
+              {bulkBodyBackfillNotice.message}
+            </span>
+          )}
         </div>
       )}
 
@@ -1396,7 +1652,12 @@ export default function AdminContentManager() {
             <tbody className="divide-y divide-border">
               {contents.map((content) => {
                 const isWorking   = workingId === content.id
+                const isBodyBackfilling = bodyBackfillId === content.id
                 const isSelected  = selectedIds.has(content.id)
+                const bodyState = getBodyState(content)
+                const canBackfillBody = bodyState !== 'full'
+                const isRowDisabled = isWorking || isBodyBackfilling || isBulkWorking
+                const bodyBackfillNotice = bodyBackfillNotices[content.id]
                 return (
                   <tr
                     key={content.id}
@@ -1445,12 +1706,11 @@ export default function AdminContentManager() {
                     </td>
                     <td className="truncate px-4 py-3">
                       {(() => {
-                        const bs = getBodyState(content)
-                        const label = bs === 'none' ? '미시도'
-                          : bs === 'snippet' ? '스니펫'
+                        const label = bodyState === 'none' ? '미시도'
+                          : bodyState === 'snippet' ? '스니펫'
                           : bodyLenAvailable ? '풀본문' : '처리됨'
                         return (
-                          <span className={cn('text-xs font-medium', BODY_STATE_CLASS[bs])}>
+                          <span className={cn('text-xs font-medium', BODY_STATE_CLASS[bodyState])}>
                             {label}
                           </span>
                         )
@@ -1467,7 +1727,7 @@ export default function AdminContentManager() {
                         {content.status !== 'published' && (
                           <Button
                             type="button" size="sm" variant="outline"
-                            disabled={isWorking || isBulkWorking}
+                            disabled={isRowDisabled}
                             onClick={() => handleStatusChange(content, 'published')}
                             className="text-positive"
                           >
@@ -1478,7 +1738,7 @@ export default function AdminContentManager() {
                         {content.status === 'published' && (
                           <Button
                             type="button" size="sm" variant="outline"
-                            disabled={isWorking || isBulkWorking}
+                            disabled={isRowDisabled}
                             onClick={() => handleStatusChange(content, 'rejected')}
                           >
                             <X className="h-3.5 w-3.5" />
@@ -1491,9 +1751,25 @@ export default function AdminContentManager() {
                             보기
                           </Link>
                         </Button>
+                        {canBackfillBody && (
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            disabled={isRowDisabled}
+                            title="본문 보강"
+                            aria-label={`${content.title} 본문 보강`}
+                            onClick={() => { void handleBodyBackfill(content) }}
+                          >
+                            {isBodyBackfilling
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <RotateCcw className="h-3.5 w-3.5" />
+                            }
+                          </Button>
+                        )}
                         <Button
                           type="button" size="sm" variant="outline"
-                          disabled={isWorking || isBulkWorking}
+                          disabled={isRowDisabled}
                           onClick={() => openEdit(content)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -1501,7 +1777,7 @@ export default function AdminContentManager() {
                         </Button>
                         <Button
                           type="button" size="sm" variant="destructive"
-                          disabled={isWorking || isBulkWorking}
+                          disabled={isRowDisabled}
                           onClick={() => handleDelete(content)}
                           aria-label={`${content.title} 삭제`}
                         >
@@ -1512,6 +1788,14 @@ export default function AdminContentManager() {
                           삭제
                         </Button>
                       </div>
+                      {bodyBackfillNotice && (
+                        <p className={cn(
+                          'mt-1 text-right text-[11px] font-medium leading-tight',
+                          BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotice.tone]
+                        )}>
+                          {bodyBackfillNotice.message}
+                        </p>
+                      )}
                     </td>
                   </tr>
                 )
