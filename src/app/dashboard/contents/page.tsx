@@ -1,17 +1,17 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback, useMemo, startTransition } from 'react'
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { X, Loader2, LayoutGrid, List } from 'lucide-react'
+import { Check, ChevronDown, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PageContainer from '@/components/PageContainer'
-import ContentRow from '@/components/dashboard/ContentRow'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
@@ -75,10 +75,6 @@ const DATE_OPTIONS = [
   { value: 'month', label: '이번 달' },
 ] as const
 type DateFilter = (typeof DATE_OPTIONS)[number]['value']
-
-type ContentView = 'card' | 'list'
-const VIEW_KEY = 'io:content-view'
-
 
 const PAGE_SIZE = 20
 
@@ -148,17 +144,6 @@ function groupByKstDay(
   return result
 }
 
-function getSavedView(): ContentView {
-  if (typeof window === 'undefined') return 'card'
-  try {
-    const v = localStorage.getItem(VIEW_KEY)
-    return v === 'list' ? 'list' : 'card'
-  } catch {
-    return 'card'
-  }
-}
-
-
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
@@ -195,15 +180,172 @@ function SkeletonCard() {
   )
 }
 
-function SkeletonRow() {
+function ServiceFilterPopover({
+  services,
+  value,
+  onChange,
+}: {
+  services: ServiceOption[]
+  value: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+
+  const selectedCount = value.length
+  const hasSelection = selectedCount > 0
+
+  const close = () => setOpen(false)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) close()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open])
+
+  const toggleService = (id: string) => {
+    if (value.includes(id)) {
+      onChange(value.filter((v) => v !== id))
+    } else {
+      onChange([...value, id])
+    }
+  }
+
   return (
-    <div className="animate-pulse rounded-xl border border-border bg-card px-5 py-4">
-      <div className="mb-2 flex gap-1.5">
-        <div className="h-4 w-14 rounded-md bg-muted" />
-        <div className="h-4 w-16 rounded-md bg-muted" />
-      </div>
-      <div className="mb-1.5 h-4 w-3/4 rounded bg-muted" />
-      <div className="h-3 w-1/2 rounded bg-muted" />
+    <div className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={services.length === 0}
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+          hasSelection
+            ? 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
+            : 'border-border bg-card text-muted-foreground hover:border-brand-200 hover:text-foreground'
+        )}
+      >
+        사업
+        {selectedCount > 0 && (
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-solid text-[10px] font-bold text-white">
+            {selectedCount}
+          </span>
+        )}
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          className="absolute right-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+        >
+          <div className="border-b border-border px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className={cn(
+                'text-[11px] transition-colors',
+                hasSelection ? 'text-brand-600 hover:text-brand-700' : 'text-muted-foreground cursor-default'
+              )}
+              disabled={!hasSelection}
+            >
+              전체 해제
+            </button>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto py-1">
+            {services.map((service) => {
+              const selected = value.includes(service.id)
+              return (
+                <button
+                  key={service.id}
+                  type="button"
+                  onClick={() => toggleService(service.id)}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent',
+                    selected && 'bg-brand-50/50 dark:bg-brand-950/20'
+                  )}
+                >
+                  <span className={cn(
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                    selected
+                      ? 'border-brand-600 bg-brand-solid text-white'
+                      : 'border-border bg-background'
+                  )}>
+                    {selected && <Check className="h-2.5 w-2.5" />}
+                  </span>
+                  <span className={cn(
+                    'flex-1 truncate',
+                    selected && 'font-medium text-brand-700 dark:text-brand-400'
+                  )}>
+                    {service.icon ? `${service.icon} ${service.name}` : service.name}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ContentCardGrid({ items, category, sortByCollected }: {
+  items: ClusteredItem[]
+  category: ContentCategory | ''
+  sortByCollected: boolean
+}) {
+  return (
+    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+      {items.map(({ item, members }) => (
+        category === '유튜브' ? (
+          <ContentCard
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            summaryKo={item.summary_ko ?? null}
+            category="유튜브"
+            sourceName={item.sources?.name ?? item.author ?? null}
+            publishedAt={displayDate(item, sortByCollected)}
+            thumbnailUrl={coverUrlFor(item)}
+            externalHref={item.original_url}
+            keywords={item.matched_keywords ?? []}
+            lguImpact={item.lgu_impact ?? null}
+          />
+        ) : (
+          <ContentListCard
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            excerpt={toExcerpt(item.summary_ko, item.body_original)}
+            category={item.category}
+            publishedAt={displayDate(item, sortByCollected)}
+            originalUrl={item.original_url}
+            filePath={item.file_path}
+            isEditorPick={item.is_editor_pick}
+            author={item.author}
+            sourceName={item.sources?.name ?? null}
+            tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+            clusterMembers={members.length > 0 ? members : undefined}
+            thumbnailUrl={coverUrlFor(item)}
+            lguImpact={item.lgu_impact ?? null}
+          />
+        )
+      ))}
     </div>
   )
 }
@@ -248,17 +390,10 @@ function ContentsContent() {
   const [isLoading, setLoading]   = useState(false)
   const [services, setServices]   = useState<ServiceOption[]>([])
   const [sources, setSources]     = useState<SourceOption[]>([])
-  const [contentView, setContentView] = useState<ContentView>('card')
-  const [groupByDay, setGroupByDay]   = useState(false)
   // null = 카테고리 미선택(전체 출처 노출)
   const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
   // lgu_impact 컬럼 미적용(42703) 시 false — 필터 UI 숨김 + select 에서 제외(313)
   const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
-
-  // localStorage에서 뷰 설정 복원 (SSR 가드)
-  useEffect(() => {
-    startTransition(() => setContentView(getSavedView()))
-  }, [])
 
   // 진입 시 카테고리 미지정이면 '뉴스'로 기본 설정 (URL 반영)
   useEffect(() => {
@@ -267,11 +402,6 @@ function ContentsContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const handleViewChange = (v: ContentView) => {
-    setContentView(v)
-    try { localStorage.setItem(VIEW_KEY, v) } catch { /* noop */ }
-  }
 
   // ── URL 업데이트 헬퍼 ────────────────────────────────────────────────────────
   // window.location.search 를 사용해 Link 이동 직후 stale 클로저 방지
@@ -549,8 +679,8 @@ function ContentsContent() {
         />
       </NavGroupAlign>
 
-      {/* 제목 + 건수 + 뷰 토글 */}
-      <div className="mb-5 flex items-end justify-between gap-4">
+      {/* 제목 + 건수 */}
+      <div className="mb-5">
         <div>
           <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
           {!isLoading && total !== null && (
@@ -559,119 +689,68 @@ function ContentsContent() {
             </p>
           )}
         </div>
-
-        {/* 정렬·뷰 토글 그룹 */}
-        <div className="flex items-center gap-2">
-          {/* 발행순/수집순 토글 (리포트는 항상 수집순이라 숨김) */}
-          {!isReportCategory && (
-            <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
-              <button
-                onClick={() => updateParam('sort', '')}
-                className={cn(
-                  'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                  sort === 'published' || !searchParams.get('sort')
-                    ? 'bg-brand-solid text-white'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                발행순
-              </button>
-              <button
-                onClick={() => updateParam('sort', 'collected')}
-                className={cn(
-                  'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                  sort === 'collected'
-                    ? 'bg-brand-solid text-white'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                수집순
-              </button>
-            </div>
-          )}
-
-          {/* 일별 묶음 토글 */}
-          <button
-            onClick={() => setGroupByDay((v) => !v)}
-            className={cn(
-              'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
-              groupByDay
-                ? 'border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300'
-                : 'border-border bg-card text-muted-foreground hover:text-foreground'
-            )}
-          >
-            일별 보기
-          </button>
-
-          {/* 카드/목록 토글 */}
-          <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
-            <button
-              onClick={() => handleViewChange('card')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                contentView === 'card'
-                  ? 'bg-brand-solid text-white'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-              aria-label="카드 뷰"
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              카드
-            </button>
-            <button
-              onClick={() => handleViewChange('list')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                contentView === 'list'
-                  ? 'bg-brand-solid text-white'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-              aria-label="목록 뷰"
-            >
-              <List className="h-3.5 w-3.5" />
-              목록
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* ─── 필터 바 ─────────────────────────────────────────────────────────── */}
-      {/* 날짜/사업/관련성 선택 UI 숨김(Lv.3 컨트롤 제거, 기본 정렬은 유지) — 출처 필터만 노출 */}
       <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
-        <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex w-full flex-wrap items-start gap-x-4 gap-y-3">
+          <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
+            {/* 렌즈 전환(309) */}
+            <LensSwitcher />
 
-          {/* 렌즈 전환(309) */}
-          <LensSwitcher />
+            {/* LG U+ 관점 위기/기회 필터(313) — 컬럼 미적용 시 숨김 */}
+            {lguImpactAvailable && (
+              <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+                {IMPACT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateParam('impact', opt.value)}
+                    className={cn(
+                      'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                      impact === opt.value
+                        ? 'bg-brand-solid text-white'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {/* LG U+ 관점 위기/기회 필터(313) — 컬럼 미적용 시 숨김 */}
-          {lguImpactAvailable && (
-            <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
-              {IMPACT_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => updateParam('impact', opt.value)}
-                  className={cn(
-                    'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                    impact === opt.value
-                      ? 'bg-brand-solid text-white'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <ServiceFilterPopover
+              services={services}
+              value={svcIds}
+              onChange={(ids) => updateParam('svc', ids.join(','))}
+            />
 
-          {/* 출처 팝오버 — 우측 끝 (카테고리 있으면 해당 카테고리 출처만) */}
-          <div className="ml-auto">
             <SourcePopover
               sources={scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources}
               value={srcIds}
               onChange={(ids) => updateParam('src', ids.join(','))}
             />
-          </div>
 
+            <Select value={date} onValueChange={(value) => updateParam('date', value === 'all' ? '' : value)}>
+              <SelectTrigger
+                size="sm"
+                className={cn(
+                  'border-border bg-card text-xs font-medium text-muted-foreground hover:border-brand-200 hover:text-foreground',
+                  date !== 'all' && 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
+                )}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {DATE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.value === 'all' ? '기간' : opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* 활성 필터 chips */}
@@ -693,15 +772,9 @@ function ContentsContent() {
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
       {isLoading && page === 1 ? (
-        contentView === 'card' ? (
-          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
-          </div>
-        )
+        <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <span className="text-4xl">🔧</span>
@@ -714,144 +787,16 @@ function ContentsContent() {
         </div>
       ) : (
         <>
-          {groupByDay ? (
-            /* ── 일별 묶음 보기 ── */
-            <div className="space-y-6">
-              {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
-                <div key={seg.key}>
-                  <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
-                    {seg.label}
-                  </p>
-                  {category === '유튜브' ? (
-                    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-                      {seg.items.map(({ item }) => (
-                        <ContentCard
-                          key={item.id}
-                          id={item.id}
-                          title={item.title}
-                          summaryKo={item.summary_ko ?? null}
-                          category="유튜브"
-                          sourceName={item.sources?.name ?? item.author ?? null}
-                          publishedAt={displayDate(item, sortByCollected)}
-                          thumbnailUrl={coverUrlFor(item)}
-                          externalHref={item.original_url}
-                          keywords={item.matched_keywords ?? []}
-                          lguImpact={item.lgu_impact ?? null}
-                        />
-                      ))}
-                    </div>
-                  ) : contentView === 'card' ? (
-                    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-                      {seg.items.map(({ item, members }) => (
-                        <ContentListCard
-                          key={item.id}
-                          id={item.id}
-                          title={item.title}
-                          excerpt={toExcerpt(item.summary_ko, item.body_original)}
-                          category={item.category}
-                          publishedAt={displayDate(item, sortByCollected)}
-                          originalUrl={item.original_url}
-                          filePath={item.file_path}
-                          isEditorPick={item.is_editor_pick}
-                          author={item.author}
-                          sourceName={item.sources?.name ?? null}
-                          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-                          clusterMembers={members.length > 0 ? members : undefined}
-                          thumbnailUrl={coverUrlFor(item)}
-                          lguImpact={item.lgu_impact ?? null}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {seg.items.map(({ item, members }) => (
-                        <ContentRow
-                          key={item.id}
-                          id={item.id}
-                          title={item.title}
-                          summaryKo={item.summary_ko}
-                          bodyOriginal={item.body_original}
-                          category={item.category}
-                          publishedAt={displayDate(item, sortByCollected)}
-                          originalUrl={item.original_url}
-                          filePath={item.file_path}
-                          isEditorPick={item.is_editor_pick}
-                          author={item.author}
-                          sourceName={item.sources?.name ?? null}
-                          keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-                          clusterMembers={members.length > 0 ? members : undefined}
-                          lguImpact={item.lgu_impact ?? null}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : category === '유튜브' ? (
-            /* ── 유튜브 전용 그리드 ── */
-            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-              {clusteredItems.map(({ item }) => (
-                <ContentCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  summaryKo={item.summary_ko ?? null}
-                  category="유튜브"
-                  sourceName={item.sources?.name ?? item.author ?? null}
-                  publishedAt={displayDate(item, sortByCollected)}
-                  thumbnailUrl={coverUrlFor(item)}
-                  externalHref={item.original_url}
-                  keywords={item.matched_keywords ?? []}
-                  lguImpact={item.lgu_impact ?? null}
-                />
-              ))}
-            </div>
-          ) : contentView === 'card' ? (
-            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-              {clusteredItems.map(({ item, members }) => (
-                <ContentListCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  excerpt={toExcerpt(item.summary_ko, item.body_original)}
-                  category={item.category}
-                  publishedAt={displayDate(item, sortByCollected)}
-                  originalUrl={item.original_url}
-                  filePath={item.file_path}
-                  isEditorPick={item.is_editor_pick}
-                  author={item.author}
-                  sourceName={item.sources?.name ?? null}
-                  tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-                  clusterMembers={members.length > 0 ? members : undefined}
-                  thumbnailUrl={coverUrlFor(item)}
-                  lguImpact={item.lgu_impact ?? null}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {clusteredItems.map(({ item, members }) => (
-                <ContentRow
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  summaryKo={item.summary_ko}
-                  bodyOriginal={item.body_original}
-                  category={item.category}
-                  publishedAt={displayDate(item, sortByCollected)}
-                  originalUrl={item.original_url}
-                  filePath={item.file_path}
-                  isEditorPick={item.is_editor_pick}
-                  author={item.author}
-                  sourceName={item.sources?.name ?? null}
-                  keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-                  clusterMembers={members.length > 0 ? members : undefined}
-                  lguImpact={item.lgu_impact ?? null}
-                />
-              ))}
-            </div>
-          )}
+          <div className="space-y-6">
+            {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
+              <section key={seg.key}>
+                <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+                  {seg.label}
+                </p>
+                <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
+              </section>
+            ))}
+          </div>
 
           {/* 더 보기 */}
           {hasMore && (
