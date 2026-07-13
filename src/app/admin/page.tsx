@@ -2,23 +2,26 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { Database, Users } from 'lucide-react'
 import { getKstTodayStartIso } from '@/lib/date'
-import { DashboardCharts, type ChartData, type DayTrend } from '@/components/admin/DashboardCharts'
+import { type ChartData, type DayTrend } from '@/components/admin/DashboardCharts'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
-import AdminOpsSignals, { type LlmProviderUsage, type OpsSignalCounts } from '@/components/admin/AdminOpsSignals'
+import AdminOpsSignals, { type LlmProviderUsage } from '@/components/admin/AdminOpsSignals'
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
 import AiRefreshButton from '@/components/admin/AiRefreshButton'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminFailedJobsCard, { type FailedJobRow } from '@/components/admin/AdminFailedJobsCard'
+import { AdminCollectionAnalysisDialog } from '@/components/admin/AdminCollectionAnalysisDialog'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '대시보드 | Insight Out',
-  description: 'Insight Out 운영 현황과 관리자 기능을 확인합니다.',
+  description: 'Insight Out 운영 대시보드와 관리자 기능을 확인합니다.',
 }
 
 const CATEGORIES = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서'] as const
@@ -26,8 +29,33 @@ type Category = typeof CATEGORIES[number]
 
 // ─── KPI 카드 스타일 ──────────────────────────────────────────────────────────
 
-const KPI_CARD =
+const KPI_PANEL =
+  'flex h-full flex-col rounded-2xl border border-border bg-card p-5'
+
+const KPI_LINK =
   'group flex h-full flex-col rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-accent'
+
+const CATEGORY_LINK =
+  'rounded-lg border border-border bg-muted/30 px-3 py-2 transition-colors hover:bg-accent'
+
+function CategoryBreakdown({ values, todayOnly = false }: { values: Record<Category, number>; todayOnly?: boolean }) {
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+      {CATEGORIES.map((category) => (
+        <Link
+          key={category}
+          href={`/admin/contents?category=${encodeURIComponent(category)}${todayOnly ? '&from=today' : ''}`}
+          className={CATEGORY_LINK}
+        >
+          <span className="block admin-caption text-muted-foreground">{category}</span>
+          <span className="mt-1 block text-sm font-semibold tabular-nums text-foreground">
+            {values[category].toLocaleString()}
+          </span>
+        </Link>
+      ))}
+    </div>
+  )
+}
 
 export default async function AdminPage() {
   const cookieStore = await cookies()
@@ -49,7 +77,7 @@ export default async function AdminPage() {
   const yesterday = new Date(todayStartMs - 24 * 60 * 60 * 1000).toISOString()
   const period = getKstPeriod()
 
-  // admin 클라이언트 — usage/신호등 집계(graceful)
+  // admin 클라이언트 — usage 집계(graceful)
   let admin: ReturnType<typeof createAdminClient> | null = null
   try { admin = createAdminClient() } catch { /* env 미설정 시 무시 */ }
 
@@ -65,8 +93,6 @@ export default async function AdminPage() {
     totalUsersRes,
     // 신규 — usage
     llmUsageRes, llmSettingsRes, transUsageRes, ttsUsageRes,
-    // 신규 — 데이터 점등
-    issuesCountRes, entitiesCountRes, insightCardsCountRes, aiReportsCountRes, contentSignalsRes,
     // 콘텐츠 건강
     bodyFullRes, bodySnippetRes, bodyNoneRes, sentMissingRes, untaggedRes, brokenLinkRes, deadLinksRes,
     // 신규 — 최근 실패한 작업(289)
@@ -113,13 +139,6 @@ export default async function AdminPage() {
     admin ? admin.from('translation_usage').select('chars').eq('period', period) : Promise.resolve({ data: [], error: null }),
     // TTS usage
     admin ? admin.from('tts_usage').select('chars').eq('period', period) : Promise.resolve({ data: [], error: null }),
-    // 데이터 점등
-    supabase.from('issues').select('*', { count: 'exact', head: true }),
-    supabase.from('entities').select('*', { count: 'exact', head: true }),
-    supabase.from('insight_cards').select('*', { count: 'exact', head: true }),
-    supabase.from('ai_reports').select('*', { count: 'exact', head: true }),
-    // content_signals — graceful(테이블 없으면 0)
-    supabase.from('content_signals').select('*', { count: 'exact', head: true }).limit(0),
     // 콘텐츠 건강 집계 (8개)
     supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).gte('body_len', 400),
     supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).lt('body_len', 400),
@@ -219,15 +238,6 @@ export default async function AdminPage() {
   const ttsChars         = ((ttsUsageRes.data ?? []) as { chars: number }[]).reduce((sum, r) => sum + (r.chars ?? 0), 0)
   const ttsMonthlyCap    = process.env.TTS_MONTHLY_CHAR_CAP ? Number(process.env.TTS_MONTHLY_CHAR_CAP) : null
 
-  // ── 데이터 점등 집계 ────────────────────────────────────────────────────────
-  const signalCounts: OpsSignalCounts = {
-    issues:        issuesCountRes.count      ?? 0,
-    entities:      entitiesCountRes.count    ?? 0,
-    insightCards:  insightCardsCountRes.count ?? 0,
-    aiReports:     aiReportsCountRes.count   ?? 0,
-    contentSignals: contentSignalsRes.count  ?? 0,
-  }
-
   // ── 콘텐츠 건강 집계 ──────────────────────────────────────────────────────
   const contentHealth: ContentHealth = {
     total:             totalRes.count     ?? 0,
@@ -250,7 +260,6 @@ export default async function AdminPage() {
 
   const chartData: ChartData = {
     categoryDist:      CATEGORIES.map(c => ({ name: c, value: catTotals[c] })),
-    todayCategoryDist: CATEGORIES.map(c => ({ name: c, value: catToday[c] })),
     statusDist: [
       { name: '게시됨',    value: publishedRes.count ?? 0 },
       { name: '검토 대기', value: pendingRes.count   ?? 0 },
@@ -264,12 +273,12 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-10">
-      <AdminPageHeader />
+      <AdminPageHeader actions={<AiRefreshButton />} />
 
-      {/* 최근 실패한 작업(289) — 크론 10개 계측. 있으면 눈에 띄게, 없으면 조용히 */}
+      {/* ① 최근 실패한 작업(289) — 크론 10개 계측. 있으면 눈에 띄게, 없으면 조용히 */}
       <AdminFailedJobsCard jobs={failedJobs} ready={jobRunsReady} />
 
-      {/* ① 오늘 할 일 */}
+      {/* ② 오늘 할 일 */}
       <AdminTodoBlock
         pending={pendingRes.count ?? 0}
         todayFailed={todayFailed}
@@ -277,59 +286,56 @@ export default async function AdminPage() {
         pendingUsers={pendingUsers}
       />
 
-      {/* ② AI 수동 갱신 */}
-      <AiRefreshButton />
-
-      {/* ④ 운영 신호등 */}
+      {/* ③ 사용량 및 수집 관리 */}
       <AdminOpsSignals
         llmProviders={llmProviders}
         translationChars={translationChars}
         ttsChars={ttsChars}
         ttsMonthlyCap={ttsMonthlyCap}
-        signalCounts={signalCounts}
       />
-
-      {/* ⑤ 콘텐츠 건강 */}
       <AdminContentHealth health={contentHealth} />
 
-      {/* ③ KPI 카드 */}
-      <section aria-labelledby="kpi-heading">
-        <h2 id="kpi-heading" className="admin-section-title mb-4 text-foreground">
-          운영 현황
-        </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      {/* ④ 콘텐츠 수집현황 */}
+      <section aria-label="콘텐츠 수집현황">
+        <AdminSectionHeader
+          icon={Database}
+          title="콘텐츠 수집현황"
+          hint="카테고리별 수집량과 운영 KPI"
+          action={<AdminCollectionAnalysisDialog chartData={chartData} />}
+        />
+        <div className="grid gap-3 xl:grid-cols-2">
           {/* 총 콘텐츠 */}
-          <Link href="/admin/contents" className={KPI_CARD}>
+          <div className={KPI_PANEL}>
             <p className="admin-card-title text-muted-foreground">총 콘텐츠</p>
             <p className="mt-3 flex items-baseline gap-1.5">
               <span className="admin-metric-dashboard text-foreground">{(totalRes.count ?? 0).toLocaleString()}</span>
               <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">수집·저장된 전체 콘텐츠</p>
-            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 admin-caption text-muted-foreground">
-              {CATEGORIES.map(c => (
-                <span key={c}>{c} {catTotals[c].toLocaleString()}</span>
-              ))}
-            </div>
-          </Link>
+            <Link href="/admin/contents" className="mt-2 w-fit admin-caption font-medium text-muted-foreground hover:text-foreground hover:underline">
+              전체 보기
+            </Link>
+            <CategoryBreakdown values={catTotals} />
+          </div>
 
           {/* 오늘 수집 */}
-          <Link href="/admin/contents?from=today" className={KPI_CARD}>
+          <div className={KPI_PANEL}>
             <p className="admin-card-title text-muted-foreground">오늘 수집</p>
             <p className="mt-3 flex items-baseline gap-1.5">
               <span className="admin-metric-dashboard text-foreground">{(todayRes.count ?? 0).toLocaleString()}</span>
               <span className="admin-metric-unit-dashboard text-muted-foreground">건</span>
             </p>
             <p className="mt-1 admin-caption text-muted-foreground">오늘 새로 들어온 콘텐츠</p>
-            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 admin-caption text-muted-foreground">
-              {CATEGORIES.map(c => (
-                <span key={c}>{c} {catToday[c].toLocaleString()}</span>
-              ))}
-            </div>
-          </Link>
+            <Link href="/admin/contents?from=today" className="mt-2 w-fit admin-caption font-medium text-muted-foreground hover:text-foreground hover:underline">
+              오늘 전체 보기
+            </Link>
+            <CategoryBreakdown values={catToday} todayOnly />
+          </div>
+        </div>
 
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
           {/* 북마크된 콘텐츠 */}
-          <Link href="/admin/contents?bookmarked=1" className={KPI_CARD}>
+          <Link href="/admin/contents?bookmarked=1" className={KPI_LINK}>
             <p className="admin-card-title text-muted-foreground">북마크된 콘텐츠</p>
             <p className="mt-3 flex items-baseline gap-1.5">
               <span className="admin-metric-dashboard text-foreground">{(bookmarkedRes.count ?? 0).toLocaleString()}</span>
@@ -338,18 +344,8 @@ export default async function AdminPage() {
             <p className="mt-1 admin-caption text-muted-foreground">사용자가 저장한 콘텐츠</p>
           </Link>
 
-          {/* 전체 사용자 수 (278) */}
-          <Link href="/admin/users" className={KPI_CARD}>
-            <p className="admin-card-title text-muted-foreground">전체 사용자</p>
-            <p className="mt-3 flex items-baseline gap-1.5">
-              <span className="admin-metric-dashboard text-foreground">{(totalUsersRes.count ?? 0).toLocaleString()}</span>
-              <span className="admin-metric-unit-dashboard text-muted-foreground">명</span>
-            </p>
-            <p className="mt-1 admin-caption text-muted-foreground">가입된 전체 사용자</p>
-          </Link>
-
           {/* 활성 소스 */}
-          <Link href="/admin/sources" className={KPI_CARD}>
+          <Link href="/admin/sources" className={KPI_LINK}>
             <p className="admin-card-title text-muted-foreground">활성 소스</p>
             <p className="mt-3 flex items-baseline gap-1.5">
               <span className="admin-metric-dashboard text-foreground">{(activeSourcesRes.count ?? 0).toLocaleString()}</span>
@@ -362,7 +358,7 @@ export default async function AdminPage() {
           </Link>
 
           {/* 리서치 반영 (AI 보고서 뷰 미구현 — 준비중) */}
-          <div className={KPI_CARD + ' cursor-default opacity-60'}>
+          <div className={KPI_PANEL + ' cursor-default opacity-60'}>
             <p className="admin-card-title text-muted-foreground">리서치 반영</p>
             <p className="mt-3 flex items-baseline gap-1.5">
               <span className="admin-metric-dashboard text-foreground">{researchRes.count ?? 0}</span>
@@ -373,12 +369,19 @@ export default async function AdminPage() {
         </div>
       </section>
 
-      {/* ② 차트 */}
-      <section aria-labelledby="charts-heading">
-        <h2 id="charts-heading" className="admin-section-title mb-4 text-foreground">
-          수집 분석
-        </h2>
-        <DashboardCharts chartData={chartData} />
+      {/* ⑤ 사용자 현황 */}
+      <section aria-label="사용자 현황">
+        <AdminSectionHeader icon={Users} title="사용자 현황" hint="가입 계정 기준" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Link href="/admin/users" className={KPI_LINK}>
+            <p className="admin-card-title text-muted-foreground">전체 사용자</p>
+            <p className="mt-3 flex items-baseline gap-1.5">
+              <span className="admin-metric-dashboard text-foreground">{(totalUsersRes.count ?? 0).toLocaleString()}</span>
+              <span className="admin-metric-unit-dashboard text-muted-foreground">명</span>
+            </p>
+            <p className="mt-1 admin-caption text-muted-foreground">가입된 전체 사용자</p>
+          </Link>
+        </div>
       </section>
 
     </div>

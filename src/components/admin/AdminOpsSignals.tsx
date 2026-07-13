@@ -10,20 +10,11 @@ export interface LlmProviderUsage {
   tokenLimit: number
 }
 
-export interface OpsSignalCounts {
-  issues: number
-  entities: number
-  insightCards: number
-  aiReports: number
-  contentSignals: number
-}
-
 interface Props {
   llmProviders: LlmProviderUsage[]
   translationChars: number
   ttsChars: number
   ttsMonthlyCap: number | null
-  signalCounts: OpsSignalCounts
 }
 
 function UsageBar({ used, limit, label }: { used: number; limit: number; label: string }) {
@@ -61,27 +52,12 @@ export default function AdminOpsSignals({
   translationChars,
   ttsChars,
   ttsMonthlyCap,
-  signalCounts,
 }: Props) {
-  const hasUnlit =
-    signalCounts.issues === 0 ||
-    signalCounts.entities === 0 ||
-    signalCounts.insightCards === 0 ||
-    signalCounts.contentSignals === 0
-
-  const chips: { label: string; value: number }[] = [
-    { label: '이슈',      value: signalCounts.issues },
-    { label: '엔티티',    value: signalCounts.entities },
-    { label: '인사이트',  value: signalCounts.insightCards },
-    { label: '시그널',    value: signalCounts.contentSignals },
-    { label: '보고서',    value: signalCounts.aiReports },
-  ]
-
   return (
-    <section aria-labelledby="ops-signals-heading">
-      <AdminSectionHeader icon={Activity} title="운영 신호등" hint="사용량 한도와 데이터 점등 상태" />
+    <section aria-label="사용량 및 수집 관리">
+      <AdminSectionHeader icon={Activity} title="사용량 및 수집 관리" hint="LLM·번역·TTS 사용량을 확인합니다." />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4">
         {/* 사용량 바 */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">사용량 / 한도</p>
@@ -117,32 +93,6 @@ export default function AdminOpsSignals({
               <span className="font-medium text-foreground">TTS(문자)</span>
               <span className="tabular-nums text-muted-foreground">{ttsChars.toLocaleString()}자</span>
             </div>
-          )}
-        </div>
-
-        {/* 데이터 점등 */}
-        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">데이터 점등</p>
-          <div className="flex flex-wrap gap-2">
-            {chips.map(chip => (
-              <span
-                key={chip.label}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium tabular-nums',
-                  chip.value > 0
-                    ? 'border-border text-foreground'
-                    : 'border-border text-muted-foreground',
-                )}
-              >
-                <span className={cn('h-1.5 w-1.5 rounded-full', chip.value > 0 ? 'bg-positive' : 'bg-muted-foreground/40')} />
-                {chip.label} {chip.value.toLocaleString()}
-              </span>
-            ))}
-          </div>
-          {hasUnlit && (
-            <p className="admin-caption text-muted-foreground">
-              0인 항목은 SQL 적용 / 수집 후 점등됩니다.
-            </p>
           )}
         </div>
       </div>

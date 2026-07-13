@@ -30,7 +30,6 @@ export interface DayTrend {
 
 export interface ChartData {
   categoryDist: { name: string; value: number }[]
-  todayCategoryDist: { name: string; value: number }[]
   statusDist: { name: string; value: number }[]
   dayTrend: DayTrend[]
   sourceTop: { sourceId: string; name: string; count: number }[]
