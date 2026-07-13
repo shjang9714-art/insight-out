@@ -82,10 +82,15 @@ function TrendingRankingSkeleton() {
 
 async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string; isToday: boolean }) {
   let all: TickerIssue[]
+  // 기준일이 실제 오늘(KST)이 아니면(크론 전 새벽 등) "오늘"이라 부르지 않고 날짜로 표시 —
+  // 과거 데이터를 "오늘"로 표시하던 옛 버그(2026-07-12) 재발 방지. 히스토리(!isToday) 조회는
+  // 사용자가 명시적으로 고른 과거 날짜이므로 항상 날짜 표기.
+  let dayLabel = formatKstMonthDay(selectedDate)
 
   if (isToday) {
     const trending = await fetchTrendingEvents()
     if (trending) {
+      dayLabel = trending.asOfDateKst === selectedDate ? '오늘' : formatKstMonthDay(trending.asOfDateKst)
       all = trending.events.map(e => ({
         id: e.issueId,
         contentId: e.contentId,
@@ -144,7 +149,7 @@ async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string
 
   return (
     <div className="rounded-2xl border border-border bg-card p-2">
-      <IssueRankTicker issues={all} visibleRows={all.length} />
+      <IssueRankTicker issues={all} visibleRows={all.length} dayLabel={dayLabel} />
     </div>
   )
 }
@@ -155,6 +160,14 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
   const hasExplicitDateParam = Boolean(date && /^\d{4}-\d{2}-\d{2}$/.test(date))
   const selectedDate = hasExplicitDateParam ? date! : todayKst
   const isToday = selectedDate === todayKst
+
+  // 헤더 날짜 라벨은 항상 실제 기준일(asOfDateKst)을 따른다 — isToday일 때 selectedDate(=
+  // todayKst)를 그대로 쓰면 당일 크론(05:00 KST) 전 새벽엔 헤더는 "오늘"인데 실제 랭킹
+  // 데이터는 어제자인 불일치가 재발한다. fetchTrendingEvents()는 unstable_cache로 캐시돼
+  // 있어 아래 TrendingRanking의 내부 호출과 중복 비용(LLM 재호출 등) 없이 라벨만 얻는다.
+  const headerDateLabel = isToday
+    ? formatKstMonthDay((await fetchTrendingEvents())?.asOfDateKst ?? selectedDate)
+    : formatKstMonthDay(selectedDate)
 
   return (
     <PageContainer>
@@ -168,7 +181,7 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <TrendingUp className="h-5 w-5 text-orange-500" />
         <h1 className="text-xl font-bold text-foreground">오늘의 급상승 전체 순위</h1>
-        <span className="text-sm text-muted-foreground">{formatKstMonthDay(selectedDate)}</span>
+        <span className="text-sm text-muted-foreground">{headerDateLabel}</span>
         <div className="ml-auto">
           <TrendingHistoryPicker selectedDate={selectedDate} todayKst={todayKst} />
         </div>

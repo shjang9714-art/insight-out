@@ -3,6 +3,7 @@ import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
 import { getKstDateString, getKstDayStartIso } from '@/lib/date'
+import { llmCompleteDetailed, type LlmTask } from '@/lib/llm'
 
 /**
  * 쿠키 비의존 anon 클라이언트 — unstable_cache로 요청 간 캐시하려면 특정 사용자
@@ -62,8 +63,14 @@ interface ArticleRow {
 
 export interface TrendingEventsResult {
   events: TrendingEvent[]
-  /** 기준일 KST 날짜('YYYY-MM-DD'). 이제 항상 KST 캘린더 오늘 — 순위·건수 모두 당일 수집분만
-   *  사용하므로 라벨·날짜 선택기와 항상 일치한다(2026-07-13 결정, 구 floating 방식 폐기). */
+  /**
+   * 기준일 KST 날짜('YYYY-MM-DD'). 오늘(KST)에 트렌딩 대상 기사가 있으면 오늘,
+   * 없으면(당일 크론 05:00 KST 전 새벽 등) 데이터가 있는 가장 최근 직전 KST 날짜로
+   * 자동 전환된다(2026-07-14 재설계 — "무조건 오늘 고정"이었던 이전 버전은 크론 전
+   * 새벽에 빈 화면만 뜨는 문제가 있었음). 순위·건수·대표기사는 항상 이 기준일
+   * "하루"만의 기사로 계산하며(72h 윈도우로 다른 날짜 기사가 섞이지 않음), 헤더 라벨·
+   * "오늘 N건" 문구도 전부 이 기준일을 따라간다(기준일이 어제면 "오늘"이라 부르지 않음).
+   */
   asOfDateKst: string
 }
 
@@ -76,10 +83,24 @@ export interface TrendingEvent {
   /** 대표 기사의 matched_keywords 중 첫 번째(관련도 점수 컬럼이 없어 매칭 순서로 대체) */
   topHashtag: string | null
   recentCount: number
-  /** KST 오늘(자정~현재) 발행 건수 */
+  /** 기준일(asOfDateKst) 하루 동안의 발행 건수 — 기준일이 항상 오늘은 아님(위 asOfDateKst 참고) */
   todayCount: number
   changePct: number | null
   changeFlag: 'surge' | null
+}
+
+/**
+ * §3(LLM 의미 병합) 계산 파이프라인 내부에서만 쓰는 확장 타입 — 병합 시 distinct
+ * content_id 재계산·backfill 중복 방지에 필요한 원본 소스 정보를 들고 다닌다.
+ * 공개 API(TrendingEventsResult.events)에는 TrendingEvent 형태로만 노출된다.
+ */
+interface InternalEvent extends TrendingEvent {
+  /** 이 슬롯을 구성하는 모든 기준일자 기사 content_id(병합 전엔 자기 서브클러스터 것만). */
+  contentIds: string[]
+  /** 이 슬롯이 소비한 모든 issue_id(병합 전엔 자기 이슈 1개) — backfill 중복 방지용. */
+  issueIds: string[]
+  /** 대표 기사 collected_at — 병합 시 대표 재선정 동률 tie-break(최신 우선)에 사용. */
+  representativeCollectedAt: string
 }
 
 const CONCRETE_ENTITY_TYPES = new Set(['company', 'product', 'person'])
@@ -223,10 +244,18 @@ interface SubclusterResult {
   topHashtag: string | null
   count: number
   todayCount: number
+  /** 그룹에 속한 모든 기준일자 기사 content_id — §3 LLM 병합 시 distinct dedup에 사용. */
+  contentIds: string[]
+  /** 대표 기사 collected_at — §3 병합 대표 재선정 tie-break에 사용. */
+  representativeCollectedAt: string
 }
 
-/** 이슈 하나의 72h 기사들을 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만). */
-function subclusterIssue(articles: ArticleRow[], kstBasisDayStartIso: string): SubclusterResult[] {
+/**
+ * 이슈 하나의 "기준일 하루"(호출부에서 이미 단일 날짜로 필터된 articles만 받음)를
+ * 제목 유사도·핵심 엔티티 공유 기준으로 서브클러스터링(실제로 묶인 size≥2 사건만).
+ * 입력이 이미 단일 날짜로 필터돼 있으므로 count === todayCount.
+ */
+function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
   if (articles.length === 0) return []
 
   const uf = new UnionFind(articles.length)
@@ -261,7 +290,9 @@ function subclusterIssue(articles: ArticleRow[], kstBasisDayStartIso: string): S
         entityChip: dominantEntity(group),
         topHashtag: representative.matchedKeywords[0] ?? null,
         count: group.length,
-        todayCount: group.filter(a => a.collectedAt >= kstBasisDayStartIso).length,
+        todayCount: group.length,
+        contentIds: group.map(a => a.contentId),
+        representativeCollectedAt: representative.collectedAt,
       }
     })
 }
@@ -307,8 +338,8 @@ function isDuplicateEvent(a: TrendingEvent, b: TrendingEvent): boolean {
  * 않아, 같은 사건이 여러 이슈로 쪼개진 채 backfill로 각각 노출되는 문제가 있었다(§2).
  * 같은 사건으로 판정되면 recentCount가 더 높은 쪽만 남긴다.
  */
-function collapseDuplicateEvents(events: TrendingEvent[]): TrendingEvent[] {
-  const kept: TrendingEvent[] = []
+function collapseDuplicateEvents<T extends TrendingEvent>(events: T[]): T[] {
+  const kept: T[] = []
   for (const ev of events) {
     const dupIndex = kept.findIndex(k => isDuplicateEvent(k, ev))
     if (dupIndex === -1) {
@@ -326,6 +357,193 @@ function compareByRecentCountDesc(a: TrendingEvent, b: TrendingEvent): number {
   const aScore = a.changePct === null ? Infinity : a.changePct
   const bScore = b.changePct === null ? Infinity : b.changePct
   return bScore - aScore
+}
+
+// ─── §3 LLM 의미 기반 근접중복 병합 ───────────────────────────────────────────
+// §2 헤드라인 텍스트 휴리스틱(회사 게이트+핵심어 겹침)의 한계: "SK하이닉스 나스닥 상장"
+// 같은 한 사건이 헤드라인 어휘만 크게 달라(예: "환율 숨통" vs "40조 조달" vs "나스닥
+// 데뷔") keywordOverlap이 낮게 나와 병합되지 않고 여러 칸을 차지하는 실측 사례
+// (2026-07-13, 6칸). 기존 LLM(요약/후보생성에 쓰는 llmCompleteDetailed, task별 라우팅
+// 재사용)에 기준일 상위 후보 헤드라인만 1회 보내 "같은 실제 사건끼리 묶어라"를 판단시켜
+// 이 한계를 보완한다. LLM은 "묶기 판단"만 하고, 순위·건수는 항상 코드에서 distinct
+// content_id로 재계산(실행마다 순위가 LLM 응답 편차로 흔들리지 않게).
+//
+// fail-safe(2026-07-14 강화, 실측 배포 사고 재발 방지): LLM 호출~JSON 파싱~묶음 병합
+// 재구성 전체를 buildPrimaryEvents 안에서 단 하나의 try/catch로 감싼다 — 어느 단계든
+// (llmCompleteDetailed 자체는 내부적으로 절대 throw하지 않지만, 방어적으로 한 번 더
+// 감쌈) 실패하면 무조건 LLM 이전(§2 휴리스틱만 적용한) heuristicPrimary로 폴백한다.
+// 병합 후 결과가 비정상적으로 비었는데 heuristicPrimary엔 항목이 있는 경우도 같은
+// 폴백 대상 — 화면이 깨지거나 빈 채로 나가지 않게 하는 것이 최우선이다.
+const TRENDING_LLM_GROUP_TOP_N = 30
+const TRENDING_LLM_TASK: LlmTask = 'classify'
+
+interface LlmGroupCandidate {
+  index: number
+  headline: string
+  company: string | null
+  todayCount: number
+}
+
+function buildGroupingPrompt(candidates: LlmGroupCandidate[]): { system: string; user: string } {
+  const system = [
+    '너는 오늘자 한국어 뉴스 헤드라인을 같은 실제 사건 단위로 묶는 보조 도구다.',
+    '같은 실제 사건(같은 발표·같은 계약·같은 상장·같은 인물 이슈 등)을 다룬 헤드라인끼리만 묶어라.',
+    '헤드라인 어휘가 서로 달라도 같은 사건을 다룬 것이면 묶어라',
+    '(예: "환율 영향" 기사와 "나스닥 데뷔" 기사가 같은 상장 사건을 다루면 같은 묶음).',
+    '같은 회사를 다뤄도 실제로 다른 사건이면 반드시 나눠라. 확신이 없으면 묶지 말고 단독 그룹으로 둬라(보수적으로 판단).',
+    '출력은 JSON 배열 하나만: 각 원소는 같은 사건으로 묶인 헤드라인들의 index 배열이다.',
+    '모든 index가 정확히 한 번씩만 나와야 한다. 예: [[0,2,5],[1],[3,4]]',
+    '설명·코드펜스·다른 텍스트 없이 JSON 배열만 출력해라.',
+  ].join(' ')
+
+  const lines = candidates
+    .map(c => `${c.index}. ${c.headline}${c.company ? ` (회사: ${c.company})` : ''} — 오늘 ${c.todayCount}건`)
+    .join('\n')
+
+  const user = `다음은 오늘의 급상승 후보 헤드라인 목록이다. 같은 실제 사건끼리 묶어라.\n\n${lines}`
+
+  return { system, user }
+}
+
+/**
+ * LLM 응답에서 JSON 배열(예: [[0,2,5],[1],[3,4]])을 관용적으로 추출·검증한다.
+ * 후보 전체 index를 정확히 한 번씩 커버하지 못하면(부분 응답·중복·범위 밖 index)
+ * 신뢰할 수 없는 응답으로 보고 null — 호출부가 §2 휴리스틱으로 폴백한다.
+ */
+function parseGroupingResponse(raw: string, candidateCount: number): number[][] | null {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(cleaned)
+  } catch {
+    const m = cleaned.match(/\[[\s\S]*\]/)
+    if (!m) return null
+    try {
+      parsed = JSON.parse(m[0])
+    } catch {
+      return null
+    }
+  }
+  if (!Array.isArray(parsed)) return null
+
+  const seen = new Set<number>()
+  const groups: number[][] = []
+  for (const group of parsed) {
+    if (!Array.isArray(group) || group.length === 0) return null
+    const idxs: number[] = []
+    for (const raw of group) {
+      const idx = typeof raw === 'number' ? raw : Number(raw)
+      if (!Number.isInteger(idx) || idx < 0 || idx >= candidateCount || seen.has(idx)) return null
+      seen.add(idx)
+      idxs.push(idx)
+    }
+    groups.push(idxs)
+  }
+  if (seen.size !== candidateCount) return null
+  return groups
+}
+
+async function groupEventsByLlm(candidates: LlmGroupCandidate[]): Promise<number[][] | null> {
+  if (candidates.length === 0) return null
+  const { system, user } = buildGroupingPrompt(candidates)
+  const { text, errorReason } = await llmCompleteDetailed(TRENDING_LLM_TASK, system, user)
+  if (!text) {
+    console.warn(`[trending] LLM 이벤트 그룹핑 호출 실패: ${errorReason ?? '사유 미상'}`)
+    return null
+  }
+  const groups = parseGroupingResponse(text, candidates.length)
+  if (!groups) console.warn('[trending] LLM 이벤트 그룹핑 응답 파싱 실패/불완전 — 폐기')
+  return groups
+}
+
+/**
+ * 같은 사건으로 묶인 멤버들을 한 슬롯으로 병합. 같은 기사가 여러 서브클러스터에 걸쳐
+ * 이중집계되지 않도록 반드시 content_id 기준 distinct dedup(합산 금지) — 건수 = distinct
+ * content_id 개수. 대표 헤드라인/해시태그는 멤버 중 오늘건수 최다(동률이면 최신 collectedAt).
+ */
+function mergeEventGroup(members: InternalEvent[]): InternalEvent {
+  const contentIdSet = new Set<string>()
+  const issueIdSet = new Set<string>()
+  for (const m of members) {
+    for (const id of m.contentIds) contentIdSet.add(id)
+    for (const id of m.issueIds) issueIdSet.add(id)
+  }
+
+  const representative = [...members].sort((a, b) => {
+    if (b.todayCount !== a.todayCount) return b.todayCount - a.todayCount
+    return b.representativeCollectedAt.localeCompare(a.representativeCollectedAt)
+  })[0]
+
+  const distinctCount = contentIdSet.size
+
+  return {
+    ...representative,
+    recentCount: distinctCount,
+    todayCount: distinctCount,
+    contentIds: [...contentIdSet],
+    issueIds: [...issueIdSet],
+  }
+}
+
+/**
+ * primary 후보 구성: 기준일 건수 상위 N개(TRENDING_LLM_GROUP_TOP_N)만 LLM에 1회 보내
+ * "같은 사건 묶기"를 시키고, 성공하면 그 결과로 병합 슬롯을 만든다 — 순위는 LLM이 준
+ * 순서가 아니라 병합 후 distinct 건수로 재계산(실행마다 순위 안 흔들리게, §main 5).
+ * 상위 N 밖의 나머지 후보는 §2 휴리스틱으로 이어서 근접중복만 억제(LLM 시야 밖 안전망).
+ *
+ * fail-safe: heuristicPrimary(§2 휴리스틱만 적용한 결과)를 항상 먼저 계산해두고,
+ * LLM 호출·파싱·병합 전체를 감싼 try/catch에서 예외가 나거나, 병합 결과가 비정상적으로
+ * 비어있으면(원본엔 항목이 있는데) 전부 heuristicPrimary로 폴백한다(경고 로그 남김).
+ */
+async function buildPrimaryEvents(specificEvents: InternalEvent[]): Promise<InternalEvent[]> {
+  const heuristicDedup = (pool: InternalEvent[]): InternalEvent[] => {
+    const result: InternalEvent[] = []
+    for (const ev of pool) {
+      if (!result.some(k => isDuplicateEvent(k, ev))) result.push(ev)
+    }
+    return result
+  }
+
+  if (specificEvents.length === 0) return []
+
+  const heuristicPrimary = heuristicDedup(specificEvents)
+
+  try {
+    const top = specificEvents.slice(0, TRENDING_LLM_GROUP_TOP_N)
+    const rest = specificEvents.slice(TRENDING_LLM_GROUP_TOP_N)
+
+    const llmCandidates: LlmGroupCandidate[] = top.map((ev, index) => ({
+      index,
+      headline: ev.headline,
+      company: extractDominantCompany(ev.headline),
+      todayCount: ev.todayCount,
+    }))
+
+    const groups = await groupEventsByLlm(llmCandidates)
+    if (!groups) return heuristicPrimary
+
+    const mergedTop = groups.map(idxs => mergeEventGroup(idxs.map(i => top[i])))
+
+    const primary = [...mergedTop]
+    for (const ev of rest) {
+      if (!primary.some(k => isDuplicateEvent(k, ev))) primary.push(ev)
+    }
+    primary.sort(compareByRecentCountDesc)
+
+    if (primary.length === 0) {
+      console.warn('[trending] LLM 병합 결과가 비어 있어(원본엔 항목 있음) 휴리스틱 이벤트로 폴백')
+      return heuristicPrimary
+    }
+
+    return primary
+  } catch (e) {
+    console.warn(
+      '[trending] LLM 병합 파이프라인 예외 발생 — 휴리스틱 이벤트로 폴백:',
+      e instanceof Error ? e.message : String(e),
+    )
+    return heuristicPrimary
+  }
 }
 
 // ─── 메인 계산 (unstable_cache로 래핑) ────────────────────────────────────────
@@ -401,13 +619,31 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
 
   if (rowsErr) return null
 
-  // "오늘의 급상승"은 KST 캘린더 당일만 대상으로 한다(사용자 결정 2026-07-13).
-  // 과거엔 랭킹에 반영된 기사들의 최신 발행일(asOfDateKst, 떠다니는 기준)을 썼지만,
-  // 그 방식은 (a) 당일 크론 전 새벽엔 어제 날짜로 라벨이 뜨고 (b) 날짜 선택기(오늘)와
-  // 헤더 라벨(어제)이 어긋나며 (c) 72h 윈도우로 이전 일자 기사가 순위에 섞이는 문제가 있었다.
-  // 이제 기준일을 KST 오늘로 고정하고, 순위·건수·대표기사 모두 오늘 수집분만 사용한다.
-  // 오늘 기사가 아직 없으면(크론 전) events는 빈 배열로 반환돼 "최근 급상승 이슈가 없습니다."가 뜬다.
-  const todayKst = getKstDateString()
+  // 기준일(basisDateKst) 결정 — 2026-07-14 재설계. "오늘(KST)에 후보 풀 기사가 있으면
+  // 오늘, 없으면(당일 크론 05:00 KST 전 새벽 등) 데이터가 있는 가장 최근 직전 날짜"로
+  // 자동 선정한다. 직전의 "무조건 오늘 고정"(2026-07-13 결정)은 크론 전 새벽엔 항상
+  // events=[]인 빈 화면만 뜨는 문제가 있었다 — 실측(2026-07-14 00시대 배포 직후):
+  // 오늘자 기사 0건 → "최근 급상승 이슈가 없습니다"만 노출.
+  // rows는 collected_at desc 정렬로 페이지네이션되어 있어(fetchAllIssueArticles),
+  // rows[0]이 후보 풀 전체의 최신 기사 — 오늘 기사가 하나도 없으면 그 기사의 KST 날짜를
+  // 기준일로 쓴다. 순위·건수·대표기사는 반드시 기준일 "하루"만 필터해서 계산한다
+  // (>= 만으로 필터하면 72h 윈도우 특성상 기준일보다 오래된 기사까지 섞여 들어온다).
+  const todayKstNow = getKstDateString()
+  const todayStartIsoNow = getKstDayStartIso(todayKstNow)
+  const hasArticleToday = rows.some(r => r.collected_at >= todayStartIsoNow)
+
+  let basisDateKst: string
+  if (hasArticleToday || rows.length === 0) {
+    basisDateKst = todayKstNow
+  } else {
+    basisDateKst = getKstDateString(new Date(rows[0].collected_at))
+  }
+
+  const basisDayStartIso = getKstDayStartIso(basisDateKst)
+  // 배타적 상한(다음날 0시) — 기준일 "하루"만 정확히 필터. 72h 윈도우로 딸려온
+  // 기준일 이전 날짜 기사가 클러스터링·랭킹에 섞이는 것을 방지.
+  const basisDayEndIso = new Date(new Date(basisDayStartIso).getTime() + 24 * 60 * 60 * 1000).toISOString()
+  const inBasisDay = (collectedAt: string) => collectedAt >= basisDayStartIso && collectedAt < basisDayEndIso
 
   // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
   // content_entities left join으로 한 기사에 엔티티가 여러 개면 뷰에서 같은 content_id가
@@ -437,20 +673,18 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     }
   }
 
-  const kstBasisDayStartIso = getKstDayStartIso(todayKst)
-
-  const specificEvents: TrendingEvent[] = []
-  // 이슈별 changePct/changeFlag/오늘 건수 — backfill 단계에서 재사용(중복 계산 방지).
+  const specificEvents: InternalEvent[] = []
+  // 이슈별 changePct/changeFlag/기준일 건수 — backfill 단계에서 재사용(중복 계산 방지).
   const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null; todayCount: number }>()
 
   for (const issue of candidates) {
-    // "오늘의 급상승"은 오늘(KST 캘린더 당일) 기사만으로 구성한다 — 클러스터링·건수·대표기사
-    // 이전에 오늘자 기사만 남기고, 이후 모든 계산(subcluster size = 오늘 건수)은 당일 기준.
-    // 72h 윈도우로 들어온 이전 일자 기사는 여기서 전부 제외된다(사용자 결정 2026-07-13).
+    // "오늘의 급상승"은 기준일(basisDateKst) 하루 기사만으로 구성한다 — 클러스터링·건수·
+    // 대표기사 이전에 기준일 기사만 남기고, 이후 모든 계산(subcluster size = 기준일 건수)은
+    // 그 하루 기준. 72h 윈도우로 들어온 다른 날짜 기사는 여기서 전부 제외된다.
     const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
-      .filter(a => a.collectedAt >= kstBasisDayStartIso)
+      .filter(a => inBasisDay(a.collectedAt))
     const issueTodayCount = articles.length
-    // 오늘 기사가 0건인 이슈는 순위 진입 자체를 막는다.
+    // 기준일 기사가 0건인 이슈는 순위 진입 자체를 막는다.
     if (issueTodayCount === 0) continue
 
     const changePct = issue.prev_count > 0
@@ -460,10 +694,9 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
     const changeFlag = isSurge ? 'surge' as const : null
     issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount })
 
-    for (const sc of subclusterIssue(articles, kstBasisDayStartIso)) {
-      // 이슈 자체는 오늘 기사가 있어도, 이 특정 서브클러스터(사건)엔 오늘 기사가 없을 수
-      // 있다 — 그 경우 이 사건 단위는 순위에서 제외(같은 이슈의 다른 사건·degrade로 대체).
-      if (sc.todayCount === 0) continue
+    let hasSubcluster = false
+    for (const sc of subclusterIssue(articles)) {
+      hasSubcluster = true
 
       specificEvents.push({
         issueId: issue.issue_id,
@@ -475,16 +708,40 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
         todayCount: sc.todayCount,
         changePct,
         changeFlag,
+        contentIds: sc.contentIds,
+        issueIds: [issue.issue_id],
+        representativeCollectedAt: sc.representativeCollectedAt,
+      })
+    }
+
+    // 이슈 내부에 유사헤드라인 2건 이상 서브클러스터가 없어도(예: 같은 사건이 issue_id별로
+    // 어휘가 다른 단일기사 1건씩으로 쪼개진 경우 — 실측, 2026-07-13: SK하이닉스 나스닥 상장이
+    // 이렇게 여러 issue_id로 쪼개져 여러 칸 노출), 이 이슈 대표 1건을 §3 LLM 후보 풀에 반드시
+    // 포함시킨다. 이걸 빠뜨리면 이런 이슈들은 전부 backfill(§main degrade) 경로로만 채워져
+    // LLM이 아예 보지 못하고, 서로 다른 issue_id로 쪼개진 같은 사건을 계속 놓치게 된다.
+    if (!hasSubcluster) {
+      const sorted = [...articles].sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
+      const representative = sorted[0]
+      specificEvents.push({
+        issueId: issue.issue_id,
+        contentId: representative.contentId,
+        headline: representative.title,
+        entityChip: dominantEntity(articles),
+        topHashtag: representative.matchedKeywords[0] ?? null,
+        recentCount: issueTodayCount,
+        todayCount: issueTodayCount,
+        changePct,
+        changeFlag,
+        contentIds: articles.map(a => a.contentId),
+        issueIds: [issue.issue_id],
+        representativeCollectedAt: representative.collectedAt,
       })
     }
   }
 
   specificEvents.sort(compareByRecentCountDesc)
 
-  const primary: TrendingEvent[] = []
-  for (const ev of specificEvents) {
-    if (!primary.some(k => isDuplicateEvent(k, ev))) primary.push(ev)
-  }
+  const primary = await buildPrimaryEvents(specificEvents)
 
   const final = primary.slice(0, TRENDING_LIMIT)
 
@@ -492,13 +749,16 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   // 기준으로 전역 distinct 보장 — 같은 기사가 여러 이슈에 교차 태깅돼도 최종 리스트엔 1번만.
   // 한 이슈의 최신 기사가 이미 쓰였으면 그 이슈의 다음 최신 기사로, 그래도 없으면 다음 이슈로.
   if (final.length < MIN_DISPLAY) {
-    const usedIssueIds = new Set(final.map(f => f.issueId))
+    // §3 LLM 병합 슬롯은 여러 issue_id를 하나로 흡수할 수 있어, 대표 issueId 하나만으로
+    // "이미 씀"을 판정하면 병합돼 사라진 다른 issue_id가 backfill로 다시 노출될 수 있다
+    // (재발 방지) — 슬롯이 소비한 issueIds 전체를 used 처리.
+    const usedIssueIds = new Set(final.flatMap(f => f.issueIds))
     const usedContentIds = new Set<string>()
     const usedHeadlines = new Set(final.map(f => normalizeTitle(f.headline)))
 
     // issueChange엔 issueTodayCount>=1인 이슈만 들어있다(위 이슈 레벨 게이트) — degrade
-    // backfill도 오늘 기사가 아예 없는 이슈로는 채우지 않는다(그게 원래 버그의 원인).
-    // 정렬은 72h recent_count가 아니라 오늘 건수(todayCount) 기준 — 순위는 당일 건수만 사용.
+    // backfill도 기준일 기사가 아예 없는 이슈로는 채우지 않는다(그게 원래 버그의 원인).
+    // 정렬은 72h recent_count가 아니라 기준일 건수(todayCount) 기준 — 순위는 기준일 건수만 사용.
     const backfillIssues = candidates
       .filter(c => !usedIssueIds.has(c.issue_id) && issueChange.has(c.issue_id))
       .sort((a, b) =>
@@ -508,16 +768,14 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
       if (final.length >= MIN_DISPLAY) break
 
       const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
-        .filter(a => a.collectedAt >= kstBasisDayStartIso)
+        .filter(a => inBasisDay(a.collectedAt))
         .sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
 
-      // 대표는 반드시 오늘 기사여야 한다 — 이미 다른 항목에 쓰여 소진됐으면(이 이슈의 유일한
-      // 오늘 기사가 다른 특정사건에 이미 대표로 쓰인 경우 등) 오래된 기사로 대체하지 않고
+      // 대표는 반드시 기준일 기사여야 한다 — 이미 다른 항목에 쓰여 소진됐으면(이 이슈의 유일한
+      // 기준일 기사가 다른 특정사건에 이미 대표로 쓰인 경우 등) 오래된 기사로 대체하지 않고
       // 이 이슈는 degrade 노출에서 통째로 제외한다(제목길이 대표선정 버그와 같은 성격 재발 방지).
       const todayArticle = articles.find(
-        a => a.collectedAt >= kstBasisDayStartIso
-          && !usedContentIds.has(a.contentId)
-          && !usedHeadlines.has(a.normTitle)
+        a => !usedContentIds.has(a.contentId) && !usedHeadlines.has(a.normTitle)
       )
       if (!todayArticle) continue
 
@@ -528,10 +786,13 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
         headline: todayArticle.title,
         entityChip: dominantEntity([todayArticle]),
         topHashtag: todayArticle.matchedKeywords[0] ?? null,
-        recentCount: change.todayCount, // 이슈 전체 오늘 건수(단일 기사 아님) — degrade는 "이슈 대표" 의미. 순위는 당일 건수 기준이므로 recentCount에도 오늘 건수를 넣는다.
-        todayCount: change.todayCount, // 이슈 전체 기사 중 오늘 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
+        recentCount: change.todayCount, // 이슈 전체 기준일 건수(단일 기사 아님) — degrade는 "이슈 대표" 의미. 순위는 기준일 건수 기준이므로 recentCount에도 이 값을 넣는다.
+        todayCount: change.todayCount, // 이슈 전체 기사 중 기준일 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
         changePct: change.changePct,
         changeFlag: change.changeFlag,
+        contentIds: articles.map(a => a.contentId), // 이슈 전체 기준일자 기사 id(recentCount와 정합)
+        issueIds: [issue.issue_id],
+        representativeCollectedAt: todayArticle.collectedAt,
       })
       usedContentIds.add(todayArticle.contentId)
       usedHeadlines.add(todayArticle.normTitle)
@@ -550,21 +811,22 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   const deduped = collapseDuplicateEvents(final)
   deduped.sort(compareByRecentCountDesc)
 
-  // asOfDateKst 필드는 하위 호환을 위해 유지하되 값은 KST 캘린더 오늘 — 라벨·선택기와 항상 일치.
-  return { events: deduped, asOfDateKst: todayKst }
+  return { events: deduped, asOfDateKst: basisDateKst }
 }
 
 /**
  * 홈 "실시간 급상승 키워드" — `trending_keywords` 뷰(72h 발행건수 후보) 위에
- * 이슈 내부 서브이벤트 클러스터링(§5)을 얹어 특정 사건 단위로 반환.
+ * 이슈 내부 서브이벤트 클러스터링(§5) + LLM 의미 병합(§3)을 얹어 특정 사건 단위로 반환.
  * 특정 사건이 MIN_DISPLAY 미만이면 degrade(이슈 전체) 항목으로 backfill.
  * 뷰가 아직 적용되지 않았으면(42P01/PGRST205 등 조회 실패) null — 호출부에서 폴백 처리.
- * `asOfDateKst`는 랭킹에 반영된 기사들의 최신 발행일 기준 — 오늘자 크론(05:00 KST) 전
- * 새벽 시간대엔 자동으로 어제 날짜가 되어, "오늘 라벨 + 오늘 0건" 같은 모순을 막는다.
+ * `asOfDateKst`는 기준일(basisDateKst) — 오늘(KST)에 후보 기사가 있으면 오늘, 없으면
+ * 데이터가 있는 가장 최근 직전 날짜로 자동 전환된다(2026-07-14 재설계). 순위·건수·
+ * 헤더 라벨·"오늘 N건" 문구 전부 이 기준일 하루만 사용 — 기준일이 오늘이 아니면
+ * "오늘"이라 표시하지 않는다(호출부 IssueSignals.tsx·trending/page.tsx 참고).
  * 20분 단위로 캐시(크롤 주기 대비 매 요청 재계산 방지).
  */
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEvents,
-  ['trending-events-v6'],
+  ['trending-events-v8'],
   { revalidate: CACHE_REVALIDATE_SECONDS },
 )

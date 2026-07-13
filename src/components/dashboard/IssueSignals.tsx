@@ -71,10 +71,15 @@ export default async function IssueSignals() {
 
   if (top.length === 0) return null
 
-  // 랭킹에 반영된 기사들의 최신 발행일 기준 — 오늘자 크론(05:00 KST) 전엔 자동으로 어제
-  // 날짜가 표시되어 "오늘 0건" 같은 모순이 생기지 않는다. 폴백 집계는 일자 정보가 없어
-  // 현재 KST 날짜를 그대로 쓴다(기존 동작 유지).
-  const todayLabel = formatKstMonthDay(trending?.asOfDateKst ?? getKstDateString())
+  // 기준일(asOfDateKst) — 오늘(KST)에 후보 기사가 있으면 오늘, 없으면(당일 크론 05:00 KST
+  // 전 새벽 등) 데이터가 있는 가장 최근 직전 날짜로 자동 전환된다. 폴백 집계는 일자 정보가
+  // 없어 현재 KST 날짜를 그대로 쓴다(기존 동작 유지).
+  const basisDateKst = trending?.asOfDateKst ?? getKstDateString()
+  const isBasisToday = basisDateKst === getKstDateString()
+  const todayLabel = formatKstMonthDay(basisDateKst)
+  // 헤더 라벨뿐 아니라 각 행 "오늘 N건" 문구도 기준일을 따라간다 — 기준일이 오늘이 아니면
+  // "오늘"이라 부르지 않고 날짜로 표시(과거 데이터를 "오늘"로 표시하던 옛 버그 재발 방지).
+  const dayLabel = isBasisToday ? '오늘' : todayLabel
 
   return (
     // 실검 스트립 — 카드가 아닌 한 줄 바. 제목만 휘리릭 롤링.
@@ -87,7 +92,7 @@ export default async function IssueSignals() {
 
       {/* 한 줄 롤링(클라이언트) */}
       <div className="min-w-0 flex-1">
-        <IssueRankTicker compact issues={top} />
+        <IssueRankTicker compact issues={top} dayLabel={dayLabel} />
       </div>
 
       <Link

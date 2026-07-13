@@ -14,7 +14,7 @@ export interface TickerIssue {
   /** 대표 기사의 매칭 키워드 중 관련도 최상위 1개(없으면 null) — 제목 앞 해시태그 칩 */
   topHashtag?: string | null
   recentCount: number
-  /** KST 오늘(자정~현재) 발행 건수 */
+  /** 기준일(호출부의 asOfDateKst) 하루 동안의 발행 건수 — 기준일이 항상 오늘은 아님 */
   todayCount: number
   changePct: number | null
   changeFlag: 'surge' | 'worsening' | null
@@ -30,6 +30,13 @@ interface IssueRankTickerProps {
   msPerRow?: number
   /** 한 줄짜리 실검 스트립 모드(제목만 휘리릭) */
   compact?: boolean
+  /**
+   * 각 행의 "{dayLabel} N건" 문구에 쓰는 날짜 라벨. 기준일(asOfDateKst)이 실제 오늘(KST)이면
+   * "오늘", 아니면(크론 전 새벽 등으로 기준일이 어제 이전이면) "7월 13일" 같은 날짜 표기로
+   * 호출부가 넘겨준다 — 과거 데이터를 "오늘"로 표시하던 옛 버그(2026-07-12) 재발 방지.
+   * 미지정 시 기존 동작 유지를 위해 '오늘'.
+   */
+  dayLabel?: string
 }
 
 const ROW_H = 44 // px, h-11
@@ -46,7 +53,7 @@ function HashtagPill({ topHashtag }: { topHashtag: string | null | undefined }) 
   )
 }
 
-function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
+function Row({ issue, rank, dayLabel }: { issue: TickerIssue; rank: number; dayLabel: string }) {
   const sentimentTotal = issue.sentimentPos + issue.sentimentNeg
   const title = stripLlmArtifacts(issue.title)
   return (
@@ -74,7 +81,7 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
 
       {/* 오늘 발행 건수 + 논조 */}
       <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="tabular-nums">오늘 {issue.todayCount}건</span>
+        <span className="tabular-nums">{dayLabel} {issue.todayCount}건</span>
         {sentimentTotal > 0 && (
           <div className="flex items-center gap-1">
             {issue.sentimentPos > 0 && (
@@ -95,7 +102,7 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
 }
 
 // 실검 스트립용 한 줄 로우 — 순위 + 제목만, 작은 변화 표식. 카드/배지 없이 담백하게.
-function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
+function CompactRow({ issue, rank, dayLabel }: { issue: TickerIssue; rank: number; dayLabel: string }) {
   const title = stripLlmArtifacts(issue.title)
 
   return (
@@ -121,7 +128,7 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
         {title}
       </span>
       <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-        오늘 {issue.todayCount}건
+        {dayLabel} {issue.todayCount}건
       </span>
     </Link>
   )
@@ -132,6 +139,7 @@ export default function IssueRankTicker({
   visibleRows,
   msPerRow = DEFAULT_MS_PER_ROW,
   compact = false,
+  dayLabel = '오늘',
 }: IssueRankTickerProps) {
   const rowH = compact ? ROW_H_COMPACT : ROW_H
   const rows = visibleRows ?? (compact ? 1 : 5)
@@ -172,7 +180,7 @@ export default function IssueRankTicker({
     return (
       <div className={compact ? 'flex flex-col' : 'flex flex-col gap-1'}>
         {(compact ? issues.slice(0, 1) : issues).map((issue, i) => (
-          <RowComp key={`${issue.id}-${i}`} issue={issue} rank={i + 1} />
+          <RowComp key={`${issue.id}-${i}`} issue={issue} rank={i + 1} dayLabel={dayLabel} />
         ))}
       </div>
     )
@@ -189,7 +197,7 @@ export default function IssueRankTicker({
     >
       <div ref={trackRef} className="flex flex-col">
         {[...issues, ...issues].map((issue, i) => (
-          <RowComp key={`${issue.id}-${i}`} issue={issue} rank={(i % issues.length) + 1} />
+          <RowComp key={`${issue.id}-${i}`} issue={issue} rank={(i % issues.length) + 1} dayLabel={dayLabel} />
         ))}
       </div>
       {/* 위/아래 페이드 마스크(일반 모드만) */}
