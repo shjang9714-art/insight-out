@@ -53,3 +53,19 @@ commit;
 -- 참고: competitor_weekly_area 는 283 SQL 에서 이미 처리됨.
 --   select (prompt_text like '%각 서술 끝에 근거 [content_id]%')::int as still_bad
 --     from public.llm_prompts where key = 'competitor_weekly_area';   -- 0 이어야 정상
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- [추가 확인 — 305 조회 계측] 아래 select 를 함께 돌리고 결과를 David 에게 알려주세요.
+--   305 배포 후, 콘텐츠 상세를 한 번이라도 연 다음에 실행해야 의미가 있습니다.
+-- ═══════════════════════════════════════════════════════════════════════════
+select
+  count(*)                                  as 조회기록_건수,   -- 0 이면 RLS 가 막고 있다는 뜻
+  count(*) filter (where dwell_seconds > 0) as 체류시간_기록됨, -- 0 이면 PATCH 가 안 오는 것
+  max(viewed_at)                            as 최근_기록
+from public.content_views;
+
+-- content_views 의 RLS 정책 (insert 가 허용돼 있는지):
+select policyname, cmd, roles
+  from pg_policies
+ where schemaname = 'public' and tablename = 'content_views';
