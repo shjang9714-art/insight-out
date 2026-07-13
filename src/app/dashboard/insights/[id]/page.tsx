@@ -130,16 +130,16 @@ export default async function InsightDetailPage({ params }: PageProps) {
 
   return (
     <PageContainer variant="reading">
+      {/* scope='company' 카드는 기업동향(주요 기업 탭)에서만 진입 — 그 경우에만 Lv.2 탭 유지.
+          그 외(헤드라인 분석 등 Lv.1 실험실 탭)는 전역 헤더가 이미 컨텍스트를 유지하므로 생략. */}
+      {card.scope === 'company' && <EntityTabs value="watchlist" />}
+
       <div className="mb-6">
         <BackLink
           fallbackHref={backHref}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
-
-      {/* scope='company' 카드는 기업동향(주요 기업 탭)에서만 진입 — 그 경우에만 Lv.2 탭 유지.
-          그 외(헤드라인 분석 등 Lv.1 실험실 탭)는 전역 헤더가 이미 컨텍스트를 유지하므로 생략. */}
-      {card.scope === 'company' && <EntityTabs value="watchlist" />}
 
       {/* 헤더 */}
       <div className="mb-6 space-y-2">
