@@ -224,7 +224,7 @@ export default function SettingsTab({
               <div>
                 <p className="text-sm font-semibold text-foreground">기본 보기</p>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  📍 콘텐츠 · AI 인사이트 · 기업동향을 열 때 이 기준으로 시작합니다. 화면에서 언제든 바꿀 수 있습니다.
+                  📍 AI 인사이트 · 기업동향 · 이슈를 열 때 이 기준으로 시작합니다. 화면에서 언제든 바꿀 수 있습니다.
                 </p>
                 {lensError && <p className="mt-2 text-xs text-negative">{lensError}</p>}
               </div>

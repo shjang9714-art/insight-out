@@ -1,23 +1,20 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react'
+import { Suspense, useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { Check, ChevronDown, X, Loader2 } from 'lucide-react'
+import { Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PageContainer from '@/components/PageContainer'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
-import SourcePopover, { selectedGroups } from '@/components/dashboard/SourcePopover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
-import LensSwitcher from '@/components/lens/LensSwitcher'
-import { useActiveLens, useLensContext } from '@/lib/lens'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -54,27 +51,7 @@ interface ClusteredItem {
   members: ClusterMember[]
 }
 
-interface ServiceOption {
-  id: string
-  name: string
-  icon?: string | null
-}
-
-interface SourceOption {
-  id: string
-  name: string
-  group_name: string | null
-}
-
 // ─── 상수 ────────────────────────────────────────────────────────────────────
-
-const DATE_OPTIONS = [
-  { value: 'all',   label: '전체' },
-  { value: 'today', label: '오늘' },
-  { value: 'week',  label: '이번 주' },
-  { value: 'month', label: '이번 달' },
-] as const
-type DateFilter = (typeof DATE_OPTIONS)[number]['value']
 
 const PAGE_SIZE = 20
 
@@ -86,26 +63,7 @@ const CONTENT_SOURCE_TABS = [
   { label: '리서치',    value: '리서치'    as ContentCategory },
 ] as const
 
-// LG U+ 관점 위기/기회 필터(313) — '관망'은 필터 대상에 넣지 않는다(신호가 흔해지면 신호가 아니다)
-const IMPACT_OPTIONS = [
-  { value: '',   label: '전체' },
-  { value: '위기', label: '🔴 위기' },
-  { value: '기회', label: '🟢 기회' },
-] as const
-type ImpactFilter = (typeof IMPACT_OPTIONS)[number]['value']
-
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-function getDateStart(filter: string): string | null {
-  if (filter === 'today') {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d.toISOString()
-  }
-  if (filter === 'week')  return new Date(Date.now() - 7  * 86_400_000).toISOString()
-  if (filter === 'month') return new Date(Date.now() - 30 * 86_400_000).toISOString()
-  return null
-}
 
 function displayDate(item: ContentItem, sortByCollected: boolean): string | null {
   if (sortByCollected || item.category === '리포트' || item.category === 'AI보고서') {
@@ -146,21 +104,6 @@ function groupByKstDay(
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="flex items-center gap-1 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-700">
-      {label}
-      <button
-        onClick={onRemove}
-        className="ml-0.5 rounded-full p-0.5 hover:bg-brand-100"
-        aria-label={`${label} 필터 제거`}
-      >
-        <X className="h-2.5 w-2.5" />
-      </button>
-    </span>
-  )
-}
-
 function SkeletonCard() {
   return (
     <div className="animate-pulse rounded-2xl border border-border bg-card p-5">
@@ -176,130 +119,6 @@ function SkeletonCard() {
         <div className="h-3.5 w-2/3 rounded bg-muted" />
       </div>
       <div className="mt-4 h-3 w-1/3 rounded bg-muted" />
-    </div>
-  )
-}
-
-function ServiceFilterPopover({
-  services,
-  value,
-  onChange,
-}: {
-  services: ServiceOption[]
-  value: string[]
-  onChange: (ids: string[]) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const panelRef = useRef<HTMLDivElement>(null)
-  const btnRef = useRef<HTMLButtonElement>(null)
-
-  const selectedCount = value.length
-  const hasSelection = selectedCount > 0
-
-  const close = () => setOpen(false)
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (
-        panelRef.current && !panelRef.current.contains(e.target as Node) &&
-        btnRef.current && !btnRef.current.contains(e.target as Node)
-      ) close()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [open])
-
-  const toggleService = (id: string) => {
-    if (value.includes(id)) {
-      onChange(value.filter((v) => v !== id))
-    } else {
-      onChange([...value, id])
-    }
-  }
-
-  return (
-    <div className="relative">
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={services.length === 0}
-        className={cn(
-          'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-          hasSelection
-            ? 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
-            : 'border-border bg-card text-muted-foreground hover:border-brand-200 hover:text-foreground'
-        )}
-      >
-        사업
-        {selectedCount > 0 && (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-solid text-[10px] font-bold text-white">
-            {selectedCount}
-          </span>
-        )}
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
-      </button>
-
-      {open && (
-        <div
-          ref={panelRef}
-          className="absolute right-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
-        >
-          <div className="border-b border-border px-3 py-1.5">
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className={cn(
-                'text-[11px] transition-colors',
-                hasSelection ? 'text-brand-600 hover:text-brand-700' : 'text-muted-foreground cursor-default'
-              )}
-              disabled={!hasSelection}
-            >
-              전체 해제
-            </button>
-          </div>
-
-          <div className="max-h-64 overflow-y-auto py-1">
-            {services.map((service) => {
-              const selected = value.includes(service.id)
-              return (
-                <button
-                  key={service.id}
-                  type="button"
-                  onClick={() => toggleService(service.id)}
-                  className={cn(
-                    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-accent',
-                    selected && 'bg-brand-50/50 dark:bg-brand-950/20'
-                  )}
-                >
-                  <span className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                    selected
-                      ? 'border-brand-600 bg-brand-solid text-white'
-                      : 'border-border bg-background'
-                  )}>
-                    {selected && <Check className="h-2.5 w-2.5" />}
-                  </span>
-                  <span className={cn(
-                    'flex-1 truncate',
-                    selected && 'font-medium text-brand-700 dark:text-brand-400'
-                  )}>
-                    {service.icon ? `${service.icon} ${service.name}` : service.name}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -359,27 +178,14 @@ function ContentsContent() {
 
   // ── URL 파라미터 ─────────────────────────────────────────────────────────────
   const category = (searchParams.get('category') ?? '') as ContentCategory | ''
-  const date     = (searchParams.get('date') ?? 'all') as DateFilter
-  const svcParam = searchParams.get('svc') ?? ''
-  const svcIds   = useMemo(() => svcParam ? svcParam.split(',').filter(Boolean) : [], [svcParam])
-  const relevant = searchParams.get('relevant') ?? '1'
-  const srcParam = searchParams.get('src') ?? ''
-  const srcIds   = useMemo(() => srcParam ? srcParam.split(',').filter(Boolean) : [], [srcParam])
+  const searchQuery = searchParams.get('q')?.trim().slice(0, 100) ?? ''
+  const keywordParam = searchParams.get('kw') ?? ''
+  const selectedKeywords = useMemo(
+    () => [...new Set(keywordParam.split(',').map((value) => value.trim()).filter(Boolean))],
+    [keywordParam]
+  )
   const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10)))
   const sort     = (searchParams.get('sort') ?? 'published') as 'published' | 'collected'
-  const impact   = (searchParams.get('impact') ?? '') as ImpactFilter
-
-  // ── 렌즈(309) ────────────────────────────────────────────────────────────────
-  const [lens] = useActiveLens()
-  const lensCtx = useLensContext()
-  const lensServiceIdsKey = lensCtx.serviceIds.join(',')
-  const lensWatchEntityIdsKey = lensCtx.watchlistEntityIds.join(',')
-  const lensWatchlistKey = lensCtx.watchlist.join(',')
-
-  // 렌즈 전환 시 1페이지부터 다시 (서버 필터가 바뀌므로 누적 items 초기화 필요)
-  useEffect(() => {
-    startTransition(() => setPage(1))
-  }, [lens])
 
   const isReportCategory = category === '리포트' || category === 'AI보고서'
   const sortByCollected  = sort === 'collected' || isReportCategory
@@ -388,11 +194,9 @@ function ContentsContent() {
   const [items, setItems]         = useState<ContentItem[]>([])
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
-  const [services, setServices]   = useState<ServiceOption[]>([])
-  const [sources, setSources]     = useState<SourceOption[]>([])
-  // null = 카테고리 미선택(전체 출처 노출)
-  const [scopedSourceIds, setScopedSourceIds] = useState<Set<string> | null>(null)
-  // lgu_impact 컬럼 미적용(42703) 시 false — 필터 UI 숨김 + select 에서 제외(313)
+  const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
+  const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
+  // lgu_impact 컬럼 미적용(42703) 시 false — select 에서 제외하되 카드 배지는 유지한다.
   const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
 
   // 진입 시 카테고리 미지정이면 '뉴스'로 기본 설정 (URL 반영)
@@ -405,57 +209,60 @@ function ContentsContent() {
 
   // ── URL 업데이트 헬퍼 ────────────────────────────────────────────────────────
   // window.location.search 를 사용해 Link 이동 직후 stale 클로저 방지
-  const updateParam = useCallback(
-    (key: string, value: string) => {
-      const p = new URLSearchParams(window.location.search)
-      if (value) p.set(key, value)
-      else p.delete(key)
-      if (key !== 'page') { p.delete('page'); startTransition(() => setPage(1)) }
-      // 같은 목록 페이지 안에서의 필터 변경은 새 방문이 아니므로 replace —
-      // push로 쌓이면 하위 페이지(기사 등)에서 "이전으로" 눌렀을 때
-      // 실제 이전 페이지가 아니라 직전 필터 상태로만 한 칸씩 돌아가는 문제 발생
-      router.replace(`${pathname}?${p.toString()}`)
-    },
-    [router, pathname]
-  )
+  const updateParam = (key: string, value: string) => {
+    const params = new URLSearchParams(window.location.search)
+    if (value) params.set(key, value)
+    else params.delete(key)
+    if (key !== 'page') {
+      params.delete('page')
+      setPage(1)
+    }
+    router.replace(`${pathname}?${params.toString()}`)
+  }
 
-  // ── 서비스 목록 로드 (1회) ──────────────────────────────────────────────────
-  useEffect(() => {
-    const supabase = createClient()
-    Promise.all([
-      supabase.from('services').select('id, name, icon').order('order'),
-      supabase.from('sources').select('id, name, group_name').order('name'),
-    ]).then(([{ data: svcs }, { data: srcs }]) => {
-      if (svcs) setServices(svcs as ServiceOption[])
-      if (srcs) setSources(srcs as SourceOption[])
-    })
-  }, [])
+  // 브라우저 탐색으로 q가 바뀐 경우에만 입력 초안을 새 URL 상태에 맞춘다.
+  if (searchState.source !== searchQuery) {
+    setSearchState({ source: searchQuery, input: searchQuery })
+  }
+  const searchInput = searchState.input
 
-  // ── 카테고리별 출처 스코프 조회 ────────────────────────────────────────────
+  // 입력 중에는 URL과 목록 쿼리를 갱신하지 않고, 마지막 입력 300ms 뒤 한 번만 반영한다.
   useEffect(() => {
-    if (!category) { startTransition(() => setScopedSourceIds(null)); return }
-    let cancelled = false
-    const dbCats = getCategoryDbValues(category as ContentCategory)
-    createClient()
-      .from('contents')
-      .select('source_id')
-      .eq('status', 'published')
-      .in('category', dbCats)
-      .not('source_id', 'is', null)
-      .then(({ data }) => {
-        if (cancelled) return
-        setScopedSourceIds(new Set((data ?? []).map((r) => r.source_id as string)))
+    const normalized = searchInput.trim().slice(0, 100)
+    if (normalized === searchQuery) return
+
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search)
+      if (normalized) params.set('q', normalized)
+      else params.delete('q')
+      params.delete('page')
+      setPage(1)
+      router.replace(`${pathname}?${params.toString()}`)
+    }, 300)
+
+    return () => window.clearTimeout(timer)
+  }, [searchInput, searchQuery, router, pathname])
+
+  // 현재 소스타입의 최근 30일 인기 키워드를 가져온다.
+  useEffect(() => {
+    if (!category) return
+    const controller = new AbortController()
+    const params = new URLSearchParams({ category, limit: '12' })
+
+    fetch(`/api/contents/keywords?${params.toString()}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('인기 키워드 조회 실패')
+        return response.json() as Promise<{ keywords: { name: string; count: number }[] }>
       })
-    return () => { cancelled = true }
-  }, [category])
+      .then(({ keywords }) => setPopularKeywords(keywords))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        console.error('[contents] 인기 키워드 조회 오류:', error)
+        setPopularKeywords([])
+      })
 
-  // 카테고리 전환 시 범위 밖 출처 선택 정리 (무한루프 가드: 값이 실제로 줄 때만)
-  useEffect(() => {
-    if (!scopedSourceIds || srcIds.length === 0) return
-    const kept = srcIds.filter((id) => scopedSourceIds.has(id))
-    if (kept.length < srcIds.length) updateParam('src', kept.join(','))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopedSourceIds])
+    return () => controller.abort()
+  }, [category])
 
   // ── 콘텐츠 쿼리 ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -465,58 +272,14 @@ function ContentsContent() {
       setLoading(true)
       const supabase = createClient()
 
-      // ① 서비스 필터(사업 드롭다운) + 렌즈(309) 'mine'/'watch' — 대상은 service_id/entity_id 같은
-      //    "작은" id 목록(최대 수십 개)이라 .in() 폭발이 없다. content_id 왕복(전체 목록 조회 후
-      //    .in('id', [...]))은 하지 않는다 — PostgREST 기본 max-rows 에서 조용히 잘리고,
-      //    수천 개 UUID 를 .in() 에 넣으면 URL 이 터진다(309 후속 버그 수정).
-      //    실제 필터는 contents 쿼리에 embedded !inner 조인으로 건다(313 citations.ts 패턴 재사용).
-      //    PostgREST 임베딩은 부모 행을 곱하지 않는다(관계는 JSON 서브쿼리로 집계) — count 부풀림 없음.
-      let serviceIdsForJoin: string[] | null = null   // null = content_services 조인 불필요
-      if (svcIds.length > 0 && lens === 'mine') {
-        const svcSet = new Set(svcIds)
-        serviceIdsForJoin = lensCtx.serviceIds.filter((id) => svcSet.has(id))
-      } else if (svcIds.length > 0) {
-        serviceIdsForJoin = svcIds
-      } else if (lens === 'mine') {
-        serviceIdsForJoin = lensCtx.serviceIds
-      }
-
-      let entityIdsForJoin: string[] | null = null    // null = content_entities 조인 불필요
-      let watchTitleFallback: string[] = []           // entity_id 미연결 레거시 watchlist — title ILIKE
-      if (lens === 'watch') {
-        if (lensCtx.watchlistEntityIds.length > 0) {
-          entityIdsForJoin = lensCtx.watchlistEntityIds
-        } else {
-          watchTitleFallback = lensCtx.watchlist
-        }
-      }
-
-      // 조인 대상이 확정적으로 0개 → 쿼리 없이 바로 빈 결과(disabled 렌즈 chip 상태와 일치)
-      const definitelyEmpty =
-        (serviceIdsForJoin !== null && serviceIdsForJoin.length === 0) ||
-        (lens === 'watch' && entityIdsForJoin === null && watchTitleFallback.length === 0)
-
-      if (definitelyEmpty) {
-        if (!cancelled) {
-          if (page === 1) setItems([])
-          setTotal(0)
-          setLoading(false)
-        }
-        return
-      }
-
       // 313 — lgu_impact 컬럼(select·필터)은 가용성 플래그에 따라 켜고 끈다(42703 graceful).
       const baseFields = 'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url'
       const shouldFetchCount = page === 1 || total === null
 
       const buildQuery = (withLguImpact: boolean) => {
-        const selectParts = [withLguImpact ? `${baseFields}, lgu_impact` : baseFields]
-        if (serviceIdsForJoin) selectParts.push('content_services!inner(service_id)')
-        if (entityIdsForJoin)  selectParts.push('content_entities!inner(entity_id)')
-
         let query = supabase
           .from('contents')
-          .select(selectParts.join(', '), shouldFetchCount ? { count: 'exact' } : undefined)
+          .select(withLguImpact ? `${baseFields}, lgu_impact` : baseFields, shouldFetchCount ? { count: 'exact' } : undefined)
           .eq('status', 'published')
 
         query = sortByCollected
@@ -529,27 +292,18 @@ function ContentsContent() {
           const dbCats = getCategoryDbValues(category as ContentCategory)
           query = query.in('category', dbCats)
         }
-        if (srcIds.length > 0) query = query.in('source_id', srcIds)
-
-        const dateStart = getDateStart(date)
-        if (dateStart) query = query.gte(sortByCollected ? 'collected_at' : 'published_at', dateStart)
-
-        if (serviceIdsForJoin) query = query.in('content_services.service_id', serviceIdsForJoin)
-        if (entityIdsForJoin)  query = query.in('content_entities.entity_id', entityIdsForJoin)
-        if (watchTitleFallback.length > 0) {
-          const orFilter = watchTitleFallback
-            .map((w) => `title.ilike."%${w.replace(/"/g, '')}%"`)
-            .join(',')
-          query = query.or(orFilter)
+        if (searchQuery) {
+          const escapedQuery = searchQuery.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+          query = query.or(`title.ilike."%${escapedQuery}%",summary_ko.ilike."%${escapedQuery}%"`)
         }
-        if (withLguImpact && impact) query = query.eq('lgu_impact', impact)
+        if (selectedKeywords.length > 0) query = query.overlaps('matched_keywords', selectedKeywords)
 
         return query
       }
 
       let { data, count, error } = await buildQuery(lguImpactAvailable)
 
-      // lgu_impact 컬럼 미적용(313 SQL 전) — 컬럼 없이 재조회, 필터 UI 도 숨긴다.
+      // lgu_impact 컬럼 미적용(313 SQL 전) — 컬럼 없이 재조회한다.
       if (error?.code === '42703') {
         if (!cancelled) setLguImpactAvailable(false)
         const retry = await buildQuery(false)
@@ -573,7 +327,7 @@ function ContentsContent() {
     fetchContents()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, date, svcIds, srcIds, relevant, page, sort, sortByCollected, lens, lensServiceIdsKey, lensWatchEntityIdsKey, lensWatchlistKey, impact])
+  }, [category, searchQuery, selectedKeywords, page, sort, sortByCollected])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
@@ -615,47 +369,28 @@ function ContentsContent() {
     return result
   }, [items, sortByCollected])
 
-  // ── 활성 필터 chip 목록 (카테고리 칩 제거, 서비스는 선택된 것만) ──────────────
-  const activeFilters: { key: string; label: string; onRemove: () => void }[] = []
+  const keywordCountByName = new Map(popularKeywords.map((keyword) => [keyword.name, keyword.count]))
+  const keywordChips = [
+    ...selectedKeywords.map((name) => ({ name, count: keywordCountByName.get(name) })),
+    ...popularKeywords.filter(({ name }) => !selectedKeywords.includes(name)),
+  ]
 
-  if (date !== 'all') activeFilters.push({
-    key: 'date',
-    label: DATE_OPTIONS.find((d) => d.value === date)?.label ?? date,
-    onRemove: () => updateParam('date', ''),
-  })
-
-  if (impact) activeFilters.push({
-    key: 'impact',
-    label: IMPACT_OPTIONS.find((o) => o.value === impact)?.label ?? impact,
-    onRemove: () => updateParam('impact', ''),
-  })
-
-  for (const id of svcIds) {
-    const svcName = services.find((s) => s.id === id)?.name ?? '서비스'
-    activeFilters.push({
-      key: `svc-${id}`,
-      label: `사업: ${svcName}`,
-      onRemove: () => {
-        const cur = new URLSearchParams(window.location.search).get('svc') ?? ''
-        const curIds = cur ? cur.split(',').filter(Boolean) : []
-        const next = curIds.filter((x) => x !== id)
-        updateParam('svc', next.join(','))
-      },
-    })
+  const toggleKeyword = (name: string) => {
+    const next = selectedKeywords.includes(name)
+      ? selectedKeywords.filter((keyword) => keyword !== name)
+      : [...selectedKeywords, name]
+    updateParam('kw', next.join(','))
   }
 
-  const visibleSources = scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources
-  for (const grp of selectedGroups(srcIds, visibleSources)) {
-    activeFilters.push({
-      key: `src-grp-${grp.label}`,
-      label: `출처: ${grp.label}`,
-      onRemove: () => {
-        const next = srcIds.filter((x) => !grp.ids.includes(x))
-        updateParam('src', next.join(','))
-      },
-    })
+  const clearSearchFilters = () => {
+    setSearchState((current) => ({ ...current, input: '' }))
+    const params = new URLSearchParams(window.location.search)
+    params.delete('q')
+    params.delete('kw')
+    params.delete('page')
+    setPage(1)
+    router.replace(`${pathname}?${params.toString()}`)
   }
-
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
   const pageTitle = category
@@ -686,87 +421,66 @@ function ContentsContent() {
           <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
           {!isLoading && total !== null && (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {total > 0 ? `총 ${total.toLocaleString()}건` : ''}
+              총 {total.toLocaleString()}건
             </p>
           )}
         </div>
       </div>
 
-      {/* ─── 필터 바 ─────────────────────────────────────────────────────────── */}
-      <div className="mb-5 rounded-xl border border-border bg-card px-4 py-3.5">
-        <div className="flex w-full flex-wrap items-start gap-x-4 gap-y-3">
-          <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
-            {/* 렌즈 전환(309) */}
-            <LensSwitcher />
-
-            {/* LG U+ 관점 위기/기회 필터(313) — 컬럼 미적용 시 숨김 */}
-            {lguImpactAvailable && (
-              <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
-                {IMPACT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => updateParam('impact', opt.value)}
-                    className={cn(
-                      'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                      impact === opt.value
-                        ? 'bg-brand-solid text-white'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <ServiceFilterPopover
-              services={services}
-              value={svcIds}
-              onChange={(ids) => updateParam('svc', ids.join(','))}
-            />
-
-            <SourcePopover
-              sources={scopedSourceIds ? sources.filter((s) => scopedSourceIds.has(s.id)) : sources}
-              value={srcIds}
-              onChange={(ids) => updateParam('src', ids.join(','))}
-            />
-
-            <Select value={date} onValueChange={(value) => updateParam('date', value === 'all' ? '' : value)}>
-              <SelectTrigger
-                size="sm"
-                className={cn(
-                  'border-border bg-card text-xs font-medium text-muted-foreground hover:border-brand-200 hover:text-foreground',
-                  date !== 'all' && 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-brand-400'
-                )}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                {DATE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.value === 'all' ? '기간' : opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* ─── 검색 + 인기 키워드 ──────────────────────────────────────────────── */}
+      <div className="mb-6 space-y-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchState((current) => ({ ...current, input: event.target.value }))}
+            placeholder="제목·요약에서 검색…"
+            aria-label="콘텐츠 제목과 요약 검색"
+            className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-brand-600 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-950"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => setSearchState((current) => ({ ...current, input: '' }))}
+              aria-label="검색어 지우기"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
-        {/* 활성 필터 chips */}
-        {activeFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-            <span className="text-[11px] text-muted-foreground">적용 중:</span>
-            {activeFilters.map((f) => (
-              <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
-            ))}
-            <button
-              onClick={() => { setPage(1); router.replace(pathname + (category ? `?category=${encodeURIComponent(category)}` : '')) }}
-              className="text-[11px] text-muted-foreground underline hover:text-foreground"
-            >
-              전체 초기화
-            </button>
+        {keywordChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {keywordChips.map(({ name, count }) => {
+              const isSelected = selectedKeywords.includes(name)
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => toggleKeyword(name)}
+                  aria-pressed={isSelected}
+                  className={cn(
+                    'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                    isSelected
+                      ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
+                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                  )}
+                >
+                  #{name}{count !== undefined ? ` ${count}` : ''}
+                </button>
+              )
+            })}
+            {(searchQuery || selectedKeywords.length > 0) && (
+              <button
+                type="button"
+                onClick={clearSearchFilters}
+                className="px-1 py-1.5 text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground"
+              >
+                모두 지우기
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -778,13 +492,20 @@ function ContentsContent() {
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
-          <span className="text-4xl">🔧</span>
           <p className="text-sm font-medium text-foreground">
-            {category ? '콘텐츠를 수집 중입니다' : '해당하는 콘텐츠가 없습니다'}
+            {searchQuery || selectedKeywords.length > 0
+              ? '조건에 맞는 콘텐츠가 없습니다.'
+              : '아직 등록된 콘텐츠가 없습니다.'}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {category ? '곧 업데이트됩니다. 다른 카테고리를 먼저 확인해 보세요.' : '필터 조건을 변경해보세요'}
-          </p>
+          {(searchQuery || selectedKeywords.length > 0) && (
+            <button
+              type="button"
+              onClick={clearSearchFilters}
+              className="text-xs font-medium text-brand-600 underline underline-offset-4 hover:text-brand-700"
+            >
+              필터 지우기
+            </button>
+          )}
         </div>
       ) : (
         <>
