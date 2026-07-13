@@ -507,6 +507,7 @@ function ContentsContent() {
 
       // 313 — lgu_impact 컬럼(select·필터)은 가용성 플래그에 따라 켜고 끈다(42703 graceful).
       const baseFields = 'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords, cluster_id, importance_score, collected_at, thumbnail_url'
+      const shouldFetchCount = page === 1 || total === null
 
       const buildQuery = (withLguImpact: boolean) => {
         const selectParts = [withLguImpact ? `${baseFields}, lgu_impact` : baseFields]
@@ -515,7 +516,7 @@ function ContentsContent() {
 
         let query = supabase
           .from('contents')
-          .select(selectParts.join(', '), { count: 'exact' })
+          .select(selectParts.join(', '), shouldFetchCount ? { count: 'exact' } : undefined)
           .eq('status', 'published')
 
         query = sortByCollected
@@ -563,7 +564,7 @@ function ContentsContent() {
         } else {
           const newItems = (data ?? []) as unknown as ContentItem[]
           setItems(page === 1 ? newItems : (prev) => [...prev, ...newItems])
-          setTotal(count ?? 0)
+          if (shouldFetchCount) setTotal(count ?? 0)
         }
         setLoading(false)
       }

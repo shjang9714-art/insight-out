@@ -421,6 +421,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                                   {meta ? (
                                     <Link
                                       href={`/dashboard/contents/${c.content_id}`}
+                                      prefetch={false}
                                       className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
                                     >
                                       {meta.title}
@@ -448,6 +449,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                               <li key={id}>
                                 <Link
                                   href={`/dashboard/contents/${id}`}
+                                  prefetch={false}
                                   className="block text-xs text-brand-600 hover:underline truncate"
                                 >
                                   {meta.title}

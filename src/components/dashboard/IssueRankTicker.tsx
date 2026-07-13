@@ -52,6 +52,7 @@ function Row({ issue, rank }: { issue: TickerIssue; rank: number }) {
   return (
     <Link
       href={issue.contentId ? `/dashboard/contents/${issue.contentId}` : `/dashboard/issues/${issue.id}`}
+      prefetch={false}
       className="group flex h-11 items-center gap-3 rounded-xl border border-transparent px-3 transition-colors hover:border-border hover:bg-accent/50"
     >
       {/* 순위 번호 */}
@@ -100,6 +101,7 @@ function CompactRow({ issue, rank }: { issue: TickerIssue; rank: number }) {
   return (
     <Link
       href={issue.contentId ? `/dashboard/contents/${issue.contentId}` : `/dashboard/issues/${issue.id}`}
+      prefetch={false}
       className="group flex h-9 items-center gap-2.5"
     >
       <span

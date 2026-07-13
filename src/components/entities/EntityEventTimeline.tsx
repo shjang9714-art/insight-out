@@ -168,6 +168,7 @@ export default function EntityEventTimeline({ events }: Props) {
                       <Link
                         key={cid}
                         href={`/dashboard/contents/${cid}`}
+                        prefetch={false}
                         className="text-[11px] text-brand-600 hover:underline"
                       >
                         근거 →

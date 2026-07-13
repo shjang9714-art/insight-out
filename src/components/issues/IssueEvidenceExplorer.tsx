@@ -150,6 +150,7 @@ export default function IssueEvidenceExplorer({ items, categories, signalTypes }
                   )}
                   <Link
                     href={`/dashboard/contents/${item.id}`}
+                    prefetch={false}
                     className="text-sm font-medium text-foreground leading-snug hover:text-brand-600 transition-colors"
                   >
                     {item.title}

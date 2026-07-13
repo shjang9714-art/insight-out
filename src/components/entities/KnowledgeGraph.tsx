@@ -1024,6 +1024,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                     <li key={c.content_id}>
                       <Link
                         href={`/dashboard/contents/${c.content_id}`}
+                        prefetch={false}
                         className="pointer-events-auto block text-xs leading-tight text-foreground hover:text-brand-600 hover:underline"
                       >
                         {c.title}
@@ -1111,6 +1112,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                     </span>
                     <Link
                       href={`/dashboard/contents/${c.id}`}
+                      prefetch={false}
                       className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
                     >
                       {c.title}
@@ -1158,6 +1160,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                   </span>
                   <Link
                     href={`/dashboard/contents/${c.content_id}`}
+                    prefetch={false}
                     className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
                   >
                     {c.title}

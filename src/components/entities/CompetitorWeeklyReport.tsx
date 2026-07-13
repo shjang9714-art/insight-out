@@ -84,6 +84,7 @@ export default function CompetitorWeeklyReport({ report }: Props) {
                   <Link
                     key={i}
                     href={`/dashboard/contents/${c.content_id}`}
+                    prefetch={false}
                     target="_blank"
                     className="inline-flex items-center gap-1 rounded bg-accent px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors max-w-[240px] truncate"
                     title={c.quote}

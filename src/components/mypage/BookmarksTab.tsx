@@ -41,6 +41,7 @@ export default function BookmarksTab({ bookmarks, loading, error, onRemove }: Pr
                   {content ? (
                     <Link
                       href={`/dashboard/contents/${content.id}`}
+                      prefetch={false}
                       className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
                     >
                       {content.title}

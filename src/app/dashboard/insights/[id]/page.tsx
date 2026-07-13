@@ -187,6 +187,7 @@ export default async function InsightDetailPage({ params }: PageProps) {
                       {meta ? (
                         <Link
                           href={`/dashboard/contents/${c.content_id}`}
+                          prefetch={false}
                           className="block text-sm text-brand-600 hover:underline"
                         >
                           {meta.title}
@@ -214,6 +215,7 @@ export default async function InsightDetailPage({ params }: PageProps) {
                     <li key={cid}>
                       <Link
                         href={`/dashboard/contents/${cid}`}
+                        prefetch={false}
                         className="block text-sm text-brand-600 hover:underline truncate"
                       >
                         {meta.title}

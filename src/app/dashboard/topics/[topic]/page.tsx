@@ -187,6 +187,7 @@ export default async function TopicTimelinePage({ params }: PageProps) {
                       )}
                       <Link
                         href={`/dashboard/contents/${article.id}`}
+                        prefetch={false}
                         className="text-sm font-medium text-foreground leading-snug hover:text-brand-600 transition-colors"
                       >
                         {article.title}

@@ -162,6 +162,7 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
                 <Link
                   key={item.id}
                   href={`/dashboard/contents/${item.id}`}
+                  prefetch={false}
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >
@@ -227,6 +228,7 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
                 <Link
                   key={item.id}
                   href={`/dashboard/contents/${item.id}`}
+                  prefetch={false}
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >

@@ -552,6 +552,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
                     <Link
                       key={c.id}
                       href={`/dashboard/contents/${c.id}`}
+                      prefetch={false}
                       className="block rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground transition-colors hover:border-brand-600/40 hover:text-brand-600"
                     >
                       <span className="line-clamp-1">{c.title}</span>
@@ -603,6 +604,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
                           )}
                           <Link
                             href={`/dashboard/contents/${c.id}`}
+                            prefetch={false}
                             className="text-sm font-medium text-foreground leading-snug hover:text-brand-600 transition-colors"
                           >
                             {c.title}

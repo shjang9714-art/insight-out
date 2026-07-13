@@ -179,5 +179,5 @@ export default function ContentCard({
     )
   }
 
-  return <Link href={resolvedHref} className={cardClass}>{inner}</Link>
+  return <Link href={resolvedHref} prefetch={false} className={cardClass}>{inner}</Link>
 }

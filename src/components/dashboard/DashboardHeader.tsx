@@ -275,6 +275,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
                         <Link
                           key={n.id}
                           href={n.href}
+                          prefetch={false}
                           onClick={() => handleNotifClick(n.id)}
                           className={`block px-4 py-3 transition-colors hover:bg-accent ${isRead ? '' : 'bg-brand-50/60 dark:bg-brand-950/20'}`}
                         >

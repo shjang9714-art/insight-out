@@ -1,4 +1,4 @@
-import { cache } from 'react'
+import { Suspense, cache } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
@@ -208,30 +208,8 @@ export default async function ContentDetailPage({ params }: PageProps) {
     matched_groups: content.matched_groups,
     cluster_id: content.cluster_id,
   }
-  const [grouped, youtubeRelated, entityRes, citations] = await Promise.all([
-    getRelatedGrouped(supabase, currentMeta),
-    getRelatedYoutube(supabase, currentMeta),
-    supabase
-      .from('content_entities')
-      .select('entities(id, canonical_name, entity_type, is_competitor)')
-      .eq('content_id', id)
-      .limit(20),
-    getContentCitations(supabase, id),
-  ])
-
-  type EntityRow = { id: string; canonical_name: string; entity_type: EntityType; is_competitor: boolean }
-  const relatedEntities: EntityRow[] = (entityRes.data ?? [])
-    .map((r: unknown) => {
-      const row = r as { entities: EntityRow | null }
-      return row.entities
-    })
-    .filter((e): e is EntityRow => e !== null)
-
   const youtubeHashtags = isYoutube
-    ? Array.from(new Set([
-        ...(content.matched_groups ?? []),
-        ...relatedEntities.map((e) => e.canonical_name),
-      ]))
+    ? Array.from(new Set(content.matched_groups ?? []))
         .slice(0, 5)
         .map((label) => ({ label, href: `/dashboard/topics/${encodeURIComponent(label)}` }))
     : []
@@ -549,6 +527,60 @@ export default async function ContentDetailPage({ params }: PageProps) {
         </div>
       </article>
 
+      <Suspense fallback={null}>
+        <ContentSupplementSections
+          supabase={supabase}
+          contentId={id}
+          currentMeta={currentMeta}
+        />
+      </Suspense>
+    </PageContainer>
+  )
+}
+
+type ContentMeta = {
+  id: string
+  matched_keywords: string[] | null
+  matched_groups: string[] | null
+  cluster_id: string | null
+}
+
+type EntityRow = {
+  id: string
+  canonical_name: string
+  entity_type: EntityType
+  is_competitor: boolean
+}
+
+async function ContentSupplementSections({
+  supabase,
+  contentId,
+  currentMeta,
+}: {
+  supabase: ReturnType<typeof createSupabaseClient>
+  contentId: string
+  currentMeta: ContentMeta
+}) {
+  const [grouped, youtubeRelated, entityRes, citations] = await Promise.all([
+    getRelatedGrouped(supabase, currentMeta),
+    getRelatedYoutube(supabase, currentMeta),
+    supabase
+      .from('content_entities')
+      .select('entities(id, canonical_name, entity_type, is_competitor)')
+      .eq('content_id', contentId)
+      .limit(20),
+    getContentCitations(supabase, contentId),
+  ])
+
+  const relatedEntities: EntityRow[] = (entityRes.data ?? [])
+    .map((r: unknown) => {
+      const row = r as { entities: EntityRow | null }
+      return row.entities
+    })
+    .filter((e): e is EntityRow => e !== null)
+
+  return (
+    <>
       {/* 이 기사를 인용한 리포트·인사이트(313 역참조) — 비어 있으면 CitationsBlock 자체가 렌더 안 함 */}
       <CitationsBlock citations={citations} />
 
@@ -608,6 +640,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
                       <Link
                         key={r.id}
                         href={`/dashboard/contents/${r.id}`}
+                        prefetch={false}
                         className="group flex h-full min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
                       >
                         <p className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-brand-600">
@@ -670,6 +703,6 @@ export default async function ContentDetailPage({ params }: PageProps) {
           )}
         </section>
       )}
-    </PageContainer>
+    </>
   )
 }
