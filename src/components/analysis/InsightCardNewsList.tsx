@@ -103,7 +103,7 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
       {/* 2. 헤드라인 — 어그로 앵커, 좌측 버킷색 액센트 바 */}
       <div className={cn('border-l-[3px] pl-4', accentCls)}>
         <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
-          <Link href={detailHref} className="hover:text-brand-600 hover:underline">
+          <Link href={detailHref} prefetch={false} className="hover:text-brand-600 hover:underline">
             {card.card_headline ?? card.headline}
           </Link>
         </h3>
@@ -273,6 +273,7 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
             <Link
               key={kw}
               href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+              prefetch={false}
               className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground hover:text-foreground"
             >
               {kw}

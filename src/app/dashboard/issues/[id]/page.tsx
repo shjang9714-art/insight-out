@@ -633,6 +633,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
                 <Link
                   key={e.canonical_name}
                   href={`/dashboard/topics/${encodeURIComponent(e.canonical_name)}`}
+                  prefetch={false}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs transition-colors hover:border-brand-600/40 hover:bg-accent/50"
                 >
                   <span className={cn(
@@ -658,6 +659,7 @@ export default async function IssueDetailPage({ params }: PageProps) {
                 <Link
                   key={sim.id}
                   href={`/dashboard/issues/${sim.id}`}
+                  prefetch={false}
                   className="group flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-brand-600/30 hover:bg-accent/40"
                 >
                   <span className="text-sm text-foreground leading-snug group-hover:text-brand-600 transition-colors line-clamp-1">

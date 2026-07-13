@@ -331,6 +331,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                     {/* 2. 제목 */}
                     <Link
                       href={detailHref}
+                      prefetch={false}
                       className="block text-base font-semibold text-foreground leading-snug hover:text-brand-600 hover:underline"
                     >
                       {card.card_headline ?? card.headline}
@@ -383,6 +384,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                             <Link
                               key={kw}
                               href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+                              prefetch={false}
                               className="rounded px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground hover:text-foreground"
                             >
                               {kw}
@@ -396,6 +398,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                     <div>
                       <Link
                         href={detailHref}
+                        prefetch={false}
                         className="text-xs font-medium text-brand-600 hover:underline"
                       >
                         자세히 보기 →

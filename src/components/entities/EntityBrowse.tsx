@@ -103,6 +103,7 @@ export default function EntityBrowse({ entities, totalByType }: Props) {
             <Link
               key={e.id}
               href={`/dashboard/entities/${e.id}`}
+              prefetch={false}
               className="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-brand-600/40 hover:bg-accent/50"
             >
               <span className={cn(

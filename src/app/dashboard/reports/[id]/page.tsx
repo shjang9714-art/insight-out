@@ -192,6 +192,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
                   <Link
                     key={issue.id}
                     href={`/dashboard/issues/${issue.id}`}
+                    prefetch={false}
                     className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-brand-600/40 hover:text-brand-600"
                   >
                     {stripLlmArtifacts(issue.title)}

@@ -787,7 +787,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           <span>{ENTITY_TYPE_LABEL[rootEnt.entity_type]}</span>
           {rootEnt.is_competitor && <span className="text-red-500">· 경쟁사</span>}
           <span>· 언급 {rootEnt.mention_count.toLocaleString()}회</span>
-          <Link href={`/dashboard/entities/${rootEnt.id}`} className="ml-1 text-brand-600 hover:underline">
+          <Link href={`/dashboard/entities/${rootEnt.id}`} prefetch={false} className="ml-1 text-brand-600 hover:underline">
             상세 보기 →
           </Link>
         </div>
@@ -1065,6 +1065,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               </button>
               <Link
                 href={`/dashboard/entities/${selectedNode.id}`}
+                prefetch={false}
                 className="rounded-lg border px-2.5 py-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors"
               >
                 상세 보기 →

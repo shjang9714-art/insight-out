@@ -34,7 +34,7 @@ export default function BackLink({ className, fallbackHref }: BackLinkProps) {
   }
 
   return (
-    <Link href={fallbackHref} className={className}>
+    <Link href={fallbackHref} prefetch={false} className={className}>
       <ArrowLeft className="h-4 w-4" />
       이전으로
     </Link>

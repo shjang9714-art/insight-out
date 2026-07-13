@@ -56,9 +56,10 @@ function HealthRow({ label, value, badPct, linkHref, linkLabel, note }: RowProps
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-medium text-foreground">{label}</span>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={cn('tabular-nums', textColor)}>{value}</span>
-          <Link
-            href={linkHref}
+	          <span className={cn('tabular-nums', textColor)}>{value}</span>
+	          {/* prefetch-ok: 어드민 상태 카드 링크 — 개수 고정, 이동 잦음 */}
+	          <Link
+	            href={linkHref}
             className="rounded border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:border-brand-600 hover:text-brand-600 transition-colors"
           >
             {linkLabel}

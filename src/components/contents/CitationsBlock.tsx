@@ -19,6 +19,7 @@ function Section({ icon, label, items }: { icon: string; label: string; items: C
         <Link
           key={item.id}
           href={item.href}
+          prefetch={false}
           className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm transition-colors hover:border-brand-600/40 hover:bg-accent/50"
         >
           <span className="flex min-w-0 items-center gap-2">

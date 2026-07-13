@@ -36,7 +36,7 @@ export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase }:
               <span className="text-xs text-muted-foreground">{group.companies.length}개사</span>
               <div className="flex-1" />
               {hiddenCount > 0 && seeAllHrefBase && (
-                <Link href={`${seeAllHrefBase}/${group.key}`} className="text-xs font-medium text-brand-600 hover:underline">
+                <Link href={`${seeAllHrefBase}/${group.key}`} prefetch={false} className="text-xs font-medium text-brand-600 hover:underline">
                   전체 보기 →
                 </Link>
               )}
@@ -50,6 +50,7 @@ export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase }:
                   <Link
                     key={card.id}
                     href={getCardDetailHref(card)}
+                    prefetch={false}
                     className={cn(
                       'group rounded-xl border bg-card p-4 space-y-2.5 transition-colors hover:border-brand-200',
                       isGold ? 'io-gold-glow border-transparent' : 'border-border'

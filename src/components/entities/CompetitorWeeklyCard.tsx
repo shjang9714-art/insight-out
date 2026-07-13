@@ -24,6 +24,7 @@ export default function CompetitorWeeklyCard({ report }: Props) {
   return (
     <Link
       href={`/dashboard/entities/competitor-weekly/${week_start}`}
+      prefetch={false}
       className="group flex h-full flex-col rounded-2xl border border-border bg-card p-5 transition-all hover:border-brand-200 hover:shadow-md"
     >
       <div className="mb-2 flex items-center gap-2 flex-wrap">

@@ -221,6 +221,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
               <Link
                 key={card.id}
                 href={`/dashboard/issues/${card.id}`}
+                prefetch={false}
                 className={cn(
                   'group flex flex-col rounded-xl border bg-card p-5 transition-colors hover:border-brand-600/30 hover:bg-accent/40',
                   matched ? 'border-brand-600/20' : 'border-border'
@@ -280,6 +281,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
                       <Link
                         key={kw}
                         href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+                        prefetch={false}
                         onClick={(e) => e.stopPropagation()}
                         className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground"
                       >

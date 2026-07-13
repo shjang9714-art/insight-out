@@ -58,8 +58,8 @@ export default function CategoryGrid() {
         const isActive = cat.href
           ? pathname.startsWith(cat.href)
           : activeCategory === cat.category
-
         return (
+          // prefetch-ok: L2 카테고리 네비 — 개수 고정, 이동 잦음
           <Link
             key={cat.id}
             href={href}

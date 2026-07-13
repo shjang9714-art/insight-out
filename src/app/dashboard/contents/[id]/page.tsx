@@ -593,6 +593,7 @@ async function ContentSupplementSections({
               <Link
                 key={e.id}
                 href={`/dashboard/entities/${e.id}`}
+                prefetch={false}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-75',
                   e.entity_type === 'tech'     && 'border-blue-200 bg-blue-50 text-blue-700',

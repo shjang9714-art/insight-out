@@ -45,6 +45,7 @@ export default function DailyInsightList({ insights }: DailyInsightListProps) {
               <Link
                 key={item.id}
                 href={`/dashboard/daily-insights/${item.id}`}
+                prefetch={false}
                 className="group block rounded-xl border border-border bg-card p-5 transition-colors hover:border-brand-600/40 hover:bg-accent/40"
               >
                 {item.category && <CategoryBadge category={item.category} />}

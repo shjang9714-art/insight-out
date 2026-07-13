@@ -108,11 +108,12 @@ export function AdminSidebar() {
             <ul className="space-y-0.5">
               {searchResults.map((item) => {
                 const Icon = item.icon
-                const active = isActive(item.href)
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
+	                const active = isActive(item.href)
+	                return (
+	                  <li key={item.href}>
+	                    {/* prefetch-ok: 어드민 검색 네비 — 개수 고정, 이동 잦음 */}
+	                    <Link
+	                      href={item.href}
                       onClick={() => setQuery('')}
                       className={cn(
                         'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
@@ -162,11 +163,12 @@ export function AdminSidebar() {
                       </li>
                     )
                   }
-                  const active = isActive(item.href)
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
+	                  const active = isActive(item.href)
+	                  return (
+	                    <li key={item.href}>
+	                      {/* prefetch-ok: 어드민 사이드바 네비 — 개수 고정, 이동 잦음 */}
+	                      <Link
+	                        href={item.href}
                         className={cn(
                           'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
                           active

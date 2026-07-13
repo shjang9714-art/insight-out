@@ -324,11 +324,12 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         aria-label="주 메뉴"
       >
         <div id="l1-nav-row" className="mx-auto flex w-full max-w-6xl items-stretch justify-start gap-9 px-4 sm:px-5 tracking-[-0.01em]">
-          {NAV_TABS.map((tab) => {
-            const active = isTabActive(tab.href, tab.exact, pathname)
-            return (
-              <Link
-                key={tab.href}
+	          {NAV_TABS.map((tab) => {
+	            const active = isTabActive(tab.href, tab.exact, pathname)
+	            return (
+	              // prefetch-ok: 네비 탭 — 개수 고정, 이동 잦음
+	              <Link
+	                key={tab.href}
                 href={tab.href}
                 className={`inline-flex items-center gap-2 py-2.5 text-[17px] transition-colors ${
                   active

@@ -5,7 +5,7 @@
   "scripts": {
     "predev": "node scripts/build-topic-cover-manifest.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/build-topic-cover-manifest.mjs",
+    "prebuild": "node scripts/build-topic-cover-manifest.mjs && node scripts/check-prefetch.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

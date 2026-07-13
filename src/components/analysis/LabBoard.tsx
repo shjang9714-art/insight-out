@@ -93,6 +93,7 @@ export default function LabBoard({
                 <Link
                   key={t.group}
                   href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
+                  prefetch={false}
                   className="shrink-0 rounded-xl border border-border bg-card p-4 w-44 space-y-2 hover:border-brand-600/40 hover:bg-accent/40 transition-colors"
                 >
                   <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2">{t.group}</p>
@@ -120,6 +121,7 @@ export default function LabBoard({
                 <Link
                   key={kw.name}
                   href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
+                  prefetch={false}
                   className={cn(
                     'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium transition-colors hover:opacity-80',
                     BUCKET_CHIP_CLS[kw.bucket]

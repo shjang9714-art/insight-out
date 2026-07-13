@@ -72,6 +72,7 @@ export default function ContentArticleView({
           <Link
             key={h.href}
             href={h.href}
+            prefetch={false}
             className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
           >
             #{h.label}

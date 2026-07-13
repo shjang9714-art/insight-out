@@ -40,10 +40,11 @@ export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerC
                   <LguImpactBadge impact="위기" count={group.impactDist['위기']} />
                   <LguImpactBadge impact="기회" count={group.impactDist['기회']} />
                 </div>
-              )}
-              {hiddenCount > 0 && seeAllHref && (
-                <Link href={seeAllHref} className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
-                  +{hiddenCount}개사 더 →
+	              )}
+	              {hiddenCount > 0 && seeAllHref && (
+	                // prefetch-ok: 정적 전체보기 링크 — 상세 라우트 아님
+	                <Link href={seeAllHref} className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+	                  +{hiddenCount}개사 더 →
                 </Link>
               )}
             </div>

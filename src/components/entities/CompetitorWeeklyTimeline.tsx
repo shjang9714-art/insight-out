@@ -34,6 +34,7 @@ export default function CompetitorWeeklyTimeline({ entries, activeWeekStart }: P
             <Link
               key={entry.week_start}
               href={`/dashboard/entities/competitor-weekly/${entry.week_start}`}
+              prefetch={false}
               className={cn(
                 'flex shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-1.5 transition-colors',
                 isActive ? 'bg-brand-600/10' : 'hover:bg-accent',

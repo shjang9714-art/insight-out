@@ -476,6 +476,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
               <Link
                 key={re.id}
                 href={`/dashboard/entities/${re.id}`}
+                prefetch={false}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-75',
                   entityStyle(re.entity_type, re.is_competitor),
@@ -525,6 +526,7 @@ export default async function EntityDetailPage({ params }: PageProps) {
               <Link
                 key={issue.id}
                 href={`/dashboard/issues/${issue.id}`}
+                prefetch={false}
                 className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-brand-600/40 hover:text-brand-600"
               >
                 {stripLlmArtifacts(issue.title)}

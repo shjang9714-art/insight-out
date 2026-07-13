@@ -73,11 +73,12 @@ export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck, p
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {tiles.map((tile) => {
-          const isDone = tile.count === 0
-          const isRisk = tile.urgent && !isDone
-          return (
-            <Link
-              key={tile.key}
+	          const isDone = tile.count === 0
+	          const isRisk = tile.urgent && !isDone
+	          return (
+	            // prefetch-ok: 어드민 작업 타일 — 개수 고정, 이동 잦음
+	            <Link
+	              key={tile.key}
               href={tile.href}
               className="group relative flex h-full flex-col justify-between rounded-xl border border-border bg-card p-5 transition-colors hover:bg-accent"
             >

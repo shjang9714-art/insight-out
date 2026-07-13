@@ -44,10 +44,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
             <nav className="p-2">
               {NAV_TABS.map((tab) => {
-                const active = isTabActive(tab.href, tab.exact, pathname)
-                return (
-                  <Link
-                    key={tab.href}
+	                const active = isTabActive(tab.href, tab.exact, pathname)
+	                return (
+	                  // prefetch-ok: 네비 탭 — 개수 고정, 이동 잦음
+	                  <Link
+	                    key={tab.href}
                     href={tab.href}
                     onClick={() => setSidebarOpen(false)}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${

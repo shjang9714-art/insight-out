@@ -59,11 +59,12 @@ export default function InsightViewTabs<T extends string>({
           </>
         )
 
-        if (item.href) {
-          return (
-            <Link key={item.id} href={item.href} className={cls}>
-              {content}
-            </Link>
+	        if (item.href) {
+	          return (
+	            // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
+	            <Link key={item.id} href={item.href} className={cls}>
+	              {content}
+	            </Link>
           )
         }
 

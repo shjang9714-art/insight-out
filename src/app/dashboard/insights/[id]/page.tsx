@@ -240,6 +240,7 @@ export default async function InsightDetailPage({ params }: PageProps) {
             <Link
               key={kw}
               href={`/dashboard/topics/${encodeURIComponent(kw)}`}
+              prefetch={false}
               className="rounded px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground hover:text-foreground"
             >
               {kw}

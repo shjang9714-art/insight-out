@@ -134,7 +134,7 @@ async function CompetitorView() {
                   <LguImpactBadge impact="관망" count={overallImpactDist['관망']} />
                 </div>
               )}
-              <Link href="/dashboard/entities/competitor-news" className="text-xs font-medium text-brand-600 hover:underline">
+              <Link href="/dashboard/entities/competitor-news" prefetch={false} className="text-xs font-medium text-brand-600 hover:underline">
                 전체보기 →
               </Link>
             </div>

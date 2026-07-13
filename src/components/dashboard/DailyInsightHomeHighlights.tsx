@@ -80,7 +80,7 @@ export default async function DailyInsightHomeHighlights() {
       <ol className="flex flex-1 flex-col divide-y divide-border">
         {cards.map((card) => (
           <li key={card.id} className="flex flex-1 flex-col justify-center py-4 first:pt-0 last:pb-0">
-            <Link href={`/dashboard/daily-insights/${card.id}`} className="group block">
+            <Link href={`/dashboard/daily-insights/${card.id}`} prefetch={false} className="group block">
               {card.category && (
                 <span className="mb-1.5 inline-block text-[11px] font-bold uppercase tracking-[0.14em] text-brand-700">
                   {card.category}

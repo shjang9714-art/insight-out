@@ -200,9 +200,10 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-1.5">
-              {STATUS_FILTERS.map((f) => (
-                <Link
-                  key={f.value}
+	              {STATUS_FILTERS.map((f) => (
+	                // prefetch-ok: 필터 칩 — 개수 고정, 이동 잦음
+	                <Link
+	                  key={f.value}
                   href={buildHref({ status: f.value, job: jobFilter, range })}
                   className={cn(
                     'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',
@@ -216,9 +217,10 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
               ))}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {RANGE_FILTERS.map((f) => (
-                <Link
-                  key={f.value}
+	              {RANGE_FILTERS.map((f) => (
+	                // prefetch-ok: 필터 칩 — 개수 고정, 이동 잦음
+	                <Link
+	                  key={f.value}
                   href={buildHref({ status, job: jobFilter, range: f.value })}
                   className={cn(
                     'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',

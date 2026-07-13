@@ -38,6 +38,7 @@ export default function ReportCard({
   return (
     <Link
       href={`/dashboard/reports/${id}`}
+      prefetch={false}
       className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-brand-200 hover:shadow-md"
     >
       <div className="aspect-[16/9] overflow-hidden bg-muted">
