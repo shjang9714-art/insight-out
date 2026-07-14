@@ -72,18 +72,20 @@ function CardFooter({ count, period }: { count: number; period: string }) {
 
 /** 모든 그룹에서 동일한 폭을 유지하는 3열 그리드용 세로형 카드 */
 function CompanyCard({ entry }: { entry: MajorCompanyCard }) {
-  const { company, card, hashtags, isGold } = entry
+  const { company, card, hashtags } = entry
   const importance = computeImportance(card)
   const evidenceCount = card.citations.length || card.source_content_ids.length
 
   return (
+    // 346: 중요도 높은 카드의 투명 테두리와 음수 z-index 글로우가 카드 배경에 가려져
+    // "테두리만 사라진" 것처럼 보였다. 카드 표면은 전부 동일하게 두고,
+    // 중요 신호는 `● 중요` 마크 하나로만 준다(343 — 강조는 예외만).
     <Link
       href={`${getCardDetailHref(card)}?origin=entities&view=watchlist`}
       prefetch={false}
       className={cn(
-        'group flex flex-col gap-3 rounded-xl border bg-card p-5 transition-all',
-        'hover:border-brand-200 hover:shadow-[0_2px_12px_-4px_rgb(0_0_0/0.10)]',
-        isGold ? 'io-gold-glow border-transparent' : 'border-border'
+        'group flex flex-col gap-3 rounded-xl border border-border bg-card p-5 transition-all',
+        'hover:border-brand-200 hover:shadow-[0_2px_12px_-4px_rgb(0_0_0/0.10)]'
       )}
     >
       <div className="flex items-center gap-2">

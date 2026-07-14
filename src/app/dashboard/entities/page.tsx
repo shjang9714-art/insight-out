@@ -15,7 +15,7 @@ import {
   getPublishedCompetitorWeeklyReports,
   getCompetitorWeeklyTimeline,
 } from '@/lib/competitor-weekly/query'
-import CompetitorWeeklyCard from '@/components/entities/CompetitorWeeklyCard'
+import CompetitorWeeklyList from '@/components/entities/CompetitorWeeklyList'
 import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
 import EntitySectionHeader from '@/components/entities/EntitySectionHeader'
 
@@ -185,11 +185,7 @@ async function CompetitorTrendView() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {weeklyReports.map((r) => (
-              <CompetitorWeeklyCard key={r.id} report={r} />
-            ))}
-          </div>
+          <CompetitorWeeklyList reports={weeklyReports} />
         )}
       </section>
     </div>

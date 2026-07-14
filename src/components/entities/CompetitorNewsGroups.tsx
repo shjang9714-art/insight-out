@@ -39,7 +39,7 @@ function CompetitorCard({ result, articlesPerCard }: CardProps) {
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
       <div className="flex items-center gap-2">
         <CompanySymbol company={name} />
-        <span className="truncate text-[13px] font-semibold text-muted-foreground">{name}</span>
+        <span className="truncate text-sm font-semibold text-foreground/80">{name}</span>
         <div className="flex-1" />
         {/* 위기·기회만 — '관망'은 대부분이라 배지로 띄우면 신호를 잃는다(313) */}
         <LguImpactBadge impact="위기" count={impactDist['위기']} />
@@ -60,11 +60,11 @@ function CompetitorCard({ result, articlesPerCard }: CardProps) {
                 prefetch={false}
                 className="group flex items-start gap-2 rounded-md px-1 py-1 -mx-1 transition-colors hover:bg-muted/50"
               >
-                <span className="min-h-[2.7em] min-w-0 flex-1 text-[13px] leading-[1.35] text-foreground/85 line-clamp-2 transition-colors group-hover:text-brand-600">
+                <span className="min-h-[2.8em] min-w-0 flex-1 text-sm leading-[1.4] text-foreground/85 line-clamp-2 transition-colors group-hover:text-brand-600">
                   {a.title}
                   {sourceName && <span className="ml-1 text-muted-foreground/60">· {sourceName}</span>}
                 </span>
-                <span className="shrink-0 pt-px text-[11px] tabular-nums text-muted-foreground/70">
+                <span className="shrink-0 pt-0.5 text-[12px] tabular-nums text-muted-foreground/70">
                   {formatCompArticleDate(a.collected_at)}
                 </span>
               </Link>
@@ -75,7 +75,7 @@ function CompetitorCard({ result, articlesPerCard }: CardProps) {
 
       <div className="flex-1" />
 
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground/70">
+      <div className="flex items-center justify-between gap-2 text-[12px] text-muted-foreground/70">
         <span>기사 {articleTotal}건</span>
         {rest > 0 && <span>+{rest}건 더</span>}
       </div>

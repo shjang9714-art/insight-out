@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getKstTodayStartIso } from '@/lib/date'
+import { titleSimilarity } from '@/lib/crawler/similarity'
 
 export const COMPETITOR_GROUP_ORDER = ['통신', '클라우드·플랫폼', '빅테크']
 export const COMPETITOR_FALLBACK_GROUP = '기타 경쟁사'
@@ -39,6 +40,24 @@ export interface CompetitorNewsData {
 }
 
 const emptyImpactDist = (): CompImpactDist => ({ 위기: 0, 기회: 0, 관망: 0 })
+
+/** 카드에 같은 사건의 기사를 두 번 노출하지 않기 위한 표시용 near-dup 임계값(346) */
+const DISPLAY_DUP_THRESHOLD = 0.6
+
+/**
+ * 표시용 중복 제거(346) — 제목 유사도가 높은 기사는 첫 건(최신)만 남긴다.
+ * "KT AI 스테이션, 'WSIS 프라이즈' 챔피언상 수상" / "KT 'AI 스테이션', 국내 유일 WSIS 프라이즈 챔피언상 수상"
+ * 처럼 같은 사건을 다룬 기사가 카드의 두 줄을 모두 차지하면 정보량이 0이 된다.
+ * `articleTotal`(전체 건수)은 원본 그대로 유지 — 중복 제거는 노출에만 적용한다.
+ */
+function dedupeForDisplay(articles: CompArticle[]): CompArticle[] {
+  const kept: CompArticle[] = []
+  for (const a of articles) {
+    const isDup = kept.some(k => titleSimilarity(k.title, a.title) >= DISPLAY_DUP_THRESHOLD)
+    if (!isDup) kept.push(a)
+  }
+  return kept
+}
 
 export interface CompetitorNewsOpts {
   /** 조회 기간(일). 기본 14 */
@@ -138,7 +157,7 @@ export async function getCompetitorNewsData(
     if (!byGroup.has(groupName)) byGroup.set(groupName, [])
     byGroup.get(groupName)!.push({
       name: comp.canonical_name,
-      articles: matched.slice(0, articlesPerCompany),
+      articles: dedupeForDisplay(matched).slice(0, articlesPerCompany),
       articleTotal: matched.length,
       impactDist,
     })
