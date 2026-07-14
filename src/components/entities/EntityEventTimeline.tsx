@@ -1,8 +1,4 @@
-'use client'
-
-import { useState } from 'react'
 import Link from 'next/link'
-import { RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
@@ -41,75 +37,38 @@ const SENTIMENT_STYLE: Record<string, string> = {
   '부정': 'bg-negative-soft text-negative',
 }
 
-// ─── 관리자 생성 버튼 (클라이언트) ───────────────────────────────────────────
+// ─── 갱신 시각 표기 ───────────────────────────────────────────────────────────
 
-interface GenerateButtonProps {
-  entityId: string
-}
-
-export function EntityEventGenerateButton({ entityId }: GenerateButtonProps) {
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-
-  async function handleGenerate() {
-    setLoading(true)
-    setResult(null)
-    try {
-      const res = await fetch(`/api/admin/entities/${entityId}/events`, { method: 'POST' })
-      const data = await res.json() as { count?: number; error?: string }
-      if (!res.ok) {
-        setResult(`오류: ${data.error ?? res.statusText}`)
-      } else {
-        setResult(`${data.count}개 사건 생성 완료`)
-        setTimeout(() => window.location.reload(), 800)
-      }
-    } catch (err) {
-      setResult(`요청 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-3">
-      <button
-        onClick={handleGenerate}
-        disabled={loading}
-        className={cn(
-          'inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors',
-          loading
-            ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-            : 'text-foreground hover:border-brand-600/40 hover:text-brand-600'
-        )}
-      >
-        <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-        {loading ? '생성 중...' : '사건 타임라인 생성/갱신'}
-      </button>
-      {result && (
-        <span className="text-xs text-muted-foreground">{result}</span>
-      )}
-    </div>
-  )
+function formatDaysAgo(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+  if (days <= 0) return '오늘 갱신'
+  return `최근 갱신: ${days}일 전`
 }
 
 // ─── 타임라인 렌더 ─────────────────────────────────────────────────────────────
 
 interface Props {
   events: EntityEventItem[]
+  /** 사건 배치의 최신 생성 시각(entity_events.generated_at 중 최대값). 없으면 미표시 */
+  updatedAt?: string | null
 }
 
-export default function EntityEventTimeline({ events }: Props) {
+export default function EntityEventTimeline({ events, updatedAt }: Props) {
   if (events.length === 0) return null
 
   return (
-    <div className="relative">
-      {/* 연결선 */}
-      <div
-        className="absolute left-[7px] top-3 bottom-3 w-px bg-border"
-        aria-hidden="true"
-      />
+    <div>
+      {updatedAt && (
+        <p className="mb-3 text-[11px] text-muted-foreground">{formatDaysAgo(updatedAt)}</p>
+      )}
+      <div className="relative">
+        {/* 연결선 */}
+        <div
+          className="absolute left-[7px] top-3 bottom-3 w-px bg-border"
+          aria-hidden="true"
+        />
 
-      <ol className="space-y-6">
+        <ol className="space-y-6">
         {events.map((ev) => {
           const headline = stripLlmArtifacts(ev.headline)
           const detail = ev.detail ? stripLlmArtifacts(ev.detail) : null
@@ -169,7 +128,8 @@ export default function EntityEventTimeline({ events }: Props) {
                         key={cid}
                         href={`/dashboard/contents/${cid}`}
                         prefetch={false}
-                        className="text-[11px] text-brand-600 hover:underline"
+                        aria-label={`"${headline}" 근거 기사 보기`}
+                        className="text-[11px] text-brand-600 hover:underline focus-visible:outline-2 focus-visible:outline-brand-600 focus-visible:outline-offset-2"
                       >
                         근거 →
                       </Link>
@@ -180,7 +140,8 @@ export default function EntityEventTimeline({ events }: Props) {
             </li>
           )
         })}
-      </ol>
+        </ol>
+      </div>
     </div>
   )
 }
