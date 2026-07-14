@@ -2,12 +2,13 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { updateOwnProfile } from '@/lib/users/update-profile'
-import type { Department } from '@/lib/types'
 import type { LensKey } from '@/lib/lens'
+import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 
 interface SaveProfileInput {
   name: string
-  department: Department
+  /** 347: 부문은 Ent 부문 단일 고정 — 클라이언트 입력을 신뢰하지 않고 서버에서 FIXED_DEPARTMENT 로 저장한다 */
+  department?: unknown
   team: string
 }
 
@@ -15,14 +16,6 @@ interface ActionResult {
   error: string | null
 }
 
-const DEPARTMENTS: Department[] = [
-  'Enterprise사업부문',
-  'SMB사업부문',
-  '공공사업부문',
-  '기술부문',
-  '마케팅부문',
-  '기타',
-]
 const LENS_KEYS: LensKey[] = ['mine', 'watch', 'all']
 
 function getErrorCode(error: unknown): string | null {
@@ -40,7 +33,7 @@ async function getAuthenticatedUserId(): Promise<string | null> {
 export async function saveProfile(input: SaveProfileInput): Promise<ActionResult> {
   const name = input.name.trim()
   const team = input.team.trim()
-  if (!name || !team || !DEPARTMENTS.includes(input.department)) {
+  if (!name || !isOrgGroup(team)) {
     return { error: '프로필 입력값이 올바르지 않습니다.' }
   }
 
@@ -48,7 +41,7 @@ export async function saveProfile(input: SaveProfileInput): Promise<ActionResult
   if (!userId) return { error: '로그인 정보를 찾을 수 없습니다.' }
 
   try {
-    await updateOwnProfile(userId, { name, department: input.department, team })
+    await updateOwnProfile(userId, { name, department: FIXED_DEPARTMENT, team })
     return { error: null }
   } catch (error) {
     console.error('[mypage] 프로필 저장 실패:', error)

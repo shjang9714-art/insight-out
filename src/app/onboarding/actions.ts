@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { updateOwnProfile } from '@/lib/users/update-profile'
 import type { LensKey } from '@/lib/lens'
+import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 
 interface CompleteOnboardingInput {
   name: string
@@ -25,7 +26,7 @@ function getErrorCode(error: unknown): string | null {
 export async function completeOnboarding(input: CompleteOnboardingInput): Promise<ActionResult> {
   const name = input.name.trim()
   const team = input.team.trim()
-  if (!name || !team || !LENS_KEYS.includes(input.default_lens)) {
+  if (!name || !isOrgGroup(team) || !LENS_KEYS.includes(input.default_lens)) {
     return { error: '온보딩 입력값이 올바르지 않습니다.' }
   }
 
@@ -35,7 +36,7 @@ export async function completeOnboarding(input: CompleteOnboardingInput): Promis
 
   const basePatch = {
     name,
-    department: '기타',
+    department: FIXED_DEPARTMENT,
     team,
     onboarding_completed: true,
   }

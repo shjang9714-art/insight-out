@@ -4,6 +4,14 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { DEPARTMENT_DISPLAY_LABEL, ORG_GROUPS, isOrgGroup } from '@/lib/org'
 import { cn } from '@/lib/utils'
 import type { OnboardingStep1 } from '@/lib/types'
 import { LENS_PRESETS, type LensKey } from '@/lib/lens'
@@ -35,7 +43,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
   const validate = (): boolean => {
     const next: typeof errors = {}
     if (!form.name.trim()) next.name = '이름을 입력해주세요.'
-    if (!form.team.trim()) next.team = '팀명을 입력해주세요.'
+    if (!isOrgGroup(form.team)) next.team = '그룹을 선택해주세요.'
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -59,15 +67,22 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
         {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
       </div>
 
+      {/* 347: 부문은 Ent 부문 단일 고정, 그룹만 선택 */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="team">팀 <span className="text-red-500">*</span></Label>
-        <Input
-          id="team"
-          placeholder="예: 솔루션영업1팀"
-          value={form.team}
-          onChange={(e) => setForm({ ...form, team: e.target.value })}
-          aria-invalid={!!errors.team}
-        />
+        <Label htmlFor="team">
+          그룹 <span className="text-red-500">*</span>
+          <span className="ml-2 text-xs font-normal text-muted-foreground">{DEPARTMENT_DISPLAY_LABEL}</span>
+        </Label>
+        <Select value={isOrgGroup(form.team) ? form.team : undefined} onValueChange={(v) => setForm({ ...form, team: v })}>
+          <SelectTrigger id="team" aria-invalid={!!errors.team}>
+            <SelectValue placeholder="그룹을 선택하세요" />
+          </SelectTrigger>
+          <SelectContent>
+            {ORG_GROUPS.map((group) => (
+              <SelectItem key={group} value={group}>{group}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {errors.team && <p className="text-xs text-red-500">{errors.team}</p>}
       </div>
 

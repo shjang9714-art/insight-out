@@ -1,20 +1,22 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import { useRouter } from 'next/navigation'
+import { LogOut } from 'lucide-react'
 import BackLink from '@/components/BackLink'
+import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
 import PageContainer from '@/components/PageContainer'
 import SettingsTab from '@/components/mypage/SettingsTab'
 import BookmarksTab from '@/components/mypage/BookmarksTab'
 import ArchivesTab from '@/components/mypage/ArchivesTab'
-import { saveDefaultLens, saveProfile } from '@/app/dashboard/mypage/actions'
+import { saveProfile } from '@/app/dashboard/mypage/actions'
 import type { Department } from '@/lib/types'
+import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 import type { LensKey } from '@/lib/lens'
 import type {
   ArchiveWithItems,
   BookmarkWithItem,
-  MyPageTab,
   NewsletterForm,
   ProfileForm,
   SaveStatus,
@@ -22,29 +24,21 @@ import type {
   WatchlistSummaryItem,
 } from '@/components/mypage/types'
 
-const TABS: { id: MyPageTab; label: string }[] = [
-  { id: 'settings', label: '설정' },
-  { id: 'bookmarks', label: '북마크' },
-  { id: 'archives', label: '아카이브' },
-]
-
 export default function MyPage() {
   const supabase = createClient()
+  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<MyPageTab>('settings')
   const [authEmail, setAuthEmail] = useState('')
 
   const [profile, setProfile] = useState<ProfileForm>({
     name: '',
-    department: '기타',
+    department: FIXED_DEPARTMENT,
     team: '',
     default_lens: 'all',
   })
   const [profileStatus, setProfileStatus] = useState<SaveStatus>('idle')
   const [profileError, setProfileError] = useState<string | null>(null)
-  const [lensStatus, setLensStatus] = useState<SaveStatus>('idle')
-  const [lensError, setLensError] = useState<string | null>(null)
 
   const [services, setServices] = useState<ServiceOption[]>([])
   const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set())
@@ -186,9 +180,6 @@ export default function MyPage() {
         setNewsletter((prev) => ({ ...prev, newsletter_email: user.email ?? '' }))
       }
 
-      const hash = window.location.hash.slice(1)
-      if (hash === 'bookmarks' || hash === 'archives') setActiveTab(hash)
-
       setLoading(false)
     }
 
@@ -196,10 +187,10 @@ export default function MyPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleTabChange = (tab: MyPageTab) => {
-    setActiveTab(tab)
-    const hash = tab === 'settings' ? '' : `#${tab}`
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
   }
 
   const handleProfileSave = async (e: FormEvent) => {
@@ -209,8 +200,8 @@ export default function MyPage() {
       setProfileError('이름을 입력해주세요.')
       return
     }
-    if (!profile.team.trim()) {
-      setProfileError('팀명을 입력해주세요.')
+    if (!isOrgGroup(profile.team)) {
+      setProfileError('그룹을 선택해주세요.')
       return
     }
 
@@ -218,9 +209,9 @@ export default function MyPage() {
     setProfileStatus('saving')
 
     try {
+      // 347: 부문은 서버에서 FIXED_DEPARTMENT 로 고정 저장 — 클라이언트가 보내지 않는다
       const result = await saveProfile({
         name: profile.name,
-        department: profile.department,
         team: profile.team,
       })
       if (result.error) throw new Error(result.error)
@@ -230,32 +221,6 @@ export default function MyPage() {
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : '오류가 발생했습니다.')
       setProfileStatus('error')
-    }
-  }
-
-  const handleDefaultLensChange = async (nextLens: LensKey) => {
-    if (nextLens === profile.default_lens) return
-
-    const previousLens = profile.default_lens
-    setProfile((prev) => ({ ...prev, default_lens: nextLens }))
-    setLensError(null)
-    setLensStatus('saving')
-
-    try {
-      const result = await saveDefaultLens(nextLens)
-      if (result.error) throw new Error(result.error)
-
-      try {
-        localStorage.setItem('io:lens', nextLens)
-        window.dispatchEvent(new Event('lens:changed'))
-      } catch { /* noop */ }
-
-      setLensStatus('saved')
-      setTimeout(() => setLensStatus('idle'), 2500)
-    } catch (err) {
-      setProfile((prev) => ({ ...prev, default_lens: previousLens }))
-      setLensError(err instanceof Error ? err.message : '오류가 발생했습니다.')
-      setLensStatus('error')
     }
   }
 
@@ -418,92 +383,89 @@ export default function MyPage() {
   }
 
   return (
-    <PageContainer variant="reading">
-      <div className="mb-8">
-        <BackLink
-          fallbackHref="/dashboard"
-          className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
-        />
-        <h1 className="text-xl font-bold text-foreground">마이페이지</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{authEmail}</p>
-      </div>
-
-      <div className="mb-6 flex items-center gap-5 border-b border-border">
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.id
-          return (
-            <button
-              key={tab.id}
+    // 347: 마이페이지는 목록 화면과 성격이 다른 "설정 패널" — 중앙 정렬(mx-auto).
+    // 폭은 다른 화면(max-w-screen-xl)까지 늘리지 않는다 — 입력 필드·폼이 1200px로 늘어지면 읽기·조작이 불편해진다.
+    // 탭(설정/북마크/아카이브)은 제거하고 한 화면 스크롤로 통합.
+    <PageContainer>
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="mb-8">
+          <BackLink
+            fallbackHref="/dashboard"
+            className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
+          />
+          <div className="flex items-end justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-foreground">마이페이지</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{authEmail}</p>
+            </div>
+            <Button
               type="button"
-              onClick={() => handleTabChange(tab.id)}
-              className={cn(
-                'border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'border-brand-600 text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              )}
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="shrink-0 gap-1.5 text-muted-foreground hover:text-negative"
             >
-              {tab.label}
-            </button>
-          )
-        })}
+              <LogOut className="h-3.5 w-3.5" />
+              로그아웃
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-10">
+          <SettingsTab
+            authEmail={authEmail}
+            profile={profile}
+            setProfile={setProfile}
+            profileStatus={profileStatus}
+            profileError={profileError}
+            onProfileSave={handleProfileSave}
+            newsletter={newsletter}
+            setNewsletter={setNewsletter}
+            newsletterStatus={newsletterStatus}
+            newsletterError={newsletterError}
+            onNewsletterSave={handleNewsletterSave}
+            services={services}
+            selectedServiceIds={Array.from(selectedServiceIds)}
+            servicesStatus={servicesStatus}
+            servicesError={servicesError}
+            onServicesSave={handleServicesSave}
+            watchlistItems={watchlistItems}
+            onWatchlistChange={refreshWatchlistSummary}
+          />
+
+          <section>
+            <h2 className="mb-4 text-base font-semibold text-foreground">북마크</h2>
+            <BookmarksTab
+              bookmarks={bookmarks}
+              loading={bookmarksLoading}
+              error={bookmarkError}
+              onRemove={handleRemoveBookmark}
+            />
+          </section>
+
+          <section>
+            <h2 className="mb-4 text-base font-semibold text-foreground">아카이브</h2>
+            <ArchivesTab
+              archives={archives}
+              loading={archivesLoading}
+              error={archiveError}
+              expandedArchiveId={expandedArchiveId}
+              setExpandedArchiveId={setExpandedArchiveId}
+              sendingArchiveId={sendingArchiveId}
+              sendResult={sendResult}
+              emailInputArchiveId={emailInputArchiveId}
+              setEmailInputArchiveId={setEmailInputArchiveId}
+              emailInputValue={emailInputValue}
+              setEmailInputValue={setEmailInputValue}
+              defaultEmail={authEmail}
+              onDeleteArchive={handleDeleteArchive}
+              onRemoveItem={handleRemoveItem}
+              onSendEmail={handleSendEmail}
+              clearSendResult={() => setSendResult(null)}
+            />
+          </section>
+        </div>
       </div>
-
-      {activeTab === 'settings' && (
-        <SettingsTab
-          authEmail={authEmail}
-          profile={profile}
-          setProfile={setProfile}
-          profileStatus={profileStatus}
-          profileError={profileError}
-          onProfileSave={handleProfileSave}
-          newsletter={newsletter}
-          setNewsletter={setNewsletter}
-          newsletterStatus={newsletterStatus}
-          newsletterError={newsletterError}
-          onNewsletterSave={handleNewsletterSave}
-          services={services}
-          selectedServiceIds={Array.from(selectedServiceIds)}
-          servicesStatus={servicesStatus}
-          servicesError={servicesError}
-          onServicesSave={handleServicesSave}
-          watchlistItems={watchlistItems}
-          onWatchlistChange={refreshWatchlistSummary}
-          lensStatus={lensStatus}
-          lensError={lensError}
-          onDefaultLensChange={handleDefaultLensChange}
-        />
-      )}
-
-      {activeTab === 'bookmarks' && (
-        <BookmarksTab
-          bookmarks={bookmarks}
-          loading={bookmarksLoading}
-          error={bookmarkError}
-          onRemove={handleRemoveBookmark}
-        />
-      )}
-
-      {activeTab === 'archives' && (
-        <ArchivesTab
-          archives={archives}
-          loading={archivesLoading}
-          error={archiveError}
-          expandedArchiveId={expandedArchiveId}
-          setExpandedArchiveId={setExpandedArchiveId}
-          sendingArchiveId={sendingArchiveId}
-          sendResult={sendResult}
-          emailInputArchiveId={emailInputArchiveId}
-          setEmailInputArchiveId={setEmailInputArchiveId}
-          emailInputValue={emailInputValue}
-          setEmailInputValue={setEmailInputValue}
-          defaultEmail={authEmail}
-          onDeleteArchive={handleDeleteArchive}
-          onRemoveItem={handleRemoveItem}
-          onSendEmail={handleSendEmail}
-          clearSendResult={() => setSendResult(null)}
-        />
-      )}
     </PageContainer>
   )
 }

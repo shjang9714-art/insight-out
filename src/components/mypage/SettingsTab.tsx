@@ -13,8 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { Department } from '@/lib/types'
-import { LENS_PRESETS, type LensKey } from '@/lib/lens'
+import { DEPARTMENT_DISPLAY_LABEL, ORG_GROUPS, isOrgGroup } from '@/lib/org'
 import WatchlistSettingsModal from '@/components/watchlist/WatchlistSettingsModal'
 import ServiceSettingsModal from './ServiceSettingsModal'
 import type {
@@ -24,15 +23,6 @@ import type {
   ServiceOption,
   WatchlistSummaryItem,
 } from './types'
-
-const DEPARTMENTS: Department[] = [
-  'Enterprise사업부문',
-  'SMB사업부문',
-  '공공사업부문',
-  '기술부문',
-  '마케팅부문',
-  '기타',
-]
 
 interface Props {
   authEmail: string
@@ -53,9 +43,6 @@ interface Props {
   onServicesSave: (nextIds: string[]) => Promise<boolean>
   watchlistItems: WatchlistSummaryItem[]
   onWatchlistChange: () => void
-  lensStatus: SaveStatus
-  lensError: string | null
-  onDefaultLensChange: (nextLens: LensKey) => void
 }
 
 function SummaryChips({ labels, emptyLabel }: { labels: string[]; emptyLabel: string }) {
@@ -101,9 +88,6 @@ export default function SettingsTab({
   onServicesSave,
   watchlistItems,
   onWatchlistChange,
-  lensStatus,
-  lensError,
-  onDefaultLensChange,
 }: Props) {
   const selectedServiceSet = new Set(selectedServiceIds)
   const selectedServices = services
@@ -135,31 +119,32 @@ export default function SettingsTab({
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* 347: 부문은 Ent 부문 단일 — 선택 대상이 아니라 고정 표기 */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="department">부문 <span className="text-negative">*</span></Label>
-              <Select
-                value={profile.department}
-                onValueChange={(v) => setProfile({ ...profile, department: v as Department })}
-              >
-                <SelectTrigger id="department">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENTS.map((department) => (
-                    <SelectItem key={department} value={department}>{department}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="department">부문</Label>
+              <Input
+                id="department"
+                value={DEPARTMENT_DISPLAY_LABEL}
+                readOnly
+                className="bg-muted text-muted-foreground"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="team">팀 <span className="text-negative">*</span></Label>
-              <Input
-                id="team"
-                value={profile.team}
-                onChange={(e) => setProfile({ ...profile, team: e.target.value })}
-                placeholder="예: 솔루션영업1팀"
-              />
+              <Label htmlFor="team">그룹 <span className="text-negative">*</span></Label>
+              <Select
+                value={isOrgGroup(profile.team) ? profile.team : undefined}
+                onValueChange={(v) => setProfile({ ...profile, team: v })}
+              >
+                <SelectTrigger id="team">
+                  <SelectValue placeholder="그룹을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ORG_GROUPS.map((group) => (
+                    <SelectItem key={group} value={group}>{group}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -219,42 +204,6 @@ export default function SettingsTab({
             </div>
           </div>
 
-          <div className="rounded-lg border border-border p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-foreground">기본 보기</p>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  📍 AI 인사이트 · 기업동향 · 이슈를 열 때 이 기준으로 시작합니다. 화면에서 언제든 바꿀 수 있습니다.
-                </p>
-                {lensError && <p className="mt-2 text-xs text-negative">{lensError}</p>}
-              </div>
-
-              <div className="grid min-w-0 gap-2 sm:grid-cols-3 lg:w-[420px]">
-                {(['mine', 'watch', 'all'] as const).map((key) => {
-                  const isSelected = profile.default_lens === key
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => onDefaultLensChange(key)}
-                      disabled={lensStatus === 'saving'}
-                      className={cn(
-                        'rounded-lg border px-3 py-2 text-left transition-all disabled:opacity-60',
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 text-blue-900'
-                          : 'border-border bg-card text-foreground hover:border-border hover:bg-accent'
-                      )}
-                    >
-                      <span className="block text-sm font-semibold">{LENS_PRESETS[key].label}</span>
-                      <span className={cn('mt-0.5 block text-xs leading-snug', isSelected ? 'text-blue-700' : 'text-muted-foreground')}>
-                        {LENS_PRESETS[key].desc}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
