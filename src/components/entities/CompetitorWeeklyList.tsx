@@ -72,7 +72,8 @@ export default function CompetitorWeeklyList({ reports }: Props) {
                         <span className="truncate text-[12px] font-semibold text-foreground/70">{section.area_label}</span>
                       </div>
                       <p className="text-[13px] leading-relaxed text-muted-foreground line-clamp-3">
-                        {cleanNarrative(section.moves)}
+                        {/* 348: 분석이 있으면 현황 첫 꼭지(명제형)를 미리보기로 — 없으면 레거시 moves */}
+                        {cleanNarrative(section.status_points?.[0]?.thesis ?? section.moves)}
                       </p>
                     </div>
                   ))}

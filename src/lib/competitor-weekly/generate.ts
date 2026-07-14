@@ -22,10 +22,6 @@ const AREA_DEFS: AreaDef[] = [
 ]
 
 type ImpactValue = '위기' | '기회' | '관망'
-const IMPACT_VALUES: ImpactValue[] = ['위기', '기회', '관망']
-function isImpactValue(v: unknown): v is ImpactValue {
-  return typeof v === 'string' && (IMPACT_VALUES as string[]).includes(v)
-}
 
 // ─── KST 날짜 유틸 (lib/insight/generate.ts 패턴 재사용) ──────────────────────
 
@@ -63,22 +59,19 @@ export function getLastCompletedWeekKst(): { weekStart: string; weekEnd: string 
 
 // ─── LLM 프롬프트 (llm_prompts DB 우선, 미적용 시 코드 상수 폴백) ─────────────
 
-const AREA_SYSTEM_FALLBACK = `당신은 LG U+ B2B 경쟁 인텔리전스 수석 분석가다. 아래는 이번 주 '{area_label}' 영역의 경쟁사 관련 기사들이다. 이를 종합해 LG U+ 관점의 경쟁 동향을 분석하라.
-**반드시 한국어로만 작성한다(고유명사 제외 영어 금지).** 단순 나열('누가 무엇을 했다') 금지 — 흩어진 사실을 하나의 흐름으로 종합하고 해석하라.
-출력(JSON):
-- moves: 이번 주 이 영역의 핵심 경쟁 움직임 2~4개를 종합 서술. 경쟁사별 사실을 연결해 "무슨 일이 벌어지고 있는지". 서술문에 대괄호로 근거 id를 넣지 말 것 — 근거는 citations 배열로만 제공한다.
-- companies: 이 영역에서 움직인 주요 경쟁사명 배열.
-- impact: LG U+ 관점 판정 — "위기"|"기회"|"관망" 중 하나. (경쟁사 약진·잠식=위기, 경쟁사 부진·틈=기회, 중립·불명확=관망)
-- implication: LG U+ B2B가 취해야 할 대응·주목점 2~3문장. 근거 밖 단정·과장 금지.
-- citations: 핵심 주장별 15단어 이내 인용 + content_id. 3건 이상 권장.
-JSON만 출력.`
-
-const SUMMARY_SYSTEM_FALLBACK = `당신은 LG U+ B2B 경쟁 인텔리전스 수석 분석가다. 아래는 이번 주 사업영역별 경쟁 동향 분석 결과다. 종합해 주간 리포트 헤더를 작성하라. 한국어만.
-출력(JSON):
-- week_summary: 이번 주 경쟁 구도를 한 줄로(공백 포함 24자 내외, 구체적·사실 기반).
-- emerging_topics: 이번 주 새로 부상하거나 주목할 주제 2~3개(배열, 각 10자 내외).
-- overall_impact: 종합 판정 "위기"|"기회"|"관망" 중 하나.
-JSON만 출력.`
+// 348 패스① — 사실 추출 전용. **해석 금지.**
+const FACTS_SYSTEM_FALLBACK = `당신은 사실 추출기다. 아래는 이번 주 '{area_label}' 영역의 경쟁사 관련 기사다.
+기사에서 **사건(event)**만 뽑아 정규화하라. **해석·전망·평가를 절대 쓰지 마라.**
+금지 표현: "~로 보인다", "~할 전망", "공격적", "두드러진", "주목된다" 등 일체의 해석어.
+출력(JSON 배열만):
+[{
+  "date": "YYYY-MM-DD",           // 기사에 명시된 사건 발생일. 없으면 기사 날짜.
+  "actor": "KT",                   // 사건의 주체(기업·정부 등)
+  "event": "1GW급 AIDC 구축 계획 발표, 투자 5조원",   // 무엇을 했는가. 사실만.
+  "numbers": {"capex_krw": "5조", "capacity": "1GW"},  // 기사에 나온 수치만. 없으면 생략.
+  "content_id": "<기사 id>"        // 반드시 주어진 [id] 중 하나
+}]
+같은 사건을 다룬 기사가 여럿이면 하나로 합치고 대표 content_id 하나만 쓴다. JSON 배열만 출력.`
 
 async function loadPrompt(admin: SupabaseClient, key: string, fallback: string): Promise<string> {
   try {
@@ -181,71 +174,47 @@ async function loadWeekContents(
 
 // ─── LLM 출력 파싱 ────────────────────────────────────────────────────────────
 
-interface AreaLlmOutput {
-  moves: string
-  companies: string[]
-  impact: ImpactValue
-  implication: string
-  citations: { content_id: string; quote: string }[]
-}
-
 function stripJsonFence(raw: string): string {
   return raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
 }
 
-function parseAreaOutput(raw: string): AreaLlmOutput | null {
-  try {
-    const parsed = JSON.parse(stripJsonFence(raw)) as unknown
-    if (typeof parsed !== 'object' || parsed === null) return null
-    const obj = parsed as Record<string, unknown>
-    if (typeof obj.moves !== 'string' || !obj.moves.trim()) return null
-    if (!isImpactValue(obj.impact)) return null
-    const companies = Array.isArray(obj.companies)
-      ? (obj.companies as unknown[]).filter((c): c is string => typeof c === 'string')
-      : []
-    const citations = Array.isArray(obj.citations)
-      ? (obj.citations as unknown[]).filter(
-          (c): c is { content_id: string; quote: string } =>
-            typeof c === 'object' &&
-            c !== null &&
-            typeof (c as Record<string, unknown>).content_id === 'string' &&
-            typeof (c as Record<string, unknown>).quote === 'string'
-        )
-      : []
-    return {
-      moves: obj.moves,
-      companies,
-      impact: obj.impact,
-      implication: typeof obj.implication === 'string' ? obj.implication : '',
-      citations,
-    }
-  } catch {
-    return null
-  }
+// 348 패스① 파서
+interface RawEvent {
+  date: string
+  actor: string
+  event: string
+  numbers?: Record<string, string>
+  content_id: string
 }
 
-interface SummaryLlmOutput {
-  week_summary: string
-  emerging_topics: string[]
-  overall_impact: ImpactValue
-}
+const INTERPRETATION_MARKERS = /(보인다|전망|예상된다|주목|공격적|두드러|활발|긍정적|부정적|시사한다)/
 
-function parseSummaryOutput(raw: string): SummaryLlmOutput | null {
+function parseEventsOutput(raw: string, validIds: Set<string>): RawEvent[] {
   try {
     const parsed = JSON.parse(stripJsonFence(raw)) as unknown
-    if (typeof parsed !== 'object' || parsed === null) return null
-    const obj = parsed as Record<string, unknown>
-    if (!isImpactValue(obj.overall_impact)) return null
-    const emergingTopics = Array.isArray(obj.emerging_topics)
-      ? (obj.emerging_topics as unknown[]).filter((t): t is string => typeof t === 'string')
-      : []
-    return {
-      week_summary: typeof obj.week_summary === 'string' ? obj.week_summary : '',
-      emerging_topics: emergingTopics,
-      overall_impact: obj.overall_impact,
+    if (!Array.isArray(parsed)) return []
+    const out: RawEvent[] = []
+    for (const item of parsed) {
+      if (typeof item !== 'object' || item === null) continue
+      const o = item as Record<string, unknown>
+      if (typeof o.date !== 'string' || typeof o.actor !== 'string' || typeof o.event !== 'string') continue
+      if (typeof o.content_id !== 'string' || !validIds.has(o.content_id)) continue
+      // 패스①에 해석이 섞이면 패스③(근거 검증)이 무력해진다 — 해석어가 있는 사건은 버린다.
+      if (INTERPRETATION_MARKERS.test(o.event)) {
+        console.warn('[CompetitorWeekly] 패스① 해석어 감지 — 사건 제외:', o.event)
+        continue
+      }
+      const numbers = (typeof o.numbers === 'object' && o.numbers !== null)
+        ? Object.fromEntries(
+            Object.entries(o.numbers as Record<string, unknown>)
+              .filter(([, v]) => typeof v === 'string') as [string, string][]
+          )
+        : undefined
+      out.push({ date: o.date, actor: o.actor, event: o.event, numbers, content_id: o.content_id })
     }
+    return out
   } catch {
-    return null
+    return []
   }
 }
 
@@ -261,6 +230,16 @@ function buildAreaUserPrompt(areaLabel: string, articles: ContentRow[]): string 
   return `영역: ${areaLabel}\n\n${lines}`
 }
 
+interface WeeklyEventOut {
+  id: string
+  date: string
+  actor: string
+  event: string
+  numbers?: Record<string, string>
+  content_id: string
+  source_name?: string
+}
+
 interface AreaSection {
   area_key: string
   area_label: string
@@ -269,23 +248,8 @@ interface AreaSection {
   impact: ImpactValue
   implication: string
   citations: { content_id: string; quote: string }[]
-}
-
-function buildSummaryUserPrompt(sections: AreaSection[]): string {
-  return sections
-    .map((s) => `[${s.area_label}] impact=${s.impact}\n${s.moves}`)
-    .join('\n\n')
-}
-
-function deriveOverallImpact(sections: AreaSection[]): ImpactValue {
-  const counts: Record<ImpactValue, number> = { 위기: 0, 기회: 0, 관망: 0 }
-  for (const s of sections) counts[s.impact]++
-  let best: ImpactValue = '관망'
-  let bestCount = -1
-  for (const v of IMPACT_VALUES) {
-    if (counts[v] > bestCount) { best = v; bestCount = counts[v] }
-  }
-  return best
+  /** 348 패스① 산출 — 패스②(Claude MCP 수동)의 입력이자 근거 참조 키 */
+  events: WeeklyEventOut[]
 }
 
 // ─── 메인 엔진 ────────────────────────────────────────────────────────────────
@@ -294,7 +258,7 @@ export interface GenerateCompetitorWeeklyOptions {
   /** 특정 주 재생성(관리자 수동, YYYY-MM-DD, 월요일 기준). 미지정 시 최근 완결된 주. */
   weekStart?: string
   deadline?: number
-  /** false 면 근거가 있어도 draft 로 저장(284 — 크론 게이트의 auto_publish=false 대응). 기본 true(기존 동작). */
+  /** @deprecated 348 — 패스②(분석) 없이는 발행하지 않는다. 항상 draft. */
   publish?: boolean
 }
 
@@ -314,7 +278,6 @@ export async function generateCompetitorWeeklyReport(
     ? { weekStart: opts.weekStart, weekEnd: addDaysToDateStr(opts.weekStart, 6) }
     : getLastCompletedWeekKst()
   const deadline = opts.deadline
-  const publish = opts.publish ?? true
 
   // 1. 경쟁사 목록 (253)
   const competitors = await loadCompetitorCompanies(admin)
@@ -354,12 +317,12 @@ export async function generateCompetitorWeeklyReport(
     return { weekStart, weekEnd, status: 'draft', sections: 0, reason: '사업영역 매칭 경쟁사 기사 없음' }
   }
 
-  // 5. 프롬프트 로드
-  const areaPromptTpl = await loadPrompt(admin, 'competitor_weekly_area', AREA_SYSTEM_FALLBACK)
-  const summaryPromptTpl = await loadPrompt(admin, 'competitor_weekly_summary', SUMMARY_SYSTEM_FALLBACK)
+  // 5. 프롬프트 로드(348 — 패스① 사실 추출 전용)
+  const factsPromptTpl = await loadPrompt(admin, 'competitor_weekly_facts', FACTS_SYSTEM_FALLBACK)
 
-  // 6. 영역별 LLM 종합
+  // 6. 영역별 패스① 사실 추출(348) — 해석은 하지 않는다. 해석은 패스②(Claude MCP 수동)에서.
   const sections: AreaSection[] = []
+  let evtSeq = 0
   for (const area of AREA_DEFS) {
     const rows = bucket.get(area.key)
     if (!rows) continue
@@ -374,34 +337,47 @@ export async function generateCompetitorWeeklyReport(
         if (aIsRep !== bIsRep) return aIsRep - bIsRep
         return (b.importance_score ?? 0) - (a.importance_score ?? 0)
       })
-      const picked = sorted.slice(0, 10)
+      const picked = sorted.slice(0, 12)
+      const idSet = new Set(picked.map((a) => a.id))
 
-      const system = areaPromptTpl.replace('{area_label}', area.label)
+      const system = factsPromptTpl.replace('{area_label}', area.label)
       const raw = await llmComplete('summarize', system, buildAreaUserPrompt(area.label, picked))
       if (!raw) {
-        console.warn(`[CompetitorWeekly] area="${area.key}" LLM 응답 없음 — 건너뜀`)
+        console.warn(`[CompetitorWeekly] area="${area.key}" 패스① 응답 없음 — 건너뜀`)
         continue
       }
-      const parsed = parseAreaOutput(raw)
-      if (!parsed) {
-        console.warn(`[CompetitorWeekly] area="${area.key}" LLM 파싱 실패 — 건너뜀`)
+      const rawEvents = parseEventsOutput(raw, idSet)
+      if (rawEvents.length === 0) {
+        console.warn(`[CompetitorWeekly] area="${area.key}" 패스① 사건 0건 — 건너뜀`)
         continue
       }
 
-      const idSet = new Set(picked.map((a) => a.id))
-      const validCitations = parsed.citations.filter((c) => idSet.has(c.content_id))
+      const titleById = new Map(picked.map((a) => [a.id, a.title]))
+      const events: WeeklyEventOut[] = rawEvents.map((e) => ({
+        id: `evt_${String(++evtSeq).padStart(3, '0')}`,
+        date: e.date,
+        actor: e.actor,
+        event: e.event,
+        numbers: e.numbers,
+        content_id: e.content_id,
+        source_name: titleById.get(e.content_id),
+      }))
+
+      const actors = [...new Set(events.map((e) => e.actor))]
 
       sections.push({
         area_key: area.key,
         area_label: area.label,
-        moves: parsed.moves,
-        companies: parsed.companies,
-        impact: parsed.impact,
-        implication: parsed.implication,
-        citations: validCitations,
+        // 레거시 필드 — 분석(패스②) 전에는 사실 나열이 곧 moves 다. 패스② import 시 덮어쓰지 않는다.
+        moves: events.map((e) => `${e.date} ${e.actor}: ${e.event}`).join('\n'),
+        companies: actors,
+        impact: '관망',   // 위기/기회 판정은 해석 → 패스②에서 결정
+        implication: '',
+        citations: [],
+        events,
       })
     } catch (err) {
-      console.error(`[CompetitorWeekly] area="${area.key}" 처리 오류:`, err instanceof Error ? err.message : String(err))
+      console.error(`[CompetitorWeekly] area="${area.key}" 패스① 오류:`, err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -409,33 +385,19 @@ export async function generateCompetitorWeeklyReport(
     return { weekStart, weekEnd, status: 'draft', sections: 0, reason: '영역별 생성 결과 없음(LLM 실패)' }
   }
 
-  // 7. 주간 헤더 LLM 종합 (실패해도 sections 기반 폴백으로 계속 진행)
-  let summaryOut: SummaryLlmOutput | null = null
-  if (!deadline || Date.now() < deadline) {
-    try {
-      const raw = await llmComplete('summarize', summaryPromptTpl, buildSummaryUserPrompt(sections))
-      summaryOut = raw ? parseSummaryOutput(raw) : null
-    } catch (err) {
-      console.error('[CompetitorWeekly] 주간 헤더 생성 오류:', err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const overallImpact = summaryOut?.overall_impact ?? deriveOverallImpact(sections)
-  // 근거(sections) 있고 publish 옵션이 true(기본)면 발행 — §1 자동발행 정책. false면 draft(284 크론 게이트).
-  const status: 'draft' | 'published' = (sections.length > 0 && publish) ? 'published' : 'draft'
-
-  // 8. 저장(멱등 upsert, week_start 유니크)
+  // 7. 저장 — 348: 패스①까지만 자동. 분석(패스②) 없이는 발행하지 않는다(항상 draft).
+  //    summary/overall_impact/emerging_topics 는 패스② import 에서 채운다.
   const { error: upsertError } = await admin
     .from('competitor_weekly_reports')
     .upsert(
       {
         week_start: weekStart,
         week_end: weekEnd,
-        summary: summaryOut?.week_summary || null,
-        overall_impact: overallImpact,
-        emerging_topics: summaryOut?.emerging_topics ?? [],
+        summary: null,
+        overall_impact: null,
+        emerging_topics: [],
         sections,
-        status,
+        status: 'draft',
         generated_at: new Date().toISOString(),
       },
       { onConflict: 'week_start' },
@@ -447,6 +409,6 @@ export async function generateCompetitorWeeklyReport(
     return { weekStart, weekEnd, status: 'draft', sections: sections.length, reason }
   }
 
-  console.log(`[CompetitorWeekly] ${weekStart}~${weekEnd} 생성 완료 (영역 ${sections.length}개)`)
-  return { weekStart, weekEnd, status, sections: sections.length }
+  console.log(`[CompetitorWeekly] ${weekStart}~${weekEnd} 패스① 완료 (영역 ${sections.length}개) — 분석 대기(draft)`)
+  return { weekStart, weekEnd, status: 'draft', sections: sections.length }
 }

@@ -5,6 +5,64 @@ export interface CompetitorWeeklyCitation {
   quote: string
 }
 
+// ─── 348: 애널리스트 프레임 슬롯 ──────────────────────────────────────────────
+// 해석을 LLM 자유서술에 맡기지 않고 슬롯으로 고정한다.
+// 전부 optional — 과거 리포트(레거시 moves/implication)는 그대로 렌더된다.
+
+/** 패스① 사실 추출 산출물. 해석 금지 — 근거 참조 키(evt_id)로 쓰인다. */
+export interface WeeklyEvent {
+  id: string
+  date: string
+  actor: string
+  event: string
+  numbers?: Record<string, string>
+  content_id: string
+  source_name?: string
+}
+
+/** 현황 — 명제형 꼭지 한 줄 + 설명 + 근거 */
+export interface WeeklyStatusPoint {
+  thesis: string
+  detail: string
+  evidence: string[]
+}
+
+/** 의도 분석 — 무엇을 확보하려 하는가 / 왜 지금인가 */
+export interface WeeklyIntent {
+  actor: string
+  seeking: string
+  reading: string
+  evidence: string[]
+}
+
+/** 비대칭 — 그쪽이 가진 것 / 우리가 가진 것 */
+export interface WeeklyAsymmetry {
+  theirs: string
+  ours: string
+  evidence: string[]
+}
+
+export interface WeeklyOption {
+  action: string
+  rationale: string
+  cost?: '상' | '중' | '하'
+}
+
+/** 지켜볼 지표 — 반증 가능한 형태여야 한다("~하면 이 판단이 맞다") */
+export interface WeeklyWatchMetric {
+  metric: string
+  if_then: string
+  due?: string
+}
+
+// 지시서의 데이터 계약 명칭도 함께 노출한다. Weekly* 명칭은 내부 기존 참조 호환용이다.
+export type StatusPoint = WeeklyStatusPoint
+export type Intent = WeeklyIntent
+export type IntentRead = WeeklyIntent
+export type Asymmetry = WeeklyAsymmetry
+export type Option = WeeklyOption
+export type WatchMetric = WeeklyWatchMetric
+
 export interface CompetitorWeeklySection {
   area_key: string
   area_label: string
@@ -13,6 +71,21 @@ export interface CompetitorWeeklySection {
   impact: '위기' | '기회' | '관망'
   implication: string
   citations: CompetitorWeeklyCitation[]
+
+  // 348 신규(optional)
+  events?: WeeklyEvent[]
+  overview?: string
+  status_points?: WeeklyStatusPoint[]
+  intents?: WeeklyIntent[]
+  conflict_areas?: string[]
+  asymmetry?: WeeklyAsymmetry
+  options?: WeeklyOption[]
+  watch_metrics?: WeeklyWatchMetric[]
+}
+
+/** 348: 분석(패스②)이 들어간 섹션인가 — 렌더 분기 기준 */
+export function hasAnalysis(section: CompetitorWeeklySection): boolean {
+  return (section.status_points?.length ?? 0) > 0 || (section.intents?.length ?? 0) > 0
 }
 
 export interface CompetitorWeeklyReportRow {

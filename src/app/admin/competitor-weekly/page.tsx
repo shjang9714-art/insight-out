@@ -5,6 +5,7 @@ import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminCompetitorWeeklyGenerate from '@/components/admin/AdminCompetitorWeeklyGenerate'
+import AdminCompetitorWeeklyAnalyze from '@/components/admin/AdminCompetitorWeeklyAnalyze'
 import AdminCompetitorWeeklySchedule from '@/components/admin/AdminCompetitorWeeklySchedule'
 import { cn } from '@/lib/utils'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
@@ -60,6 +61,8 @@ export default async function CompetitorWeeklyAdminPage() {
       <AdminPageHeader />
 
       <AdminCompetitorWeeklyGenerate />
+
+      <AdminCompetitorWeeklyAnalyze />
 
       <AdminCompetitorWeeklySchedule />
 
