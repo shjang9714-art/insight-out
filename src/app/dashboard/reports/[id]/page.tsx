@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { ExternalLink, FileText } from 'lucide-react'
+import { CalendarDays, ExternalLink, FileText, Building2, Link2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AiReportType } from '@/lib/types'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
@@ -101,7 +101,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
   const bodyMarkdown = report.body_md ? stripLlmArtifacts(report.body_md) : null
 
   return (
-    <PageContainer variant="reading" className="print:px-0 print:py-0 print:max-w-none">
+    /* 349: 보고서 본문 폭 max-w-5xl(1024px) — 표·인용이 있는 지면에 맞춘다(David 결정) */
+    <PageContainer className="print:px-0 print:py-0">
+    <div className="io-report mx-auto w-full max-w-5xl print:max-w-none">
       {/* 뒤로 + PDF 버튼 */}
       <div className="print:hidden mb-6 flex items-center justify-between">
         <BackLink
@@ -111,77 +113,89 @@ export default async function ReportDetailPage({ params }: PageProps) {
         <PrintButton />
       </div>
 
-      {/* 헤더 */}
-      <div className="mb-8 space-y-3">
-        {report.cover_image_url && (
-          <div className="aspect-[16/9] w-full overflow-hidden rounded-xl bg-muted print:hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={report.cover_image_url}
-              alt={report.title}
-              className="h-full w-full object-cover"
-            />
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <span className={cn(
-            'rounded-full border px-2.5 py-0.5 text-xs font-medium',
-            TYPE_STYLE[report.type]
-          )}>
-            {report.type}
-          </span>
-          <span className="text-xs text-muted-foreground">{formatDate(report.published_at)}</span>
-          {report.publisher && (
-            <span className="text-xs text-muted-foreground">· {report.publisher}</span>
+      {/* 349: 표지(유형·발행 메타 → 제목 → 리드)와 본문을 하나의 지면으로 합친다.
+          제목이 카드 밖과 본문 안에 따로 있으면 인쇄·PDF에서 두 문서처럼 보인다. */}
+      <div className="rounded-2xl border border-border bg-card p-8 sm:p-12 print:border-0 print:bg-white print:p-0">
+        <header className="mb-10 border-b-2 border-foreground pb-6">
+          {report.cover_image_url && (
+            <div className="mb-6 aspect-[21/9] w-full overflow-hidden rounded-xl bg-muted print:hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={report.cover_image_url} alt="" className="h-full w-full object-cover" />
+            </div>
           )}
-        </div>
-        <h1 className="text-xl font-bold text-foreground leading-snug">{report.title}</h1>
-        {reportSummary && (
-          <p className="text-sm text-muted-foreground">{reportSummary}</p>
-        )}
-      </div>
 
-      {/* 본문 */}
-      {sanitizedHtml ? (
-        <div className="rounded-xl border border-border bg-card p-6 sm:p-8 print:border-0 print:bg-white print:p-0 print:shadow-none">
+          <div className="mb-4 flex flex-wrap items-center gap-2.5">
+            <span className={cn(
+              'rounded-full border px-3 py-1 text-[13px] font-medium',
+              TYPE_STYLE[report.type]
+            )}>
+              {report.type}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+              {formatDate(report.published_at)}
+            </span>
+            {report.publisher && (
+              <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+                <Building2 className="h-3.5 w-3.5" aria-hidden />
+                {report.publisher}
+              </span>
+            )}
+          </div>
+
+          <h1 className="text-[30px] font-bold leading-[1.3] tracking-tight text-foreground sm:text-[34px]">
+            {report.title}
+          </h1>
+
+          {reportSummary && (
+            <p className="mt-4 text-[17px] leading-[1.8] text-muted-foreground">
+              {reportSummary}
+            </p>
+          )}
+        </header>
+
+        {/* 본문 */}
+        {sanitizedHtml ? (
           <div
             className={cn(
-              '[&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mb-3 [&_h2]:mt-6 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-1.5',
-              '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-4',
-              '[&_h4]:text-sm [&_h4]:font-semibold [&_h4]:text-foreground [&_h4]:mb-2 [&_h4]:mt-3',
-              '[&_p]:text-sm [&_p]:text-foreground/90 [&_p]:leading-relaxed [&_p]:mb-3',
+              'io-report-body',
+              '[&_h2]:text-[24px] [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-foreground [&_h2]:mb-4 [&_h2]:mt-12 [&_h2]:first:mt-0 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2.5',
+              '[&_h3]:text-[19px] [&_h3]:font-bold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-7',
+              '[&_h4]:text-[17px] [&_h4]:font-semibold [&_h4]:text-foreground [&_h4]:mb-2 [&_h4]:mt-5',
+              '[&_p]:text-[16px] [&_p]:text-foreground/90 [&_p]:leading-[1.85] [&_p]:mb-4',
               '[&_strong]:font-semibold [&_strong]:text-foreground',
               '[&_em]:italic [&_em]:text-foreground/80',
-              '[&_ul]:mb-3 [&_ul]:pl-5 [&_ul]:list-disc [&_ul]:space-y-1',
-              '[&_ol]:mb-3 [&_ol]:pl-5 [&_ol]:list-decimal [&_ol]:space-y-1',
-              '[&_li]:text-sm [&_li]:text-foreground/90 [&_li]:leading-relaxed',
-              '[&_blockquote]:border-l-2 [&_blockquote]:border-brand-600/40 [&_blockquote]:pl-4 [&_blockquote]:py-1 [&_blockquote]:my-3',
-              '[&_blockquote_p]:text-sm [&_blockquote_p]:text-muted-foreground [&_blockquote_p]:italic [&_blockquote_p]:mb-0',
-              '[&_table]:w-full [&_table]:text-sm [&_table]:border-collapse [&_table]:mb-4',
-              '[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:text-foreground',
-              '[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_td]:text-foreground/90',
-              '[&_tr:nth-child(even)_td]:bg-muted/40',
-              '[&_hr]:border-border [&_hr]:my-6',
+              '[&_ul]:mb-5 [&_ul]:space-y-2.5',
+              '[&_ol]:mb-5 [&_ol]:space-y-2.5',
+              '[&_li]:text-[16px] [&_li]:text-foreground/90 [&_li]:leading-[1.8]',
+              '[&_li_strong]:text-foreground',
+              '[&_blockquote]:border-l-[3px] [&_blockquote]:border-brand-600 [&_blockquote]:pl-5 [&_blockquote]:py-1 [&_blockquote]:my-5',
+              '[&_blockquote_p]:text-[16px] [&_blockquote_p]:text-muted-foreground [&_blockquote_p]:mb-0',
+              '[&_table]:w-full [&_table]:text-[15px] [&_table]:border-collapse [&_table]:my-6',
+              '[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:font-semibold [&_th]:text-foreground [&_th]:align-top',
+              '[&_td]:border [&_td]:border-border [&_td]:px-4 [&_td]:py-3 [&_td]:leading-[1.75] [&_td]:text-foreground/90 [&_td]:align-top',
+              '[&_tr:nth-child(even)_td]:bg-muted/30',
+              '[&_hr]:border-border [&_hr]:my-8',
               '[&_a]:text-brand-600 [&_a]:underline [&_a]:underline-offset-2',
             )}
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
-        </div>
-      ) : bodyMarkdown ? (
-        <div className="rounded-xl border border-border bg-card p-6 sm:p-8 print:border-0 print:bg-white print:p-0 print:shadow-none">
+        ) : bodyMarkdown ? (
           <ReportMarkdown>{bodyMarkdown}</ReportMarkdown>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
-          <FileText className="mx-auto mb-3 h-8 w-8 opacity-40" />
-          보고서 본문이 없습니다.
-        </div>
-      )}
+        ) : (
+          <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">
+            <FileText className="mx-auto mb-3 h-8 w-8 opacity-40" />
+            보고서 본문이 없습니다.
+          </div>
+        )}
 
-      {/* 근거 */}
-      {(linkedContents.length > 0 || linkedIssues.length > 0) && (
-        <div className="mt-8 print:mt-6">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">근거</h2>
+        {/* 근거 — 349: 본문과 같은 지면 안에 둔다(각주처럼) */}
+        {(linkedContents.length > 0 || linkedIssues.length > 0) && (
+        <div className="mt-12 border-t-2 border-foreground/80 pt-6">
+          <h2 className="mb-4 inline-flex items-center gap-1.5 text-[17px] font-bold text-foreground">
+            <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden />
+            근거
+          </h2>
 
           {/* 관련 이슈 */}
           {linkedIssues.length > 0 && (
@@ -258,7 +272,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
             </ul>
           )}
         </div>
-      )}
+        )}
+      </div>
+    </div>
     </PageContainer>
   )
 }

@@ -162,9 +162,12 @@ function AnalysisSection({ section }: { section: CompetitorWeeklySection }) {
                 <p className="mb-1 text-[12px] text-muted-foreground">지켜볼 지표</p>
                 <ul className="space-y-1.5">
                   {section.watch_metrics!.map((w, i) => (
-                    <li key={i} className="text-[13px] leading-[1.8] text-foreground">
-                      · {cleanNarrative(w.metric)}
-                      {w.if_then && <span className="text-muted-foreground"> — {cleanNarrative(w.if_then)}</span>}
+                    <li key={i} className="flex gap-2 text-[13px] leading-[1.8] text-foreground">
+                      <span aria-hidden className="mt-[0.62em] size-1.5 shrink-0 rounded-full bg-brand-600" />
+                      <span>
+                        {cleanNarrative(w.metric)}
+                        {w.if_then && <span className="text-muted-foreground"> — {cleanNarrative(w.if_then)}</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>
