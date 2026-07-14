@@ -47,17 +47,17 @@ export default async function CompetitorNewsPage() {
         기업동향으로 돌아가기
       </Link>
 
-      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div>
-          <h1 className="text-xl font-bold text-foreground">경쟁사 최근 뉴스</h1>
-          <p className="mt-1 text-xs text-muted-foreground">최근 14일 · 전 경쟁사 관련 뉴스</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">경쟁사 최근 뉴스</h1>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">최근 14일 · 전 경쟁사 관련 뉴스</p>
         </div>
-        {(overallImpactDist['위기'] + overallImpactDist['기회'] + overallImpactDist['관망'] > 0) && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span>LG U+ 관점:</span>
+        {/* 344: 위기·기회만 — '관망'은 대부분이라 배지로 띄우면 신호를 잃는다 */}
+        {(overallImpactDist['위기'] + overallImpactDist['기회'] > 0) && (
+          <div className="flex items-center gap-1 text-[13px] text-muted-foreground">
+            <span>LG U+ 관점</span>
             <LguImpactBadge impact="위기" count={overallImpactDist['위기']} />
             <LguImpactBadge impact="기회" count={overallImpactDist['기회']} />
-            <LguImpactBadge impact="관망" count={overallImpactDist['관망']} />
           </div>
         )}
       </div>

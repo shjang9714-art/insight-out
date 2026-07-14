@@ -20,14 +20,17 @@ interface Props {
   activeWeekStart?: string
 }
 
-/** 261 — 경쟁 위협/기회 레이더: 과거 주간 리포트를 위기/기회 색 점으로 타임라인 표시 */
+/**
+ * 261 — 경쟁 위협/기회 레이더: 과거 주간 리포트를 위기/기회 색 점으로 타임라인 표시.
+ * 344: 박스 제거 — 카드가 유일한 시각 표면이어야 하므로 레이더는 라벨 + 점 스트립만 남긴다.
+ */
 export default function CompetitorWeeklyTimeline({ entries, activeWeekStart }: Props) {
   if (entries.length === 0) return null
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <p className="mb-3 text-xs font-medium text-muted-foreground">경쟁 위협·기회 레이더 (지난 {entries.length}주)</p>
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+    <div>
+      <p className="mb-2 text-[13px] text-muted-foreground">경쟁 위협·기회 레이더 · 지난 {entries.length}주</p>
+      <div className="flex items-center gap-1 overflow-x-auto pb-1">
         {[...entries].reverse().map((entry) => {
           const isActive = entry.week_start === activeWeekStart
           return (

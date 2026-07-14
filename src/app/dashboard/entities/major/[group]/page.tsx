@@ -54,11 +54,7 @@ export default async function MajorCompanyGroupPage({ params }: PageProps) {
         />
       </div>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-foreground">{group.label}</h1>
-        <p className="mt-1 text-xs text-muted-foreground">{group.companies.length}개사 · 전체 보기</p>
-      </div>
-
+      {/* 섹션 헤더(그룹명·기업 수)는 MajorCompanyGroups가 렌더 — 중복 제목 금지 */}
       <MajorCompanyGroups groups={[group]} />
     </PageContainer>
   )

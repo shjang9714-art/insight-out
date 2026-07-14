@@ -1,12 +1,86 @@
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
-import type { CompGroupBucket } from '@/lib/entities/competitor-news'
+import type { CompGroupBucket, CompResult } from '@/lib/entities/competitor-news'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
+import CompanySymbol from '@/components/entities/CompanySymbol'
+import EntitySectionHeader from '@/components/entities/EntitySectionHeader'
 
+/** 7.13 — 카드 우측 정렬용 짧은 표기(KST) */
 function formatCompArticleDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
-  })
+  const parts = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric',
+  }).formatToParts(new Date(iso))
+  const month = parts.find(p => p.type === 'month')?.value ?? ''
+  const day = parts.find(p => p.type === 'day')?.value ?? ''
+  return `${month}.${day}`
+}
+
+/** "KT·SKT 등 경쟁사의 최근 14일 뉴스" — 섹션 설명은 대표 회사명으로 조립 */
+function groupSubtitle(results: CompResult[]): string {
+  const names = results.slice(0, 2).map(r => r.name)
+  if (names.length === 0) return ''
+  const lead = names.join('·')
+  return results.length > names.length
+    ? `${lead} 등 경쟁사의 최근 14일 뉴스`
+    : `${lead}의 최근 14일 뉴스`
+}
+
+interface CardProps {
+  result: CompResult
+  articlesPerCard: number
+}
+
+/** 경쟁사 회사 카드 — 주요 기업 카드(343)와 동일한 톤: 심볼·회사명 → 기사 목록 → 푸터 메타 */
+function CompetitorCard({ result, articlesPerCard }: CardProps) {
+  const { name, articles, articleTotal, impactDist } = result
+  const shown = articles.slice(0, articlesPerCard)
+  const rest = articleTotal - shown.length
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center gap-2">
+        <CompanySymbol company={name} />
+        <span className="truncate text-[13px] font-semibold text-muted-foreground">{name}</span>
+        <div className="flex-1" />
+        {/* 위기·기회만 — '관망'은 대부분이라 배지로 띄우면 신호를 잃는다(313) */}
+        <LguImpactBadge impact="위기" count={impactDist['위기']} />
+        <LguImpactBadge impact="기회" count={impactDist['기회']} />
+      </div>
+
+      {/*
+        345: 기사 제목은 항상 2줄(`line-clamp-2` + `min-h-[2.7em]`).
+        1줄짜리도 2줄 높이를 차지해야 카드·행 높이가 어긋나지 않는다.
+      */}
+      <ul className="space-y-1">
+        {shown.map(a => {
+          const sourceName = Array.isArray(a.sources) ? a.sources[0]?.name : a.sources?.name
+          return (
+            <li key={a.id}>
+              <Link
+                href={`/dashboard/contents/${a.id}?origin=entities&view=competitor`}
+                prefetch={false}
+                className="group flex items-start gap-2 rounded-md px-1 py-1 -mx-1 transition-colors hover:bg-muted/50"
+              >
+                <span className="min-h-[2.7em] min-w-0 flex-1 text-[13px] leading-[1.35] text-foreground/85 line-clamp-2 transition-colors group-hover:text-brand-600">
+                  {a.title}
+                  {sourceName && <span className="ml-1 text-muted-foreground/60">· {sourceName}</span>}
+                </span>
+                <span className="shrink-0 pt-px text-[11px] tabular-nums text-muted-foreground/70">
+                  {formatCompArticleDate(a.collected_at)}
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="flex-1" />
+
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground/70">
+        <span>기사 {articleTotal}건</span>
+        {rest > 0 && <span>+{rest}건 더</span>}
+      </div>
+    </div>
+  )
 }
 
 interface Props {
@@ -19,80 +93,42 @@ interface Props {
   seeAllHref?: string
 }
 
-/** 경쟁사 최근 뉴스 그룹 박스 + 회사 카드 그리드(242·245) — 요약·전체 페이지 공유 */
+/**
+ * 경쟁사 최근 뉴스(242·245) — 요약·전체 페이지 공유.
+ * 344: 주요 기업(343)과 동일한 톤 — 그룹 박스 제거(플랫 섹션 헤더), 카드가 유일한 시각 표면,
+ * 점선·'관망' 배지 제거, 카드 수와 무관하게 3열 고정.
+ */
 export default function CompetitorNewsGroups({ groups, capPerGroup, articlesPerCard = 2, seeAllHref }: Props) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-11">
       {groups.map(group => {
         const visibleResults = capPerGroup ? group.results.slice(0, capPerGroup) : group.results
         const hiddenCount = group.results.length - visibleResults.length
 
         return (
-          <div key={group.name} className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-              <h3 className="text-[15px] font-bold text-foreground">{group.name}</h3>
-              <span className="text-xs text-muted-foreground">
-                {group.results.length}개사 · {group.articleTotal}건
-              </span>
-              <div className="flex-1" />
-              {(group.impactDist['위기'] + group.impactDist['기회'] > 0) && (
-                <div className="flex items-center gap-1">
-                  <LguImpactBadge impact="위기" count={group.impactDist['위기']} />
-                  <LguImpactBadge impact="기회" count={group.impactDist['기회']} />
-                </div>
-	              )}
-	              {hiddenCount > 0 && seeAllHref && (
-	                // prefetch-ok: 정적 전체보기 링크 — 상세 라우트 아님
-	                <Link href={seeAllHref} className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
-	                  +{hiddenCount}개사 더 →
-                </Link>
-              )}
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 p-4">
-              {visibleResults.map(({ name, articles, articleTotal, impactDist }) => (
-                <div
-                  key={name}
-                  className="rounded-lg border border-border bg-card p-3.5"
-                >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-sm font-semibold text-foreground truncate">{name}</span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <LguImpactBadge impact="위기" count={impactDist['위기']} />
-                      <LguImpactBadge impact="기회" count={impactDist['기회']} />
-                      <LguImpactBadge impact="관망" count={impactDist['관망']} />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    {articles.slice(0, articlesPerCard).map((a, i) => {
-                      const sourceName = Array.isArray(a.sources) ? a.sources[0]?.name : a.sources?.name
-                      return (
-                        <Link
-                          key={a.id}
-                          href={`/dashboard/contents/${a.id}?origin=entities&view=competitor`}
-                          prefetch={false}
-                          className={cn(
-                            'flex items-center gap-2 py-1.5 text-xs text-foreground/80 hover:text-foreground hover:underline',
-                            i > 0 && 'border-t border-dashed border-border'
-                          )}
-                        >
-                          <span className="line-clamp-1 flex-1 min-w-0">
-                            {a.title}
-                            {sourceName && <span className="ml-1 text-muted-foreground/60">· {sourceName}</span>}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground shrink-0">
-                            {formatCompArticleDate(a.collected_at)}
-                          </span>
-                        </Link>
-                      )
-                    })}
-                  </div>
-                  {articleTotal > articlesPerCard && (
-                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">기사 {articleTotal - articlesPerCard}건 더 →</p>
-                  )}
-                </div>
+          <section key={group.name}>
+            <EntitySectionHeader
+              title={group.name}
+              subtitle={groupSubtitle(visibleResults)}
+              meta={`기업 ${group.results.length}곳 · 기사 ${group.articleTotal}건`}
+              metaSlot={
+                (group.impactDist['위기'] + group.impactDist['기회'] > 0) ? (
+                  <span className="flex items-center gap-1">
+                    <LguImpactBadge impact="위기" count={group.impactDist['위기']} />
+                    <LguImpactBadge impact="기회" count={group.impactDist['기회']} />
+                  </span>
+                ) : undefined
+              }
+              seeAllHref={hiddenCount > 0 && seeAllHref ? seeAllHref : undefined}
+              seeAllLabel={`+${hiddenCount}개사 더 →`}
+            />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleResults.map(result => (
+                <CompetitorCard key={result.name} result={result} articlesPerCard={articlesPerCard} />
               ))}
             </div>
-          </div>
+          </section>
         )
       })}
     </div>

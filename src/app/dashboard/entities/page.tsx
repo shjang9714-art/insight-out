@@ -17,6 +17,7 @@ import {
 } from '@/lib/competitor-weekly/query'
 import CompetitorWeeklyCard from '@/components/entities/CompetitorWeeklyCard'
 import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
+import EntitySectionHeader from '@/components/entities/EntitySectionHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -110,6 +111,7 @@ async function CompetitorView() {
   // 데이터 조립은 lib/entities/competitor-news.ts 공유 헬퍼(245) — 전체 페이지와 동일 로직.
   const { competitorCount, groups: competitorGroups, overallImpactDist } = await getCompetitorNewsData(supabase)
   const COMPETITOR_SUMMARY_CAP = 6
+  const hasImpactSignal = overallImpactDist['위기'] + overallImpactDist['기회'] > 0
 
   return (
     <div>
@@ -123,19 +125,24 @@ async function CompetitorView() {
         </div>
       ) : (
         <div>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <p className="text-xs text-muted-foreground">최근 14일 · 경쟁사 관련 뉴스</p>
-            <div className="flex items-center gap-3">
-              {(overallImpactDist['위기'] + overallImpactDist['기회'] + overallImpactDist['관망'] > 0) && (
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span>LG U+ 관점:</span>
+          {/* 344: 페이지 상단 요약 — 위기·기회만(관망은 대부분이라 신호가 아니다) */}
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[13px] text-muted-foreground">
+            <p>최근 14일 · 경쟁사 관련 뉴스</p>
+            <div className="flex items-center gap-2">
+              {hasImpactSignal && (
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">LG U+ 관점</span>
                   <LguImpactBadge impact="위기" count={overallImpactDist['위기']} />
                   <LguImpactBadge impact="기회" count={overallImpactDist['기회']} />
-                  <LguImpactBadge impact="관망" count={overallImpactDist['관망']} />
                 </div>
               )}
-              <Link href="/dashboard/entities/competitor-news" prefetch={false} className="text-xs font-medium text-brand-600 hover:underline">
-                전체보기 →
+              {hasImpactSignal && <span aria-hidden className="text-border">·</span>}
+              <Link
+                href="/dashboard/entities/competitor-news"
+                prefetch={false}
+                className="font-medium text-foreground/70 transition-colors hover:text-brand-600"
+              >
+                전체 보기 →
               </Link>
             </div>
           </div>
@@ -160,23 +167,31 @@ async function CompetitorTrendView() {
   ])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-11">
       <CompetitorWeeklyTimeline entries={weeklyTimeline} />
 
-      {weeklyReports.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-          <p className="text-sm font-medium text-foreground">발행된 주간 리포트가 아직 없습니다.</p>
-          <p className="text-xs text-muted-foreground">
-            매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합해 여기에 표시됩니다.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {weeklyReports.map((r) => (
-            <CompetitorWeeklyCard key={r.id} report={r} />
-          ))}
-        </div>
-      )}
+      <section>
+        <EntitySectionHeader
+          title="주간 종합 리포트"
+          subtitle="매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합합니다"
+          meta={weeklyReports.length > 0 ? `리포트 ${weeklyReports.length}건` : undefined}
+        />
+
+        {weeklyReports.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
+            <p className="text-sm font-medium text-foreground">발행된 주간 리포트가 아직 없습니다.</p>
+            <p className="text-xs text-muted-foreground">
+              AI 생성·발행 후 이곳에 표시됩니다.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {weeklyReports.map((r) => (
+              <CompetitorWeeklyCard key={r.id} report={r} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

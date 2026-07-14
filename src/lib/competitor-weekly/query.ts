@@ -40,10 +40,12 @@ export interface CompetitorWeeklyCardRow {
   summary: string | null
   overall_impact: '위기' | '기회' | '관망' | null
   emerging_topics: string[]
+  /** 345: 카드에 사업영역별 핵심 동향을 2줄 노출하기 위해 함께 조회(제목만으로는 클릭 유도가 약함) */
+  sections: CompetitorWeeklySection[]
 }
 
 const REPORT_COLUMNS = 'id, week_start, week_end, summary, overall_impact, emerging_topics, sections, status, generated_at'
-const CARD_COLUMNS = 'id, week_start, week_end, summary, overall_impact, emerging_topics'
+const CARD_COLUMNS = 'id, week_start, week_end, summary, overall_impact, emerging_topics, sections'
 
 /** 최신 published 주간 리포트 1건. 261 SQL 미적용(42P01)이면 null(graceful). */
 export async function getLatestPublishedCompetitorWeeklyReport(
