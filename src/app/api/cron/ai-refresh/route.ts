@@ -4,7 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib/insight/generate'
 import { generateIssueCandidates } from '@/lib/issues/generate-candidates'
-import { generateEntityEvents } from '@/lib/entities/generate-events'
 import { generateIssueBrief } from '@/lib/issues/brief'
 import { backfillSentiment } from '@/lib/insight/sentiment-backfill'
 import { issueAutoPublish } from '@/lib/insight/auto-publish'
@@ -21,7 +20,6 @@ interface AiRefreshFullResult {
   insights: number
   companyInsights: number
   candidates: number
-  timelines: number
   briefs: number
   sentiments: number
   errors: string[]
@@ -36,7 +34,6 @@ async function runAiRefresh(admin: SupabaseClient): Promise<AiRefreshFullResult>
     insights: 0,
     companyInsights: 0,
     candidates: 0,
-    timelines: 0,
     briefs: 0,
     sentiments: 0,
     errors: [],
@@ -116,82 +113,8 @@ async function runAiRefresh(admin: SupabaseClient): Promise<AiRefreshFullResult>
     return result
   }
 
-  // ── ③ 사건 타임라인 드레인 (stalest 먼저) ──────────────────────────────
-  try {
-    // 대상 엔티티: 경쟁사 + mention 상위
-    const { data: entities } = await admin
-      .from('entities')
-      .select('id, canonical_name, is_competitor, mention_count')
-      .or('is_competitor.eq.true,mention_count.gte.3')
-      .order('mention_count', { ascending: false })
-      .limit(60)
-
-    const targetEntities = (entities ?? []) as { id: string; canonical_name: string; is_competitor: boolean; mention_count: number }[]
-
-    if (targetEntities.length > 0) {
-      const targetIds = targetEntities.map(e => e.id)
-
-      // 엔티티별 최신 generated_at 조회 (entity_events에 MAX generated_at)
-      const { data: eventRows } = await admin
-        .from('entity_events')
-        .select('entity_id, generated_at')
-        .in('entity_id', targetIds)
-        .order('generated_at', { ascending: false })
-
-      // entity_id → max generated_at 맵
-      const genAtMap = new Map<string, string>()
-      for (const row of (eventRows ?? []) as { entity_id: string; generated_at: string }[]) {
-        if (!genAtMap.has(row.entity_id)) genAtMap.set(row.entity_id, row.generated_at)
-      }
-
-      // stalest(null 먼저) → 오래된 generated_at 순 정렬
-      const sorted = [...targetEntities].sort((a, b) => {
-        const aDate = genAtMap.get(a.id) ?? null
-        const bDate = genAtMap.get(b.id) ?? null
-        if (aDate === null && bDate === null) return 0
-        if (aDate === null) return -1
-        if (bDate === null) return 1
-        return aDate < bDate ? -1 : 1
-      })
-
-      let timelineCount = 0
-      for (const entity of sorted.slice(0, DRAIN_LIMIT)) {
-        if (Date.now() >= deadline) break
-        try {
-          const { events } = await generateEntityEvents(admin, entity.id)
-          if (events.length > 0) {
-            await admin.from('entity_events').delete().eq('entity_id', entity.id)
-            await admin.from('entity_events').insert(
-              events.map(ev => ({
-                entity_id: entity.id,
-                event_date: ev.event_date,
-                signal_type: ev.signal_type,
-                headline: ev.headline,
-                detail: ev.detail,
-                sentiment: ev.sentiment,
-                source_content_ids: ev.citations,
-                citations: JSON.stringify(ev.citations),
-                model: 'report',
-              }))
-            )
-            timelineCount++
-          }
-        } catch (err) {
-          result.errors.push(`timeline ${entity.id}: ${err instanceof Error ? err.message : String(err)}`)
-        }
-      }
-      result.timelines = timelineCount
-    }
-  } catch (err) {
-    result.errors.push(`timelines: ${err instanceof Error ? err.message : String(err)}`)
-  }
-
-  if (Date.now() >= deadline) {
-    console.log('[ai-refresh] 데드라인 초과 — timelines 이후 중단')
-    return result
-  }
-
   // ── ④ 이슈 브리핑 드레인 (brief_generated_at ASC NULLS FIRST) ────────────
+  // (사건 타임라인 드레인은 지시서 C 이후 전용 크론 `cron/event-timeline-refresh`로 이전됨)
   try {
     const { data: issues } = await admin
       .from('issues')

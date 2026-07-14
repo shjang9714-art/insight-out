@@ -8,7 +8,6 @@ import { Network } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, CONTENT_CATEGORY_LABEL, type EntityType, type ContentCategory } from '@/lib/types'
 import EntityEventTimeline, {
-  EntityEventGenerateButton,
   type EntityEventItem,
 } from '@/components/entities/EntityEventTimeline'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
@@ -132,15 +131,21 @@ async function loadSignalSummary(
   }
 }
 
+interface EntityEventsResult {
+  items: EntityEventItem[]
+  /** 사건 배치 중 가장 최근 generated_at (없으면 null) */
+  updatedAt: string | null
+}
+
 /** 231 — entity_events 테이블 미존재 시 graceful([]). id 만 의존, 독립 쿼리. */
 async function loadEntityEvents(
   supabase: ReturnType<typeof createSupabaseClient>,
   id: string
-): Promise<EntityEventItem[]> {
+): Promise<EntityEventsResult> {
   try {
     const { data: evData, error: evError } = await supabase
       .from('entity_events')
-      .select('id, event_date, signal_type, headline, detail, sentiment, citations')
+      .select('id, event_date, signal_type, headline, detail, sentiment, citations, generated_at')
       .eq('entity_id', id)
       .order('event_date', { ascending: false })
       .limit(30)
@@ -149,10 +154,10 @@ async function loadEntityEvents(
       if (evError.code !== '42703' && !evError.message?.includes('does not exist')) {
         console.error('[EntityDetailPage] entity_events 조회 오류:', evError.message)
       }
-      return []
+      return { items: [], updatedAt: null }
     }
 
-    return (evData ?? []).map((row: {
+    const rows = (evData ?? []) as {
       id: string
       event_date: string
       signal_type: string | null
@@ -160,7 +165,10 @@ async function loadEntityEvents(
       detail: string | null
       sentiment: '긍정' | '중립' | '부정' | null
       citations: string[] | null
-    }) => ({
+      generated_at: string | null
+    }[]
+
+    const items = rows.map((row) => ({
       id: row.id,
       event_date: row.event_date,
       signal_type: row.signal_type,
@@ -169,9 +177,16 @@ async function loadEntityEvents(
       sentiment: row.sentiment,
       citations: Array.isArray(row.citations) ? row.citations : [],
     }))
+
+    const updatedAt = rows.reduce<string | null>((max, row) => {
+      if (!row.generated_at) return max
+      return !max || row.generated_at > max ? row.generated_at : max
+    }, null)
+
+    return { items, updatedAt }
   } catch (err) {
     console.error('[EntityDetailPage] entity_events 예외:', err instanceof Error ? err.message : String(err))
-    return []
+    return { items: [], updatedAt: null }
   }
 }
 
@@ -219,14 +234,12 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
 
   // 1. 서로 독립인 쿼리(엔티티 자체 id 에만 의존) — 231: 한 배치로 병렬화
   const [
-    { data: { user } },
     { data: entity, error: entityError },
     { data: aliasData },
     { data: ceData },
     signalSummary,
-    entityEvents,
+    entityEventsResult,
   ] = await Promise.all([
-    supabase.auth.getUser(),
     supabase
       .from('entities')
       .select('id, canonical_name, entity_type, description, is_competitor, mention_count')
@@ -245,6 +258,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
     loadEntityEvents(supabase, id),
   ])
 
+  const { items: entityEvents, updatedAt: entityEventsUpdatedAt } = entityEventsResult
+
   if (entityError || !entity) {
     notFound()
   }
@@ -253,11 +268,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   const aliases: AliasRow[] = (aliasData ?? []) as AliasRow[]
   const contentIds: string[] = (ceData ?? []).map((r: { content_id: string }) => r.content_id)
 
-  // 2. contentIds/user 에 의존하는 쿼리 — 서로 독립이므로 한 배치로 병렬화
-  const [profileRes, contentsRes, coRes, icRes] = await Promise.all([
-    user
-      ? supabase.from('users').select('role').eq('id', user.id).single()
-      : Promise.resolve({ data: null as { role: string } | null }),
+  // 2. contentIds 에 의존하는 쿼리 — 서로 독립이므로 한 배치로 병렬화
+  const [contentsRes, coRes, icRes] = await Promise.all([
     contentIds.length > 0
       ? supabase
           .from('contents')
@@ -284,7 +296,6 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
       : Promise.resolve({ data: [] as { issue_id: string }[] }),
   ])
 
-  const isAdmin = profileRes.data?.role === 'admin'
   const contents = (contentsRes.data ?? []) as unknown as ContentRow[]
 
   // 3. 카테고리별 집계
@@ -431,15 +442,12 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
       <section className="mb-8">
         <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-sm font-semibold text-foreground">사건 타임라인</h2>
-          {isAdmin && <EntityEventGenerateButton entityId={id} />}
         </div>
         {entityEvents.length > 0 ? (
-          <EntityEventTimeline events={entityEvents} />
+          <EntityEventTimeline events={entityEvents} updatedAt={entityEventsUpdatedAt} />
         ) : (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            {isAdmin
-              ? '사건 타임라인을 생성하려면 위 버튼을 클릭하세요.'
-              : '아직 사건 타임라인이 생성되지 않았습니다.'}
+            아직 사건 타임라인이 생성되지 않았습니다.
           </div>
         )}
       </section>
