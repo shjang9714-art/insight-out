@@ -32,6 +32,8 @@ const CRON_META: Record<string, CronMeta> = {
   'cron:trending-snapshot':   { label: '트렌딩 스냅샷',    maxAgeHours: 30 },
   // 매시 실행 — 대부분 skipped:'not_scheduled'로 빠진다. skipped도 "돌았다"로 친다(§4 가드).
   'cron:competitor-weekly':   { label: '경쟁사 주간',      maxAgeHours: 2  },
+  // 3일 주기(지시서 C) — 여유 두어 78시간(3.25일)
+  'cron:event-timeline-refresh': { label: '사건 타임라인 갱신', maxAgeHours: 78 },
 }
 
 function cronKeyFromPath(path: string): string {

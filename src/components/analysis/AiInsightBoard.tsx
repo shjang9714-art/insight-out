@@ -3,7 +3,7 @@
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
-import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
+import type { EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
 import DailyInsightList from '@/components/daily-insights/DailyInsightList'
@@ -18,6 +18,7 @@ import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
+import KeywordBubbleChart from '@/components/keywords/KeywordBubbleChart'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -245,68 +246,11 @@ export default function AiInsightBoard({
         />
       )}
 
-      {/* 키워드 분석 — 엔티티별 시그널 요약(구 기업동향 브리핑, 224B) */}
+      {/* 키워드 분석 — 엔티티별 시그널 요약(구 기업동향 브리핑, 224B). 버블차트 전환(§지시서 A) */}
       {view === 'keyword' && (
         <section>
-          <p className="mb-4 text-xs text-muted-foreground">엔티티별 시그널 요약 — 신호가 많은 순</p>
-          {signalItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              시그널 데이터가 있는 엔티티가 없습니다.
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {signalItems.map(item => {
-                const typeLabel = ENTITY_TYPE_LABEL[item.entityType]
-                const displayDate = item.lastSeen
-                  ? new Date(item.lastSeen).toLocaleDateString('ko-KR', {
-                      timeZone: 'Asia/Seoul', month: 'short', day: 'numeric',
-                    })
-                  : null
-                const topSignals = item.signalTypes.slice(0, 3)
-                return (
-                  <Link
-                    key={item.entityId}
-                    href={`/dashboard/entities/${item.entityId}?origin=issues&view=keyword`}
-                    prefetch={false}
-                    className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="text-sm font-semibold text-foreground leading-snug line-clamp-1">
-                        {item.name}
-                      </span>
-                      <span className={cn(
-                        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                        item.isCompetitor && item.entityType === 'company'
-                          ? 'border-red-200 bg-red-50 text-red-700'
-                          : 'border-border bg-muted text-muted-foreground'
-                      )}>
-                        {typeLabel}
-                      </span>
-                    </div>
-
-                    {topSignals.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1">
-                        {topSignals.map(sig => (
-                          <span
-                            key={sig}
-                            className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
-                          >
-                            {sig}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                      <span>시그널 {item.signalCount.toLocaleString()}건</span>
-                      <span>콘텐츠 {item.contentCount.toLocaleString()}건</span>
-                      {displayDate && <span className="ml-auto">{displayDate}</span>}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
+          <p className="mb-4 text-xs text-muted-foreground">엔티티별 시그널 요약 — 버블 크기는 콘텐츠 수</p>
+          <KeywordBubbleChart items={signalItems} />
         </section>
       )}
     </div>
