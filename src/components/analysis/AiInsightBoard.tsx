@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
@@ -18,7 +19,6 @@ import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
-import KeywordBubbleChart from '@/components/keywords/KeywordBubbleChart'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -127,6 +127,16 @@ export default function AiInsightBoard({
     params.set('view', v)
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
+
+  // 키워드 분석 카드용 정렬 — 원본 signalItems(신호 수 순)는 건드리지 않고 이 뷰에서만 콘텐츠 수 내림차순으로 재정렬
+  const keywordCardItems = useMemo(
+    () => [...signalItems].sort((a, b) => b.contentCount - a.contentCount),
+    [signalItems]
+  )
+  const maxKeywordContentCount = useMemo(
+    () => Math.max(1, ...keywordCardItems.map(item => item.contentCount)),
+    [keywordCardItems]
+  )
 
   return (
     <div className="space-y-6">
@@ -246,11 +256,43 @@ export default function AiInsightBoard({
         />
       )}
 
-      {/* 키워드 분석 — 엔티티별 시그널 요약(구 기업동향 브리핑, 224B). 버블차트 전환(§지시서 A) */}
+      {/* 키워드 분석 — 엔티티별 시그널 요약(구 기업동향 브리핑, 224B). 라벨칩 제거 + 카드 그리드(§지시서 A′) */}
       {view === 'keyword' && (
         <section>
-          <p className="mb-4 text-xs text-muted-foreground">엔티티별 시그널 요약 — 버블 크기는 콘텐츠 수</p>
-          <KeywordBubbleChart items={signalItems} />
+          <p className="mb-4 text-xs text-muted-foreground">엔티티별 시그널 요약 — 콘텐츠가 많은 순</p>
+          {keywordCardItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              시그널 데이터가 있는 엔티티가 없습니다.
+            </div>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+              {keywordCardItems.map(item => {
+                const barPct = Math.round((item.contentCount / maxKeywordContentCount) * 100)
+                return (
+                  <Link
+                    key={item.entityId}
+                    href={`/dashboard/entities/${item.entityId}?origin=issues&view=keyword`}
+                    prefetch={false}
+                    aria-label={`${item.name}, 콘텐츠 ${item.contentCount.toLocaleString()}건`}
+                    className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/50"
+                  >
+                    <p className="mb-3 text-sm font-semibold text-foreground leading-snug line-clamp-1">
+                      {item.name}
+                    </p>
+                    <div className="mb-2 h-[3px] w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-brand-600"
+                        style={{ width: `${barPct}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      시그널 {item.signalCount.toLocaleString()} · 콘텐츠 {item.contentCount.toLocaleString()}
+                    </p>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
         </section>
       )}
     </div>
