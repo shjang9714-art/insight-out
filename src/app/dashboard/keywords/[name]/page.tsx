@@ -72,7 +72,9 @@ function MetricCard({ label, value, description }: MetricCardProps) {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span>{label}</span>
-        <CircleHelp className="size-3.5" aria-label={description} role="img" title={description} />
+        <span title={description} className="inline-flex">
+          <CircleHelp className="size-3.5" aria-label={description} role="img" />
+        </span>
       </div>
       <strong className="mt-2 block text-2xl font-semibold tracking-tight text-foreground tabular-nums">
         {value}
