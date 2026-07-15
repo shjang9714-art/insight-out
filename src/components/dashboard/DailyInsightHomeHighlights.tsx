@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowUpRight, FileText, Clock3 } from 'lucide-react'
+import { ArrowUpRight, Clock3 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getKstDateString } from '@/lib/date'
 import { formatMonthWeekLabel } from '@/lib/daily-insights/weeks'
@@ -90,12 +90,6 @@ export default async function DailyInsightHomeHighlights() {
                   <Badge variant="secondary" className="bg-brand-600/10 text-brand-700 dark:text-brand-300">
                     NEW
                   </Badge>
-                  {sourceCount > 0 && (
-                    <Badge variant="outline" className="gap-1 text-muted-foreground">
-                      <FileText className="h-2.5 w-2.5" />
-                      근거 {sourceCount}
-                    </Badge>
-                  )}
                   {pastCount > 0 && (
                     <Badge variant="outline" className="gap-1 text-muted-foreground">
                       <Clock3 className="h-2.5 w-2.5" />
