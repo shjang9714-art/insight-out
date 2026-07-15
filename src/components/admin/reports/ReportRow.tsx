@@ -12,6 +12,7 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import ReportSourcePicker from '@/components/admin/reports/ReportSourcePicker'
 import { createClient } from '@/lib/supabase/client'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
+import { compressImageToLimit } from '@/lib/images/compress-image'
 import { cn } from '@/lib/utils'
 import type { AiReportType, AiReportStatus } from '@/lib/types'
 
@@ -160,17 +161,19 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
       setError('이미지 파일만 업로드할 수 있습니다.')
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setError('이미지 용량은 2MB 이하여야 합니다.')
-      return
-    }
     setIsUploadingCover(true)
     setError(null)
     try {
+      // 368 — 용량이 크면 먼저 자동으로 줄여본다. 그래도 2MB를 넘으면 그때 반려.
+      const compressed = await compressImageToLimit(file)
+      if (compressed.size > 2 * 1024 * 1024) {
+        setError('이미지 용량은 2MB 이하여야 합니다.')
+        return
+      }
       const supabase = createClient()
-      const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      const ext = compressed.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       // ⚠️ uploadCoverFile()만 사용 — uploadCover()는 contents.thumbnail_url을 갱신하므로 절대 쓰지 않는다.
-      const publicUrl = await uploadCoverFile(supabase, report.id, file, ext)
+      const publicUrl = await uploadCoverFile(supabase, report.id, compressed, ext)
       const res = await fetch(`/api/admin/reports/${report.id}/cover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -394,7 +397,7 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
                     <Button type="button" variant="ghost" size="sm" disabled className="cursor-not-allowed opacity-60" title="준비 중">
                       AI 생성(준비 중)
                     </Button>
-                    <p className="text-[11px] text-muted-foreground">권장 1200×675(16:9), 2MB 이하.</p>
+                    <p className="text-[11px] text-muted-foreground">권장 1200×675(16:9). 용량이 크면 자동으로 줄입니다.</p>
                   </div>
                 </div>
               </div>
