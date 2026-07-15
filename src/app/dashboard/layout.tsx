@@ -14,9 +14,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="print:hidden">
-        <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
-      </div>
+      <DashboardHeader className="print:hidden" onMenuClick={() => setSidebarOpen(true)} />
 
       {/* 풀폭 본문 */}
       <main className="mx-auto w-full max-w-6xl print:max-w-none">

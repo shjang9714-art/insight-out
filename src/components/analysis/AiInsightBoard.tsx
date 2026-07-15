@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import type { EntityType } from '@/lib/types'
@@ -25,8 +25,6 @@ import InsightCardsSectionClient, {
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import type { IssueCard } from '@/lib/issues/activity'
-import InsightViewTabs from '@/components/analysis/InsightViewTabs'
-import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
 import { rankKeywords, type KeywordRankingMode } from '@/lib/keywords/ranking'
@@ -220,8 +218,6 @@ export default function AiInsightBoard({
   keywordDailySeries,
   isAdmin,
 }: AiInsightBoardProps) {
-  const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [keywordRankingMode, setKeywordRankingMode] = useState<KeywordRankingMode>('rising')
 
@@ -237,13 +233,6 @@ export default function AiInsightBoard({
   // 실험실(관리자 전용) 뷰는 비관리자에게 노출 금지 → 기본 탭으로 폴백
   if (!isAdmin && LAB_VIEW_IDS.includes(resolvedView)) resolvedView = 'brief'
   const view = resolvedView
-
-  function handleTabChange(v: AiInsightViewId) {
-    // 탭 전환 시 기간 필터(period/from/to) 등 다른 쿼리 파라미터는 유지 — view만 교체.
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('view', v)
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
-  }
 
   // 키워드 분석 카드용 정렬 — 원본 signalItems(신호 수 순)는 건드리지 않고 이 뷰에서만 콘텐츠 수 내림차순으로 재정렬
   const keywordCardItems = useMemo(
@@ -272,12 +261,8 @@ export default function AiInsightBoard({
 
   return (
     <div className="space-y-6">
-      {/* 하위 카테고리 탭 — 좌측 시작점을 활성 L1 탭 라벨 텍스트 시작 x좌표에 맞춤(§지시서 20260712) */}
-      {/* 실험실(관리자 전용)은 DashboardHeader.tsx의 5탭 네비 줄로 이동(2026-07-10) —
-          여기서는 항상 노출되는 3개 탭만 렌더링 */}
-      <NavGroupAlign className="-mt-3">
-        <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} />
-      </NavGroupAlign>
+      {/* 하위 카테고리 탭(핵심 인사이트·키워드 분석·관계지도)은 DashboardHeader의
+          sticky L2 행으로 이동(372) — 이 보드는 view 상태만 URL에서 읽는다. */}
 
       {/* 핵심 인사이트 — 주간 daily_insights 목록(§2, 지시서 20260715 주간 복귀) */}
       {view === 'brief' && (

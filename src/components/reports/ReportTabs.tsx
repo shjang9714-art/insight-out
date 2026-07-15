@@ -1,24 +1,3 @@
-import InsightViewTabs from '@/components/analysis/InsightViewTabs'
-import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
-import AiMark from '@/components/ui/AiMark'
-
-export const REPORT_TABS = [
-  { id: 'ai', label: <>AI 리포트<AiMark className="ml-1" /></>, href: '/dashboard/reports?view=ai' },
-  { id: 'external', label: '외부 리포트', href: '/dashboard/reports?view=external' },
-  { id: 'knowledge', label: '지식보고서', href: '/dashboard/reports?view=knowledge' },
-] as const
-
-export type ReportViewId = (typeof REPORT_TABS)[number]['id']
-
-interface ReportTabsProps {
-  value: ReportViewId
-  className?: string
-}
-
-export default function ReportTabs({ value, className }: ReportTabsProps) {
-  return (
-    <NavGroupAlign className={className ?? '-mt-3 mb-6'}>
-      <InsightViewTabs items={[...REPORT_TABS]} value={value} />
-    </NavGroupAlign>
-  )
-}
+// L2 탭 렌더(핵심 인사이트/외부 리포트/지식보고서)는 DashboardHeader의 sticky L2 행으로
+// 이동(372, src/lib/nav/taxonomy.tsx). 이 파일은 reports/page.tsx가 쓰는 뷰 id 타입만 남긴다.
+export type ReportViewId = 'ai' | 'external' | 'knowledge'

@@ -13,8 +13,6 @@ import EntityEventTimeline, {
 } from '@/components/entities/EntityEventTimeline'
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
 import PageContainer from '@/components/PageContainer'
-import EntityTabs from '@/components/entities/EntityTabs'
-import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { getOrGenerateKeywordInsight } from '@/lib/insight/keyword-insight'
 import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
@@ -235,7 +233,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function EntityDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
-  const { origin, view } = await searchParams
+  const { origin } = await searchParams
   const isKeywordDetail = origin === 'issues'
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
@@ -408,11 +406,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   return (
     <PageContainer className="py-8">
 
-      {origin === 'issues' ? (
-        <AiInsightTabs value={view ?? 'keyword'} />
-      ) : (
-        <EntityTabs value="watchlist" />
-      )}
+      {/* Lv.2 탭(핵심 인사이트/AI인사이트 or 주요 기업/기업동향)은 DashboardHeader의
+          sticky L2 행이 origin=issues 여부에 따라 자동으로 보여준다(372). */}
 
       {/* 뒤로가기 */}
       <div className="mb-6">

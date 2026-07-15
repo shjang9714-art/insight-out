@@ -3,7 +3,6 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import EntityTabs from '@/components/entities/EntityTabs'
 import PageContainer from '@/components/PageContainer'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
@@ -247,10 +246,6 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   return (
     <PageContainer>
-      <Suspense fallback={null}>
-        <EntityTabs />
-      </Suspense>
-
       {/* 주요 기업 탭 */}
       {view === 'watchlist' && (
         <Suspense fallback={<EntityPanelSkeleton />}>

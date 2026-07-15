@@ -15,8 +15,6 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
-import InsightViewTabs from '@/components/analysis/InsightViewTabs'
-import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -80,13 +78,6 @@ function subscribeNewsView(onStoreChange: () => void): () => void {
     window.removeEventListener(CONTENTS_VIEW_CHANGE_EVENT, onStoreChange)
   }
 }
-
-// 콘텐츠 소스타입 선택 바 (리서치는 리포트 > 외부 리포트로 이동)
-const CONTENT_SOURCE_TABS = [
-  { label: '뉴스',      value: '뉴스'      as ContentCategory },
-  { label: '유튜브',    value: '유튜브'    as ContentCategory },
-  { label: '웹인사이트', value: '웹인사이트' as ContentCategory },
-] as const
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -236,14 +227,12 @@ function ContentRowList({ items, sortByCollected }: {
 interface ContentsBoardProps {
   fixedCategory?: ContentCategory
   title?: string
-  showSourceTabs?: boolean
   schemaPendingMessage?: string
 }
 
 export default function ContentsBoard({
   fixedCategory,
   title,
-  showSourceTabs = true,
   schemaPendingMessage,
 }: ContentsBoardProps) {
   const router       = useRouter()
@@ -491,26 +480,10 @@ export default function ContentsBoard({
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠')
 
-  // 소스타입 선택 (기본 뉴스)
-  const activeSourceTab = (category || '뉴스') as ContentCategory
   const usesFlatList = category === '리서치' || category === '지식보고서' || category === '유튜브'
 
   return (
     <>
-
-      {/* ── 소스타입 선택 바 ─────────────────────────────────────────────────── */}
-      {showSourceTabs && (
-        <NavGroupAlign className="-mt-3 mb-5">
-          <InsightViewTabs
-            items={CONTENT_SOURCE_TABS.map((tab) => ({
-              id: tab.value,
-              label: tab.label,
-            }))}
-            value={activeSourceTab}
-            onChange={(v) => updateParam('category', v)}
-          />
-        </NavGroupAlign>
-      )}
 
       {/* 제목 + 건수 */}
       <div className="mb-5 flex items-start justify-between gap-4">
