@@ -1,12 +1,16 @@
 import type { Metadata } from 'next'
 import { FileArchive } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import CompanyDocumentsCollector, {
   type DartCompanyOption,
 } from '@/components/admin/CompanyDocumentsCollector'
+import CompanyDocumentDiscovery from '@/components/admin/CompanyDocumentDiscovery'
+import { readNaverQuota } from '@/lib/company-docs/discovery/naver'
+import { readTavilyQuota } from '@/lib/company-docs/discovery/tavily'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,6 +79,13 @@ export default async function CompanyDocumentsAdminPage() {
   const documents = (documentsResult.data ?? []) as unknown as DocumentRow[]
   const queryError = mappingResult.error ?? documentsResult.error
 
+  // llm_usage는 service_role 전용 GRANT라 세션 클라이언트로는 조회 불가 — admin 클라이언트 사용.
+  const admin = createAdminClient()
+  const [naverQuota, tavilyQuota] = await Promise.all([
+    readNaverQuota(admin),
+    readTavilyQuota(admin),
+  ])
+
   return (
     <div className="space-y-8">
       <AdminPageHeader />
@@ -92,6 +103,13 @@ export default async function CompanyDocumentsAdminPage() {
         defaultSince={defaultSince()}
         schemaReady={schemaReady && !queryError}
       />
+
+      {schemaReady && !queryError && (
+        <CompanyDocumentDiscovery
+          initialNaverQuota={naverQuota}
+          initialTavilyQuota={tavilyQuota}
+        />
+      )}
 
       <section className="space-y-3">
         <div>
