@@ -8,6 +8,7 @@ import {
 } from '@/lib/competitor-weekly/query'
 import { cleanNarrative } from '@/lib/text/clean-narrative'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
+import { AiMark } from '@/components/ui/AiMark'
 
 /** week_start/week_end 는 이미 KST 달력일 — Date 재구성 없이 그대로 쪼갠다 */
 function formatWeekRange(weekStart: string, weekEnd: string): string {
@@ -241,6 +242,8 @@ export default function CompetitorWeeklyReport({ report }: Props) {
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className="text-[15px] font-bold tracking-tight text-foreground">
             경쟁사 동향 브리핑
+            {' '}
+            <AiMark title="AI 분석" />
             <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.14em] text-brand-700">
               {isoWeekLabel(week_start)}
             </span>

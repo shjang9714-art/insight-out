@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
+import { AiMark } from '@/components/ui/AiMark'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
@@ -50,6 +51,7 @@ export default function DailyInsightList({ insights }: DailyInsightListProps) {
               >
                 {item.category && <CategoryBadge category={item.category} />}
                 <p className="mt-1.5 font-semibold text-foreground leading-snug transition-colors group-hover:text-brand-700">
+                  <AiMark title="AI 생성 인사이트" />{' '}
                   {stripLlmArtifacts(item.headline)}
                 </p>
                 <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground leading-relaxed">

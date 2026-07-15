@@ -6,13 +6,13 @@ import {
   Clock3,
   FileText,
   Network,
-  Sparkles,
   TrendingUp,
 } from 'lucide-react'
 import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import EntityEventTimeline from '@/components/entities/EntityEventTimeline'
 import KeywordTrendChart from '@/components/keywords/KeywordTrendChart'
 import PageContainer from '@/components/PageContainer'
+import { AiMark } from '@/components/ui/AiMark'
 import {
   getKeywordDailyCounts,
   getKeywordRelated,
@@ -184,15 +184,13 @@ function RiseFactorsSection({
   if (!riseFactors) {
     return (
       <section className="mb-8 rounded-xl border border-dashed border-brand-600/30 bg-brand-50/40 p-5 dark:bg-brand-950/10">
-        <div className="flex items-start gap-3">
-          <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">상승 요인</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              분석 준비 중입니다. 다음 단계에서 근거 사건을 묶어 상승 배경을 제공합니다.
-            </p>
-          </div>
-        </div>
+        <h2 className="inline-flex items-center gap-1 text-sm font-semibold text-foreground">
+          상승 요인
+          <AiMark title="AI 분석" />
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          분석 준비 중입니다. 다음 단계에서 근거 사건을 묶어 상승 배경을 제공합니다.
+        </p>
       </section>
     )
   }
@@ -203,10 +201,12 @@ function RiseFactorsSection({
 
   return (
     <section className="mb-8 rounded-xl border border-brand-600/20 bg-card p-5" aria-labelledby="rise-factors-title">
-      <div className="mb-5 flex items-start gap-3">
-        <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
+      <div className="mb-5">
         <div>
-          <h2 id="rise-factors-title" className="text-base font-semibold text-foreground">상승 요인</h2>
+          <h2 id="rise-factors-title" className="inline-flex items-center gap-1 text-base font-semibold text-foreground">
+            상승 요인
+            <AiMark title="AI 분석" />
+          </h2>
           {riseFactors.overview && (
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{riseFactors.overview}</p>
           )}
