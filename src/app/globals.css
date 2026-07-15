@@ -628,3 +628,37 @@
 }
 /* 목록 항목의 앞머리 굵은 어구(“SK가 가진 것:”)는 브랜드 컬러로 — 스캔 시 눈이 걸리는 지점 */
 .io-report-body li > strong:first-child { color: var(--color-brand-700); }
+
+/* 349 — 보고서 강조 2종. 그 이상은 만들지 않는다(강조가 많아지면 아무것도 강조되지 않는다).
+   · strong : 핵심 어구 (굵게)                 — 문단당 1~2회
+   · mark   : 형광펜 (중요 문장·키워드)         — 섹션당 2~3회
+   물결 밑줄은 시각적으로 산만해 폐기(David, 2026-07-14).
+   'em' 은 강조 채널로 쓰지 않는다 — 한글 이탤릭은 가독성이 나쁘고, 형광펜과 역할이 겹친다.
+   sanitize 가 class 를 제거하므로 요소 선택자로만 정의한다.
+
+   형광펜 톤은 두 단계 — 같은 색상(brand) 계열이라 이질감은 없고, 위계만 다르다.
+   · 소제목: brand-200 (진한 톤, 굵은 글자 뒤로도 보인다)
+   · 본문:   brand-100 (연한 톤, 긴 문장에 걸려도 답답하지 않다) */
+.io-report-body mark {
+  background: linear-gradient(transparent 58%, var(--color-brand-100) 58%);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.io-report-body h1 mark,
+.io-report-body h2 mark,
+.io-report-body h3 mark,
+.io-report-body h4 mark {
+  background: linear-gradient(transparent 60%, var(--color-brand-200) 60%);
+}
+.io-report-body em {
+  font-style: normal;
+  text-decoration: none;
+}
+
+/* 표: 1·2열은 라벨 열이므로 줄바꿈하지 않는다(내용 열만 흐른다) */
+.io-report-body th:nth-child(-n+2),
+.io-report-body td:nth-child(-n+2) {
+  white-space: nowrap;
+  width: 1%;
+}

@@ -164,7 +164,6 @@ export default async function ReportDetailPage({ params }: PageProps) {
               '[&_h4]:text-[17px] [&_h4]:font-semibold [&_h4]:text-foreground [&_h4]:mb-2 [&_h4]:mt-5',
               '[&_p]:text-[16px] [&_p]:text-foreground/90 [&_p]:leading-[1.85] [&_p]:mb-4',
               '[&_strong]:font-semibold [&_strong]:text-foreground',
-              '[&_em]:italic [&_em]:text-foreground/80',
               '[&_ul]:mb-5 [&_ul]:space-y-2.5',
               '[&_ol]:mb-5 [&_ol]:space-y-2.5',
               '[&_li]:text-[16px] [&_li]:text-foreground/90 [&_li]:leading-[1.8]',

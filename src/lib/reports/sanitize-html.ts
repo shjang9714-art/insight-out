@@ -1,8 +1,10 @@
 import 'server-only'
 import sanitizeHtml from 'sanitize-html'
 
+// 349: 'mark' 추가 — 형광펜 강조. 속성을 허용하지 않으므로(allowedAttributes) XSS 표면이 늘지 않는다.
+// 'em' 은 강조 채널에서 제외하며 globals.css에서 이탤릭·밑줄을 모두 무효화한다.
 const ALLOWED_TAGS = [
-  'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'b', 'i', 'br', 'hr',
+  'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'b', 'i', 'br', 'hr', 'mark',
   'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'span',
 ]
 

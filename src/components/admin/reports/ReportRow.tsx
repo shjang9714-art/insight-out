@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AdminReportBodyEditor from '@/components/admin/reports/AdminReportBodyEditor'
 import { Loader2, ChevronDown, ChevronUp, Upload, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,7 +31,7 @@ export interface AdminReportListItem {
 }
 
 interface ReportDetailResponse {
-  report: AdminReportListItem & { prompt: string | null; body_md: string | null }
+  report: AdminReportListItem & { prompt: string | null; body_md: string | null; body_html: string | null }
   bodyHtmlSanitized: string | null
   sourceIssueIds: string[]
   contentIds: string[]
@@ -262,12 +263,13 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
                 {detail?.bodyHtmlSanitized ? (
                   <div
                     className={cn(
-                      'max-h-72 overflow-y-auto rounded-lg border border-border bg-background p-4',
+                      // 349: io-report-body → 서비스와 동일한 형광펜(mark)·불릿 렌더로 미리보기
+                      'io-report-body max-h-72 overflow-y-auto rounded-lg border border-border bg-background p-4',
                       '[&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4',
                       '[&_h3]:text-xs [&_h3]:font-semibold [&_h3]:mb-1.5 [&_h3]:mt-3',
                       '[&_p]:text-xs [&_p]:text-foreground/90 [&_p]:leading-relaxed [&_p]:mb-2',
-                      '[&_ul]:mb-2 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1',
-                      '[&_ol]:mb-2 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1',
+                      '[&_ul]:mb-2 [&_ul]:space-y-1',
+                      '[&_ol]:mb-2 [&_ol]:space-y-1',
                       '[&_li]:text-xs',
                       '[&_table]:w-full [&_table]:text-xs [&_table]:mb-2',
                       '[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1',
@@ -288,6 +290,15 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
                   <p className="mt-2 text-xs text-negative">사유: {report.error_message}</p>
                 )}
               </div>
+
+              {/* 349: 본문 편집 — 형광펜·굵게 구간을 코드 배포 없이 조정 */}
+              {detail?.report.body_html && (
+                <AdminReportBodyEditor
+                  key={detail.report.id}
+                  reportId={detail.report.id}
+                  initialBodyHtml={detail.report.body_html}
+                />
+              )}
 
               {/* 생성/재생성 */}
               <div>

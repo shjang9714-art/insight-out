@@ -54,6 +54,43 @@ interface ImportBody {
   publish?: boolean
 }
 
+/**
+ * PATCH — 이미 등록된 보고서의 본문·요약을 교체한다(Claude 로 다시 쓴 본문 반영).
+ * body: { reportId, title?, summary?, bodyHtml? }
+ */
+export async function PATCH(request: NextRequest) {
+  const { error: authError } = await verifyAdmin()
+  if (authError) return authError
+
+  let body: ImportBody & { reportId?: string }
+  try {
+    body = await request.json() as ImportBody & { reportId?: string }
+  } catch {
+    return NextResponse.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 })
+  }
+
+  const reportId = (body.reportId ?? '').trim()
+  if (!reportId) return NextResponse.json({ error: 'reportId 가 필요합니다.' }, { status: 400 })
+
+  const patch: Record<string, unknown> = {}
+  if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim()
+  if (typeof body.summary === 'string') patch.summary = body.summary.trim() || null
+  if (typeof body.bodyHtml === 'string' && body.bodyHtml.trim()) {
+    patch.body_html = sanitizeReportHtml(body.bodyHtml.trim())
+  }
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: '변경할 항목이 없습니다.' }, { status: 400 })
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin.from('ai_reports').update(patch).eq('id', reportId)
+  if (error) {
+    console.error('[reports/import] PATCH 실패:', error.message)
+    return NextResponse.json({ error: '보고서 수정에 실패했습니다.' }, { status: 500 })
+  }
+  return NextResponse.json({ ok: true, reportId, updated: Object.keys(patch) })
+}
+
 export async function POST(request: NextRequest) {
   const { error: authError, userId } = await verifyAdmin()
   if (authError) return authError
