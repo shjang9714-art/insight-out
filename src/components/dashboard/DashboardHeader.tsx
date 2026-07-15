@@ -18,7 +18,7 @@ export const NAV_TABS = [
   { label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
   { label: '기업동향',   href: '/dashboard/entities', exact: false },
   { label: '콘텐츠',     href: '/dashboard/contents', exact: false },
-  { label: '전략보고서', href: '/dashboard/reports',  exact: false },
+  { label: '리포트',     href: '/dashboard/reports',  exact: false },
 ]
 
 // 관리자 전용 '실험실' 퀵링크 — 숨김 처리된 하위 카테고리를 모아 보는 별도 페이지

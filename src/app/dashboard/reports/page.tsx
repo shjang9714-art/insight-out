@@ -5,14 +5,19 @@ import { createServerClient } from '@supabase/ssr'
 import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
 import ReportCard from '@/components/reports/ReportCard'
+import ReportTabs, { type ReportViewId } from '@/components/reports/ReportTabs'
 import { getPublishedReports } from '@/lib/reports/query'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '전략보고서 | Insight Out',
+  title: '리포트 | Insight Out',
   description: 'AI가 분석한 시장동향·경쟁사분석 전략보고서',
 }
+
+type SearchParams = Promise<{ view?: string }>
+
+const VALID_VIEWS: ReportViewId[] = ['ai', 'external', 'knowledge']
 
 function ReportGridSkeleton() {
   return (
@@ -78,16 +83,38 @@ async function ReportsContent() {
   )
 }
 
-export default function ReportsPage() {
+function Placeholder({ message }: { message: string }) {
+  return (
+    <div className="rounded-xl border border-dashed p-16 text-center">
+      <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
+      <p className="text-sm font-medium text-muted-foreground">{message}</p>
+    </div>
+  )
+}
+
+export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams
+  const rawView = typeof params.view === 'string' ? params.view : ''
+  const view: ReportViewId = VALID_VIEWS.includes(rawView as ReportViewId)
+    ? rawView as ReportViewId
+    : 'ai'
+
   return (
     <PageContainer>
-      <p className="mb-8 text-sm text-muted-foreground">
-        AI가 분석한 시장동향·경쟁사 전략보고서 모음
-      </p>
+      <ReportTabs value={view} />
 
-      <Suspense fallback={<ReportGridSkeleton />}>
-        <ReportsContent />
-      </Suspense>
+      {view === 'ai' && (
+        <>
+          <p className="mb-8 text-sm text-muted-foreground">
+            AI가 분석한 시장동향·경쟁사 전략보고서 모음
+          </p>
+          <Suspense fallback={<ReportGridSkeleton />}>
+            <ReportsContent />
+          </Suspense>
+        </>
+      )}
+      {view === 'external' && <Placeholder message="외부 리포트 목록을 준비하고 있습니다." />}
+      {view === 'knowledge' && <Placeholder message="지식보고서를 준비하고 있습니다." />}
     </PageContainer>
   )
 }
