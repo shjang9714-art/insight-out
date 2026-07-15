@@ -178,6 +178,99 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ resource, count: items.length, items })
     }
 
+    // ── 핵심 인사이트 ──────────────────────────────────
+    if (resource === 'insights') {
+      const query = searchParams.get('q') ?? undefined
+      const limit = Math.min(Number(searchParams.get('limit') ?? 6), 20)
+
+      let q = admin
+        .from('daily_insights')
+        .select('id, headline, summary_ko, created_at')
+        .eq('status', 'published')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (query) q = q.ilike('headline', `%${query}%`)
+
+      const { data, error } = await q
+      if (error) return jsonError(500, `DB 오류: ${error.message}`)
+
+      const items = (data ?? []).map((r: Record<string, unknown>) => ({
+        headline: r.headline,
+        summary: r.summary_ko ?? null,
+      }))
+      return NextResponse.json({ resource, count: items.length, items })
+    }
+
+    // ── AI 리포트 ──────────────────────────────────────
+    if (resource === 'reports') {
+      const limit = Math.min(Number(searchParams.get('limit') ?? 6), 20)
+
+      const { data, error } = await admin
+        .from('ai_reports')
+        .select('title, summary, published_at')
+        .not('published_at', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(limit)
+
+      if (error) return jsonError(500, `DB 오류: ${error.message}`)
+
+      const items = (data ?? []).map((r: Record<string, unknown>) => ({
+        title: r.title,
+        summary: r.summary ?? null,
+      }))
+      return NextResponse.json({ resource, count: items.length, items })
+    }
+
+    // ── 경쟁사 주간 브리핑 ─────────────────────────────
+    if (resource === 'competitor') {
+      const limit = Math.min(Number(searchParams.get('limit') ?? 6), 10)
+
+      const { data, error } = await admin
+        .from('competitor_weekly_reports')
+        .select('summary, week_start, week_end')
+        .eq('status', 'published')
+        .order('week_start', { ascending: false })
+        .limit(limit)
+
+      if (error) return jsonError(500, `DB 오류: ${error.message}`)
+
+      const items = (data ?? []).map((r: Record<string, unknown>) => ({
+        title: (r.summary as string | null) ?? `${r.week_start}~${r.week_end}`,
+        summary: r.summary ?? null,
+      }))
+      return NextResponse.json({ resource, count: items.length, items })
+    }
+
+    // ── 트렌딩 키워드 ──────────────────────────────────
+    if (resource === 'keywords') {
+      const limit = Math.min(Number(searchParams.get('limit') ?? 10), 20)
+
+      const { data, error } = await admin
+        .from('trending_keywords')
+        .select('title, recent_count, prev_count')
+        .order('recent_count', { ascending: false })
+        .limit(limit)
+
+      if (error) {
+        // 뷰 미존재(42P01) 등은 graceful 빈배열
+        if (error.code === '42P01') return NextResponse.json({ resource, count: 0, items: [] })
+        return jsonError(500, `DB 오류: ${error.message}`)
+      }
+
+      const items = (data ?? []).map((r: Record<string, unknown>) => {
+        const recent = Number(r.recent_count ?? 0)
+        const prev = Number(r.prev_count ?? 0)
+        const item: { name: unknown; trend?: string } = { name: r.title }
+        if (prev > 0) {
+          const pct = Math.round(((recent - prev) / prev) * 100)
+          item.trend = `${pct >= 0 ? '+' : ''}${pct}%`
+        }
+        return item
+      })
+      return NextResponse.json({ resource, count: items.length, items })
+    }
+
     return jsonError(400, `알 수 없는 resource: ${resource}`)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
