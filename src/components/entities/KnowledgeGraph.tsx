@@ -73,6 +73,18 @@ interface EdgeTooltip {
   loading: boolean
 }
 
+interface ContentItem {
+  id: string
+  title: string
+  collected_at: string
+}
+
+interface NodeContentsState {
+  nodeId: string
+  items: ContentItem[]
+  loading: boolean
+}
+
 interface ExpStackEntry {
   nodeId: string
   addedNodeIds: string[]
@@ -242,15 +254,21 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const hoveredLinkRef   = useRef<string | null>(null)
 
   // 선택된 노드 (클릭 → 관련 기사 패널)
-  interface ContentItem { id: string; title: string; collected_at: string }
-  interface ContentsState { nodeId: string; items: ContentItem[] }
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const selectedNodeIdRef = useRef<string | null>(null)
   useEffect(() => { selectedNodeIdRef.current = selectedNodeId }, [selectedNodeId])
-  const [contentsState, setContentsState] = useState<ContentsState | null>(null)
+  const [contentsState, setContentsState] = useState<NodeContentsState | null>(null)
+
+  // 노드 호버 미리보기 (선택·엣지 잠금보다 낮은 우선순위)
+  const [nodePreview, setNodePreview] = useState<NodeContentsState | null>(null)
+  const nodeContentCacheRef = useRef<Map<string, ContentItem[]>>(new Map())
+  const nodeHoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoveredNodeRef = useRef<string | null>(null)
 
   // 엣지 클릭 잠금 패널
   const [lockedEdge, setLockedEdge] = useState<EdgeTooltip | null>(null)
+  const lockedEdgeRef = useRef<EdgeTooltip | null>(null)
+  useEffect(() => { lockedEdgeRef.current = lockedEdge }, [lockedEdge])
 
   // 파생값 (동기 setState 없이 도출)
   const expectedKey      = rootId ? `${rootId}:${resetKey}` : ''
@@ -300,7 +318,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     expandStackRef.current = []
     loadingNodeIdRef.current = null
     pairCacheRef.current.clear()
+    nodeContentCacheRef.current.clear()
     hoveredLinkRef.current = null
+    hoveredNodeRef.current = null
 
     const thisKey = `${rootId}:${resetKey}`
     let cancelled = false
@@ -592,15 +612,73 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   const handleNodeClick = useCallback((node: { id?: string | number }) => {
     const id = String(node.id)
-    setSelectedNodeId((prev) => (prev === id ? null : id))
+    const nextId = selectedNodeIdRef.current === id ? null : id
+    selectedNodeIdRef.current = nextId
+    setSelectedNodeId(nextId)
+    lockedEdgeRef.current = null
     setLockedEdge(null)
+    hoveredNodeRef.current = null
+    setNodePreview(null)
   }, [])
 
   const handleBackgroundClick = useCallback(() => {
     hoveredLinkRef.current = null
     setEdgeTooltip(null)
+    lockedEdgeRef.current = null
     setLockedEdge(null)
+    selectedNodeIdRef.current = null
     setSelectedNodeId(null)
+    hoveredNodeRef.current = null
+    setNodePreview(null)
+  }, [])
+
+  // ── 노드 호버 (디바운스 200ms + 캐시) ─────────────────────────────────────
+
+  const handleNodeHover = useCallback((node: { id?: string | number } | null) => {
+    if (nodeHoverDebounceRef.current) clearTimeout(nodeHoverDebounceRef.current)
+
+    if (!node) {
+      hoveredNodeRef.current = null
+      nodeHoverDebounceRef.current = setTimeout(() => setNodePreview(null), 80)
+      return
+    }
+
+    if (selectedNodeIdRef.current || lockedEdgeRef.current) {
+      hoveredNodeRef.current = null
+      setNodePreview(null)
+      return
+    }
+
+    const nodeId = String(node.id)
+    hoveredNodeRef.current = nodeId
+    const cached = nodeContentCacheRef.current.get(nodeId)
+    if (cached) {
+      setNodePreview({ nodeId, items: cached, loading: false })
+      return
+    }
+
+    setNodePreview({ nodeId, items: [], loading: true })
+    nodeHoverDebounceRef.current = setTimeout(() => {
+      if (hoveredNodeRef.current !== nodeId) return
+      const supabase = createClient()
+      supabase
+        .from('content_entities')
+        .select('content_id, contents(id, title, collected_at)')
+        .eq('entity_id', nodeId)
+        .limit(8)
+        .then(({ data }) => {
+          if (hoveredNodeRef.current !== nodeId) return
+          type Row = { content_id: string; contents: ContentItem | null }
+          const items = ((data ?? []) as unknown as Row[])
+            .map((row) => row.contents)
+            .filter((content): content is ContentItem => content !== null)
+            .sort((a, b) => b.collected_at.localeCompare(a.collected_at))
+          nodeContentCacheRef.current.set(nodeId, items)
+          if (!selectedNodeIdRef.current && !lockedEdgeRef.current) {
+            setNodePreview({ nodeId, items, loading: false })
+          }
+        })
+    }, 200)
   }, [])
 
   // ── 엣지 호버 (디바운스 200ms + 캐시) ─────────────────────────────────────
@@ -665,14 +743,21 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     const nameA = nodeA?.label ?? ''
     const nameB = nodeB?.label ?? ''
 
+    selectedNodeIdRef.current = null
     setSelectedNodeId(null)
+    hoveredNodeRef.current = null
+    setNodePreview(null)
 
     const cached = pairCacheRef.current.get(pk)
     if (cached) {
-      setLockedEdge({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false })
+      const nextLockedEdge = { forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false }
+      lockedEdgeRef.current = nextLockedEdge
+      setLockedEdge(nextLockedEdge)
       return
     }
-    setLockedEdge({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true })
+    const nextLockedEdge = { forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true }
+    lockedEdgeRef.current = nextLockedEdge
+    setLockedEdge(nextLockedEdge)
     const supabase = createClient()
     supabase
       .rpc('entity_pair_contents', { p_a: srcId, p_b: tgtId, p_limit: 8 })
@@ -688,7 +773,14 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   useEffect(() => {
     if (!selectedNodeId) return
 
+    const cached = nodeContentCacheRef.current.get(selectedNodeId)
+    if (cached) {
+      setContentsState({ nodeId: selectedNodeId, items: cached, loading: false })
+      return
+    }
+
     let cancelled = false
+    setContentsState({ nodeId: selectedNodeId, items: [], loading: true })
     const supabase = createClient()
     supabase
       .from('content_entities')
@@ -702,7 +794,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           .map((r) => r.contents)
           .filter((c): c is ContentItem => c !== null)
           .sort((a, b) => b.collected_at.localeCompare(a.collected_at))
-        setContentsState({ nodeId: selectedNodeId, items })
+        nodeContentCacheRef.current.set(selectedNodeId, items)
+        setContentsState({ nodeId: selectedNodeId, items, loading: false })
       })
     return () => { cancelled = true }
   }, [selectedNodeId])
@@ -750,8 +843,13 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   // 선택 노드 파생값
   const selectedContents = contentsState?.nodeId === selectedNodeId ? contentsState.items : []
-  const selectedContentsLoading = selectedNodeId !== null && (contentsState === null || contentsState.nodeId !== selectedNodeId)
+  const selectedContentsLoading = selectedNodeId !== null && (
+    contentsState === null || contentsState.nodeId !== selectedNodeId || contentsState.loading
+  )
   const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null
+  const previewNode = nodePreview && !selectedNode && !activeLockedEdge
+    ? nodes.find((node) => node.id === nodePreview.nodeId) ?? null
+    : null
   const selectedNeighbors = selectedNodeId
     ? nodes.filter((n) => {
         if (n.id === selectedNodeId) return false
@@ -1048,6 +1146,14 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               ctx.restore()
             }}
             nodeCanvasObjectMode={() => 'replace'}
+            nodePointerAreaPaint={(node, color, ctx) => {
+              const n = node as unknown as EgoNode & { x: number; y: number }
+              const pointerRadius = Math.max(12, Math.max(4, n.val * 2.5))
+              ctx.fillStyle = color
+              ctx.beginPath()
+              ctx.arc(n.x, n.y, pointerRadius, 0, 2 * Math.PI)
+              ctx.fill()
+            }}
             linkHoverPrecision={10}
             linkColor={(link) => {
               const raw = link as { source?: unknown; target?: unknown }
@@ -1064,6 +1170,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               return activeTooltip?.pairKey === pk ? base + 1.5 : base
             }}
             onNodeClick={handleNodeClick}
+            onNodeHover={handleNodeHover}
             onBackgroundClick={handleBackgroundClick}
             onLinkHover={handleLinkHover}
             onLinkClick={handleLinkClick}
@@ -1260,7 +1367,42 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         </div>
       )}
 
-      {!selectedNode && !activeLockedEdge && (
+      {/* 노드 호버 미리보기 — 클릭한 노드·선이 있으면 표시하지 않음 */}
+      {previewNode && nodePreview && (
+        <div className="rounded-xl border bg-card p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-foreground">{previewNode.label}</p>
+            <p className="text-xs text-muted-foreground">
+              {ENTITY_TYPE_LABEL[previewNode.type]} · 관련 기사 미리보기
+            </p>
+          </div>
+          {nodePreview.loading ? (
+            <p className="text-xs text-muted-foreground">기사 로딩 중…</p>
+          ) : nodePreview.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground">관련 기사가 없습니다.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {nodePreview.items.slice(0, 5).map((content) => (
+                <li key={content.id} className="flex items-start gap-1.5">
+                  <span className="mt-0.5 shrink-0 text-[10px] text-muted-foreground/60">
+                    {new Date(content.collected_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                  </span>
+                  <Link
+                    href={`/dashboard/contents/${content.id}`}
+                    prefetch={false}
+                    className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
+                  >
+                    {content.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[11px] text-muted-foreground">클릭하면 이 정보를 고정합니다.</p>
+        </div>
+      )}
+
+      {!selectedNode && !activeLockedEdge && !previewNode && (
         <div className="hidden lg:flex lg:h-[200px] lg:items-center lg:justify-center lg:rounded-xl lg:border lg:border-dashed lg:p-4 lg:text-center lg:text-xs lg:text-muted-foreground">
           점이나 선을 클릭하면 여기에 상세 정보가 표시돼요.
         </div>
