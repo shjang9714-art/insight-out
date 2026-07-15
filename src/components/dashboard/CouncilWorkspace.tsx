@@ -63,6 +63,28 @@ export default function CouncilWorkspace() {
     [],
   )
 
+  // 로그인 사용자가 키 입력 없이 COUNCIL(서버 등록 키)을 쓰도록 HMAC 티켓을 발급받아 전달.
+  // 실패 시 조용히 BYOK 로 폴백(사용자 흐름을 끊지 않음).
+  const pushTicket = useCallback(async () => {
+    const frame = iframeRef.current?.contentWindow
+    if (!frame) return
+    try {
+      const res = await fetch('/api/council/ticket')
+      if (!res.ok) return
+      const { ticket } = (await res.json()) as { ticket: string }
+      frame.postMessage(
+        {
+          protocol: COUNCIL_EMBED_PROTOCOL,
+          type: 'set-auth',
+          payload: { ticket },
+        },
+        councilOrigin(),
+      )
+    } catch {
+      // 조용한 BYOK 폴백
+    }
+  }, [])
+
   useEffect(() => {
     const origin = councilOrigin()
     const onMessage = (event: MessageEvent) => {
@@ -74,13 +96,20 @@ export default function CouncilWorkspace() {
         if (pendingConcern) {
           sendContext(pendingConcern, pendingContext || undefined)
         }
+        void pushTicket()
       } else if (data.type === 'result') {
         setResult(data.payload as ResultPayload)
       }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [pendingConcern, pendingContext, sendContext])
+  }, [pendingConcern, pendingContext, sendContext, pushTicket])
+
+  // 티켓 TTL(600s) 만료 전 8분 주기로 갱신
+  useEffect(() => {
+    const interval = setInterval(() => void pushTicket(), 8 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [pushTicket])
 
   return (
     <div className="relative flex h-[calc(100vh-10rem)] flex-col gap-2">
