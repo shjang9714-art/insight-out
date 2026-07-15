@@ -84,15 +84,6 @@ async function ReportsContent() {
   )
 }
 
-function Placeholder({ message }: { message: string }) {
-  return (
-    <div className="rounded-xl border border-dashed p-16 text-center">
-      <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
-      <p className="text-sm font-medium text-muted-foreground">{message}</p>
-    </div>
-  )
-}
-
 export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const rawView = typeof params.view === 'string' ? params.view : ''
@@ -119,7 +110,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           <ContentsBoard fixedCategory="리서치" title="외부 리포트" showSourceTabs={false} />
         </Suspense>
       )}
-      {view === 'knowledge' && <Placeholder message="지식보고서를 준비하고 있습니다." />}
+      {view === 'knowledge' && (
+        <Suspense fallback={<ReportGridSkeleton />}>
+          <ContentsBoard
+            fixedCategory="지식보고서"
+            title="지식보고서"
+            showSourceTabs={false}
+            schemaPendingMessage="지식보고서 카테고리를 준비하고 있습니다. SQL 적용 후 목록이 표시됩니다."
+          />
+        </Suspense>
+      )}
     </PageContainer>
   )
 }
