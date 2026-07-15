@@ -165,11 +165,12 @@ const loadKeywordContents = cache(async (name: string, days: number): Promise<Lo
   const safeDays = clampDays(days)
   const since = getKstDayStart(safeDays - 1).toISOString()
   const supabase = await createClient()
+  const matchName = await resolveMatchName(name)
   const { data, error } = await supabase
     .from('contents')
     .select('id, title, summary_ko, category, published_at, collected_at, matched_keywords, sources(name)')
     .eq('status', 'published')
-    .contains('matched_keywords', [name])
+    .contains('matched_keywords', [matchName])
     .gte('collected_at', since)
     .order('collected_at', { ascending: false })
     .limit(MAX_CONTENT_ROWS + 1)
@@ -225,6 +226,42 @@ const resolveKeywordEntity = cache(async (name: string): Promise<KeywordEntityMa
         isCompetitor: entity.is_competitor,
       }
     : null
+})
+
+/**
+ * 입력 키워드(`ai`/`AI`/`Ai` 등 임의 표기)를 실제 `contents.matched_keywords`에
+ * 저장된 표기(canonical casing)로 해석한다. `.contains`가 배열 정확일치라
+ * 대소문자가 다르면 0건이 되는 문제(365)를 여기서 흡수한다.
+ * 해석 순서: (a) 엔티티 canonical_name → (b) keywords 테이블 저장표기(대소문자 무시)
+ * → (c) 그래도 없으면 입력값 그대로(레거시 minimal RPC 폴백, 미적용 시 조용히 스킵).
+ */
+const resolveMatchName = cache(async (name: string): Promise<string> => {
+  const trimmed = name.trim()
+  if (!trimmed) return trimmed
+
+  const entity = await resolveKeywordEntity(trimmed)
+  if (entity) return entity.name
+
+  const supabase = await createClient()
+  const literalName = escapeLike(trimmed)
+  const { data: keywordRow } = await supabase
+    .from('keywords')
+    .select('name')
+    .ilike('name', literalName)
+    .limit(1)
+    .maybeSingle()
+  if (keywordRow && typeof (keywordRow as { name?: unknown }).name === 'string') {
+    return (keywordRow as { name: string }).name
+  }
+
+  // sql-handoff/365-*.sql 미적용 환경에서는 함수 없음(42883) 오류로 조용히 폴백한다.
+  const { data: rpcName, error: rpcError } = await supabase.rpc(
+    'resolve_matched_keyword_casing',
+    { p_name: trimmed },
+  )
+  if (!rpcError && typeof rpcName === 'string' && rpcName) return rpcName
+
+  return trimmed
 })
 
 const loadKeywordRelations = cache(async (name: string): Promise<KeywordRelated> => {
