@@ -56,7 +56,7 @@ export default function CitationsBlock({ citations }: { citations: ContentCitati
     <section className="mt-10 border-t border-border pt-8">
       <h2 className="mb-3 text-sm font-semibold text-foreground">이 기사를 인용한 리포트·인사이트</h2>
       <div className="space-y-3">
-        <Section icon="📄" label="전략보고서" items={citations.reports} />
+        <Section icon="📄" label="AI 리포트" items={citations.reports} />
         <Section icon="💡" label="AI 인사이트" items={citations.issues} />
         <Section icon="🏢" label="기업 인사이트" items={citations.insights} />
         <Section icon="🎙" label="모닝브리핑" items={citations.briefings} />

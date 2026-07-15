@@ -52,7 +52,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { id } = await params
   const supabase = createSupabase(await cookies())
   const report = await getReport(supabase, id)
-  const title = report?.published_at ? report.title : '전략보고서'
+  const title = report?.published_at ? report.title : 'AI 리포트'
   return { title: `${title} | Insight Out` }
 }
 

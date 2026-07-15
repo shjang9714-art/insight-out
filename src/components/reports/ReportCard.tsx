@@ -4,9 +4,9 @@ import type { LucideIcon } from 'lucide-react'
 import type { AiReportType } from '@/lib/types'
 
 /**
- * 349 — 전략보고서 카드 재설계.
+ * 349 — AI 리포트 카드 재설계.
  * 커버에 제목을 다시 쓰지 않는다(본문에 이미 있다 — 같은 문장이 카드에 두 번 나오면 정보량이 0이다).
- * 커버는 유형을 색으로 구분하는 표지 블록: 아이콘 + INSIGHT REPORT 워드마크.
+ * 커버는 유형을 색으로 구분하는 표지 블록: 아이콘 + AI REPORT 워드마크.
  */
 
 const TYPE_COVER: Record<AiReportType, string> = {
@@ -75,7 +75,7 @@ export default function ReportCard({
           >
             <Icon className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 text-white/25" strokeWidth={1.15} />
             <span className="ml-auto text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
-              Insight Report
+              AI Report
             </span>
           </div>
         )}

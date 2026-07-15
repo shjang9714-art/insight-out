@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '리포트 | Insight Out',
-  description: 'AI가 분석한 시장동향·경쟁사분석 전략보고서',
+  description: 'AI가 분석한 시장동향·경쟁사 분석 리포트와 외부 리포트',
 }
 
 type SearchParams = Promise<{ view?: string }>
@@ -60,7 +60,7 @@ async function ReportsContent() {
     return (
       <div className="rounded-xl border border-dashed p-16 text-center">
         <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
-        <p className="text-sm font-medium text-muted-foreground">발행된 전략보고서가 아직 없습니다.</p>
+        <p className="text-sm font-medium text-muted-foreground">발행된 AI 리포트가 아직 없습니다.</p>
       </div>
     )
   }
@@ -107,7 +107,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       {view === 'ai' && (
         <>
           <p className="mb-8 text-sm text-muted-foreground">
-            AI가 분석한 시장동향·경쟁사 전략보고서 모음
+            시장동향과 경쟁사를 분석한 AI 리포트 모음
           </p>
           <Suspense fallback={<ReportGridSkeleton />}>
             <ReportsContent />

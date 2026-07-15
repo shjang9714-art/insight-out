@@ -386,7 +386,7 @@ export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
   '웹인사이트': '웹인사이트',
   '유튜브': '유튜브',
   'AI분석': 'AI분석',
-  '전략보고서': '전략보고서',
+  '전략보고서': 'AI 리포트',
   // DB enum (기존 데이터)
   '리포트': '리포트',
   '기업자료': '기업자료',

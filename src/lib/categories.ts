@@ -80,7 +80,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
   {
     id: 'strategy',
     Icon: FileText,
-    label: '전략보고서',
+    label: 'AI 리포트',
     category: '전략보고서',
     dbCategories: ['전략보고서'],
     href: '/dashboard/reports',
