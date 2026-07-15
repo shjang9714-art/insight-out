@@ -90,7 +90,7 @@ const CONTENT_SOURCE_TABS = [
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 
 function displayDate(item: ContentItem, sortByCollected: boolean): string | null {
-  if (sortByCollected || item.category === '리포트' || item.category === 'AI보고서') {
+  if (sortByCollected || item.category === '리포트' || item.category === 'AI보고서' || item.category === '지식보고서') {
     return item.collected_at
   }
   return item.published_at ?? item.collected_at
@@ -186,7 +186,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             clusterMembers={members.length > 0 ? members : undefined}
             thumbnailUrl={coverUrlFor(item)}
             lguImpact={item.lgu_impact ?? null}
-            showPublishedDateBadge={category === '리서치'}
+            showPublishedDateBadge={category === '리서치' || category === '지식보고서'}
           />
         )
       ))}
@@ -225,12 +225,14 @@ interface ContentsBoardProps {
   fixedCategory?: ContentCategory
   title?: string
   showSourceTabs?: boolean
+  schemaPendingMessage?: string
 }
 
 export default function ContentsBoard({
   fixedCategory,
   title,
   showSourceTabs = true,
+  schemaPendingMessage,
 }: ContentsBoardProps) {
   const router       = useRouter()
   const pathname     = usePathname()
@@ -247,13 +249,14 @@ export default function ContentsBoard({
   const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') ?? '1', 10)))
   const sort     = (searchParams.get('sort') ?? 'published') as 'published' | 'collected'
 
-  const isReportCategory = category === '리포트' || category === 'AI보고서'
+  const isReportCategory = category === '리포트' || category === 'AI보고서' || category === '지식보고서'
   const sortByCollected  = sort === 'collected' || isReportCategory
 
   // ── 상태 ─────────────────────────────────────────────────────────────────────
   const [items, setItems]         = useState<ContentItem[]>([])
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
+  const [queryError, setQueryError] = useState<string | null>(null)
   const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
   const newsView = useSyncExternalStore(
@@ -322,12 +325,12 @@ export default function ContentsBoard({
       .then(({ keywords }) => setPopularKeywords(keywords))
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
-        console.error('[contents] 인기 키워드 조회 오류:', error)
+        if (!schemaPendingMessage) console.error('[contents] 인기 키워드 조회 오류:', error)
         setPopularKeywords([])
       })
 
     return () => controller.abort()
-  }, [category])
+  }, [category, schemaPendingMessage])
 
   // ── 콘텐츠 쿼리 ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -379,8 +382,18 @@ export default function ContentsBoard({
 
       if (!cancelled) {
         if (error) {
-          console.error('[contents] 쿼리 오류:', error)
+          const schemaMissing = error.code === '22P02'
+            || error.code === '42P01'
+            || error.code === 'PGRST205'
+            || error.message.includes('지식보고서')
+          if (!schemaMissing) console.error('[contents] 쿼리 오류:', error)
+          setQueryError(schemaMissing && schemaPendingMessage
+            ? schemaPendingMessage
+            : '콘텐츠 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+          setItems([])
+          setTotal(0)
         } else {
+          setQueryError(null)
           const newItems = (data ?? []) as unknown as ContentItem[]
           setItems(page === 1 ? newItems : (prev) => [...prev, ...newItems])
           if (shouldFetchCount) setTotal(count ?? 0)
@@ -392,7 +405,7 @@ export default function ContentsBoard({
     fetchContents()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, searchQuery, selectedKeywords, page, sort, sortByCollected])
+  }, [category, searchQuery, selectedKeywords, page, sort, sortByCollected, schemaPendingMessage])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
@@ -469,7 +482,7 @@ export default function ContentsBoard({
 
   // 소스타입 선택 (기본 뉴스)
   const activeSourceTab = (category || '뉴스') as ContentCategory
-  const usesFlatList = category === '리서치' || category === '유튜브'
+  const usesFlatList = category === '리서치' || category === '지식보고서' || category === '유튜브'
 
   return (
     <>
@@ -585,7 +598,11 @@ export default function ContentsBoard({
       </div>
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
-      {isLoading && page === 1 ? (
+      {queryError ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          {queryError}
+        </div>
+      ) : isLoading && page === 1 ? (
         <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>

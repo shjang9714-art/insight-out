@@ -103,6 +103,7 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '리포트':    'bg-purple-50 text-purple-700 border-purple-100',
   '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
   'AI보고서':  'bg-pink-50 text-pink-700 border-pink-100',
+  '지식보고서': 'bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900',
   '유튜브':    'bg-red-50 text-red-700 border-red-100',
   // deprecated
   '가트너':    'bg-purple-50 text-purple-700 border-purple-100',
@@ -180,6 +181,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   // ── 리포트(file_path) vs 뉴스(original_url) vs 유튜브(임베드) 분기(252) ───────
   const isReport = Boolean(content.file_path)
   const isExternalReport = ['리포트', '가트너', 'KRG'].includes(content.category)
+  const isKnowledgeReport = content.category === '지식보고서'
   const isYoutube = content.category === '유튜브'
   const youtubeVideoId = isYoutube ? extractVideoId(content.original_url) : null
   // 유튜브 자막 스크립트(265) — transcript_ko 있을 때만 노출, 없으면 섹션 생략
@@ -198,9 +200,11 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   let downloadUrl: string | null = null
   let downloadFileName: string | null = null
   let isPdf = false
+  let isPptx = false
 
   if (isReport) {
     isPdf = content.file_path!.toLowerCase().endsWith('.pdf')
+    isPptx = content.file_path!.toLowerCase().endsWith('.pptx')
     downloadFileName = buildReportDownloadName(content.title, content.sources?.name ?? null, content.file_path!)
     // 비공개 버킷 서명 URL 생성 (실패 시 null → 폴백 메시지). 뷰어용과 다운로드용을 분리 —
     // 다운로드용은 Content-Disposition으로 파일명을 지정해야 해 별도 서명이 필요하다.
@@ -237,7 +241,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
     .filter(Boolean) as string[]
 
   const displayAt =
-    (content.category === '리포트' || content.category === 'AI보고서')
+    (content.category === '리포트' || content.category === 'AI보고서' || content.category === '지식보고서')
       ? content.collected_at
       : (content.published_at ?? content.collected_at)
   const dateStr = formatDate(displayAt)
@@ -250,6 +254,8 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
           <EntityTabs value={view ?? 'competitor'} />
         ) : isExternalReport ? (
           <ReportTabs value="external" className="mb-0" />
+        ) : isKnowledgeReport ? (
+          <ReportTabs value="knowledge" className="mb-0" />
         ) : (
           <NavGroupAlign>
             <InsightViewTabs
@@ -267,7 +273,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
       {/* 뒤로가기 */}
       <div className="mb-6">
         <BackLink
-          fallbackHref="/dashboard/contents"
+          fallbackHref={isKnowledgeReport ? '/dashboard/reports?view=knowledge' : '/dashboard/contents'}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
@@ -483,18 +489,25 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
                     }
                     markdownBody={bodyMarkdown}
                   />
-                ) : signedUrl && !isPdf ? (
-              /* PDF 외 파일: 다운로드 안내 */
+                ) : downloadUrl && downloadFileName && !isPdf ? (
+              /* PPTX 등 PDF 외 파일: 인라인 뷰어 없이 다운로드 안내 */
                   <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-12 text-center">
                     <FileText className="h-10 w-10 text-muted-foreground/40" />
-                    <p className="text-sm text-muted-foreground">이 파일은 미리보기를 지원하지 않습니다.</p>
+                    <div className="space-y-1 text-center">
+                      <p className="text-sm font-medium text-foreground">
+                        {isPptx ? 'PPTX 파일은 인라인 미리보기를 지원하지 않습니다.' : '이 파일은 미리보기를 지원하지 않습니다.'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {isPptx ? '파일을 내려받아 PowerPoint에서 확인해주세요.' : '파일을 내려받아 확인해주세요.'}
+                      </p>
+                    </div>
                     <a
-                      href={signedUrl}
+                      href={downloadUrl}
                       download
                       className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
                     >
                       <Download className="h-4 w-4" />
-                      파일 다운로드
+                      {isPptx ? 'PPTX 다운로드' : `${downloadFileName} 다운로드`}
                     </a>
                   </div>
                 ) : (
@@ -520,7 +533,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
         {/* 하단 액션 */}
         <div className="mt-10 flex items-center justify-between border-t border-border pt-6">
           <BackLink
-            fallbackHref="/dashboard/contents"
+            fallbackHref={isKnowledgeReport ? '/dashboard/reports?view=knowledge' : '/dashboard/contents'}
             className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
           />
 

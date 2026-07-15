@@ -234,7 +234,8 @@ create type content_category as enum (
   '오피니언',   -- deprecated: '웹인사이트'로 마이그레이션됨
   '뉴스레터',   -- deprecated: 수집 미사용 (발송 기능은 별개)
   'AI보고서',
-  '유튜브'
+  '유튜브',
+  '지식보고서' -- 내부 NotebookLM 산출물(PDF/PPTX, 지시서 357-B)
 );
 
 -- 수집 출처 유형

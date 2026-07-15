@@ -65,7 +65,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
   // 1. content 조회 — file_path 확인 (thumbnail_url 은 285 커버 가드용)
   const { data: content, error: contentErr } = await admin
     .from('contents')
-    .select('id, title, file_path, original_language, thumbnail_url')
+    .select('id, title, file_path, original_language, thumbnail_url, summary_ko')
     .eq('id', id)
     .single()
 
@@ -156,8 +156,9 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
   // 6. 요약 (try/catch — 실패해도 본문 적재 유지)
   let summarized = false
   let summaryKo: string | null = null
+  const existingSummary = (content as { summary_ko: string | null }).summary_ko
   try {
-    if (koBody.length >= 100) {
+    if (!existingSummary && koBody.length >= 100) {
       summaryKo = (await summarizeKo(title, koBody)).text
       summarized = summaryKo !== null
     }

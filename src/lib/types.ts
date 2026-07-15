@@ -74,7 +74,7 @@ export type ContentCategory =
   // 현재 UI 카테고리 (6개)
   | '뉴스' | '리서치' | '웹인사이트' | '유튜브' | 'AI분석' | '전략보고서'
   // DB enum 유지 (기존 데이터 — UI 카테고리로 매핑해 표시)
-  | '리포트' | '기업자료' | 'AI보고서'
+  | '리포트' | '기업자료' | 'AI보고서' | '지식보고서'
   // deprecated: 수집 미사용
   | '가트너' | 'KRG' | '오피니언' | '뉴스레터'
 
@@ -391,6 +391,7 @@ export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
   '리포트': '리포트',
   '기업자료': '기업자료',
   'AI보고서': 'AI 보고서',
+  '지식보고서': '지식보고서',
   // deprecated
   '가트너': '가트너 리포트',
   'KRG': 'KRG 리포트',
