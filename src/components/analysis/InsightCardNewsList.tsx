@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Quote, ChevronDown, ChevronUp, Clock, FileText } from 'lucide-react'
+import AiMark from '@/components/ui/AiMark'
 import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import type { ContentMetaRecord, InsightGroup } from './InsightCardsSectionClient'
@@ -103,6 +104,7 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
       {/* 2. 헤드라인 — 어그로 앵커, 좌측 버킷색 액센트 바 */}
       <div className={cn('border-l-[3px] pl-4', accentCls)}>
         <h3 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-foreground">
+          <AiMark title="AI 생성 인사이트" className="mr-1.5" />
           <Link href={detailHref} prefetch={false} className="hover:text-brand-600 hover:underline">
             {card.card_headline ?? card.headline}
           </Link>
