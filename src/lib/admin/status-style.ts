@@ -52,6 +52,13 @@ export const ISSUE_STATUS_TONE = {
   archived:  'neutral',
 } as const
 
+// 경쟁사 주간 브리핑(369) — draft/published/archived
+export const COMPETITOR_WEEKLY_STATUS_TONE = {
+  published: 'positive',
+  draft:     'neutral',
+  archived:  'neutral',
+} as const
+
 export const INSIGHT_STATUS_TONE = {
   published: 'positive',
   draft:     'risk',
