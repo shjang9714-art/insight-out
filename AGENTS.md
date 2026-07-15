@@ -501,6 +501,7 @@ git pull --rebase
 7. David 가 "기록 동기화 루틴대로 동기화해줘" → **Sonnet** 이 마지막 sync 이후 커밋 전부를 작업계획서(신규 항목 추가 포함)·Notion·개발 일지에 반영하고 커밋·푸시. (루틴: [`docs/기록-동기화-루틴.md`](./docs/기록-동기화-루틴.md))
 
 **중복·혼란 방지 원칙 (반드시 지킴):**
+- **구현 에이전트(Sonnet)는 반드시 전용 git worktree 에서 작업한다.** `git worktree add /private/tmp/insight-out-NN -b agent/NN-<이름> origin/main` 로 자기 worktree 를 만들고 거기서 구현·커밋·push 한다. ⛔ **David 의 메인 작업폴더(`~/Documents/insight-out/insight-out`)에서 `git checkout`·커밋 금지** — 여러 세션이 그 폴더를 공유하면 David 셸의 브랜치가 흔들리고, 기록·코드 커밋이 **남의 브랜치 위에 잘못 얹힌다**(실제 사고 이력). 작업 시작 시 자기 worktree 가 없으면 먼저 만든다.
 - **지시서(.md)·SQL 핸드오프는 작성 즉시 origin/main 에 커밋**(2단계). 코드 브랜치에 가두지 말 것 — 지시서는 모든 구현자의 공용 참조이자 정본이라 main 에 있어야 한다. (코드는 브랜치, 지시서는 main.)
 - **코드 git(커밋·푸시·머지)은 Sonnet 전담.** David 는 위임·전달·"커밋해" 트리거 + **지시서 즉시 커밋(2단계)**. Opus 는 git 안 함.
 - **기록 동기화는 작업 묶음 끝에 1회만.** 매 작업마다 호출 금지. Opus 도 매 작업 끝에 반복 언급하지 않는다(묶음 끝에만 1번 안내).
