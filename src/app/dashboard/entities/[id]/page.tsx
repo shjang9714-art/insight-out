@@ -17,6 +17,8 @@ import EntityTabs from '@/components/entities/EntityTabs'
 import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { getOrGenerateKeywordInsight } from '@/lib/insight/keyword-insight'
+import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
+import CompanyDocumentCard from '@/components/entities/CompanyDocumentCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -245,6 +247,7 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
     { data: ceData },
     signalSummary,
     entityEventsResult,
+    companyDocuments,
   ] = await Promise.all([
     supabase
       .from('entities')
@@ -262,6 +265,7 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
       .limit(200),
     loadSignalSummary(supabase, id),
     loadEntityEvents(supabase, id),
+    getPublishedCompanyDocuments(supabase, { entityId: id, limit: 8 }),
   ])
 
   const { items: entityEvents, updatedAt: entityEventsUpdatedAt } = entityEventsResult
@@ -568,6 +572,27 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
                 <span className="opacity-60">{ENTITY_TYPE_LABEL[re.entity_type]}</span>
                 {re.canonical_name}
               </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 기업·기술 자료(355-D) — 이 기업 소유 공식/기술 자료. 0건이면 섹션 자체를 숨긴다(그레이스풀) */}
+      {companyDocuments.length > 0 && (
+        <section className="mb-8">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">기업·기술 자료</h2>
+            <Link
+              href={`/dashboard/entities?view=documents&entity=${id}`}
+              prefetch={false}
+              className="text-xs font-medium text-muted-foreground transition-colors hover:text-brand-600"
+            >
+              전체 보기
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {companyDocuments.map((doc) => (
+              <CompanyDocumentCard key={doc.contentId} doc={doc} />
             ))}
           </div>
         </section>
