@@ -9,6 +9,8 @@ import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/Insi
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { resolveDailyInsightDateRange } from '@/lib/daily-insights/period'
 import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
+import { getKeywordDailyCounts } from '@/lib/keywords/detail'
+import { rankKeywords } from '@/lib/keywords/ranking'
 
 const WATCHLIST_LIMIT = 20
 
@@ -322,6 +324,17 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
     }
   })
 
+  // 351-D 비용 가드: 기본 급상승 랭킹에 실제 표시될 최대 10개만 7일 온디맨드 집계한다.
+  const risingRankedKeywords = rankKeywords(classifiedKeywords, 'rising')
+  const keywordDailySeries = view === 'keyword'
+    ? Object.fromEntries(await Promise.all(
+        risingRankedKeywords.map(async keyword => [
+          keyword.name,
+          await getKeywordDailyCounts(keyword.name, 7),
+        ] as const)
+      ))
+    : {}
+
   // ─── 인사이트 카드 그룹 ────────────────────────────────────────────────────
   const contentMap = new Map<string, ContentMeta>()
   if (cards.length > 0) {
@@ -407,6 +420,7 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
       initialCenter={initialCenter}
       totalByType={totalByType}
       signalItems={signalItems}
+      keywordDailySeries={keywordDailySeries}
     />
   )
 }

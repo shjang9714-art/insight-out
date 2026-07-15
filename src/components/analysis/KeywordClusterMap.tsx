@@ -132,6 +132,7 @@ export default function KeywordClusterMap({ keywords }: KeywordClusterMapProps) 
       }
     })
   }, [keywords])
+  const graphData = useMemo(() => ({ nodes, links: [] }), [nodes])
   const dataKey = nodes.map((node) => `${node.id}:${node.count}`).join('|')
 
   useEffect(() => {
@@ -238,7 +239,7 @@ export default function KeywordClusterMap({ keywords }: KeywordClusterMapProps) 
       {width > 0 && (
         <ForceGraph2D
           ref={graphRef}
-          graphData={{ nodes, links: [] }}
+          graphData={graphData}
           width={width}
           height={GRAPH_HEIGHT}
           nodeId="id"

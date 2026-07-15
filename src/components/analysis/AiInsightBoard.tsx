@@ -29,6 +29,8 @@ import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import KeywordClusterMap from '@/components/analysis/KeywordClusterMap'
 import { Building2, ChartNoAxesColumnIncreasing, CircleDot, Cpu, Landmark, LayoutGrid, Sparkles, TrendingUp } from 'lucide-react'
+import KeywordSparkline from '@/components/analysis/KeywordSparkline'
+import { rankKeywords, type KeywordRankingMode } from '@/lib/keywords/ranking'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -75,6 +77,7 @@ export interface AiInsightBoardProps {
   initialCenter: EntitySummary | null
   totalByType: Record<string, number>
   signalItems: SignalItem[]
+  keywordDailySeries: Record<string, { date: string; count: number }[]>
   isAdmin: boolean
 }
 
@@ -97,7 +100,6 @@ const LAB_TABS: { id: AiInsightViewId; label: string }[] = [
 const LAB_VIEW_IDS: readonly AiInsightViewId[] = LAB_TABS.map(t => t.id)
 const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS].map(t => t.id)
 
-type KeywordRankingMode = 'rising' | 'new' | 'sustained'
 type KeywordViewMode = 'bubble' | 'card'
 
 interface KeywordChangeCard {
@@ -206,6 +208,7 @@ export default function AiInsightBoard({
   initialCenter,
   totalByType,
   signalItems,
+  keywordDailySeries,
   isAdmin,
 }: AiInsightBoardProps) {
   const router = useRouter()
@@ -257,22 +260,7 @@ export default function AiInsightBoard({
   const fallingKeywordCount = classifiedKeywords.filter(keyword => (keyword.changePct ?? 0) < 0).length
   const keywordChangeCards = buildKeywordChangeCards(classifiedKeywords)
 
-  const rankedKeywords = classifiedKeywords
-    .filter(keyword => {
-      if (keywordRankingMode === 'rising') return !keyword.isNew && (keyword.changePct ?? 0) > 0
-      if (keywordRankingMode === 'new') return keyword.isNew
-      return (keyword.cur ?? 0) > 0 && (keyword.prev ?? 0) > 0
-    })
-    .sort((a, b) => {
-      if (keywordRankingMode === 'sustained') {
-        const totalDiff = ((b.cur ?? 0) + (b.prev ?? 0)) - ((a.cur ?? 0) + (a.prev ?? 0))
-        if (totalDiff !== 0) return totalDiff
-      }
-      const changeDiff = (b.changePct ?? 0) - (a.changePct ?? 0)
-      if (changeDiff !== 0) return changeDiff
-      return (b.cur ?? 0) - (a.cur ?? 0)
-    })
-    .slice(0, 10)
+  const rankedKeywords = rankKeywords(classifiedKeywords, keywordRankingMode)
 
   return (
     <div className="space-y-6">
@@ -602,7 +590,7 @@ export default function AiInsightBoard({
                         <Link
                           href={href}
                           prefetch={false}
-                          className="group grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2 py-3"
+                          className="group grid grid-cols-[1.25rem_minmax(0,1fr)_3.25rem_auto] items-center gap-2 py-3"
                         >
                           <span className="text-xs font-semibold tabular-nums text-muted-foreground">
                             {index + 1}
@@ -618,6 +606,14 @@ export default function AiInsightBoard({
                               관련 문서 {(keyword.cur ?? keyword.count).toLocaleString()}건
                             </span>
                           </span>
+                          {keywordDailySeries[keyword.name]?.length ? (
+                            <KeywordSparkline
+                              points={keywordDailySeries[keyword.name]}
+                              label={keyword.name}
+                            />
+                          ) : (
+                            <span aria-hidden="true" />
+                          )}
                           {keyword.isNew ? (
                             <span className="rounded border border-foreground/30 px-1.5 py-0.5 text-[10px] font-bold text-foreground">
                               NEW
