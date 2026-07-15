@@ -195,3 +195,58 @@ export async function getCompetitorWeeklyTimeline(
   }
   return (data ?? []) as CompetitorWeeklyTimelineEntry[]
 }
+
+export interface UtilizedCompanyDocument {
+  contentId: string
+  title: string
+  entityName: string | null
+  docType: string
+}
+
+/**
+ * 355-D — "활용된 자료" 출처. 브리핑 sections[].events[].content_id 중
+ * company_documents(published+review_status='none')에 걸리는 것만 골라 링크.
+ * 전용 출처 추적 컬럼(ai_report_sources 등)은 competitor_weekly_reports에 없어
+ * 기존 348 이벤트 근거(evt.content_id)를 재사용한다 — 신규 스키마 없음.
+ */
+export async function getUtilizedCompanyDocuments(
+  supabase: SupabaseClient,
+  contentIds: string[],
+): Promise<UtilizedCompanyDocument[]> {
+  const uniqueIds = [...new Set(contentIds)]
+  if (uniqueIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('company_documents')
+    .select(`
+      content_id, doc_type,
+      entities(canonical_name),
+      contents!company_documents_content_id_fkey(title)
+    `)
+    .in('content_id', uniqueIds)
+    .eq('review_status', 'none')
+
+  if (error) {
+    if (error.code !== '42P01') console.warn('[CompetitorWeekly] 활용된 자료 조회 실패:', error.message)
+    return []
+  }
+
+  return ((data ?? []) as unknown as {
+    content_id: string
+    doc_type: string
+    entities: { canonical_name: string } | { canonical_name: string }[] | null
+    contents: { title: string } | { title: string }[] | null
+  }[])
+    .map((row) => {
+      const entity = Array.isArray(row.entities) ? row.entities[0] : row.entities
+      const contentRow = Array.isArray(row.contents) ? row.contents[0] : row.contents
+      if (!contentRow) return null
+      return {
+        contentId: row.content_id,
+        title: contentRow.title,
+        entityName: entity?.canonical_name ?? null,
+        docType: row.doc_type,
+      }
+    })
+    .filter((d): d is UtilizedCompanyDocument => d !== null)
+}

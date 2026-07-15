@@ -11,6 +11,7 @@ import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTime
 import {
   getCompetitorWeeklyReportByWeek,
   getCompetitorWeeklyTimeline,
+  getUtilizedCompanyDocuments,
 } from '@/lib/competitor-weekly/query'
 
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,10 @@ export default async function CompetitorWeeklyDetailPage({ params }: { params: P
 
   if (!report) notFound()
 
+  // 355-D — 이 브리핑이 근거로 쓴 이벤트들의 content_id 중 기업자료에 해당하는 것만 "활용된 자료"로 노출
+  const eventContentIds = (report.sections ?? []).flatMap((s) => s.events?.map((e) => e.content_id) ?? [])
+  const utilizedDocuments = await getUtilizedCompanyDocuments(supabase, eventContentIds)
+
   return (
     <PageContainer>
       <Link
@@ -65,7 +70,7 @@ export default async function CompetitorWeeklyDetailPage({ params }: { params: P
       <EntityTabs value="trend" />
 
       <div className="space-y-4">
-        <CompetitorWeeklyReport report={report} />
+        <CompetitorWeeklyReport report={report} utilizedDocuments={utilizedDocuments} />
         <CompetitorWeeklyTimeline entries={timeline} activeWeekStart={report.week_start} />
       </div>
     </PageContainer>
