@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import BackLink from '@/components/BackLink'
+import CouncilDiscussButton from '@/components/dashboard/CouncilDiscussButton'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
@@ -418,41 +419,52 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
       </div>
 
       {/* 헤더 */}
-      <div className="mb-8">
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <Network className="h-5 w-5 text-brand-600 shrink-0" />
-          <h1 className="text-2xl font-bold text-foreground">{e.canonical_name}</h1>
-          <span className={cn(
-            'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
-            typeStyle,
-          )}>
-            {typeLabel}
-            {e.is_competitor && e.entity_type === 'company' && ' · 경쟁사'}
-          </span>
-        </div>
-
-        {e.description && (
-          <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed mb-3">{e.description}</p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>언급 {e.mention_count.toLocaleString()}건</span>
-          <span>수집 콘텐츠 {contents.length}건</span>
-        </div>
-
-        {/* 동의어 */}
-        {aliases.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {aliases.map((a) => (
-              <span
-                key={a.alias}
-                className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
-              >
-                {a.alias}
-              </span>
-            ))}
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <Network className="h-5 w-5 text-brand-600 shrink-0" />
+            <h1 className="text-2xl font-bold text-foreground">{e.canonical_name}</h1>
+            <span className={cn(
+              'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
+              typeStyle,
+            )}>
+              {typeLabel}
+              {e.is_competitor && e.entity_type === 'company' && ' · 경쟁사'}
+            </span>
           </div>
-        )}
+
+          {e.description && (
+            <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed mb-3">{e.description}</p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>언급 {e.mention_count.toLocaleString()}건</span>
+            <span>수집 콘텐츠 {contents.length}건</span>
+          </div>
+
+          {/* 동의어 */}
+          {aliases.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {aliases.map((a) => (
+                <span
+                  key={a.alias}
+                  className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] text-muted-foreground"
+                >
+                  {a.alias}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* COUNCIL로 현재 맥락 토론 진입(362) */}
+        <CouncilDiscussButton
+          title={e.canonical_name}
+          summary={e.description}
+          refType="entities"
+          refId={e.id}
+          className="shrink-0"
+        />
       </div>
 
       {/* 키워드 상세: 관련엔티티 해시태그 + LLM 핵심 인사이트 1줄 (지시서 B) */}
