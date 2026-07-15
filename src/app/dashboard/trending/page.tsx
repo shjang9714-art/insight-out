@@ -51,7 +51,6 @@ async function fetchFallbackTop(): Promise<TickerIssue[]> {
       title: card.title,
       topHashtag: card.topKeywords[0] ?? null,
       recentCount: card.recentCount,
-      todayCount: card.recentCount, // 폴백 집계엔 일자별 필터가 없어 최근 집계로 대체
       changePct: card.changePct,
       changeFlag: card.changeFlag,
       sentimentPos: card.sentimentPos,
@@ -82,15 +81,10 @@ function TrendingRankingSkeleton() {
 
 async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string; isToday: boolean }) {
   let all: TickerIssue[]
-  // 기준일이 실제 오늘(KST)이 아니면(크론 전 새벽 등) "오늘"이라 부르지 않고 날짜로 표시 —
-  // 과거 데이터를 "오늘"로 표시하던 옛 버그(2026-07-12) 재발 방지. 히스토리(!isToday) 조회는
-  // 사용자가 명시적으로 고른 과거 날짜이므로 항상 날짜 표기.
-  let dayLabel = formatKstMonthDay(selectedDate)
 
   if (isToday) {
     const trending = await fetchTrendingEvents()
     if (trending) {
-      dayLabel = trending.asOfDateKst === selectedDate ? '오늘' : formatKstMonthDay(trending.asOfDateKst)
       all = trending.events.map(e => ({
         id: e.issueId,
         contentId: e.contentId,
@@ -98,7 +92,6 @@ async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string
         entityChip: e.entityChip,
         topHashtag: e.topHashtag,
         recentCount: e.recentCount,
-        todayCount: e.todayCount,
         changePct: e.changePct,
         changeFlag: e.changeFlag,
         sentimentPos: 0,
@@ -131,7 +124,6 @@ async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string
       title: s.headline,
       topHashtag: s.hashtag,
       recentCount: s.todayCount,
-      todayCount: s.todayCount,
       changePct: null,
       changeFlag: null,
       sentimentPos: 0,
@@ -149,7 +141,7 @@ async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string
 
   return (
     <div className="rounded-2xl border border-border bg-card p-2">
-      <IssueRankTicker issues={all} visibleRows={all.length} dayLabel={dayLabel} />
+      <IssueRankTicker issues={all} visibleRows={all.length} />
     </div>
   )
 }
