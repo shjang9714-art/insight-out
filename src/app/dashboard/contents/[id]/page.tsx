@@ -249,7 +249,13 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   return (
     <PageContainer variant="reading">
 
-      <div className="sticky top-14 z-10 -mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5 md:top-[102px]">
+      {/* 366 — 문서(PDF/PPTX) 상세는 sticky 해제(정적): PdfViewer를 가리지 않게 한다 */}
+      <div
+        className={cn(
+          '-mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5',
+          !isReport && 'sticky top-14 z-10 md:top-[102px]'
+        )}
+      >
         {origin === 'entities' ? (
           <EntityTabs value={view ?? 'competitor'} />
         ) : isExternalReport ? (
