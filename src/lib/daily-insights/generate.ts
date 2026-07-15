@@ -12,6 +12,8 @@ import type {
   DailyInsightPastArticle,
   DailyInsightSourceArticle,
   ImplicationLenses,
+  NextStep,
+  WeeklyFlowStep,
 } from '@/lib/daily-insights/types'
 
 // 지시서 20260715: "매일 3개(day_of)" → "매주 최대 10개(week_of)" 복귀. 콘텐츠 모델(3C 종합·
@@ -67,6 +69,19 @@ interface TopicCluster {
   category: string | null
   members: KeyInsightCandidate[]
   topImportance: number
+  /** 지시서 20260716 §4-보정 — topImportance + 근거건수 소폭 보너스(최종 선정 정렬 전용). */
+  selectionScore: number
+}
+
+// 여러 기사로 뒷받침되는 클러스터를 선정에서 살짝 우대(§4-보정) — 중요도가 주도해야 하므로
+// importanceScore 스케일(0.6~1.0)에 비해 보너스는 작게: 기사 1건 추가당 0.02, 최대 0.06
+// (근거 4건 이상부터 상한). 스코어 차이가 큰 "단독 스쿠프"가 다수기사·저중요 이슈에 밀리지 않는다.
+const EVIDENCE_BONUS_PER_EXTRA_SOURCE = 0.02
+const EVIDENCE_BONUS_CAP = 0.06
+
+function computeSelectionScore(topImportance: number, memberCount: number): number {
+  const bonus = Math.min(EVIDENCE_BONUS_CAP, Math.max(0, memberCount - 1) * EVIDENCE_BONUS_PER_EXTRA_SOURCE)
+  return topImportance + bonus
 }
 
 function rankMembers(members: KeyInsightCandidate[]): KeyInsightCandidate[] {
@@ -146,9 +161,10 @@ function clusterWithinCategory(category: string | null, members: KeyInsightCandi
   return clusters
     .map((clusterMembers) => {
       const sorted = rankMembers(clusterMembers)
-      return { category, members: sorted, topImportance: sorted[0]?.importanceScore ?? 0 }
+      const topImportance = sorted[0]?.importanceScore ?? 0
+      return { category, members: sorted, topImportance, selectionScore: computeSelectionScore(topImportance, sorted.length) }
     })
-    .sort((a, b) => b.topImportance - a.topImportance)
+    .sort((a, b) => b.selectionScore - a.selectionScore)
 }
 
 /**
@@ -196,7 +212,7 @@ function buildGroups(candidates: KeyInsightCandidate[]): CandidateGroup[] {
   }
 
   const pool: TopicCluster[] = [...perCategoryClusters.values()].flat()
-  pool.sort((a, b) => b.topImportance - a.topImportance)
+  pool.sort((a, b) => b.selectionScore - a.selectionScore)
 
   const selected = pool.slice(0, MAX_GROUPS)
 
@@ -221,7 +237,7 @@ function buildGroups(candidates: KeyInsightCandidate[]): CandidateGroup[] {
     if (replaceIdx !== -1) selected[replaceIdx] = best
   }
 
-  selected.sort((a, b) => b.topImportance - a.topImportance)
+  selected.sort((a, b) => b.selectionScore - a.selectionScore)
   return selected.map(({ category, members }) => ({ category, members }))
 }
 
@@ -261,14 +277,21 @@ function buildSystemPrompt(): string {
     '   - editorial: 개별 사실을 관통하는 에디터 시각의 종합 프레임, 1문단. 근거 없으면 넣지 않는다.\n' +
     '   - 채울 수 있는 필드가 하나도 없으면 implication_lenses 자체를 null로.\n' +
     '10. 위 4개 렌즈끼리도 서로 다른 내용이어야 한다 — 같은 문장을 표현만 바꿔 여러 키에 반복 금지.\n' +
-    '11. 입력에 없는 사실·수치·회사명·인용을 창작하지 않는다(단 action 렌즈의 제안 문장 자체는 허용).\n' +
-    '12. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '11. next_steps: 이 이슈의 "가능성 높은" 후속 전개를 3~5단계 배열로 ' +
+    '[{"step":"1","text":"..."}, ...]. 이것은 예언이 아니라 개연성 있는 전개 시나리오다 — ' +
+    '각 text는 "~할 가능성이 있다"/"~로 이어질 수 있다" 같은 개연성 톤으로 쓰고, 입력에 없는 ' +
+    '구체적 날짜·수치·회사명을 확정 사실처럼 넣지 않는다. 근거가 빈약해 전개를 그릴 수 없으면 ' +
+    'next_steps 를 빈 배열 []로 둔다(단계 억지로 채우지 않음).\n' +
+    '12. 입력에 없는 사실·수치·회사명·인용을 창작하지 않는다(단 action 렌즈·next_steps 의 ' +
+    '개연성 서술 자체는 허용, 사실 요소만 창작 금지).\n' +
+    '13. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
     '출력 스키마:\n' +
     '{"headline":"...","summary_ko":"...","market_trend":"...|null","competitor_trend":"...|null",' +
     '"implication":"...","why_it_matters":"...|null",' +
     '"implication_lenses":{"opportunity":"...","risk":"...","action":"...","editorial":"..."}' +
     '|null,' +
-    '"competitor_matrix":[{"company":"...","move":"...","edge":"...","risk":"..."}]}'
+    '"competitor_matrix":[{"company":"...","move":"...","edge":"...","risk":"..."}],' +
+    '"next_steps":[{"step":"...","text":"..."}]}'
   )
 }
 
@@ -296,6 +319,24 @@ interface GroupCard {
   why_it_matters: string | null
   implication_lenses: ImplicationLenses | null
   competitor_matrix: CompetitorMatrixEntry[]
+  next_steps: NextStep[]
+}
+
+const MAX_NEXT_STEPS = 5
+
+function parseNextSteps(raw: unknown): NextStep[] {
+  if (!Array.isArray(raw)) return []
+  const steps: NextStep[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const e = entry as Record<string, unknown>
+    const text = typeof e.text === 'string' ? e.text.trim() : ''
+    if (!text || text.toLowerCase() === 'null') continue
+    const step = typeof e.step === 'string' && e.step.trim() ? e.step.trim() : String(steps.length + 1)
+    steps.push({ step, text })
+    if (steps.length >= MAX_NEXT_STEPS) break
+  }
+  return steps
 }
 
 const IMPLICATION_LENS_KEYS = ['opportunity', 'risk', 'action', 'editorial'] as const
@@ -356,6 +397,7 @@ function parseGroupCard(raw: string): GroupCard | null {
     why_it_matters: clean(h.why_it_matters),
     implication_lenses: parseImplicationLenses(h.implication_lenses),
     competitor_matrix: competitorMatrix,
+    next_steps: parseNextSteps(h.next_steps),
   }
 }
 
@@ -449,6 +491,112 @@ async function buildRelatedPast(
     .filter((r): r is DailyInsightPastArticle => r !== null)
 }
 
+// ─── §5-A 이번 주 흐름(weekly_flows) ───────────────────────────────────────────
+// 그 주 daily_insights 중 "가장 중요한 이슈" 1건을 골라 원인→사건→확산→후속발표→시장반응
+// 흐름으로 재구성한다. 인사이트 생성이 끝난 rows(이미 3C·근거기사 확정됨)를 그대로 재료로 쓴다.
+
+function categoryTierRank(category: string | null): number {
+  if (!category) return 3
+  if ((TIER1_CATEGORIES as readonly string[]).includes(category)) return 0
+  if (category === AIDC_CATEGORY) return 1
+  return 2
+}
+
+/** 근거기사 수 → 카테고리 Tier → 최신성 순으로 그 주 가장 중요한 이슈 1건을 고른다. */
+function pickFlowWinner(rows: Record<string, unknown>[]): Record<string, unknown> | null {
+  if (rows.length === 0) return null
+  const scored = rows.map((r) => {
+    const category = (r.category as string | null) ?? null
+    const sourceArticles = (r.source_articles as DailyInsightSourceArticle[] | null) ?? []
+    const latestMs = sourceArticles.reduce((max, a) => {
+      const t = a.published_at ? new Date(a.published_at).getTime() : NaN
+      return Number.isFinite(t) ? Math.max(max, t) : max
+    }, 0)
+    return { row: r, tierRank: categoryTierRank(category), sourceCount: sourceArticles.length, latestMs }
+  })
+  scored.sort((a, b) => {
+    if (a.tierRank !== b.tierRank) return a.tierRank - b.tierRank
+    if (a.sourceCount !== b.sourceCount) return b.sourceCount - a.sourceCount
+    return b.latestMs - a.latestMs
+  })
+  return scored[0].row
+}
+
+function buildFlowSystemPrompt(): string {
+  return (
+    '당신은 LG유플러스 전략기획팀의 애널리스트다. 아래 이번 주 핵심 이슈 하나를 ' +
+    '"원인 → 사건 → 확산 → 후속 발표 → 시장 반응" 시간순 흐름으로 재구성한다.\n\n' +
+    '규칙:\n' +
+    '1. flow는 배열 [{"phase":"원인","text":"..."}, ...]. phase는 원인/사건/확산/후속 발표/시장 반응 ' +
+    '중 입력 근거로 실제 확인되는 것만, 시간순으로 넣는다.\n' +
+    '2. 근거로 확인 안 되는 단계는 통째로 생략한다 — 5단계를 억지로 다 채우지 않는다. ' +
+    '흐름을 그릴 근거가 부족하면 flow를 빈 배열 []로 둔다.\n' +
+    '3. 각 text는 1~2문장, 짧고 명확하게.\n' +
+    '4. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
+    '5. headline: 이번 주 이 이슈를 대표하는 한 줄.\n' +
+    '6. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '출력 스키마: {"headline":"...","flow":[{"phase":"...","text":"..."}]}'
+  )
+}
+
+function buildFlowUserPrompt(winner: Record<string, unknown>): string {
+  const headline = winner.headline as string
+  const summary = winner.summary_ko as string
+  const marketTrend = winner.market_trend as string | null
+  const competitorTrend = winner.competitor_trend as string | null
+  const implication = winner.implication as string | null
+  const sourceArticles = (winner.source_articles as DailyInsightSourceArticle[] | null) ?? []
+  const sourcesText = sourceArticles
+    .map((a) => `- ${a.title} (${a.source}${a.published_at ? `, ${a.published_at}` : ''})`)
+    .join('\n')
+
+  return (
+    `이슈 헤드라인: ${headline}\n요약: ${summary}\n` +
+    (marketTrend ? `시장 동향: ${marketTrend}\n` : '') +
+    (competitorTrend ? `경쟁사 동향: ${competitorTrend}\n` : '') +
+    (implication ? `자사 시사점: ${implication}\n` : '') +
+    `근거 기사(${sourceArticles.length}건):\n${sourcesText}`
+  )
+}
+
+export interface WeeklyFlowGenResult {
+  headline: string
+  flow: WeeklyFlowStep[]
+}
+
+async function generateWeeklyFlow(rows: Record<string, unknown>[]): Promise<WeeklyFlowGenResult | null> {
+  const winner = pickFlowWinner(rows)
+  if (!winner) return null
+
+  const system = buildFlowSystemPrompt()
+  const user = buildFlowUserPrompt(winner)
+  const { text: raw, errorReason } = await llmCompleteDetailed('daily_insight', system, user)
+  if (!raw) {
+    console.error(`[핵심Insight][주간흐름] LLM 실패: ${errorReason ?? '사유 미상'}`)
+    return null
+  }
+
+  const parsed = looseJsonParse(raw)
+  if (!parsed || typeof parsed !== 'object') return null
+  const p = parsed as Record<string, unknown>
+  const headline = typeof p.headline === 'string' ? p.headline.trim() : ''
+  if (!headline) return null
+
+  const flowRaw = Array.isArray(p.flow) ? p.flow : []
+  const flow: WeeklyFlowStep[] = flowRaw
+    .map((entry): WeeklyFlowStep | null => {
+      if (!entry || typeof entry !== 'object') return null
+      const e = entry as Record<string, unknown>
+      const phase = typeof e.phase === 'string' ? e.phase.trim() : ''
+      const text = typeof e.text === 'string' ? e.text.trim() : ''
+      if (!phase || !text || text.toLowerCase() === 'null') return null
+      return { phase, text }
+    })
+    .filter((s): s is WeeklyFlowStep => s !== null)
+
+  return { headline, flow }
+}
+
 // ─── 메인 함수 ────────────────────────────────────────────────────────────────
 
 export interface GenerateDailyInsightResult {
@@ -462,6 +610,8 @@ export interface GenerateDailyInsightResult {
   errorReason?: string | null
   /** dryRun 전용 — 실제로 insert 되지 않은 미리보기 행(검증용). 운영 호출에서는 항상 undefined. */
   previewRows?: Record<string, unknown>[]
+  /** dryRun 전용 — weekly_flows 에 실제로 upsert 되지 않은 미리보기(검증용). */
+  previewWeeklyFlow?: WeeklyFlowGenResult | null
 }
 
 /**
@@ -563,6 +713,7 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
       source_articles: sourceArticles.length > 0 ? sourceArticles : null,
       related_past: relatedPast.length > 0 ? relatedPast : null,
       competitor_matrix: competitorMatrix,
+      next_steps: card.next_steps.length > 0 ? card.next_steps : null,
     })
   }
 
@@ -578,14 +729,35 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
     }
   }
 
+  // §5-A 이번 주 흐름 — daily_insight 배치와 같은 주기로 갱신. 실패해도 본 배치는 막지 않는다.
+  const weeklyFlow = await generateWeeklyFlow(rows)
+
   if (dryRun) {
-    return { ok: true, dayOf, weekOf, generated: rows.length, skipped: false, failed: false, previewRows: rows }
+    return {
+      ok: true,
+      dayOf,
+      weekOf,
+      generated: rows.length,
+      skipped: false,
+      failed: false,
+      previewRows: rows,
+      previewWeeklyFlow: weeklyFlow,
+    }
   }
 
   const { error: insertError } = await admin.from('daily_insights').insert(rows)
   if (insertError) {
     console.error(`[핵심Insight] ${new Date().toISOString()} weekOf=${weekOf} DB 저장 실패: ${insertError.message}`)
     return { ok: false, dayOf, weekOf, generated: 0, skipped: false, failed: true, errorReason: `DB 저장 실패: ${insertError.message}` }
+  }
+
+  if (weeklyFlow) {
+    const { error: flowError } = await admin
+      .from('weekly_flows')
+      .upsert({ week_of: weekOf, headline: weeklyFlow.headline, flow: weeklyFlow.flow }, { onConflict: 'week_of' })
+    if (flowError) {
+      console.error(`[핵심Insight][주간흐름] weekOf=${weekOf} weekly_flows 저장 실패: ${flowError.message}`)
+    }
   }
 
   return { ok: true, dayOf, weekOf, generated: rows.length, skipped: false, failed: false }

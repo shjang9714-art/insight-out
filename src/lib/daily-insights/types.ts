@@ -39,6 +39,20 @@ export interface NextStep {
   text: string
 }
 
+/** 지시서 20260716 §5-A — 홈 "이번 주 한눈에 보는 흐름"(weekly_flows 테이블, 주차당 1행). */
+export interface WeeklyFlowStep {
+  phase: string
+  text: string
+}
+
+export interface WeeklyFlowRow {
+  week_of: string
+  headline: string | null
+  flow: WeeklyFlowStep[] | null
+  created_at: string
+  updated_at: string
+}
+
 export interface DailyInsightRow {
   id: string
   day_of: string

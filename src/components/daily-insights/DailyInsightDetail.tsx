@@ -2,6 +2,7 @@ import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import CompetitorMatrix from '@/components/daily-insights/CompetitorMatrix'
 import RelatedInsights from '@/components/daily-insights/RelatedInsights'
 import EvidenceDrilldown from '@/components/daily-insights/EvidenceDrilldown'
+import NextSteps from '@/components/daily-insights/NextSteps'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
@@ -10,11 +11,11 @@ interface DailyInsightDetailProps {
   relatedInsights?: DailyInsightRow[]
 }
 
-// 3C 섹션 — 근거 없어 null인 항목은 렌더 자체를 생략(빈 제목만 남기지 않음, §6).
-const TREND_SECTIONS: { key: 'market_trend' | 'competitor_trend' | 'implication'; label: string; emoji: string }[] = [
+// 3C(시장·경쟁사) 섹션 — 근거 없어 null인 항목은 렌더 자체를 생략(빈 제목만 남기지 않음, §6).
+// 자사 시사점(implication)은 implication_lenses 유무에 따라 EvidenceDrilldown이 별도 처리.
+const TREND_SECTIONS: { key: 'market_trend' | 'competitor_trend'; label: string; emoji: string }[] = [
   { key: 'market_trend', label: '시장·산업 동향', emoji: '📈' },
   { key: 'competitor_trend', label: '경쟁사 동향', emoji: '🏢' },
-  { key: 'implication', label: '자사 관점 시사점', emoji: '💡' },
 ]
 
 export default function DailyInsightDetail({ insight, relatedInsights = [] }: DailyInsightDetailProps) {
@@ -31,13 +32,25 @@ export default function DailyInsightDetail({ insight, relatedInsights = [] }: Da
         {insight.category && <CategoryBadge category={insight.category} />}
         <h1 className="text-2xl font-bold leading-snug tracking-tight text-foreground">{stripLlmArtifacts(insight.headline)}</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">💡 {stripLlmArtifacts(insight.summary_ko)}</p>
+        {insight.why_it_matters && (
+          <p className="rounded-lg bg-brand-600/10 px-3 py-2 text-sm font-medium leading-relaxed text-brand-700 dark:text-brand-300">
+            🎯 {stripLlmArtifacts(insight.why_it_matters)}
+          </p>
+        )}
       </header>
 
-      <EvidenceDrilldown sections={sections} sourceArticles={insight.source_articles ?? []} />
+      <EvidenceDrilldown
+        sections={sections}
+        implicationLenses={insight.implication_lenses}
+        implicationFallback={insight.implication}
+        sourceArticles={insight.source_articles ?? []}
+      />
 
       {insight.competitor_matrix && insight.competitor_matrix.length > 0 && (
         <CompetitorMatrix matrix={insight.competitor_matrix} />
       )}
+
+      {insight.next_steps && insight.next_steps.length > 0 && <NextSteps steps={insight.next_steps} />}
 
       {insight.related_past && insight.related_past.length > 0 && (
         <section className="space-y-2 rounded-lg bg-muted/40 p-4">

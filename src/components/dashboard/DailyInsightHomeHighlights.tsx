@@ -108,6 +108,12 @@ export default async function DailyInsightHomeHighlights() {
                   {stripLlmArtifacts(card.headline)}
                 </h3>
 
+                {card.why_it_matters && (
+                  <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
+                    🎯 {stripLlmArtifacts(card.why_it_matters)}
+                  </p>
+                )}
+
                 {/* 3C 3줄 미리보기 — 시사점만 강조 */}
                 <ul className="mt-2 space-y-1">
                   {TREND_PREVIEW.map(({ key, label }) => {

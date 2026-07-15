@@ -2,6 +2,7 @@ import { Suspense, type ReactNode } from 'react'
 import FeedSlot from '@/components/feed/FeedSlot'
 import IssueSignals from '@/components/dashboard/IssueSignals'
 import DailyInsightHomeHighlights from '@/components/dashboard/DailyInsightHomeHighlights'
+import WeeklyFlowHighlight from '@/components/dashboard/WeeklyFlowHighlight'
 import VisitDelta from '@/components/dashboard/VisitDelta'
 import WelcomeGreeting from '@/components/dashboard/WelcomeGreeting'
 import PageContainer from '@/components/PageContainer'
@@ -38,9 +39,15 @@ const SECTION_RENDERERS: Record<string, () => ReactNode> = {
     </Suspense>
   ),
   briefing_highlights: () => (
-    <Suspense fallback={null}>
-      <DailyInsightHomeHighlights />
-    </Suspense>
+    <>
+      {/* §5-A: 핵심 인사이트와 별개인 독립 모듈 — 위쪽에 배치, 데이터 없으면 자체 숨김 */}
+      <Suspense fallback={null}>
+        <WeeklyFlowHighlight />
+      </Suspense>
+      <Suspense fallback={null}>
+        <DailyInsightHomeHighlights />
+      </Suspense>
+    </>
   ),
   feed_slot: () => (
     <section>
