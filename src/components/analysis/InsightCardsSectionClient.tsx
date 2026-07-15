@@ -315,7 +315,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                   >
                     {/* 1. 상단 배지 행: [카테고리][중요도][내 관련도] */}
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={cn('rounded px-2 py-0.5 text-xs font-medium', BUCKET_CHIP_CLS[bucketByTopic?.[card.topic] ?? '일반'])}>
+                      <span className={cn('rounded px-2 py-0.5 text-xs font-medium', BUCKET_CHIP_CLS[bucketByTopic?.[card.topic] ?? '그 외'])}>
                         {card.topic}
                       </span>
                       <span className={cn('rounded px-2 py-0.5 text-xs font-medium', IMPORTANCE_CLS[importance])}>

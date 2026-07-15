@@ -69,7 +69,7 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
   const relatedKeywords = computeRelatedKeywords(card, contentMap)
   const detailHref = getCardDetailHref(card)
 
-  const bucket = bucketByTopic?.[card.topic] ?? '일반'
+  const bucket = bucketByTopic?.[card.topic] ?? '그 외'
   const accentCls = BUCKET_ACCENT_CLS[bucket]
   const chipCls = BUCKET_CHIP_CLS[bucket]
 

@@ -1,12 +1,20 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import type { EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { BUCKET_CHIP_CLS, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
+import {
+  BUCKET_ACCENT_CLS,
+  BUCKET_BAR_CLS,
+  BUCKET_CHIP_CLS,
+  BUCKET_DOT_CLS,
+  TAG_BUCKETS,
+  type KeywordItem,
+  type TagBucket,
+} from '@/lib/tag-buckets'
 import DailyInsightList from '@/components/daily-insights/DailyInsightList'
 import DailyInsightPeriodFilter from '@/components/daily-insights/DailyInsightPeriodFilter'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
@@ -49,6 +57,7 @@ export interface AiInsightBoardProps {
   insightGroups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
   trendingTopics: TopicTrend[]
+  classifiedKeywords: KeywordItem[]
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
   bucketByTopic: Record<string, TagBucket>
@@ -86,6 +95,22 @@ const LAB_TABS: { id: AiInsightViewId; label: string }[] = [
 const LAB_VIEW_IDS: readonly AiInsightViewId[] = LAB_TABS.map(t => t.id)
 const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS].map(t => t.id)
 
+type KeywordRankingMode = 'rising' | 'new' | 'sustained'
+
+const KEYWORD_RANKING_TABS: { id: KeywordRankingMode; label: string }[] = [
+  { id: 'rising', label: '급상승' },
+  { id: 'new', label: '신규' },
+  { id: 'sustained', label: '관심 지속' },
+]
+
+function entityTypeToBucket(type: EntityType): TagBucket {
+  if (type === 'tech' || type === 'product') return '기술·제품'
+  if (type === 'company' || type === 'person') return '기업·기관'
+  if (type === 'industry') return '시장·산업'
+  if (type === 'policy') return '정책·규제'
+  return '그 외'
+}
+
 // ─── 보드 ──────────────────────────────────────────────────────────────────────
 
 export default function AiInsightBoard({
@@ -94,6 +119,7 @@ export default function AiInsightBoard({
   insightGroups,
   contentMap,
   trendingTopics,
+  classifiedKeywords,
   kwStrip,
   issueCards,
   bucketByTopic,
@@ -107,6 +133,7 @@ export default function AiInsightBoard({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [keywordRankingMode, setKeywordRankingMode] = useState<KeywordRankingMode>('rising')
 
   // view는 로컬 state로 들고 있지 않고 매 렌더마다 실제 URL에서 직접 파생시킨다.
   // 뒤로가기로 이 페이지가 복원될 때 Next 라우터 캐시가 스테일한 initialView를
@@ -137,6 +164,38 @@ export default function AiInsightBoard({
     () => Math.max(1, ...keywordCardItems.map(item => item.contentCount)),
     [keywordCardItems]
   )
+
+  const keywordByName = new Map(
+    classifiedKeywords.map(keyword => [keyword.name.toLocaleLowerCase('ko-KR'), keyword])
+  )
+  const entityIdByName = new Map(
+    allEntities.map(entity => [entity.canonical_name.toLocaleLowerCase('ko-KR'), entity.id])
+  )
+  const risingKeywordCount = classifiedKeywords.filter(
+    keyword => !keyword.isNew && (keyword.changePct ?? 0) > 0
+  ).length
+  const newKeywordCount = classifiedKeywords.filter(keyword => keyword.isNew).length
+  const sustainedKeywordCount = classifiedKeywords.filter(
+    keyword => (keyword.cur ?? 0) > 0 && (keyword.prev ?? 0) > 0
+  ).length
+  const fallingKeywordCount = classifiedKeywords.filter(keyword => (keyword.changePct ?? 0) < 0).length
+
+  const rankedKeywords = classifiedKeywords
+    .filter(keyword => {
+      if (keywordRankingMode === 'rising') return !keyword.isNew && (keyword.changePct ?? 0) > 0
+      if (keywordRankingMode === 'new') return keyword.isNew
+      return (keyword.cur ?? 0) > 0 && (keyword.prev ?? 0) > 0
+    })
+    .sort((a, b) => {
+      if (keywordRankingMode === 'sustained') {
+        const totalDiff = ((b.cur ?? 0) + (b.prev ?? 0)) - ((a.cur ?? 0) + (a.prev ?? 0))
+        if (totalDiff !== 0) return totalDiff
+      }
+      const changeDiff = (b.changePct ?? 0) - (a.changePct ?? 0)
+      if (changeDiff !== 0) return changeDiff
+      return (b.cur ?? 0) - (a.cur ?? 0)
+    })
+    .slice(0, 10)
 
   return (
     <div className="space-y-6">
@@ -256,43 +315,207 @@ export default function AiInsightBoard({
         />
       )}
 
-      {/* 키워드 분석 — 엔티티별 시그널 요약(구 기업동향 브리핑, 224B). 라벨칩 제거 + 카드 그리드(§지시서 A′) */}
+      {/* 키워드 분석 — 351-A: 기존 엔티티 카드 + 급상승 키워드 랭킹 */}
       {view === 'keyword' && (
-        <section>
-          <p className="mb-4 text-xs text-muted-foreground">엔티티별 시그널 요약 — 콘텐츠가 많은 순</p>
-          {keywordCardItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              시그널 데이터가 있는 엔티티가 없습니다.
+        <section className="space-y-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">키워드 흐름</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                최근 7일 기준 · 직전 7일과 비교
+              </p>
             </div>
-          ) : (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
-              {keywordCardItems.map(item => {
-                const barPct = Math.round((item.contentCount / maxKeywordContentCount) * 100)
-                return (
-                  <Link
-                    key={item.entityId}
-                    href={`/dashboard/entities/${item.entityId}?origin=issues&view=keyword`}
-                    prefetch={false}
-                    aria-label={`${item.name}, 콘텐츠 ${item.contentCount.toLocaleString()}건`}
-                    className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-brand-600/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/50"
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              기간
+              <select
+                defaultValue="7d"
+                aria-label="키워드 분석 기간"
+                className="h-9 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+              >
+                <option value="today" disabled>오늘</option>
+                <option value="7d">최근 7일</option>
+                <option value="30d" disabled>최근 30일</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+            {[
+              { label: '급상승', count: risingKeywordCount, dot: 'bg-positive' },
+              { label: '신규', count: newKeywordCount, dot: 'bg-foreground' },
+              { label: '관심 지속', count: sustainedKeywordCount, dot: 'bg-blue-500' },
+              { label: '하락', count: fallingKeywordCount, dot: 'bg-negative' },
+            ].map(metric => (
+              <div key={metric.label} className="flex items-center justify-between gap-3 bg-card px-4 py-3">
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className={cn('size-1.5 rounded-full', metric.dot)} />
+                  {metric.label}
+                </span>
+                <strong className="text-base tabular-nums text-foreground">{metric.count}</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
+            <div className="min-w-0">
+              <p className="mb-3 text-xs text-muted-foreground">엔티티별 시그널 요약 · 콘텐츠가 많은 순</p>
+              {keywordCardItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  시그널 데이터가 있는 엔티티가 없습니다.
+                </div>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+                  {keywordCardItems.map(item => {
+                    const barPct = Math.round((item.contentCount / maxKeywordContentCount) * 100)
+                    const keyword = keywordByName.get(item.name.toLocaleLowerCase('ko-KR'))
+                    const bucket = keyword?.bucket ?? entityTypeToBucket(item.entityType)
+                    const showsTrend = keyword?.isNew || keyword?.direction === '▲'
+
+                    return (
+                      <Link
+                        key={item.entityId}
+                        href={`/dashboard/entities/${item.entityId}?origin=issues&view=keyword`}
+                        prefetch={false}
+                        aria-label={`${item.name}, 콘텐츠 ${item.contentCount.toLocaleString()}건`}
+                        className={cn(
+                          'block rounded-xl border bg-card p-4 transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          BUCKET_ACCENT_CLS[bucket],
+                          showsTrend && 'ring-1 ring-foreground/15'
+                        )}
+                      >
+                        <div className="mb-3 flex min-w-0 items-start justify-between gap-2">
+                          <p className="min-w-0 text-sm font-semibold leading-snug text-foreground line-clamp-1">
+                            {item.name}
+                          </p>
+                          {keyword?.isNew ? (
+                            <span className="shrink-0 rounded border border-foreground/30 px-1.5 py-0.5 text-[10px] font-bold text-foreground">
+                              NEW
+                            </span>
+                          ) : keyword?.direction === '▲' ? (
+                            <span className="shrink-0 rounded border border-foreground/20 px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+                              ▲ {keyword.changePct}%
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mb-2 h-[3px] w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={cn('h-full rounded-full', BUCKET_BAR_CLS[bucket])}
+                            style={{ width: `${barPct}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-muted-foreground">
+                            시그널 {item.signalCount.toLocaleString()} · 콘텐츠 {item.contentCount.toLocaleString()}
+                          </p>
+                          <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium', BUCKET_CHIP_CLS[bucket])}>
+                            {bucket}
+                          </span>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <aside className="self-start rounded-xl border border-border bg-card p-4 lg:sticky lg:top-24">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">급상승 랭킹</h3>
+                <span className="text-[11px] text-muted-foreground">Top 10</span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 rounded-lg bg-muted p-1" role="tablist" aria-label="키워드 랭킹 기준">
+                {KEYWORD_RANKING_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={keywordRankingMode === tab.id}
+                    onClick={() => setKeywordRankingMode(tab.id)}
+                    className={cn(
+                      'rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
+                      keywordRankingMode === tab.id
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
                   >
-                    <p className="mb-3 text-sm font-semibold text-foreground leading-snug line-clamp-1">
-                      {item.name}
-                    </p>
-                    <div className="mb-2 h-[3px] w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-brand-600"
-                        style={{ width: `${barPct}%` }}
-                      />
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      시그널 {item.signalCount.toLocaleString()} · 콘텐츠 {item.contentCount.toLocaleString()}
-                    </p>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {rankedKeywords.length === 0 ? (
+                <p className="py-8 text-center text-xs text-muted-foreground">
+                  해당 기준의 키워드가 없습니다.
+                </p>
+              ) : (
+                <ol className="mt-3 divide-y divide-border">
+                  {rankedKeywords.map((keyword, index) => {
+                    const entityId = entityIdByName.get(keyword.name.toLocaleLowerCase('ko-KR'))
+                    const href = entityId
+                      ? `/dashboard/entities/${entityId}?origin=issues&view=keyword`
+                      : `/dashboard/topics/${encodeURIComponent(keyword.name)}`
+
+                    return (
+                      <li key={keyword.name}>
+                        <Link
+                          href={href}
+                          prefetch={false}
+                          className="group grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2 py-3"
+                        >
+                          <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                            {index + 1}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5">
+                              <span className={cn('size-1.5 shrink-0 rounded-full', BUCKET_DOT_CLS[keyword.bucket])} />
+                              <span className="truncate text-sm font-medium text-foreground group-hover:underline">
+                                {keyword.name}
+                              </span>
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                              관련 문서 {(keyword.cur ?? keyword.count).toLocaleString()}건
+                            </span>
+                          </span>
+                          {keyword.isNew ? (
+                            <span className="rounded border border-foreground/30 px-1.5 py-0.5 text-[10px] font-bold text-foreground">
+                              NEW
+                            </span>
+                          ) : (keyword.changePct ?? 0) > 0 ? (
+                            <span className="text-[11px] font-semibold tabular-nums text-foreground">
+                              ▲ {keyword.changePct}%
+                            </span>
+                          ) : (keyword.changePct ?? 0) < 0 ? (
+                            <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
+                              ▽ {Math.abs(keyword.changePct ?? 0)}%
+                            </span>
+                          ) : (
+                            <span className="text-[11px] tabular-nums text-muted-foreground">0%</span>
+                          )}
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ol>
+              )}
+            </aside>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground/70">범례</span>
+            {TAG_BUCKETS.map(bucket => (
+              <span key={bucket} className="inline-flex items-center gap-1.5">
+                <span className={cn('size-1.5 rounded-full', BUCKET_DOT_CLS[bucket])} />
+                {bucket}
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-1 rounded border border-foreground/20 px-1.5 py-0.5 text-foreground">
+              ▲ 32% 상승
+            </span>
+            <span className="inline-flex items-center rounded border border-foreground/30 px-1.5 py-0.5 font-bold text-foreground">
+              NEW
+            </span>
+          </div>
         </section>
       )}
     </div>

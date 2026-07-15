@@ -294,8 +294,24 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
     const bucket = tagTypeToBucket(tagType)
     const cur  = kwCurFreq[name]  ?? 0
     const prev = kwPrevFreq[name] ?? 0
+    const changePct = prev === 0
+      ? (cur > 0 ? 100 : 0)
+      : Math.round(((cur - prev) / prev) * 100)
+    const isNew = prev === 0 && cur > 0
     const direction: '▲' | '▽' | null = cur > prev ? '▲' : cur < prev ? '▽' : null
-    return { name, count, size: 14, bucket, watched, isCompetitor: false, direction }
+    return {
+      name,
+      count,
+      size: 14,
+      bucket,
+      watched,
+      isCompetitor: false,
+      direction,
+      changePct,
+      cur,
+      prev,
+      isNew,
+    }
   })
 
   // ─── 인사이트 카드 그룹 ────────────────────────────────────────────────────
@@ -374,6 +390,7 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
       insightGroups={insightGroups}
       contentMap={contentMapRecord}
       trendingTopics={trendingTopics}
+      classifiedKeywords={classifiedKeywords}
       kwStrip={kwStrip}
       issueCards={issueCards}
       bucketByTopic={bucketByTopic}
