@@ -37,7 +37,6 @@ import {
 } from '@/lib/types'
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
-import { useResizableColumns, type ResizableColumnDef } from '@/lib/admin/use-resizable-columns'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
@@ -87,18 +86,27 @@ const CONTENT_STATUSES: ContentStatus[] = ['published', 'pending', 'rejected']
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
 const MAX_BODY_BACKFILL_IDS = 50
 
-// 200 — 콘텐츠 테이블 열 너비 드래그 리사이즈. 선택·관리 열은 고정(제외).
-const COLUMN_WIDTHS_STORAGE_KEY = 'io:admin-contents-col-widths'
-const SELECT_COL_WIDTH = 40
-const MANAGE_COL_WIDTH = 340
-const RESIZABLE_COLUMNS: ResizableColumnDef[] = [
-  { id: 'title',     defaultWidth: 320, minWidth: 200 },
-  { id: 'category',  defaultWidth: 96,  minWidth: 64 },
-  { id: 'source',    defaultWidth: 140, minWidth: 90 },
-  { id: 'status',    defaultWidth: 130, minWidth: 100 },
-  { id: 'body',      defaultWidth: 80,  minWidth: 64 },
-  { id: 'collected', defaultWidth: 150, minWidth: 110 },
-]
+// 348 — 콘텐츠 검수 테이블을 하나의 그리드로 통합.
+//  · sticky 관리 열 / 열 너비 드래그(200·207) 제거 — 둘 다 고정 px 총합이 컨테이너보다 커져 가로 스크롤을 유발했다.
+//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 792px.
+//  · 1440px 뷰포트 기준 본문 폭 = 1440 - 사이드바 288 - 패딩 64 = 1088px → 제목 296px 확보, 가로 스크롤 0.
+//  · 테이블 min-width = 고정 폭 792 + 제목 최소 240 = 1032px (1200px 미만에선 관리 열 축소로 920px).
+
+// 관리 버튼 공통 — 높이 32px, 1200px 미만에선 아이콘만
+const ACTION_BTN = 'h-8 gap-1 rounded-md px-2 text-xs'
+const ACTION_BTN_COMPACT = 'max-[1200px]:w-8 max-[1200px]:justify-center max-[1200px]:px-0'
+const ACTION_LABEL_COMPACT = 'max-[1200px]:sr-only'
+
+// 검토 사유 칩 — 테이블 셀용 축약 라벨(전체 라벨은 title 속성으로 제공)
+const REVIEW_REASON_SHORT: Record<string, string> = {
+  body_missing:   '본문 없음',
+  body_short:     '본문 짧음',
+  extract_failed: '추출 실패',
+  body_truncated: '본문 잘림',
+  low_relevance:  '관련도 낮음',
+  llm_irrelevant: 'AI 무관',
+  excluded_rule:  '제외 규칙',
+}
 
 // 소스 필터 특수값
 const SOURCE_ALL = 'all'
@@ -185,6 +193,118 @@ function formatKst(iso: string): string {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+/** 348 — 테이블 셀용 짧은 KST 표기: 2026.07.14 15:12 (전체 표기는 title 속성으로) */
+function formatKstCompact(iso: string): string {
+  const parts = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(iso))
+  const get = (t: Intl.DateTimeFormatPart['type']) => parts.find((p) => p.type === t)?.value ?? ''
+  const hour = get('hour') === '24' ? '00' : get('hour')
+  return `${get('year')}.${get('month')}.${get('day')} ${hour}:${get('minute')}`
+}
+
+/** 348 — 본문 길이(글자 수). body_len 컬럼이 없거나 미수집이면 null */
+function bodyLength(r: AdminContentRow): number | null {
+  if (!r.body_fetched_at) return null
+  return typeof r.body_len === 'number' ? r.body_len : null
+}
+
+/**
+ * 348 — 관리 버튼 그룹. 테이블 행과 모바일 카드가 동일한 핸들러를 공유한다.
+ * 순서 고정: 노출|숨김 → 보기 → 수정 → 삭제
+ */
+function RowActions({
+  content,
+  disabled,
+  isWorking,
+  onStatusChange,
+  onEdit,
+  onDelete,
+  alwaysLabel = false,
+}: {
+  content: AdminContentRow
+  disabled: boolean
+  isWorking: boolean
+  onStatusChange: (c: AdminContentRow, next: ContentStatus) => void
+  onEdit: (c: AdminContentRow) => void
+  onDelete: (c: AdminContentRow) => void
+  /** true면 라벨을 항상 노출(모바일 카드). false면 1200px 미만에서 아이콘만. */
+  alwaysLabel?: boolean
+}) {
+  const compact = alwaysLabel ? '' : ACTION_BTN_COMPACT
+  const labelCls = alwaysLabel ? '' : ACTION_LABEL_COMPACT
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {content.status === 'published' ? (
+        <Button
+          type="button" size="sm" variant="outline"
+          disabled={disabled}
+          onClick={() => onStatusChange(content, 'rejected')}
+          title="숨김"
+          className={cn(ACTION_BTN, compact)}
+        >
+          <X className="h-3.5 w-3.5" />
+          <span className={labelCls}>숨김</span>
+        </Button>
+      ) : (
+        <Button
+          type="button" size="sm" variant="outline"
+          disabled={disabled}
+          onClick={() => onStatusChange(content, 'published')}
+          title="노출"
+          className={cn(
+            ACTION_BTN, compact,
+            'border-positive/40 text-positive hover:border-positive/70 hover:bg-positive-soft hover:text-positive'
+          )}
+        >
+          <Check className="h-3.5 w-3.5" />
+          <span className={labelCls}>노출</span>
+        </Button>
+      )}
+
+      <Button size="sm" variant="outline" asChild className={cn(ACTION_BTN, compact)}>
+        <Link href={`/admin/contents/${content.id}`} title="보기">
+          <Eye className="h-3.5 w-3.5" />
+          <span className={labelCls}>보기</span>
+        </Link>
+      </Button>
+
+      <Button
+        type="button" size="sm" variant="outline"
+        disabled={disabled}
+        onClick={() => onEdit(content)}
+        title="수정"
+        className={cn(ACTION_BTN, compact)}
+      >
+        <Pencil className="h-3.5 w-3.5" />
+        <span className={labelCls}>수정</span>
+      </Button>
+
+      <Button
+        type="button" size="sm" variant="outline"
+        disabled={disabled}
+        onClick={() => onDelete(content)}
+        title="삭제"
+        aria-label={`${content.title} 삭제`}
+        className={cn(
+          ACTION_BTN, compact,
+          'border-destructive/25 text-destructive/80 hover:border-destructive/60 hover:bg-destructive/10 hover:text-destructive'
+        )}
+      >
+        {isWorking
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <Trash2 className="h-3.5 w-3.5" />
+        }
+        <span className={labelCls}>삭제</span>
+      </Button>
+    </div>
+  )
 }
 
 /** timestamptz / date 문자열 → date input 용 YYYY-MM-DD */
@@ -315,10 +435,6 @@ function KeywordChipInput({
 export default function AdminContentManager() {
   const supabase = createClient()
   const searchParams = useSearchParams()
-
-  // 200 — 열 너비 드래그 리사이즈(제목·카테고리·소스·상태·본문·수집일). 207 — 초기화 버튼 제거, 드래그는 유지.
-  const { widths: colWidths, startResize } =
-    useResizableColumns(RESIZABLE_COLUMNS, COLUMN_WIDTHS_STORAGE_KEY)
 
   const [contents,       setContents]       = useState<AdminContentRow[]>([])
   const [isLoading,      setIsLoading]      = useState(true)
@@ -1560,249 +1676,251 @@ export default function AdminContentManager() {
           hint="필터를 바꾸거나 수집을 실행해보세요."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table
-            className="table-fixed border-collapse text-sm"
-            style={{
-              width: SELECT_COL_WIDTH + MANAGE_COL_WIDTH +
-                RESIZABLE_COLUMNS.reduce((sum, c) => sum + (colWidths[c.id] ?? c.defaultWidth), 0),
-            }}
-          >
-            <colgroup>
-              <col style={{ width: SELECT_COL_WIDTH }} />
-              {RESIZABLE_COLUMNS.map((c) => (
-                <col key={c.id} style={{ width: colWidths[c.id] ?? c.defaultWidth }} />
-              ))}
-              <col style={{ width: MANAGE_COL_WIDTH }} />
-            </colgroup>
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
-                <th className="px-3 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    ref={(el) => { if (el) el.indeterminate = someSelected }}
-                    onChange={toggleAll}
-                    className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                    aria-label="전체 선택"
-                  />
-                </th>
-                <th className="relative px-4 py-3">
-                  <span className="block truncate">제목</span>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    onPointerDown={(e) => startResize('title', e)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
-                  />
-                </th>
-                <th className="relative px-4 py-3">
-                  <span className="block truncate">카테고리</span>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    onPointerDown={(e) => startResize('category', e)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
-                  />
-                </th>
-                <th className="relative px-4 py-3">
-                  <span className="block truncate">소스</span>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    onPointerDown={(e) => startResize('source', e)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
-                  />
-                </th>
-                <th className="relative px-4 py-3">
-                  <span className="block truncate">상태</span>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    onPointerDown={(e) => startResize('status', e)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
-                  />
-                </th>
-                <th className="relative px-4 py-3">
-                  <span className="block truncate">본문</span>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    onPointerDown={(e) => startResize('body', e)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
-                  />
-                </th>
-                <th className="relative px-4 py-3">
-                  <span className="block truncate">수집일 (KST)</span>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    onPointerDown={(e) => startResize('collected', e)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-border active:bg-brand-600/40"
-                  />
-                </th>
-                <th
-                  className="sticky right-0 z-20 bg-muted px-4 py-3 text-right"
-                  style={{ boxShadow: 'inset 1px 0 0 0 var(--border)' }}
+        <>
+          {/* ── 데스크톱: 단일 테이블 그리드 (348 — sticky 관리 열 제거, 행 배경·hover가 관리까지 이어짐) ── */}
+          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
+            <table className="w-full min-w-[1032px] table-fixed border-collapse text-sm">
+              <colgroup>
+                <col className="w-9" />
+                <col />{/* 제목: 잔여 폭 전부 흡수 */}
+                <col className="w-[68px]" />
+                <col className="w-[104px]" />
+                <col className="w-[140px]" />
+                <col className="w-[92px]" />
+                <col className="w-[112px]" />
+                <col className="w-[240px]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
+                  <th className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected }}
+                      onChange={toggleAll}
+                      className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
+                      aria-label="전체 선택"
+                    />
+                  </th>
+                  <th className="px-3 py-3">제목</th>
+                  <th className="px-3 py-3">카테고리</th>
+                  <th className="px-3 py-3">소스</th>
+                  <th className="px-3 py-3">상태</th>
+                  <th className="px-3 py-3">본문 길이</th>
+                  <th className="px-3 py-3">수집일 (KST)</th>
+                  <th className="px-3 py-3 text-right">관리</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {contents.map((content) => {
+                  const isWorking   = workingId === content.id
+                  const isBodyBackfilling = bodyBackfillId === content.id
+                  const isSelected  = selectedIds.has(content.id)
+                  const bodyState = getBodyState(content)
+                  const canBackfillBody = bodyState !== 'full'
+                  const isRowDisabled = isWorking || isBodyBackfilling || isBulkWorking
+                  const bodyBackfillNotice = bodyBackfillNotices[content.id]
+                  const len = bodyLength(content)
+                  const bodyText = bodyState === 'none' ? '미시도'
+                    : len != null ? `${len.toLocaleString()}자`
+                    : '처리됨'
+                  return (
+                    <tr
+                      key={content.id}
+                      className={cn(
+                        'transition-colors hover:bg-accent/50',
+                        isSelected && 'bg-brand-600/5'
+                      )}
+                    >
+                      <td className="px-3 py-3 align-top">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleRow(content.id)}
+                          className="mt-0.5 h-4 w-4 rounded border-border accent-[--color-brand-600]"
+                          aria-label={`${content.title} 선택`}
+                        />
+                      </td>
+                      <td className="admin-cell-wrap px-3 py-3 align-top font-medium text-foreground">
+                        <Link
+                          href={`/admin/contents/${content.id}`}
+                          className="line-clamp-2 block hover:text-brand-600 hover:underline"
+                        >
+                          {content.title}
+                        </Link>
+                      </td>
+                      <td className="truncate px-3 py-3 align-top text-muted-foreground" title={CONTENT_CATEGORY_LABEL[content.category]}>
+                        {CONTENT_CATEGORY_LABEL[content.category]}
+                      </td>
+                      <td className="truncate px-3 py-3 align-top text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
+                        {content.sources?.name ?? (
+                          <span className="text-muted-foreground/60">Google News 검색</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <div className="flex min-w-0 items-center gap-1">
+                          <StatusBadge
+                            tone={CONTENT_STATUS_TONE[content.status]}
+                            label={CONTENT_STATUS_LABEL[content.status]}
+                            className="shrink-0"
+                          />
+                          {content.status === 'pending' && content.review_reason && (
+                            <span
+                              title={`검토 대기 사유: ${REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}`}
+                              className="truncate rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
+                            >
+                              {REVIEW_REASON_SHORT[content.review_reason] ?? content.review_reason}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <div className="flex items-center gap-1">
+                          <span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>
+                            {bodyText}
+                          </span>
+                          {canBackfillBody && (
+                            <button
+                              type="button"
+                              disabled={isRowDisabled}
+                              title="본문 보강"
+                              aria-label={`${content.title} 본문 보강`}
+                              onClick={() => { void handleBodyBackfill(content) }}
+                              className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+                            >
+                              {isBodyBackfilling
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <RotateCcw className="h-3 w-3" />
+                              }
+                            </button>
+                          )}
+                        </div>
+                        {bodyBackfillNotice && (
+                          <p className={cn(
+                            'mt-1 text-[11px] font-medium leading-tight',
+                            BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotice.tone]
+                          )}>
+                            {bodyBackfillNotice.message}
+                          </p>
+                        )}
+                      </td>
+                      <td className="truncate px-3 py-3 align-top text-xs text-muted-foreground tabular-nums" title={formatKst(content.collected_at)}>
+                        {formatKstCompact(content.collected_at)}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <RowActions
+                          content={content}
+                          disabled={isRowDisabled}
+                          isWorking={isWorking}
+                          onStatusChange={handleStatusChange}
+                          onEdit={openEdit}
+                          onDelete={handleDelete}
+                        />
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── 모바일: 카드 리스트 (348 — 테이블 축소 대신 카드로 전환) ── */}
+          <ul className="space-y-3 md:hidden">
+            {contents.map((content) => {
+              const isWorking   = workingId === content.id
+              const isBodyBackfilling = bodyBackfillId === content.id
+              const isSelected  = selectedIds.has(content.id)
+              const bodyState = getBodyState(content)
+              const canBackfillBody = bodyState !== 'full'
+              const isRowDisabled = isWorking || isBodyBackfilling || isBulkWorking
+              const bodyBackfillNotice = bodyBackfillNotices[content.id]
+              const len = bodyLength(content)
+              const bodyText = bodyState === 'none' ? '미시도'
+                : len != null ? `${len.toLocaleString()}자`
+                : '처리됨'
+              return (
+                <li
+                  key={content.id}
+                  className={cn(
+                    'rounded-xl border border-border bg-card p-3',
+                    isSelected && 'ring-1 ring-brand-600/40'
+                  )}
                 >
-                  관리
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {contents.map((content) => {
-                const isWorking   = workingId === content.id
-                const isBodyBackfilling = bodyBackfillId === content.id
-                const isSelected  = selectedIds.has(content.id)
-                const bodyState = getBodyState(content)
-                const canBackfillBody = bodyState !== 'full'
-                const isRowDisabled = isWorking || isBodyBackfilling || isBulkWorking
-                const bodyBackfillNotice = bodyBackfillNotices[content.id]
-                return (
-                  <tr
-                    key={content.id}
-                    className={cn(
-                      'hover:bg-accent/50 transition-colors',
-                      isSelected && 'bg-brand-600/5'
-                    )}
-                  >
-                    <td className="px-3 py-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleRow(content.id)}
-                        className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                        aria-label={`${content.title} 선택`}
-                      />
-                    </td>
-                    <td className="admin-cell-wrap px-4 py-3 font-medium text-foreground">
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleRow(content.id)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[--color-brand-600]"
+                      aria-label={`${content.title} 선택`}
+                    />
+                    <div className="min-w-0 flex-1">
                       <Link
                         href={`/admin/contents/${content.id}`}
-                        className="line-clamp-2 block hover:text-brand-600 hover:underline"
+                        className="line-clamp-2 block font-medium text-foreground hover:text-brand-600 hover:underline"
                       >
                         {content.title}
                       </Link>
-                    </td>
-                    <td className="truncate px-4 py-3 text-muted-foreground" title={CONTENT_CATEGORY_LABEL[content.category]}>
-                      {CONTENT_CATEGORY_LABEL[content.category]}
-                    </td>
-                    <td className="truncate px-4 py-3 text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
-                      {content.sources?.name ?? (
-                        <span className="text-xs text-muted-foreground/60">Google News 검색</span>
-                      )}
-                    </td>
-                    <td className="truncate px-4 py-3">
-                      <div className="flex items-center gap-1.5">
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} />
                         {content.status === 'pending' && content.review_reason && (
-                          <span
-                            title={`검토 대기 사유: ${REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}`}
-                            className="rounded bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
-                          >
-                            {REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}
+                          <span className="rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk">
+                            {REVIEW_REASON_SHORT[content.review_reason] ?? content.review_reason}
                           </span>
                         )}
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="text-xs text-muted-foreground">{CONTENT_CATEGORY_LABEL[content.category]}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="truncate text-xs text-muted-foreground">{content.sources?.name ?? 'Google News 검색'}</span>
                       </div>
-                    </td>
-                    <td className="truncate px-4 py-3">
-                      {(() => {
-                        const label = bodyState === 'none' ? '미시도'
-                          : bodyState === 'snippet' ? '스니펫'
-                          : bodyLenAvailable ? '풀본문' : '처리됨'
-                        return (
-                          <span className={cn('text-xs font-medium', BODY_STATE_CLASS[bodyState])}>
-                            {label}
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td className="truncate px-4 py-3 text-xs text-muted-foreground">
-                      {formatKst(content.collected_at)}
-                    </td>
-                    <td
-                      className="sticky right-0 z-10 bg-card px-4 py-3"
-                      style={{ boxShadow: 'inset 1px 0 0 0 var(--border)' }}
-                    >
-                      <div className="flex justify-end gap-1.5">
-                        {content.status !== 'published' && (
-                          <Button
-                            type="button" size="sm" variant="outline"
-                            disabled={isRowDisabled}
-                            onClick={() => handleStatusChange(content, 'published')}
-                            className="text-positive"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            노출
-                          </Button>
-                        )}
-                        {content.status === 'published' && (
-                          <Button
-                            type="button" size="sm" variant="outline"
-                            disabled={isRowDisabled}
-                            onClick={() => handleStatusChange(content, 'rejected')}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            숨김
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" asChild>
-                          <Link href={`/admin/contents/${content.id}`}>
-                            <Eye className="h-3.5 w-3.5" />
-                            보기
-                          </Link>
-                        </Button>
-                        {canBackfillBody && (
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="outline"
-                            disabled={isRowDisabled}
-                            title="본문 보강"
-                            aria-label={`${content.title} 본문 보강`}
-                            onClick={() => { void handleBodyBackfill(content) }}
-                          >
-                            {isBodyBackfilling
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <RotateCcw className="h-3.5 w-3.5" />
-                            }
-                          </Button>
-                        )}
-                        <Button
-                          type="button" size="sm" variant="outline"
-                          disabled={isRowDisabled}
-                          onClick={() => openEdit(content)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          수정
-                        </Button>
-                        <Button
-                          type="button" size="sm" variant="destructive"
-                          disabled={isRowDisabled}
-                          onClick={() => handleDelete(content)}
-                          aria-label={`${content.title} 삭제`}
-                        >
-                          {isWorking
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Trash2 className="h-3.5 w-3.5" />
-                          }
-                          삭제
-                        </Button>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <span className={cn('font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>{bodyText}</span>
+                          {canBackfillBody && (
+                            <button
+                              type="button"
+                              disabled={isRowDisabled}
+                              title="본문 보강"
+                              aria-label={`${content.title} 본문 보강`}
+                              onClick={() => { void handleBodyBackfill(content) }}
+                              className="rounded p-0.5 hover:bg-accent hover:text-foreground disabled:opacity-40"
+                            >
+                              {isBodyBackfilling
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <RotateCcw className="h-3 w-3" />
+                              }
+                            </button>
+                          )}
+                        </span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="tabular-nums">{formatKstCompact(content.collected_at)}</span>
                       </div>
                       {bodyBackfillNotice && (
                         <p className={cn(
-                          'mt-1 text-right text-[11px] font-medium leading-tight',
+                          'mt-1 text-[11px] font-medium leading-tight',
                           BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotice.tone]
                         )}>
                           {bodyBackfillNotice.message}
                         </p>
                       )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <div className="mt-2.5">
+                        <RowActions
+                          content={content}
+                          disabled={isRowDisabled}
+                          isWorking={isWorking}
+                          onStatusChange={handleStatusChange}
+                          onEdit={openEdit}
+                          onDelete={handleDelete}
+                          alwaysLabel
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </>
       )}
 
       {/* ── 페이지네이션 ── */}
