@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
@@ -38,6 +38,7 @@ import {
 import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
+import { compressImageToLimit } from '@/lib/images/compress-image'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import ContentCard from '@/components/dashboard/ContentCard'
@@ -493,6 +494,10 @@ export default function AdminContentManager() {
   // 편집 모달 — PDF 1페이지 다시 가져오기 (291)
   const [isRefetchingCover, setIsRefetchingCover] = useState(false)
 
+  // 편집 모달 — 원문 파일 열람 (368)
+  const [isOpeningFile, setIsOpeningFile] = useState(false)
+  const [fileOpenError, setFileOpenError] = useState<string | null>(null)
+
   // 본문 상태 필터 + body_len degrade 추적
   const [bodyFilter,      setBodyFilter]      = useState<'all' | 'full' | 'snippet' | 'none'>('all')
   const [bodyLenAvailable, setBodyLenAvailable] = useState(true)
@@ -938,17 +943,19 @@ export default function AdminContentManager() {
       setThumbError('이미지 파일만 업로드할 수 있습니다.')
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setThumbError('이미지 용량은 2MB 이하여야 합니다.')
-      return
-    }
 
     setIsUploadingThumb(true)
     setThumbError(null)
     try {
-      const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      // 368 — 용량이 크면 먼저 자동으로 줄여본다. 그래도 2MB를 넘으면 그때 반려.
+      const compressed = await compressImageToLimit(file)
+      if (compressed.size > 2 * 1024 * 1024) {
+        setThumbError('이미지 용량은 2MB 이하여야 합니다.')
+        return
+      }
+      const ext = compressed.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       // 216 — storage 업로드만 즉시 수행. contents.thumbnail_url 기록은 저장(handleEditSave) 시점에.
-      const publicUrl = await uploadCoverFile(supabase, edit.id, file, ext)
+      const publicUrl = await uploadCoverFile(supabase, edit.id, compressed, ext)
       setEdit((p) => p && { ...p, thumbnailUrl: publicUrl })
     } catch (err) {
       setThumbError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다.')
@@ -986,6 +993,26 @@ export default function AdminContentManager() {
       setThumbError(err instanceof Error ? err.message : '1페이지 다시 가져오기 중 오류가 발생했습니다.')
     } finally {
       setIsRefetchingCover(false)
+    }
+  }
+
+  // ── 편집 모달 — 원문 파일 열람 (368) ──────────────────────────────────
+  const handleOpenOriginalFile = async () => {
+    if (!edit?.filePath) return
+    setIsOpeningFile(true)
+    setFileOpenError(null)
+    try {
+      const res = await fetch(`/api/admin/contents/${edit.id}/file-url`)
+      const data: { url?: string; error?: string } = await res.json()
+      if (!res.ok || !data.url) {
+        setFileOpenError(data.error ?? '원문 파일을 여는 데 실패했습니다.')
+        return
+      }
+      window.open(data.url, '_blank', 'noopener')
+    } catch (err) {
+      setFileOpenError(err instanceof Error ? err.message : '원문 파일을 여는 중 오류가 발생했습니다.')
+    } finally {
+      setIsOpeningFile(false)
     }
   }
 
@@ -1219,7 +1246,7 @@ export default function AdminContentManager() {
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">검수 체크</h3>
+          <h3 className="text-sm font-semibold text-foreground">관리 체크</h3>
           {editReviewWarnings.length > 0 ? (
             <span className="rounded-full bg-risk-soft px-2 py-0.5 text-[11px] font-medium text-risk">
               {editReviewWarnings.length}개 확인
@@ -1298,6 +1325,22 @@ export default function AdminContentManager() {
                   }}
                 />
               </label>
+              {edit.filePath && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isOpeningFile}
+                  onClick={() => void handleOpenOriginalFile()}
+                >
+                  {isOpeningFile ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  )}
+                  원문 열기
+                </Button>
+              )}
               {edit.filePath?.toLowerCase().endsWith('.pdf') && (
                 <Button
                   type="button"
@@ -1318,9 +1361,10 @@ export default function AdminContentManager() {
               )}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              JPG/PNG/WebP, 2MB 이하. 파일을 이 영역에 끌어 놓아도 됩니다.
+              JPG/PNG/WebP. 용량이 크면 자동으로 줄입니다. 파일을 이 영역에 끌어 놓아도 됩니다.
             </p>
             {thumbError && <p className="text-xs text-destructive">{thumbError}</p>}
+            {fileOpenError && <p className="text-xs text-destructive">{fileOpenError}</p>}
           </div>
         </div>
       </section>
@@ -1966,7 +2010,7 @@ export default function AdminContentManager() {
           <DialogHeader className="mb-0 shrink-0 border-b border-border px-5 py-4 pr-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <DialogTitle>콘텐츠 검수</DialogTitle>
+                <DialogTitle>콘텐츠 관리</DialogTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
                   현재 페이지 {editPosition || '-'} / {contents.length || 0}
                   {pendingCount !== null ? ` · 검토 대기 ${pendingCount}건` : ''}

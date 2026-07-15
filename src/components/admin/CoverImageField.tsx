@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ImageIcon, Upload, X } from 'lucide-react'
+import { ImageIcon, Loader2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import BrandedCover from '@/components/dashboard/BrandedCover'
 import type { ContentCategory } from '@/lib/types'
+import { compressImageToLimit } from '@/lib/images/compress-image'
 
 const MAX_BYTES = 2 * 1024 * 1024
 
@@ -32,6 +33,7 @@ export default function CoverImageField({
 }: CoverImageFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isCompressing, setIsCompressing] = useState(false)
   const objectUrl = useMemo(() => (value ? URL.createObjectURL(value) : null), [value])
 
   // 언마운트·value 변경 시 objectURL revoke (누수 가드)
@@ -44,17 +46,24 @@ export default function CoverImageField({
   const effectiveImageUrl = objectUrl ?? previewUrl
   const hasCover = Boolean(effectiveImageUrl)
 
-  const acceptFile = (file: File) => {
+  const acceptFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setError('이미지 파일만 업로드할 수 있습니다.')
       return
     }
-    if (file.size > MAX_BYTES) {
-      setError('이미지 용량은 2MB 이하여야 합니다.')
-      return
-    }
     setError(null)
-    onChange(file)
+    setIsCompressing(true)
+    try {
+      // 368 — 용량이 크면 먼저 자동으로 줄여본다. 그래도 2MB를 넘으면 그때 반려.
+      const compressed = await compressImageToLimit(file, { maxBytes: MAX_BYTES })
+      if (compressed.size > MAX_BYTES) {
+        setError('이미지 용량은 2MB 이하여야 합니다.')
+        return
+      }
+      onChange(compressed)
+    } finally {
+      setIsCompressing(false)
+    }
   }
 
   const handleRemove = () => {
@@ -84,9 +93,14 @@ export default function CoverImageField({
           type="button"
           variant="outline"
           size="sm"
+          disabled={isCompressing}
           onClick={() => inputRef.current?.click()}
         >
-          <Upload className="mr-1.5 h-3.5 w-3.5" />
+          {isCompressing ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+          )}
           {hasCover ? '교체' : '업로드'}
         </Button>
         {hasCover && (
@@ -102,12 +116,12 @@ export default function CoverImageField({
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) acceptFile(f)
+            if (f) void acceptFile(f)
           }}
         />
       </div>
 
-      <p className="text-xs text-muted-foreground">권장 1200×675 (16:9). 이미지 파일, 2MB 이하.</p>
+      <p className="text-xs text-muted-foreground">권장 1200×675 (16:9). 이미지 파일. 용량이 크면 자동으로 줄입니다.</p>
 
       {!hasCover && (
         <div className="flex items-start gap-1.5 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
