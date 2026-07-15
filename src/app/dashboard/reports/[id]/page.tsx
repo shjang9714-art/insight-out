@@ -158,7 +158,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
               {report.keywords.map((keyword) => (
                 <Link
                   key={keyword}
-                  href={`/dashboard/topics/${encodeURIComponent(keyword)}`}
+                  href={`/dashboard/keywords/${encodeURIComponent(keyword)}`}
                   prefetch={false}
                   className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
                 >
