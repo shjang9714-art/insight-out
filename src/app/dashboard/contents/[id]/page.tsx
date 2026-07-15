@@ -243,20 +243,22 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   return (
     <PageContainer variant="reading">
 
-      {origin === 'entities' ? (
-        <EntityTabs value={view ?? 'competitor'} />
-      ) : (
-        <NavGroupAlign className="-mt-3 mb-6">
-          <InsightViewTabs
-            items={CONTENT_SOURCE_TAB_VALUES.map((v) => ({
-              id: v,
-              label: CONTENT_CATEGORY_LABEL[v] ?? v,
-              href: `/dashboard/contents?category=${encodeURIComponent(v)}`,
-            }))}
-            value={(category as ContentCategory) || content.category}
-          />
-        </NavGroupAlign>
-      )}
+      <div className="sticky top-14 z-10 -mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5 md:top-[102px]">
+        {origin === 'entities' ? (
+          <EntityTabs value={view ?? 'competitor'} />
+        ) : (
+          <NavGroupAlign>
+            <InsightViewTabs
+              items={CONTENT_SOURCE_TAB_VALUES.map((v) => ({
+                id: v,
+                label: CONTENT_CATEGORY_LABEL[v] ?? v,
+                href: `/dashboard/contents?category=${encodeURIComponent(v)}`,
+              }))}
+              value={(category as ContentCategory) || content.category}
+            />
+          </NavGroupAlign>
+        )}
+      </div>
 
       {/* 뒤로가기 */}
       <div className="mb-6">
