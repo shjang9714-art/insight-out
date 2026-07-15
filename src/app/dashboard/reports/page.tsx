@@ -6,6 +6,7 @@ import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
 import ReportCard from '@/components/reports/ReportCard'
 import ReportTabs, { type ReportViewId } from '@/components/reports/ReportTabs'
+import ContentsBoard from '@/components/contents/ContentsBoard'
 import { getPublishedReports } from '@/lib/reports/query'
 
 export const dynamic = 'force-dynamic'
@@ -113,7 +114,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           </Suspense>
         </>
       )}
-      {view === 'external' && <Placeholder message="외부 리포트 목록을 준비하고 있습니다." />}
+      {view === 'external' && (
+        <Suspense fallback={<ReportGridSkeleton />}>
+          <ContentsBoard fixedCategory="리서치" title="외부 리포트" showSourceTabs={false} />
+        </Suspense>
+      )}
       {view === 'knowledge' && <Placeholder message="지식보고서를 준비하고 있습니다." />}
     </PageContainer>
   )

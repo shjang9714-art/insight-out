@@ -15,6 +15,7 @@ import BackLink from '@/components/BackLink'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import EntityTabs from '@/components/entities/EntityTabs'
+import ReportTabs from '@/components/reports/ReportTabs'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
@@ -39,9 +40,9 @@ interface PageProps {
   searchParams: Promise<{ category?: string; origin?: string; view?: string }>
 }
 
-// 콘텐츠 목록(contents/page.tsx)과 동일한 4개 소스타입 탭 — 상세 페이지에서는
+// 콘텐츠 목록과 동일한 3개 소스타입 탭 — 상세 페이지에서는
 // 상태 전환이 아니라 목록으로의 라우팅형 탭이라 href를 직접 채운다.
-const CONTENT_SOURCE_TAB_VALUES: ContentCategory[] = ['뉴스', '유튜브', '웹인사이트', '리서치']
+const CONTENT_SOURCE_TAB_VALUES: ContentCategory[] = ['뉴스', '유튜브', '웹인사이트']
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -178,6 +179,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
 
   // ── 리포트(file_path) vs 뉴스(original_url) vs 유튜브(임베드) 분기(252) ───────
   const isReport = Boolean(content.file_path)
+  const isExternalReport = ['리포트', '가트너', 'KRG'].includes(content.category)
   const isYoutube = content.category === '유튜브'
   const youtubeVideoId = isYoutube ? extractVideoId(content.original_url) : null
   // 유튜브 자막 스크립트(265) — transcript_ko 있을 때만 노출, 없으면 섹션 생략
@@ -246,6 +248,8 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
       <div className="sticky top-14 z-10 -mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5 md:top-[102px]">
         {origin === 'entities' ? (
           <EntityTabs value={view ?? 'competitor'} />
+        ) : isExternalReport ? (
+          <ReportTabs value="external" className="mb-0" />
         ) : (
           <NavGroupAlign>
             <InsightViewTabs

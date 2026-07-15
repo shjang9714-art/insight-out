@@ -39,6 +39,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     label: '리서치',
     category: '리서치',
     dbCategories: ['리포트', '가트너', 'KRG'],
+    href: '/dashboard/reports?view=external',
     iconClass: 'text-indigo-600 dark:text-indigo-400',
     activeClass: 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400',
     hoverClass: 'hover:border-indigo-200 hover:text-indigo-700 dark:hover:border-indigo-800 dark:hover:text-indigo-300',
