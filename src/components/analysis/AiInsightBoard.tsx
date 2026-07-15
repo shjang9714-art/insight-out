@@ -28,7 +28,7 @@ import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import KeywordClusterMap from '@/components/analysis/KeywordClusterMap'
-import { CircleDot, LayoutGrid } from 'lucide-react'
+import { Building2, ChartNoAxesColumnIncreasing, CircleDot, Cpu, Landmark, LayoutGrid, Sparkles, TrendingUp } from 'lucide-react'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -100,6 +100,14 @@ const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS
 type KeywordRankingMode = 'rising' | 'new' | 'sustained'
 type KeywordViewMode = 'bubble' | 'card'
 
+interface KeywordChangeCard {
+  id: 'rising' | 'new' | 'highlight'
+  bucket: TagBucket
+  title: string
+  evidence: string
+  keyword: string
+}
+
 const KEYWORD_RANKING_TABS: { id: KeywordRankingMode; label: string }[] = [
   { id: 'rising', label: '급상승' },
   { id: 'new', label: '신규' },
@@ -112,6 +120,73 @@ function entityTypeToBucket(type: EntityType): TagBucket {
   if (type === 'industry') return '시장·산업'
   if (type === 'policy') return '정책·규제'
   return '그 외'
+}
+
+function buildKeywordChangeCards(keywords: KeywordItem[]): KeywordChangeCard[] {
+  const cards: KeywordChangeCard[] = []
+  const fastestRising = keywords
+    .filter(keyword => !keyword.isNew && (keyword.changePct ?? 0) > 0)
+    .sort((a, b) => (b.changePct ?? 0) - (a.changePct ?? 0) || (b.cur ?? 0) - (a.cur ?? 0))[0]
+  if (fastestRising) {
+    cards.push({
+      id: 'rising',
+      bucket: fastestRising.bucket,
+      title: `${fastestRising.name} 관심 급증`,
+      evidence: `${fastestRising.bucket} 키워드 · 직전 7일 대비 +${fastestRising.changePct}%`,
+      keyword: fastestRising.name,
+    })
+  }
+
+  const newKeywords = keywords.filter(keyword => keyword.isNew)
+  if (newKeywords.length > 0) {
+    const newByBucket = new Map<TagBucket, KeywordItem[]>()
+    for (const keyword of newKeywords) {
+      newByBucket.set(keyword.bucket, [...(newByBucket.get(keyword.bucket) ?? []), keyword])
+    }
+    const [bucket, bucketKeywords] = [...newByBucket.entries()]
+      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'ko-KR'))[0]
+    const representative = [...bucketKeywords].sort((a, b) => (b.cur ?? 0) - (a.cur ?? 0))[0]
+    cards.push({
+      id: 'new',
+      bucket,
+      title: `${bucket} 신규 흐름 유입`,
+      evidence: `${representative.name} 등 신규 ${bucketKeywords.length.toLocaleString()}개 진입`,
+      keyword: representative.name,
+    })
+  }
+
+  const highlightedBuckets: TagBucket[] = ['정책·규제', '시장·산업']
+  const highlight = highlightedBuckets
+    .map(bucket => {
+      const rising = keywords.filter(keyword => keyword.bucket === bucket && (keyword.changePct ?? 0) > 0)
+      const documentCount = rising.reduce((sum, keyword) => sum + (keyword.cur ?? keyword.count), 0)
+      const representative = [...rising].sort(
+        (a, b) => (b.changePct ?? 0) - (a.changePct ?? 0) || (b.cur ?? 0) - (a.cur ?? 0)
+      )[0]
+      return { bucket, rising, documentCount, representative }
+    })
+    .filter(item => item.representative)
+    .sort((a, b) => b.rising.length - a.rising.length || b.documentCount - a.documentCount)[0]
+  if (highlight?.representative) {
+    cards.push({
+      id: 'highlight',
+      bucket: highlight.bucket,
+      title: highlight.bucket === '정책·규제' ? '정책·규제 이슈 주목' : '시장 흐름 변화 주목',
+      evidence: `${highlight.representative.name} 중심 · 상승 키워드 ${highlight.rising.length.toLocaleString()}개`,
+      keyword: highlight.representative.name,
+    })
+  }
+
+  return cards.slice(0, 3)
+}
+
+function keywordChangeIcon(card: KeywordChangeCard) {
+  if (card.id === 'rising') return TrendingUp
+  if (card.id === 'new') return Sparkles
+  if (card.bucket === '정책·규제') return Landmark
+  if (card.bucket === '시장·산업') return ChartNoAxesColumnIncreasing
+  if (card.bucket === '기업·기관') return Building2
+  return Cpu
 }
 
 // ─── 보드 ──────────────────────────────────────────────────────────────────────
@@ -180,6 +255,7 @@ export default function AiInsightBoard({
     keyword => (keyword.cur ?? 0) > 0 && (keyword.prev ?? 0) > 0
   ).length
   const fallingKeywordCount = classifiedKeywords.filter(keyword => (keyword.changePct ?? 0) < 0).length
+  const keywordChangeCards = buildKeywordChangeCards(classifiedKeywords)
 
   const rankedKeywords = classifiedKeywords
     .filter(keyword => {
@@ -356,6 +432,40 @@ export default function AiInsightBoard({
               </div>
             ))}
           </div>
+
+          {keywordChangeCards.length > 0 && (
+            <div>
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">오늘의 주요 변화</h3>
+                <span className="text-[11px] text-muted-foreground">최근 7일 데이터 규칙 기반 요약</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                {keywordChangeCards.map(card => {
+                  const Icon = keywordChangeIcon(card)
+                  return (
+                    <Link
+                      key={card.id}
+                      href={`/dashboard/keywords/${encodeURIComponent(card.keyword)}`}
+                      prefetch={false}
+                      className={cn(
+                        'group rounded-xl border bg-card p-4 transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        BUCKET_ACCENT_CLS[card.bucket]
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <span className={cn('inline-flex size-8 items-center justify-center rounded-lg', BUCKET_CHIP_CLS[card.bucket])}>
+                          <Icon className="size-4" aria-hidden="true" />
+                        </span>
+                        <span className="text-sm text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-foreground">{card.title}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{card.evidence}</p>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
             <div className="min-w-0">
