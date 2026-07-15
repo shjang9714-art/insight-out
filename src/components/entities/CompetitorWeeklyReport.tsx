@@ -5,6 +5,7 @@ import {
   type CompetitorWeeklyReportRow,
   type CompetitorWeeklySection,
   type WeeklyEvent,
+  type UtilizedCompanyDocument,
 } from '@/lib/competitor-weekly/query'
 import { cleanNarrative } from '@/lib/text/clean-narrative'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
@@ -223,6 +224,34 @@ function LegacySection({ section }: { section: CompetitorWeeklySection }) {
 
 interface Props {
   report: CompetitorWeeklyReportRow
+  /** 355-D — 이 브리핑이 근거로 인용한 기업자료(있으면만 렌더, 없으면 섹션 생략) */
+  utilizedDocuments?: UtilizedCompanyDocument[]
+}
+
+/** 355-D — "활용된 자료" 출처. 사업영역 섹션들 아래, 근거로 인용된 기업자료를 모아 링크한다. */
+function UtilizedDocuments({ documents }: { documents: UtilizedCompanyDocument[] }) {
+  if (documents.length === 0) return null
+  return (
+    <section className="mb-8 border-t border-border pt-5">
+      <p className="mb-2.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wide">활용된 자료</p>
+      <ul className="space-y-1.5">
+        {documents.map((doc) => (
+          <li key={doc.contentId} className="text-[13px] leading-[1.7]">
+            <Link
+              href={`/dashboard/contents/${doc.contentId}`}
+              prefetch={false}
+              className="text-foreground transition-colors hover:text-brand-600"
+            >
+              {doc.title}
+            </Link>
+            <span className="ml-1.5 text-muted-foreground">
+              {doc.entityName && `· ${doc.entityName} `}· {doc.docType}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 /**
@@ -230,7 +259,7 @@ interface Props {
  * 지면(paper)형: 좌측 마진 섹션 넘버 + 개요/현황/의도 분석/LG U+ 관점/시사점 + 하단 근거.
  * 분석(패스②)이 없는 과거 리포트는 레거시 렌더로 폴백한다.
  */
-export default function CompetitorWeeklyReport({ report }: Props) {
+export default function CompetitorWeeklyReport({ report, utilizedDocuments = [] }: Props) {
   const { week_start, week_end, summary, overall_impact, emerging_topics, sections } = report
   const totalEvents = (sections ?? []).reduce((n, s) => n + (s.events?.length ?? 0), 0)
   const conflictAreas = [...new Set((sections ?? []).flatMap(s => s.conflict_areas ?? []))]
@@ -275,6 +304,8 @@ export default function CompetitorWeeklyReport({ report }: Props) {
           ? <AnalysisSection key={section.area_key} section={section} />
           : <LegacySection key={section.area_key} section={section} />
       )}
+
+      <UtilizedDocuments documents={utilizedDocuments} />
     </article>
   )
 }
