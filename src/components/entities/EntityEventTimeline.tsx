@@ -109,9 +109,20 @@ export default function EntityEventTimeline({ events, updatedAt }: Props) {
                 </div>
 
                 {/* 헤드라인 */}
-                <p className="text-sm font-semibold text-foreground leading-snug">
-                  {headline}
-                </p>
+                {ev.citations.length > 0 ? (
+                  <Link
+                    href={`/dashboard/contents/${ev.citations[0]}`}
+                    prefetch={false}
+                    aria-label={`${headline} 관련 기사로 이동`}
+                    className="block text-sm font-semibold text-foreground leading-snug hover:underline focus-visible:outline-2 focus-visible:outline-brand-600 focus-visible:outline-offset-2"
+                  >
+                    {headline}
+                  </Link>
+                ) : (
+                  <p className="text-sm font-semibold text-foreground leading-snug">
+                    {headline}
+                  </p>
+                )}
 
                 {/* 상세 */}
                 {detail && (
