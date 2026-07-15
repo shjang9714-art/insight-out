@@ -11,6 +11,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import SearchBar from '@/components/dashboard/SearchBar'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: Luc
 // #l1-active-label이 아예 없어지고, NavGroupAlign이 marginLeft:0으로 폴백해 Lv.2 탭
 // 위치가 어긋난다(§지시서 20260713-Lv2탭-위치일관성). 여기에 별칭 경로를 등록해 보정.
 const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
-  '/dashboard/issues':   ['/dashboard/daily-insights'],
+  '/dashboard/issues':   ['/dashboard/daily-insights', '/dashboard/keywords'],
   '/dashboard/entities': ['/dashboard/insights'],
 }
 
@@ -74,10 +75,20 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
   const [isAdmin, setIsAdmin]       = useState(false)
+  // L1 호버 시 그 섹션의 L2를 미리보기(372) — null이면 활성 섹션의 L2로 복귀
+  const [previewL1Href, setPreviewL1Href] = useState<string | null>(null)
 
   const today = new Date().toLocaleDateString('ko-KR', {
     month: 'long', day: 'numeric', weekday: 'short',
   })
+
+  // entities/[id]는 경로상 기업동향 소속이지만, AI인사이트 키워드 탭에서 진입한
+  // 경우(origin=issues)엔 AI인사이트가 active여야 L2도 맞게 뜬다.
+  const isEntityDetailFromIssues =
+    pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
+  const activeL1Href = isEntityDetailFromIssues
+    ? '/dashboard/issues'
+    : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -190,21 +201,18 @@ export default function DashboardHeader({ onMenuClick }: Props) {
         aria-label="주 메뉴"
       >
         <div id="l1-nav-row" className="mx-auto flex w-full max-w-6xl items-stretch justify-start gap-9 px-4 sm:px-5 tracking-[-0.01em]">
-	          {NAV_TABS.map((tab) => {
-	            // entities/[id]는 경로상 기업동향 소속이지만, AI인사이트 키워드 탭에서
-	            // 진입한 경우(origin=issues)엔 그 페이지가 AI인사이트 Lv.2 탭을 렌더하므로
-	            // NavGroupAlign 기준점도 AI인사이트가 active여야 위치가 맞는다.
-	            const isEntityDetailFromIssues =
-	              pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
-	            const active = isEntityDetailFromIssues
-	              ? tab.href === '/dashboard/issues'
-	              : isTabActive(tab.href, tab.exact, pathname)
-	            return (
-	              // prefetch-ok: 네비 탭 — 개수 고정, 이동 잦음
-	              <Link
-	                key={tab.href}
+          {NAV_TABS.map((tab) => {
+            const active = tab.href === activeL1Href
+            return (
+              // prefetch-ok: 네비 탭 — 개수 고정, 이동 잦음
+              <Link
+                key={tab.href}
                 href={tab.href}
-                className={`inline-flex items-center gap-2 py-2.5 text-[17px] transition-colors ${
+                onMouseEnter={() => setPreviewL1Href(tab.href)}
+                onFocus={() => setPreviewL1Href(tab.href)}
+                onMouseLeave={() => setPreviewL1Href(null)}
+                onBlur={() => setPreviewL1Href(null)}
+                className={`inline-flex items-center gap-2 py-1.5 text-[17px] transition-colors ${
                   active
                     ? 'font-medium text-foreground'
                     : 'text-muted-foreground hover:text-foreground'
@@ -212,9 +220,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
               >
                 <span className={`h-[5px] w-[5px] shrink-0 rounded-full ${active ? 'bg-brand-600' : 'bg-transparent'}`} />
                 {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
-                {/* id="l1-active-label"는 NavGroupAlign(§지시서 20260712)이 L2 탭 그룹의
-                    좌측 시작점을 이 라벨의 텍스트 x좌표에 맞추는 기준점으로 씀 */}
-                <span id={active ? 'l1-active-label' : undefined}>{tab.label}</span>
+                <span>{tab.label}</span>
               </Link>
             )
           })}
@@ -240,6 +246,58 @@ export default function DashboardHeader({ onMenuClick }: Props) {
           )}
         </div>
       </nav>
+
+      {/* ── L2 하위 탭 (md+, sticky 헤더에 통합·상시노출) ──────────────────────── */}
+      <L2Row
+        activeL1Href={activeL1Href}
+        previewL1Href={previewL1Href}
+        pathname={pathname}
+        searchParams={searchParams}
+      />
     </header>
+  )
+}
+
+// ─── L2 행 ──────────────────────────────────────────────────────────────────
+// L1 sticky 헤더 안에 통합해 스크롤해도 함께 고정되고 항상 노출된다(372).
+// 호버 중인 L1(previewL1Href)이 있으면 그 섹션을 미리보기, 없으면 실제 활성 섹션을 보여준다.
+function L2Row({
+  activeL1Href,
+  previewL1Href,
+  pathname,
+  searchParams,
+}: {
+  activeL1Href: string | null
+  previewL1Href: string | null
+  pathname: string
+  searchParams: URLSearchParams
+}) {
+  const displayL1Href = previewL1Href ?? activeL1Href
+  const l2 = displayL1Href ? getL2ForSection(displayL1Href, pathname, searchParams) : null
+  // 프리뷰 중엔 실제 활성 탭이 아니므로 강조하지 않는다(호버=프리뷰, 클릭=확정).
+  const isPreview = previewL1Href !== null && previewL1Href !== activeL1Href
+
+  return (
+    <nav className="hidden min-h-[30px] md:flex" aria-label="하위 메뉴">
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 pt-1 pb-1 sm:px-5 tracking-[-0.01em]">
+        {l2 && l2.section.tabs.map((tab) => {
+          const active = !isPreview && tab.id === l2.activeId
+          return (
+            // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
+            <Link
+              key={tab.id}
+              href={buildL2Href(l2.section, tab, pathname, searchParams)}
+              className={cn(
+                'inline-flex items-center gap-1.5 whitespace-nowrap pt-1 pb-1 text-[15px] transition-colors',
+                active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-brand-600' : 'bg-transparent')} />
+              {tab.label}
+            </Link>
+          )
+        })}
+      </div>
+    </nav>
   )
 }

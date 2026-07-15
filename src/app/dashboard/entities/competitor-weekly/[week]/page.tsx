@@ -5,7 +5,6 @@ import { ArrowLeft } from 'lucide-react'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
-import EntityTabs from '@/components/entities/EntityTabs'
 import CompetitorWeeklyReport from '@/components/entities/CompetitorWeeklyReport'
 import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
 import {
@@ -66,8 +65,6 @@ export default async function CompetitorWeeklyDetailPage({ params }: { params: P
         <ArrowLeft className="h-4 w-4" />
         기업동향으로 돌아가기
       </Link>
-
-      <EntityTabs value="trend" />
 
       <div className="space-y-4">
         <CompetitorWeeklyReport report={report} utilizedDocuments={utilizedDocuments} />

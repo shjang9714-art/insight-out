@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr'
 import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
 import ReportCard from '@/components/reports/ReportCard'
-import ReportTabs, { type ReportViewId } from '@/components/reports/ReportTabs'
+import type { ReportViewId } from '@/components/reports/ReportTabs'
 import ContentsBoard from '@/components/contents/ContentsBoard'
 import { getPublishedReports } from '@/lib/reports/query'
 
@@ -93,8 +93,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
 
   return (
     <PageContainer>
-      <ReportTabs value={view} />
-
       {view === 'ai' && (
         <>
           <p className="mb-8 text-sm text-muted-foreground">
@@ -107,7 +105,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       )}
       {view === 'external' && (
         <Suspense fallback={<ReportGridSkeleton />}>
-          <ContentsBoard fixedCategory="리서치" title="외부 리포트" showSourceTabs={false} />
+          <ContentsBoard fixedCategory="리서치" title="외부 리포트" />
         </Suspense>
       )}
       {view === 'knowledge' && (
@@ -115,7 +113,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           <ContentsBoard
             fixedCategory="지식보고서"
             title="지식보고서"
-            showSourceTabs={false}
             schemaPendingMessage="지식보고서 카테고리를 준비하고 있습니다. SQL 적용 후 목록이 표시됩니다."
           />
         </Suspense>

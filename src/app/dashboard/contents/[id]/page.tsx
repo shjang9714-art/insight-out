@@ -13,8 +13,6 @@ import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ViewTracker from '@/components/contents/ViewTracker'
 import BackLink from '@/components/BackLink'
-import InsightViewTabs from '@/components/analysis/InsightViewTabs'
-import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import EntityTabs from '@/components/entities/EntityTabs'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
@@ -39,12 +37,8 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ category?: string; origin?: string; view?: string }>
+  searchParams: Promise<{ origin?: string; view?: string }>
 }
-
-// 콘텐츠 목록과 동일한 3개 소스타입 탭 — 상세 페이지에서는
-// 상태 전환이 아니라 목록으로의 라우팅형 탭이라 href를 직접 채운다.
-const CONTENT_SOURCE_TAB_VALUES: ContentCategory[] = ['뉴스', '유튜브', '웹인사이트']
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -172,7 +166,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ContentDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
-  const { category, origin, view } = await searchParams
+  const { origin, view } = await searchParams
   const { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase } = await getContentRow(id)
 
   if (error || !data) {
@@ -253,28 +247,17 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
     <PageContainer variant="reading">
 
       {/* 366 — 문서(PDF/PPTX) 상세는 sticky 해제(정적): PdfViewer를 가리지 않게 한다 */}
-      {/* 외부/지식보고서 상세는 "이전으로"·카테고리 태그와 중복되므로 이 탭바 자체를 생략 */}
-      {isExternalReport || isKnowledgeReport ? null : (
+      {/* 콘텐츠(뉴스/유튜브/웹인사이트) 탭바는 DashboardHeader의 sticky L2 행과 중복이라 생략(372).
+          기업동향에서 진입(origin=entities)한 경우만, 그 맥락(경쟁사 최근 뉴스 등)으로 되돌아갈
+          수 있게 이 페이지 자체의 보조 탭바를 유지한다. */}
+      {origin === 'entities' && !(isExternalReport || isKnowledgeReport) && (
         <div
           className={cn(
             '-mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5',
-            !isReport && 'sticky top-14 z-10 md:top-[102px]'
+            !isReport && 'sticky top-14 z-10 md:top-[132px]'
           )}
         >
-          {origin === 'entities' ? (
-            <EntityTabs value={view ?? 'competitor'} />
-          ) : (
-            <NavGroupAlign>
-              <InsightViewTabs
-                items={CONTENT_SOURCE_TAB_VALUES.map((v) => ({
-                  id: v,
-                  label: CONTENT_CATEGORY_LABEL[v] ?? v,
-                  href: `/dashboard/contents?category=${encodeURIComponent(v)}`,
-                }))}
-                value={(category as ContentCategory) || content.category}
-              />
-            </NavGroupAlign>
-          )}
+          <EntityTabs value={view ?? 'competitor'} />
         </div>
       )}
 

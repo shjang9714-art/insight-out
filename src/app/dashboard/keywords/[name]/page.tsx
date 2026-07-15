@@ -8,7 +8,6 @@ import {
   Network,
   TrendingUp,
 } from 'lucide-react'
-import AiInsightTabs from '@/components/analysis/AiInsightTabs'
 import AiMark from '@/components/ui/AiMark'
 import EntityEventTimeline from '@/components/entities/EntityEventTimeline'
 import KeywordTrendChart from '@/components/keywords/KeywordTrendChart'
@@ -349,7 +348,6 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
 
   return (
     <PageContainer className="py-8">
-      <AiInsightTabs value="keyword" />
 
       <nav aria-label="현재 위치" className="mb-5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Link href="/dashboard/issues?view=keyword" className="transition-colors hover:text-brand-600">
