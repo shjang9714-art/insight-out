@@ -28,6 +28,7 @@ import {
   CalendarClock,
   History,
   KeyRound,
+  FileArchive,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -118,6 +119,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         label: '엔티티 사전',
         description: '기업, 조직, 인물 등 엔티티와 별칭, 정규화 기준을 관리합니다.',
         icon: Boxes,
+      },
+      {
+        href: '/admin/company-documents',
+        label: '기업자료 수집',
+        description: '등록 기업의 DART 공시를 수집하고 기업자료 적재 상태를 확인합니다.',
+        icon: FileArchive,
       },
     ],
   },
