@@ -46,6 +46,8 @@ export default function CouncilWorkspace() {
   const pendingConcern =
     searchParams.get('topic') ?? searchParams.get('concern') ?? ''
   const pendingContext = searchParams.get('context') ?? ''
+  const pendingRef = searchParams.get('ref')
+  const pendingRefId = searchParams.get('refId')
 
   const sendContext = useCallback(
     (concern: string, note?: string, sources?: EmbedSource[]) => {
@@ -62,6 +64,27 @@ export default function CouncilWorkspace() {
     },
     [],
   )
+
+  // 362 — ref/refId(콘텐츠·엔티티 상세 진입점)가 있으면 관련 근거 상위 3~5건을
+  // 조회해 sources로 함께 push한다. 조회 실패·refId 없음은 concern/note만(그레이스풀).
+  const pushContext = useCallback(async () => {
+    if (!pendingConcern) return
+    let sources: EmbedSource[] | undefined
+    if (pendingRef && pendingRefId) {
+      try {
+        const res = await fetch(
+          `/api/council/context-sources?ref=${encodeURIComponent(pendingRef)}&refId=${encodeURIComponent(pendingRefId)}`,
+        )
+        if (res.ok) {
+          const data = (await res.json()) as { sources?: EmbedSource[] }
+          if (data.sources && data.sources.length > 0) sources = data.sources
+        }
+      } catch {
+        // 조용한 폴백 — concern/note만 전달
+      }
+    }
+    sendContext(pendingConcern, pendingContext || undefined, sources)
+  }, [pendingConcern, pendingContext, pendingRef, pendingRefId, sendContext])
 
   // 로그인 사용자가 키 입력 없이 COUNCIL(서버 등록 키)을 쓰도록 HMAC 티켓을 발급받아 전달.
   // 실패 시 조용히 BYOK 로 폴백(사용자 흐름을 끊지 않음).
@@ -93,9 +116,7 @@ export default function CouncilWorkspace() {
       if (!data || data.protocol !== COUNCIL_EMBED_PROTOCOL) return
 
       if (data.type === 'ready') {
-        if (pendingConcern) {
-          sendContext(pendingConcern, pendingContext || undefined)
-        }
+        void pushContext()
         void pushTicket()
       } else if (data.type === 'result') {
         setResult(data.payload as ResultPayload)
@@ -103,7 +124,7 @@ export default function CouncilWorkspace() {
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [pendingConcern, pendingContext, sendContext, pushTicket])
+  }, [pushContext, pushTicket])
 
   // 티켓 TTL(600s) 만료 전 8분 주기로 갱신
   useEffect(() => {
