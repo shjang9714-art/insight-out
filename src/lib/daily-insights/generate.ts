@@ -597,6 +597,33 @@ async function generateWeeklyFlow(rows: Record<string, unknown>[]): Promise<Week
   return { headline, flow }
 }
 
+/**
+ * weekly_flows(§5-A) 자가 복구 — 이 기능 배포 전에 이미 daily_insights가 생성된 주차는
+ * 정상 경로(멱등 skip)를 타 weekly_flows가 영영 안 만들어진다. 그런 주차를 만나면
+ * 이미 있는 published 행으로 flow를 만들어 채운다. weekly_flows에 이미 행이 있으면 아무것도 안 함.
+ */
+async function backfillWeeklyFlowIfMissing(admin: ReturnType<typeof createAdminClient>, weekOf: string): Promise<void> {
+  const { data: existingFlow } = await admin.from('weekly_flows').select('week_of').eq('week_of', weekOf).limit(1)
+  if (existingFlow && existingFlow.length > 0) return
+
+  const { data: weekRows, error } = await admin
+    .from('daily_insights')
+    .select('*')
+    .eq('week_of', weekOf)
+    .eq('status', 'published')
+  if (error || !weekRows || weekRows.length === 0) return
+
+  const weeklyFlow = await generateWeeklyFlow(weekRows)
+  if (!weeklyFlow) return
+
+  const { error: upsertError } = await admin
+    .from('weekly_flows')
+    .upsert({ week_of: weekOf, headline: weeklyFlow.headline, flow: weeklyFlow.flow }, { onConflict: 'week_of' })
+  if (upsertError) {
+    console.error(`[핵심Insight][주간흐름] weekOf=${weekOf} 백필 저장 실패: ${upsertError.message}`)
+  }
+}
+
 // ─── 메인 함수 ────────────────────────────────────────────────────────────────
 
 export interface GenerateDailyInsightResult {
@@ -648,6 +675,9 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
       }
     }
     if (existing && existing.length > 0) {
+      // daily_insights는 멱등 skip이지만, weekly_flows(§5-A)는 이 기능 배포 전에 생성된 주차라
+      // 아직 없을 수 있다 — 있는 published 행으로 자가 복구 생성(백필)한다.
+      await backfillWeeklyFlowIfMissing(admin, weekOf)
       return { ok: true, dayOf, weekOf, generated: 0, skipped: true, failed: false, reason: '이번 주 배치가 이미 존재함(멱등 skip)' }
     }
   }
