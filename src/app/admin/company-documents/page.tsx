@@ -52,32 +52,62 @@ function formatDate(value: string | null): string {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(`${value}T00:00:00`))
 }
 
+function isSchemaMissing(error: { code?: string } | null): boolean {
+  return error?.code === '42P01' || error?.code === 'PGRST205'
+}
+
 export default async function CompanyDocumentsAdminPage() {
   const supabase = await createClient()
-  const mappingResult = await supabase
-    .from('entity_dart_map')
-    .select('corp_code, corp_name, entities(canonical_name)')
-    .order('corp_name')
 
-  const schemaReady = !mappingResult.error
-    || (mappingResult.error.code !== '42P01' && mappingResult.error.code !== 'PGRST205')
-  const companies: DartCompanyOption[] = schemaReady
-    ? ((mappingResult.data ?? []) as unknown as MappingRow[]).map((row) => ({
-        corpCode: row.corp_code,
-        corpName: row.corp_name,
-        entityName: firstRelation(row.entities)?.canonical_name ?? row.corp_name,
-      }))
-    : []
+  // 364 — 두 조회를 독립적으로 격리한다. 한쪽이 실패해도 다른 섹션(수집·발견 커넥터)은 정상 렌더되어야 한다.
+  let mappingData: MappingRow[] = []
+  let mappingSchemaMissing = false
+  let mappingErrorMessage: string | null = null
+  try {
+    const { data, error } = await supabase
+      .from('entity_dart_map')
+      .select('corp_code, corp_name, entities(canonical_name)')
+      .order('corp_name')
+    if (error) throw error
+    mappingData = (data ?? []) as unknown as MappingRow[]
+  } catch (err) {
+    const error = err as { code?: string; message?: string }
+    if (isSchemaMissing(error)) {
+      mappingSchemaMissing = true
+    } else {
+      mappingErrorMessage = error.message ?? '알 수 없는 오류'
+      console.error('[company-docs] entity_dart_map 조회 실패:', error)
+    }
+  }
 
-  const documentsResult = schemaReady
-    ? await supabase
-        .from('company_documents')
-        .select('content_id, doc_type, published_on, review_status, ingest_status, dart_rcept_no, contents!inner(title, original_url, status), entities(canonical_name)')
-        .order('published_on', { ascending: false })
-        .limit(50)
-    : { data: null, error: mappingResult.error }
-  const documents = (documentsResult.data ?? []) as unknown as DocumentRow[]
-  const queryError = mappingResult.error ?? documentsResult.error
+  let documentsData: DocumentRow[] = []
+  let documentsSchemaMissing = false
+  let documentsErrorMessage: string | null = null
+  try {
+    const { data, error } = await supabase
+      .from('company_documents')
+      .select('content_id, doc_type, published_on, review_status, ingest_status, dart_rcept_no, contents!company_documents_content_id_fkey(title, original_url, status), entities(canonical_name)')
+      .order('published_on', { ascending: false })
+      .limit(50)
+    if (error) throw error
+    documentsData = (data ?? []) as unknown as DocumentRow[]
+  } catch (err) {
+    const error = err as { code?: string; message?: string }
+    if (isSchemaMissing(error)) {
+      documentsSchemaMissing = true
+    } else {
+      documentsErrorMessage = error.message ?? '알 수 없는 오류'
+      console.error('[company-docs] company_documents 조회 실패:', error)
+    }
+  }
+
+  const schemaReady = !mappingSchemaMissing && !documentsSchemaMissing
+  const companies: DartCompanyOption[] = mappingData.map((row) => ({
+    corpCode: row.corp_code,
+    corpName: row.corp_name,
+    entityName: firstRelation(row.entities)?.canonical_name ?? row.corp_name,
+  }))
+  const documents = documentsData
 
   // llm_usage는 service_role 전용 GRANT라 세션 클라이언트로는 조회 불가 — admin 클라이언트 사용.
   const admin = createAdminClient()
@@ -90,21 +120,29 @@ export default async function CompanyDocumentsAdminPage() {
     <div className="space-y-8">
       <AdminPageHeader />
 
-      {!schemaReady ? (
+      {!schemaReady && (
         <AdminErrorBox>
           355-A 기업자료 SQL이 아직 적용되지 않았습니다. SQL 핸드오프를 적용하면 수집 기능이 활성화됩니다.
         </AdminErrorBox>
-      ) : queryError ? (
-        <AdminErrorBox>기업자료 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</AdminErrorBox>
-      ) : null}
+      )}
+      {mappingErrorMessage && (
+        <AdminErrorBox>
+          DART 기업 매핑을 불러오지 못했습니다: <span className="font-mono text-xs">{mappingErrorMessage}</span>
+        </AdminErrorBox>
+      )}
+      {documentsErrorMessage && (
+        <AdminErrorBox>
+          최근 적재 문서를 불러오지 못했습니다: <span className="font-mono text-xs">{documentsErrorMessage}</span>
+        </AdminErrorBox>
+      )}
 
       <CompanyDocumentsCollector
         companies={companies}
         defaultSince={defaultSince()}
-        schemaReady={schemaReady && !queryError}
+        schemaReady={schemaReady && !mappingErrorMessage}
       />
 
-      {schemaReady && !queryError && (
+      {schemaReady && (
         <CompanyDocumentDiscovery
           initialNaverQuota={naverQuota}
           initialTavilyQuota={tavilyQuota}
@@ -120,7 +158,11 @@ export default async function CompanyDocumentsAdminPage() {
         {documents.length === 0 ? (
           <AdminEmptyState
             icon={FileArchive}
-            message={schemaReady ? '아직 적재된 기업자료가 없습니다.' : '기업자료 테이블이 준비되지 않았습니다.'}
+            message={
+              documentsErrorMessage ? '조회 오류로 표시하지 못했습니다(위 안내 참고).'
+                : schemaReady ? '아직 적재된 기업자료가 없습니다.'
+                : '기업자료 테이블이 준비되지 않았습니다.'
+            }
             className="rounded-xl border border-border bg-card p-10"
           />
         ) : (
