@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { FRAME_SPEC, LGU_CONTEXT } from '@/lib/competitor-weekly/frame-spec'
 import { verifyAnalysis, isImpactValue, type AnalysisInput, type VerifyReport } from '@/lib/competitor-weekly/verify'
 import type { CompetitorWeeklySection } from '@/lib/competitor-weekly/query'
+import { loadPrompt } from '@/lib/prompts/load-prompt'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -57,20 +58,6 @@ async function loadReport(weekStart: string): Promise<ReportRow | null> {
   return (data as ReportRow | null) ?? null
 }
 
-/** 350: 프레임·컨텍스트를 llm_prompts 에서 우선 로드(어드민 콘솔 편집 반영). 없으면 코드 상수. */
-async function loadPromptOrFallback(key: string, fallback: string): Promise<string> {
-  try {
-    const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('llm_prompts')
-      .select('prompt_text')
-      .eq('key', key)
-      .maybeSingle()
-    if (!error && data?.prompt_text) return data.prompt_text as string
-  } catch { /* graceful — 코드 상수 폴백 */ }
-  return fallback
-}
-
 // ─── GET: 분석 컨텍스트 내보내기 ──────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
@@ -102,9 +89,10 @@ export async function GET(request: NextRequest) {
 
   const eventCount = areas.reduce((n, a) => n + a.events.length, 0)
 
+  const promptAdmin = createAdminClient()
   const [frame, lguContext] = await Promise.all([
-    loadPromptOrFallback('competitor_weekly_frame', FRAME_SPEC),
-    loadPromptOrFallback('competitor_weekly_lgu_context', LGU_CONTEXT),
+    loadPrompt(promptAdmin, 'competitor_weekly_frame', FRAME_SPEC),
+    loadPrompt(promptAdmin, 'competitor_weekly_lgu_context', LGU_CONTEXT),
   ])
   const frameSpec = [frame, '', lguContext].join('\n')
 

@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { llmComplete } from '@/lib/llm'
+import { loadPrompt } from '@/lib/prompts/load-prompt'
 
 // ─── 사업 영역 축 (261 §2) ────────────────────────────────────────────────────
 // matched_groups 에는 keyword_groups.name(한글 라벨)이 저장된다 — kind 슬러그가 아님.
@@ -72,20 +73,6 @@ export const FACTS_SYSTEM_FALLBACK = `당신은 사실 추출기다. 아래는 �
   "content_id": "<기사 id>"        // 반드시 주어진 [id] 중 하나
 }]
 같은 사건을 다룬 기사가 여럿이면 하나로 합치고 대표 content_id 하나만 쓴다. JSON 배열만 출력.`
-
-async function loadPrompt(admin: SupabaseClient, key: string, fallback: string): Promise<string> {
-  try {
-    const { data, error } = await admin
-      .from('llm_prompts')
-      .select('prompt_text')
-      .eq('key', key)
-      .maybeSingle()
-    if (!error && data?.prompt_text) return data.prompt_text as string
-  } catch {
-    // graceful — 코드 상수 폴백
-  }
-  return fallback
-}
 
 // ─── 경쟁사 목록 (253 curated_companies 재사용) ───────────────────────────────
 

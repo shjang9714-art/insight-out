@@ -2,6 +2,7 @@ import 'server-only'
 import { FRAME_SPEC, LGU_CONTEXT } from '@/lib/competitor-weekly/frame-spec'
 import { FACTS_SYSTEM_FALLBACK } from '@/lib/competitor-weekly/generate'
 import { COMPANY_SYSTEM_PROMPT } from '@/lib/insight/generate'
+import { RISE_FRAME_FALLBACK } from '@/lib/keywords/rise-frame'
 import { STRATEGY_SYSTEM_FALLBACK } from '@/lib/reports/generate-strategy'
 
 /**
@@ -23,6 +24,13 @@ export interface PromptCatalogEntry {
 }
 
 export const PROMPT_CATALOG: PromptCatalogEntry[] = [
+  {
+    key: 'keyword_rise_frame',
+    label: '키워드 상승 요인 — 패스② 분석 프레임',
+    group: '키워드 분석',
+    description: '최근 근거 사건을 시장 관심 상승 요인 3~5개로 묶는 출력 스키마와 작성 규칙.',
+    fallback: RISE_FRAME_FALLBACK,
+  },
   {
     key: 'competitor_weekly_facts',
     label: '경쟁사 주간 브리핑 — 패스① 사실 추출',
