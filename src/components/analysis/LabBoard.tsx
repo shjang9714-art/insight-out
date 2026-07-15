@@ -34,6 +34,7 @@ export interface LabBoardProps {
   trendingTopics: TopicTrend[]
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
+  error?: string
 }
 
 export default function LabBoard({
@@ -44,6 +45,7 @@ export default function LabBoard({
   trendingTopics,
   kwStrip,
   issueCards,
+  error,
 }: LabBoardProps) {
   const view: LabViewId = LAB_VIEW_IDS.includes(initialView) ? initialView : 'headline'
 
@@ -59,6 +61,13 @@ export default function LabBoard({
           </p>
         </div>
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          <p className="font-semibold">실험실 데이터 오류</p>
+          <p className="mt-1 break-words font-mono text-xs">{error}</p>
+        </div>
+      )}
 
       <InsightViewTabs
         items={LAB_TABS.map(t => ({ ...t, href: `/dashboard/lab?view=${t.id}` }))}
