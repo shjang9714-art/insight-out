@@ -39,7 +39,6 @@ async function fetchFallbackTop(): Promise<TickerIssue[]> {
       title: card.title,
       topHashtag: card.topKeywords[0] ?? null,
       recentCount: card.recentCount,
-      todayCount: card.recentCount, // 폴백 집계엔 일자별 필터가 없어 최근 집계로 대체
       changePct: card.changePct,
       changeFlag: card.changeFlag,
       sentimentPos: card.sentimentPos,
@@ -61,7 +60,6 @@ export default async function IssueSignals() {
         entityChip: e.entityChip,
         topHashtag: e.topHashtag,
         recentCount: e.recentCount,
-        todayCount: e.todayCount,
         changePct: e.changePct,
         changeFlag: e.changeFlag,
         sentimentPos: 0,
@@ -75,11 +73,7 @@ export default async function IssueSignals() {
   // 전 새벽 등) 데이터가 있는 가장 최근 직전 날짜로 자동 전환된다. 폴백 집계는 일자 정보가
   // 없어 현재 KST 날짜를 그대로 쓴다(기존 동작 유지).
   const basisDateKst = trending?.asOfDateKst ?? getKstDateString()
-  const isBasisToday = basisDateKst === getKstDateString()
   const todayLabel = formatKstMonthDay(basisDateKst)
-  // 헤더 라벨뿐 아니라 각 행 "오늘 N건" 문구도 기준일을 따라간다 — 기준일이 오늘이 아니면
-  // "오늘"이라 부르지 않고 날짜로 표시(과거 데이터를 "오늘"로 표시하던 옛 버그 재발 방지).
-  const dayLabel = isBasisToday ? '오늘' : todayLabel
 
   return (
     // 실검 스트립 — 카드가 아닌 한 줄 바. 제목만 휘리릭 롤링.
@@ -92,7 +86,7 @@ export default async function IssueSignals() {
 
       {/* 한 줄 롤링(클라이언트) */}
       <div className="min-w-0 flex-1">
-        <IssueRankTicker compact issues={top} dayLabel={dayLabel} />
+        <IssueRankTicker compact issues={top} />
       </div>
 
       <Link
