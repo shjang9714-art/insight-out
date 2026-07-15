@@ -86,7 +86,7 @@ const STOPWORDS = new Set([
   '추진', '단행', '확대', '강화', '가속', '가속화', '모색', '대응',
 ])
 
-function relevanceTokens(title: string): Set<string> {
+export function relevanceTokens(title: string): Set<string> {
   const normalized = title.replace(PUNCT_RE, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
   const tokens = normalized.split(' ').filter((t) => t.length > 0 && !PURE_NUMBER_RE.test(t) && !STOPWORDS.has(t))
   return new Set(tokens)

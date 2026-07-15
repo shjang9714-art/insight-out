@@ -5,9 +5,14 @@ import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, type KeyInsightCandidate, type PastArticleRef } from '@/lib/key-insights/candidates'
 import { getKstDateString, getKstWeekMondayString } from '@/lib/date'
-import { dedupeSimilarArticles } from '@/lib/daily-insights/dedupe'
-import { classifyPastArticleCategories, isRelevantPastArticle } from '@/lib/daily-insights/relevance'
-import type { CompetitorMatrixEntry, DailyInsightPastArticle, DailyInsightSourceArticle } from '@/lib/daily-insights/types'
+import { dedupeSimilarArticles, jaccardSimilarity } from '@/lib/daily-insights/dedupe'
+import { classifyPastArticleCategories, isRelevantPastArticle, relevanceTokens } from '@/lib/daily-insights/relevance'
+import type {
+  CompetitorMatrixEntry,
+  DailyInsightPastArticle,
+  DailyInsightSourceArticle,
+  ImplicationLenses,
+} from '@/lib/daily-insights/types'
 
 // 지시서 20260715: "매일 3개(day_of)" → "매주 최대 10개(week_of)" 복귀. 콘텐츠 모델(3C 종합·
 // 근거/과거기사·환각가드)은 지시서 20260711 그대로, 수집 범위·발행 주기만 주간으로 되돌린다.
@@ -25,6 +30,12 @@ const REQUIRED_MIN_CATEGORIES: string[] = [...TIER1_CATEGORIES, AIDC_CATEGORY]
 const SUPPRESS_UNCATEGORIZED_WHEN_CATEGORIZED_EXISTS = true
 // 과거기사 6개월 컷오프(§3 확정 사항) — candidates.ts 의 pastArticles 는 날짜 하한이 없어 여기서 적용.
 const PAST_ARTICLE_MAX_AGE_DAYS = 180
+// 지시서 20260716 §4 — issueId 없는 후보(단독 클러스터)를 제목 토큰 유사도로 추가 묶어 인사이트당
+// 근거기사 1건 문제를 완화. dedupe.ts 의 근접중복 임계값(0.6, 숫자까지 구분 신호)보다 느슨하되
+// relevance.ts 의 과거기사 관련성 임계값(0.13, 완전히 다른 화제까지 붙을 위험)보다는 엄격하게 잡는다.
+const TOPIC_MERGE_JACCARD_THRESHOLD = 0.2
+// 우연한 공통 불용어 1개만으로 묶이는 걸 막는 최소 공유 토큰 수.
+const TOPIC_MERGE_MIN_SHARED_TOKENS = 2
 
 // ─── 가이드 §4.1 배제 규칙 — 벤더 제품 블로그·행사성 기사 ────────────────────────────
 // "범용 시황 오피니언"은 candidates.ts→isBriefingRelevant()의 isStockMarketHeavy()가 이미 제외.
@@ -62,20 +73,76 @@ function rankMembers(members: KeyInsightCandidate[]): KeyInsightCandidate[] {
   return [...members].sort((a, b) => b.importanceScore - a.importanceScore).slice(0, MAX_MEMBERS_PER_GROUP)
 }
 
-/** 카테고리 버킷 내부를 issueId 기준 화제(클러스터)로 나눈다. issueId 없는 후보는 각자 단독 클러스터. */
+/**
+ * issueId 없는 후보(candidates.ts 의 신뢰 이슈클러스터에 못 걸린 것들)를 제목 토큰 유사도로
+ * 추가 그룹핑 — 지시서 20260716 §4. issueId 기반 그룹(더 신뢰 가능한 신호)은 건드리지 않는다.
+ * 그리디 단일연결(single-linkage) 대신 "그룹에 누적된 토큰 합집합"과 비교해, 약한 연결 몇 개로
+ * 서로 무관한 기사가 사슬처럼 딸려 들어오는 걸 억제한다.
+ */
+function mergeSinglesByTopic(singles: KeyInsightCandidate[]): KeyInsightCandidate[][] {
+  const sorted = [...singles].sort((a, b) => b.importanceScore - a.importanceScore)
+
+  // 도메인 공통어("AI"·"데이터센터" 등) 하나만으로 서로 다른 사건이 묶이는 걸 막는다 —
+  // 이 배치(카테고리 내 단독후보 전체) 안에서 자주 등장하는 토큰은 유사도 신호에서 제외.
+  const rawTokensById = new Map<string, Set<string>>()
+  const docFreq = new Map<string, number>()
+  for (const c of sorted) {
+    const tokens = relevanceTokens(c.title)
+    rawTokensById.set(c.contentId, tokens)
+    for (const t of tokens) docFreq.set(t, (docFreq.get(t) ?? 0) + 1)
+  }
+  const commonTokenThreshold = Math.max(2, Math.ceil(sorted.length * 0.4))
+  function distinctiveTokens(tokens: Set<string>): Set<string> {
+    const out = new Set<string>()
+    for (const t of tokens) if ((docFreq.get(t) ?? 0) < commonTokenThreshold) out.add(t)
+    return out
+  }
+
+  const groups: { members: KeyInsightCandidate[]; tokenUnion: Set<string> }[] = []
+
+  for (const c of sorted) {
+    const tokens = distinctiveTokens(rawTokensById.get(c.contentId)!)
+    let target: (typeof groups)[number] | null = null
+
+    if (tokens.size > 0) {
+      for (const g of groups) {
+        if (g.members.length >= MAX_MEMBERS_PER_GROUP) continue
+        let shared = 0
+        for (const t of tokens) if (g.tokenUnion.has(t)) shared++
+        if (shared < TOPIC_MERGE_MIN_SHARED_TOKENS) continue
+        if (jaccardSimilarity(tokens, g.tokenUnion) >= TOPIC_MERGE_JACCARD_THRESHOLD) {
+          target = g
+          break
+        }
+      }
+    }
+
+    if (target) {
+      target.members.push(c)
+      for (const t of tokens) target.tokenUnion.add(t)
+    } else {
+      groups.push({ members: [c], tokenUnion: tokens })
+    }
+  }
+
+  return groups.map((g) => g.members)
+}
+
+/** 카테고리 버킷 내부를 issueId 기준 화제(클러스터)로 나눈다. issueId 없는 후보는 제목 유사도로 추가 그룹핑. */
 function clusterWithinCategory(category: string | null, members: KeyInsightCandidate[]): TopicCluster[] {
   const byIssue = new Map<string, KeyInsightCandidate[]>()
-  const singles: KeyInsightCandidate[][] = []
+  const singleCandidates: KeyInsightCandidate[] = []
   for (const c of members) {
     if (c.issueId) {
       const list = byIssue.get(c.issueId) ?? []
       list.push(c)
       byIssue.set(c.issueId, list)
     } else {
-      singles.push([c])
+      singleCandidates.push(c)
     }
   }
-  const clusters = [...byIssue.values(), ...singles]
+  const mergedSingles = mergeSinglesByTopic(singleCandidates)
+  const clusters = [...byIssue.values(), ...mergedSingles]
   return clusters
     .map((clusterMembers) => {
       const sorted = rankMembers(clusterMembers)
@@ -164,23 +231,44 @@ function buildSystemPrompt(): string {
   return (
     '당신은 LG유플러스 전략기획을 총괄하는 시니어 애널리스트다. 독자는 LG유플러스 임직원이며, ' +
     '이 글은 사내 웹 포털의 주간 코너 "핵심 Insight"다. 이번 주 하나의 주제로 묶인 기사 묶음을 입력으로 ' +
-    '받아, 개별 기사 요약이 아니라 그 묶음을 관통하는 "관점"을 종합한다.\n\n' +
+    '받아, 개별 기사 요약이 아니라 그 묶음을 관통하는 "관점"을 종합한다. 주간 발행이라 깊이에 투자한다 — ' +
+    '이 인사이트 1건만 읽어도 충분한 정보량과 다관점을 갖추도록 서술한다.\n\n' +
     '반드시 지켜야 할 규칙:\n' +
     '1. headline: 입력 기사들을 아우르는 관점 한 줄. 특정 기사의 제목을 그대로 베끼지 않는다.\n' +
     '2. summary_ko: 이 묶음이 왜 지금 중요한지 1~2문장.\n' +
-    '3. market_trend: 시장·산업 전반의 동향. 입력 기사로 뒷받침되지 않으면 null.\n' +
-    '4. competitor_trend: 경쟁사(SKT/KT/SK브로드밴드) 또는 글로벌 빅테크 동향. 입력 기사로 뒷받침되지 않으면 null.\n' +
-    '5. implication: LG유플러스 관점 시사점 1~2문장 — 기회/위협인지, 무엇을 준비해야 하는지. ' +
-    '"LG유플러스는"/"LGU+는" 같은 도입 문구로 시작하지 말고 본문으로 바로 시작해라.\n' +
-    '6. market_trend·competitor_trend·implication 중 입력 기사로 근거가 없는 항목은 억지로 채우지 말고 null로 비운다.\n' +
+    '3. market_trend: 시장·산업 전반의 동향, 2~3문장. 시장 전체 각도(경쟁사 개별 동향이나 자사 입장과 ' +
+    '겹치지 않게). 입력 기사에 규모·변화폭 등 수치가 있으면 반드시 포함하고, "왜 지금 이 움직임이 ' +
+    '나오는지"를 한 번은 짚는다. 수치가 없으면 지어내지 말고 정성적으로 서술. 근거가 없으면 null.\n' +
+    '4. competitor_trend: 경쟁사(SKT/KT/SK브로드밴드) 또는 글로벌 빅테크 개별 동향, 2~3문장. market_trend와 ' +
+    '다른 각도(개별 사업자 움직임 중심)로 쓴다. 수치·"왜 지금"은 3번과 동일 기준. 근거 없으면 null.\n' +
+    '5. implication: LG유플러스 입장에서 본 시사점, 2~3문장 — 기회/위협인지, 무엇을 준비해야 하는지. ' +
+    'market_trend·competitor_trend와 다른 각도(우리 입장)로 쓴다. ' +
+    '"LG유플러스는"/"LGU+는" 같은 도입 문구로 시작하지 말고 본문으로 바로 시작해라. ' +
+    '이 필드는 구버전 화면과의 하위호환 폴백 요약이므로 아래 8번 implication_lenses 와 별개로 항상 채운다.\n' +
+    '6. market_trend·competitor_trend 중 입력 기사로 근거가 없는 항목은 억지로 채우지 말고 null로 비운다 ' +
+    '(implication 은 5번대로 항상 채움).\n' +
     '7. competitor_matrix: 이 주제에 실제로 이름이 등장하는 사업자별 이번 움직임(move)·강점/차별점(edge)·' +
     '리스크·공백(risk)을 배열로. 입력 기사에 이름이 나오지 않는 회사는 절대 포함하지 않는다. ' +
     '근거가 부족한 항목의 값은 "—"로 둔다. 경쟁 구도 비교가 무의미한 주제(예: 일반 정책 동향)면 빈 배열 []로 둔다.\n' +
-    '8. 입력에 없는 사실·수치·회사명·인용을 창작하지 않는다.\n' +
-    '9. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '8. why_it_matters: 이 이슈가 산업적·비즈니스적으로 왜 중요한지 1~2문장. "이게 왜 지금 업계에 의미가 ' +
+    '있나"를 큰 그림으로, 압축적으로. 근거가 정말 없으면 null.\n' +
+    '9. implication_lenses: 자사(LG유플러스) 시사점을 4갈래로 나눈 객체 ' +
+    '{"opportunity":"...","risk":"...","action":"...","editorial":"..."}.\n' +
+    '   - opportunity: 우리가 선점·활용할 여지, 2~3문장. 근거 없으면 이 키를 아예 넣지 않는다.\n' +
+    '   - risk: 방치하거나 경쟁에서 뒤처질 때의 위협, 2~3문장. 근거 없으면 이 키를 아예 넣지 않는다.\n' +
+    '   - action: 이번 분기/주에 특정 팀이 실행할 수 있는 구체 행동 1~2개. 회사명·수치 등 사실 요소는 ' +
+    '창작 금지하되, 합리적 실행 제안 문장 자체는 허용. 제안할 게 마땅치 않으면 이 키를 넣지 않는다.\n' +
+    '   - editorial: 개별 사실을 관통하는 에디터 시각의 종합 프레임, 1문단. 근거 없으면 넣지 않는다.\n' +
+    '   - 채울 수 있는 필드가 하나도 없으면 implication_lenses 자체를 null로.\n' +
+    '10. 위 4개 렌즈끼리도 서로 다른 내용이어야 한다 — 같은 문장을 표현만 바꿔 여러 키에 반복 금지.\n' +
+    '11. 입력에 없는 사실·수치·회사명·인용을 창작하지 않는다(단 action 렌즈의 제안 문장 자체는 허용).\n' +
+    '12. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
     '출력 스키마:\n' +
     '{"headline":"...","summary_ko":"...","market_trend":"...|null","competitor_trend":"...|null",' +
-    '"implication":"...|null","competitor_matrix":[{"company":"...","move":"...","edge":"...","risk":"..."}]}'
+    '"implication":"...","why_it_matters":"...|null",' +
+    '"implication_lenses":{"opportunity":"...","risk":"...","action":"...","editorial":"..."}' +
+    '|null,' +
+    '"competitor_matrix":[{"company":"...","move":"...","edge":"...","risk":"..."}]}'
   )
 }
 
@@ -205,7 +293,24 @@ interface GroupCard {
   market_trend: string | null
   competitor_trend: string | null
   implication: string | null
+  why_it_matters: string | null
+  implication_lenses: ImplicationLenses | null
   competitor_matrix: CompetitorMatrixEntry[]
+}
+
+const IMPLICATION_LENS_KEYS = ['opportunity', 'risk', 'action', 'editorial'] as const
+
+function parseImplicationLenses(raw: unknown): ImplicationLenses | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const lenses: ImplicationLenses = {}
+  for (const key of IMPLICATION_LENS_KEYS) {
+    const v = r[key]
+    if (typeof v !== 'string') continue
+    const trimmed = v.trim()
+    if (trimmed && trimmed.toLowerCase() !== 'null') lenses[key] = trimmed
+  }
+  return Object.keys(lenses).length > 0 ? lenses : null
 }
 
 function parseGroupCard(raw: string): GroupCard | null {
@@ -217,7 +322,14 @@ function parseGroupCard(raw: string): GroupCard | null {
   const summaryKo = typeof h.summary_ko === 'string' ? h.summary_ko.trim() : ''
   if (!headline || !summaryKo) return null
 
-  const clean = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  // LLM이 JSON null 대신 문자열 "null"을 내려보내는 경우가 있어(더미 노출 버그), 트림 후
+  // "null"(대소문자 무관)이면 실제 null로 취급한다.
+  const clean = (v: unknown): string | null => {
+    if (typeof v !== 'string') return null
+    const trimmed = v.trim()
+    if (!trimmed || trimmed.toLowerCase() === 'null') return null
+    return trimmed
+  }
 
   const matrixRaw = Array.isArray(h.competitor_matrix) ? h.competitor_matrix : []
   const competitorMatrix: CompetitorMatrixEntry[] = matrixRaw
@@ -241,6 +353,8 @@ function parseGroupCard(raw: string): GroupCard | null {
     market_trend: clean(h.market_trend),
     competitor_trend: clean(h.competitor_trend),
     implication: clean(h.implication),
+    why_it_matters: clean(h.why_it_matters),
+    implication_lenses: parseImplicationLenses(h.implication_lenses),
     competitor_matrix: competitorMatrix,
   }
 }
@@ -444,6 +558,8 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
       market_trend: card.market_trend,
       competitor_trend: card.competitor_trend,
       implication: card.implication,
+      why_it_matters: card.why_it_matters,
+      implication_lenses: card.implication_lenses,
       source_articles: sourceArticles.length > 0 ? sourceArticles : null,
       related_past: relatedPast.length > 0 ? relatedPast : null,
       competitor_matrix: competitorMatrix,
