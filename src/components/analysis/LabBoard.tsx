@@ -11,20 +11,11 @@ import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import type { IssueCard } from '@/lib/issues/activity'
 import type { TopicTrend } from '@/components/analysis/AiInsightBoard'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
+import { LAB_TABS, LAB_VIEW_IDS, type LabViewId } from '@/lib/lab/tabs'
 
 // 실험실(관리자 전용) 페이지 — 숨김 처리된 하위탭을 모아 확인하는 곳.
 // 현재: 헤드라인 분석/뜨는 토픽/이슈 타임라인 (AiInsightBoard.tsx 의 LAB_TABS 이관).
 // 앞으로 생길 실험 탭은 LAB_TABS 배열에 추가 + 아래 렌더 분기만 추가하면 됨.
-
-export type LabViewId = 'headline' | 'trending' | 'issues'
-
-export const LAB_TABS: { id: LabViewId; label: string }[] = [
-  { id: 'headline', label: '헤드라인 분석' },
-  { id: 'trending', label: '뜨는 토픽' },
-  { id: 'issues',   label: '이슈 타임라인' },
-]
-
-export const LAB_VIEW_IDS: readonly LabViewId[] = LAB_TABS.map(t => t.id)
 
 export interface LabBoardProps {
   initialView: LabViewId
@@ -48,6 +39,22 @@ export default function LabBoard({
   error,
 }: LabBoardProps) {
   const view: LabViewId = LAB_VIEW_IDS.includes(initialView) ? initialView : 'headline'
+  const safeInsightGroups = (Array.isArray(insightGroups) ? insightGroups : []).map((group) => ({
+    ...group,
+    cards: (Array.isArray(group.cards) ? group.cards : []).map((card) => ({
+      ...card,
+      source_content_ids: Array.isArray(card.source_content_ids) ? card.source_content_ids : [],
+      citations: Array.isArray(card.citations) ? card.citations : [],
+    })),
+  }))
+  const safeContentMap = contentMap && typeof contentMap === 'object' ? contentMap : {}
+  const safeBucketByTopic = bucketByTopic && typeof bucketByTopic === 'object' ? bucketByTopic : {}
+  const safeTrendingTopics = Array.isArray(trendingTopics) ? trendingTopics : []
+  const safeKwStrip = Array.isArray(kwStrip) ? kwStrip : []
+  const safeIssueCards = (Array.isArray(issueCards) ? issueCards : []).map((card) => ({
+    ...card,
+    topKeywords: Array.isArray(card.topKeywords) ? card.topKeywords : [],
+  }))
 
   return (
     <div className="space-y-6">
@@ -81,9 +88,9 @@ export default function LabBoard({
             이번 주 읽어야 할 결론 — AI가 분석한 헤드라인과 시사점
           </p>
           <InsightCardsSectionClient
-            groups={insightGroups}
-            contentMap={contentMap}
-            bucketByTopic={bucketByTopic}
+            groups={safeInsightGroups}
+            contentMap={safeContentMap}
+            bucketByTopic={safeBucketByTopic}
           />
         </section>
       )}
@@ -94,11 +101,11 @@ export default function LabBoard({
           <p className="mb-4 text-xs text-muted-foreground">
             이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비
           </p>
-          {trendingTopics.length === 0 ? (
+          {safeTrendingTopics.length === 0 ? (
             <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
           ) : (
             <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-              {trendingTopics.map((t) => (
+              {safeTrendingTopics.map((t) => (
                 <Link
                   key={t.group}
                   href={`/dashboard/topics/${encodeURIComponent(t.group)}`}
@@ -123,10 +130,10 @@ export default function LabBoard({
             </div>
           )}
 
-          {kwStrip.length > 0 && (
+          {safeKwStrip.length > 0 && (
             <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
               <span className="shrink-0 text-[11px] text-muted-foreground/60">키워드</span>
-              {kwStrip.map((kw) => (
+              {safeKwStrip.map((kw) => (
                 <Link
                   key={kw.name}
                   href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
@@ -158,7 +165,7 @@ export default function LabBoard({
           <p className="mb-4 text-xs text-muted-foreground">
             추적 이슈의 변화 — 건수·논조 변동을 확인합니다
           </p>
-          <IssueBoardClient cards={issueCards} showLensSwitcher={false} />
+          <IssueBoardClient cards={safeIssueCards} showLensSwitcher={false} />
         </section>
       )}
     </div>
