@@ -74,7 +74,7 @@ export type ContentCategory =
   // 현재 UI 카테고리 (6개)
   | '뉴스' | '리서치' | '웹인사이트' | '유튜브' | 'AI분석' | '전략보고서'
   // DB enum 유지 (기존 데이터 — UI 카테고리로 매핑해 표시)
-  | '리포트' | 'AI보고서'
+  | '리포트' | '기업자료' | 'AI보고서'
   // deprecated: 수집 미사용
   | '가트너' | 'KRG' | '오피니언' | '뉴스레터'
 
@@ -237,6 +237,73 @@ export interface CrawlLog {
   created_at: string
 }
 
+export type CompanyDocumentType =
+  | '회사소개'
+  | 'IR·실적'
+  | '전략·보고서'
+  | 'ESG'
+  | '기술·제품'
+  | '투자·피치덱'
+  | '행사·발표'
+
+export type CompanyDocumentGroup = '회사및사업' | '기술및제품' | '투자및경영'
+
+export type CompanyDocumentSourceKind =
+  | 'API'
+  | 'RSS'
+  | 'SITEMAP'
+  | 'HTML_LIST'
+  | 'HTML_DETAIL'
+  | 'DOCUMENT_DIRECTORY'
+  | 'HEADLESS_BROWSER'
+  | 'MANUAL'
+
+export interface CompanyDocument {
+  content_id: string
+  entity_id: string | null
+  doc_type: CompanyDocumentType
+  doc_group: CompanyDocumentGroup
+  is_official: boolean
+  source_kind: CompanyDocumentSourceKind
+  page_count: number | null
+  published_on: string | null
+  official_status: string
+  access_scope: string
+  version_group_id: string | null
+  prev_content_id: string | null
+  ingest_status: string
+  review_status: string
+  dart_rcept_no: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EntityDartMap {
+  entity_id: string
+  corp_code: string
+  corp_name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentSource {
+  id: string
+  entity_id: string
+  name: string
+  url: string
+  source_kind: CompanyDocumentSourceKind
+  collect_method: string
+  target_file_types: string[]
+  interval_minutes: number | null
+  last_crawled_at: string | null
+  last_success_at: string | null
+  is_active: boolean
+  error_state: string | null
+  auto_publish: boolean
+  created_at: string
+  updated_at: string
+}
+
 // ============================================================
 // 북마크·아카이빙 도메인
 // ============================================================
@@ -322,6 +389,7 @@ export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
   '전략보고서': '전략보고서',
   // DB enum (기존 데이터)
   '리포트': '리포트',
+  '기업자료': '기업자료',
   'AI보고서': 'AI 보고서',
   // deprecated
   '가트너': '가트너 리포트',
