@@ -29,12 +29,12 @@ function computeTrendingTopics(
   const thisWeekStart = todayStartMs - 6 * 24 * 60 * 60 * 1000
   const prevWeekStart = todayStartMs - 13 * 24 * 60 * 60 * 1000
 
-  for (const row of rows) {
-    if (!row.matched_groups?.length) continue
+  for (const row of rows ?? []) {
+    if (!(row.matched_groups ?? []).length) continue
     const kstMs = new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000
     const isThisWeek = kstMs >= thisWeekStart + 9 * 60 * 60 * 1000
     const isPrevWeek = !isThisWeek && kstMs >= prevWeekStart + 9 * 60 * 60 * 1000
-    for (const g of row.matched_groups) {
+    for (const g of row.matched_groups ?? []) {
       if (isThisWeek) curMap[g]  = (curMap[g]  ?? 0) + 1
       if (isPrevWeek) prevMap[g] = (prevMap[g] ?? 0) + 1
     }
@@ -67,9 +67,27 @@ export interface LabData {
   trendingTopics: TopicTrend[]
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
+  error?: string
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function createEmptyLabData(error?: string): LabData {
+  return {
+    insightGroups: [],
+    contentMap: {},
+    bucketByTopic: {},
+    trendingTopics: [],
+    kwStrip: [],
+    issueCards: [],
+    ...(error ? { error } : {}),
+  }
 }
 
 export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
+  try {
   const todayStart   = getKstTodayStartIso()
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
@@ -118,7 +136,7 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
     const kstMs = new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000
     const isThisWeek = kstMs >= thisWeekStartMs + 9 * 60 * 60 * 1000
     const isPrevWeek = !isThisWeek && kstMs >= prevWeekStartMs + 9 * 60 * 60 * 1000
-    for (const kw of row.matched_keywords) {
+    for (const kw of row.matched_keywords ?? []) {
       kwFreq[kw] = (kwFreq[kw] ?? 0) + 1
       if (isThisWeek) kwCurFreq[kw]  = (kwCurFreq[kw]  ?? 0) + 1
       if (isPrevWeek) kwPrevFreq[kw] = (kwPrevFreq[kw] ?? 0) + 1
@@ -170,8 +188,8 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
   if (cards.length > 0) {
     const allIds = new Set<string>()
     for (const card of cards) {
-      for (const id of card.source_content_ids) allIds.add(id)
-      for (const c of (card.citations as InsightCardCitation[])) allIds.add(c.content_id)
+      for (const id of card.source_content_ids ?? []) allIds.add(id)
+      for (const c of (card.citations ?? []) as InsightCardCitation[]) allIds.add(c.content_id)
     }
     if (allIds.size > 0) {
       const { data: contents } = await supabase
@@ -236,5 +254,9 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
     trendingTopics,
     kwStrip,
     issueCards,
+  }
+  } catch (error) {
+    console.error('[lab] getLabData 실패:', error)
+    return createEmptyLabData(getErrorMessage(error))
   }
 }
