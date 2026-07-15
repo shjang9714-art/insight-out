@@ -68,7 +68,7 @@ export default function AdminCompetitorWeeklyAnalyze() {
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-foreground">주간 리포트 분석 (패스② · Claude 수동)</h2>
+        <h2 className="text-sm font-semibold text-foreground">경쟁사 주간 브리핑 분석 (패스② · Claude 수동)</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           사실 추출(생성)이 끝난 주에 대해 컨텍스트를 복사 → Claude에 붙여넣기 → 결과 JSON을 다시 붙여넣으면
           근거 검증 후 저장됩니다. 근거가 없는 문장은 저장되지 않습니다.

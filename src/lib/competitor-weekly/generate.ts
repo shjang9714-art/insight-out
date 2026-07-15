@@ -60,7 +60,7 @@ export function getLastCompletedWeekKst(): { weekStart: string; weekEnd: string 
 // ─── LLM 프롬프트 (llm_prompts DB 우선, 미적용 시 코드 상수 폴백) ─────────────
 
 // 348 패스① — 사실 추출 전용. **해석 금지.**
-const FACTS_SYSTEM_FALLBACK = `당신은 사실 추출기다. 아래는 이번 주 '{area_label}' 영역의 경쟁사 관련 기사다.
+export const FACTS_SYSTEM_FALLBACK = `당신은 사실 추출기다. 아래는 이번 주 '{area_label}' 영역의 경쟁사 관련 기사다.
 기사에서 **사건(event)**만 뽑아 정규화하라. **해석·전망·평가를 절대 쓰지 마라.**
 금지 표현: "~로 보인다", "~할 전망", "공격적", "두드러진", "주목된다" 등 일체의 해석어.
 출력(JSON 배열만):

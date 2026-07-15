@@ -14,8 +14,8 @@ import { ListChecks } from 'lucide-react'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '경쟁사 주간 리포트 | 어드민 | Insight Out',
-  description: '경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성·확인합니다.',
+  title: '경쟁사 주간 브리핑 | 어드민 | Insight Out',
+  description: '경쟁사 동향을 사업영역별로 종합한 주간 브리핑을 생성·확인합니다.',
 }
 
 interface RecentReportRow {
@@ -67,11 +67,11 @@ export default async function CompetitorWeeklyAdminPage() {
       <AdminCompetitorWeeklySchedule />
 
       <div>
-        <AdminSectionHeader icon={ListChecks} title="최근 리포트" hint="최신 10건 (초안 포함)" />
+        <AdminSectionHeader icon={ListChecks} title="최근 브리핑" hint="최신 10건 (초안 포함)" />
         {error && error.code === '42P01' ? (
-          <AdminEmptyState message="주간 리포트 테이블이 아직 준비되지 않았습니다 (SQL 미적용)." className="p-8 rounded-lg" />
+          <AdminEmptyState message="주간 브리핑 테이블이 아직 준비되지 않았습니다 (SQL 미적용)." className="p-8 rounded-lg" />
         ) : reports.length === 0 ? (
-          <AdminEmptyState message="아직 생성된 주간 리포트가 없습니다." className="p-8 rounded-lg" />
+          <AdminEmptyState message="아직 생성된 경쟁사 주간 브리핑이 없습니다." className="p-8 rounded-lg" />
         ) : (
           <div className="space-y-2">
             {reports.map((r) => (

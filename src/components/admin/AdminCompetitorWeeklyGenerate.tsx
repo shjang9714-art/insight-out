@@ -24,7 +24,7 @@ export default function AdminCompetitorWeeklyGenerate() {
   const [error, setError] = useState<string | null>(null)
 
   const handleGenerate = async () => {
-    if (!window.confirm('최근 완결된 주(월~일)의 경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성하시겠습니까? (LLM 호출)')) return
+    if (!window.confirm('최근 완결된 주(월~일)의 경쟁사 동향을 사업영역별로 종합한 경쟁사 주간 브리핑을 생성하시겠습니까? (LLM 호출)')) return
     setIsGenerating(true)
     setResult(null)
     setError(null)
@@ -44,7 +44,7 @@ export default function AdminCompetitorWeeklyGenerate() {
         reason: data.reason,
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '주간 경쟁 리포트 생성에 실패했습니다.')
+      setError(e instanceof Error ? e.message : '경쟁사 주간 브리핑 생성에 실패했습니다.')
     } finally {
       setIsGenerating(false)
     }
@@ -53,7 +53,7 @@ export default function AdminCompetitorWeeklyGenerate() {
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center gap-1.5">
-        <h2 className="text-sm font-semibold text-foreground">주간 경쟁 리포트 생성</h2>
+        <h2 className="text-sm font-semibold text-foreground">경쟁사 주간 브리핑 생성 (패스① 사실추출)</h2>
         <InfoHelp copy={COMPETITOR_WEEKLY_HELP} />
       </div>
       <p className="text-xs text-muted-foreground">
@@ -64,7 +64,7 @@ export default function AdminCompetitorWeeklyGenerate() {
           {isGenerating ? (
             <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
           ) : (
-            <><Sparkles className="h-3.5 w-3.5 mr-1.5" />주간 경쟁 리포트 생성</>
+            <><Sparkles className="h-3.5 w-3.5 mr-1.5" />경쟁사 주간 브리핑 생성</>
           )}
         </Button>
       </div>

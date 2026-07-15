@@ -165,7 +165,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         description: 'LLM을 사용하는 논조, 위기·기회, 유튜브 요약, 뉴스 요약, 신호 분류 작업을 실행합니다.',
         icon: Sparkles,
       },
-      // Phase 2/3 후보(신규 route 아님, 문서 TODO): 프롬프트 관리 — ADMIN_RESTRUCTURE_PLAN.md 참고
+      {
+        href: '/admin/prompts',
+        label: '프롬프트 콘솔',
+        description: 'AI 생성기 프롬프트(경쟁사 주간 브리핑·기업동향·전략보고서)를 편집·저장합니다.',
+        icon: Sparkles,
+      },
     ],
   },
   {
@@ -191,8 +196,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       },
       {
         href: '/admin/competitor-weekly',
-        label: '경쟁사 주간 리포트',
-        description: '경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성·확인합니다.',
+        label: '경쟁사 주간 브리핑',
+        description: '경쟁사 동향을 사업영역별로 종합한 주간 브리핑을 생성·확인합니다.',
         icon: TrendingUp,
       },
       {

@@ -236,10 +236,14 @@ export default function CompetitorWeeklyReport({ report }: Props) {
 
   return (
     <article className="io-report">
-      <header className="mb-8 border-b-2 border-foreground pb-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="text-[12px] font-bold uppercase tracking-[0.14em] text-brand-700">
-            Competitor Weekly · {isoWeekLabel(week_start)}
+      {/* 350: 제호(mast) — "경쟁사 동향 브리핑" 을 확실히 단다. 그 아래 주차·근거·판정. */}
+      <header className="mb-8 border-b-2 border-foreground pb-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <span className="text-[15px] font-bold tracking-tight text-foreground">
+            경쟁사 동향 브리핑
+            <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.14em] text-brand-700">
+              {isoWeekLabel(week_start)}
+            </span>
           </span>
           <span className="text-[12px] text-muted-foreground">
             {formatWeekRange(week_start, week_end)}
@@ -248,7 +252,7 @@ export default function CompetitorWeeklyReport({ report }: Props) {
         </div>
 
         {summary && (
-          <h1 className="mt-2 text-[22px] font-bold leading-[1.35] tracking-tight text-foreground">
+          <h1 className="mt-2.5 text-[24px] font-bold leading-[1.35] tracking-tight text-foreground">
             {cleanNarrative(summary)}
           </h1>
         )}

@@ -172,14 +172,14 @@ async function CompetitorTrendView() {
 
       <section>
         <EntitySectionHeader
-          title="주간 종합 리포트"
-          subtitle="매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합합니다"
-          meta={weeklyReports.length > 0 ? `리포트 ${weeklyReports.length}건` : undefined}
+          title="경쟁사 주간 브리핑"
+          subtitle="매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합한 브리핑"
+          meta={weeklyReports.length > 0 ? `브리핑 ${weeklyReports.length}건` : undefined}
         />
 
         {weeklyReports.length === 0 ? (
           <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-            <p className="text-sm font-medium text-foreground">발행된 주간 리포트가 아직 없습니다.</p>
+            <p className="text-sm font-medium text-foreground">발행된 경쟁사 주간 브리핑이 아직 없습니다.</p>
             <p className="text-xs text-muted-foreground">
               AI 생성·발행 후 이곳에 표시됩니다.
             </p>

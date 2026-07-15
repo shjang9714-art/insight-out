@@ -20,7 +20,7 @@ type Params = Promise<{ week: string }>
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { week } = await params
   return {
-    title: `${week} 주간 경쟁사 동향 | Insight Out`,
+    title: `${week} 경쟁사 동향 브리핑 | Insight Out`,
     description: '사업영역별 경쟁사 동향 종합과 LG U+ 관점 위기·기회 분석.',
   }
 }

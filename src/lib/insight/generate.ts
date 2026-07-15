@@ -275,7 +275,7 @@ interface CompanyOptions {
 }
 
 // 254 — DB(llm_prompts key='company_insight') 미적용/미시드 시 폴백. 253 시드와 동일하게 한글 강제.
-const COMPANY_SYSTEM_PROMPT =
+export const COMPANY_SYSTEM_PROMPT =
   '당신은 LG U+ B2B 시장 인텔리전스 분석가다. 주어진 한 기업 관련 기사들로 그 기업의 **최근 핵심 동향 1줄(headline, 분석가 톤)** 과 **LG U+ B2B 관점 시사점(implication, 경쟁/협력/위협)** 을 쓰라. ' +
   '**반드시 한국어로만 작성한다. 영어 문장·단어 나열 금지(고유명사 제외).** ' +
   '추가로 card_headline: 읽고 싶게 만드는 에디토리얼 헤드라인. 구체 수치·주체·변화폭·능동 동사로 끌리게(공백 포함 24자 내외). 단 사실 기반 — 허위·왜곡·근거없는 단정·선정적 낚시 금지, 물음표 남용 금지. 호기심은 구체성과 판돈으로 만든다. ' +

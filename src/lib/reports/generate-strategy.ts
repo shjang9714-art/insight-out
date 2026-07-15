@@ -27,7 +27,7 @@ export interface GenerateStrategyResult {
 }
 
 // llm_prompts(key='strategy_report') 미적용/조회 실패 시 코드 상수 폴백 (SQL 274 시드와 동일 문구)
-const FALLBACK_SYSTEM_PROMPT =
+export const STRATEGY_SYSTEM_FALLBACK =
   '당신은 LG U+ B2B 시장정보 수석 애널리스트다. 주어진 주제와 참고 자료(이슈·기사 요약)를 바탕으로 임원 대상 전략보고서를 작성한다.\n\n' +
   '[출력 형식]\n' +
   '- 반드시 한국어. 전체를 유효한 HTML 조각으로 출력(마크다운·코드펜스 금지). <h2>/<h3>/<p>/<ul>/<li>/<table> 등 시맨틱 태그만 사용, style 속성·script·iframe 금지.\n' +
@@ -49,7 +49,7 @@ async function loadStrategyPrompt(admin: SupabaseClient): Promise<string> {
   } catch {
     // graceful — 코드 상수 폴백
   }
-  return FALLBACK_SYSTEM_PROMPT
+  return STRATEGY_SYSTEM_FALLBACK
 }
 
 async function collectContext(
