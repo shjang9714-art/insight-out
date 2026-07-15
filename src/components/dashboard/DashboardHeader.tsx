@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu, Search } from 'lucide-react'
+import { FlaskConical, Menu, Search } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import SearchBar from '@/components/dashboard/SearchBar'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
@@ -223,12 +224,14 @@ export default function DashboardHeader({ onMenuClick }: Props) {
             <div className="ml-auto flex items-center gap-3">
               <Link
                 href="/dashboard/lab"
-                className={`shrink-0 rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium text-brand-700 transition-colors',
                   pathname.startsWith('/dashboard/lab')
-                    ? 'border-brand-600/40 text-foreground'
-                    : 'border-border text-muted-foreground hover:text-foreground'
-                }`}
+                    ? 'border-brand-600/50 bg-brand-600/20'
+                    : 'border-brand-600/30 bg-brand-600/10 hover:border-brand-600/50 hover:bg-brand-600/20',
+                )}
               >
+                <FlaskConical className="h-3.5 w-3.5" aria-hidden />
                 실험실
               </Link>
             </div>
