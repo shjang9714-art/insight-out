@@ -1534,6 +1534,36 @@ create policy "keyword_insight_cache: admin 관리"
 grant select on public.keyword_insight_cache to anon, authenticated;
 grant select, insert, update on public.keyword_insight_cache to service_role;
 
+-- 지시서 351-C (2026-07-15) — 키워드별 최신 상승 요인(근거 콘텐츠 포함)
+create table if not exists public.keyword_rise_factors (
+  keyword       text primary key
+    check (keyword = lower(btrim(keyword)) and keyword <> ''),
+  display_name  text not null,
+  overview      text not null default '',
+  factors       jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(factors) = 'array'),
+  generated_at  timestamptz not null default now(),
+  status        text not null default 'draft'
+    check (status in ('draft', 'published')),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+drop trigger if exists set_keyword_rise_factors_updated_at on public.keyword_rise_factors;
+create trigger set_keyword_rise_factors_updated_at
+  before update on public.keyword_rise_factors
+  for each row execute function public.set_updated_at();
+
+alter table public.keyword_rise_factors enable row level security;
+
+drop policy if exists "keyword_rise_factors: 인증 사용자 조회" on public.keyword_rise_factors;
+create policy "keyword_rise_factors: 인증 사용자 조회"
+  on public.keyword_rise_factors for select
+  using (auth.role() = 'authenticated');
+
+grant select on public.keyword_rise_factors to authenticated;
+grant select, insert, update on public.keyword_rise_factors to service_role;
+
 insert into public.llm_task_routing (id, task_type, priority, provider, model_id, is_active)
 values
   (gen_random_uuid(), 'key_insight', 1, 'gemini', 'gemini-2.5-flash', true),
