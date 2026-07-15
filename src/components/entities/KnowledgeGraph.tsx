@@ -239,9 +239,6 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const loadingNodeIdRef = useRef<string | null>(null)
   const loadedKeyRef     = useRef<string>('')
 
-  // 타입 필터
-  const [hiddenTypes, setHiddenTypes] = useState<Set<EntityType>>(new Set())
-
   // 검색
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDrop, setShowSearchDrop] = useState(false)
@@ -269,6 +266,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const [lockedEdge, setLockedEdge] = useState<EdgeTooltip | null>(null)
   const lockedEdgeRef = useRef<EdgeTooltip | null>(null)
   useEffect(() => { lockedEdgeRef.current = lockedEdge }, [lockedEdge])
+  useEffect(() => () => {
+    if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
+    if (nodeHoverDebounceRef.current) clearTimeout(nodeHoverDebounceRef.current)
+  }, [])
 
   // 파생값 (동기 setState 없이 도출)
   const expectedKey      = rootId ? `${rootId}:${resetKey}` : ''
@@ -800,26 +801,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     return () => { cancelled = true }
   }, [selectedNodeId])
 
-  const toggleType = (type: EntityType) => {
-    setHiddenTypes((prev) => {
-      const next = new Set(prev)
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      return next
-    })
-  }
-
   // ── 파생 값 ────────────────────────────────────────────────────────────────
 
   const rootEnt = rootId ? (entities.find((e) => e.id === rootId) ?? null) : null
-
-  const visibleNodes = nodes.filter((n) => !hiddenTypes.has(n.type) || n.isCenter)
-  const visibleIds = new Set(visibleNodes.map((n) => n.id))
-  const visibleLinks = links.filter((l) => {
-    const src = getLinkEndId(l.source)
-    const tgt = getLinkEndId(l.target)
-    return visibleIds.has(src) && visibleIds.has(tgt)
-  })
 
   const searchResults = searchQuery.trim()
     ? entities
@@ -977,42 +961,35 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         </div>
       )}
 
-      {/* 타입 필터 범례 + 렌즈 안내 */}
+      {/* 색상 범례 + 렌즈 안내 */}
       <div className="mb-3">
         <div className="mb-2 space-y-0.5 text-xs text-muted-foreground">
           <p>점 = 기업·기술·인물 등 주요 대상 · 크기 = 언급 횟수</p>
           <p>선 = 함께 뉴스에 등장한 관계 · 굵기·가까움 = 관계 강도</p>
           <p>점을 누르면 관련 기사, 선을 누르면 두 대상의 관계가 보여요.</p>
         </div>
-        <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">유형 필터 (누르면 숨김)</p>
+        <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">색상 = 유형</p>
         <div className="flex flex-wrap gap-2">
           {TYPE_ENTRIES.map(({ type, label, color }) => {
             const count = nodes.filter((n) => n.type === type).length
-            const isHidden = hiddenTypes.has(type)
-            const isCenterType = rootEnt?.entity_type === type
-            const disabled = count === 0
             return (
-              <button
+              <span
                 key={type}
-                onClick={() => toggleType(type)}
-                disabled={disabled}
-                title={isCenterType ? '중심 노드는 숨겨지지 않습니다' : undefined}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  disabled && 'cursor-not-allowed opacity-40',
-                  !disabled && isHidden && 'border-muted-foreground/30 bg-muted text-muted-foreground line-through',
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
+                  count === 0 && 'opacity-40',
                 )}
               >
                 <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
                 {label}
                 <span className="text-muted-foreground/70">{count}</span>
-              </button>
+              </span>
             )
           })}
-          <button className="flex cursor-default items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-70">
+          <span className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-70">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
             경쟁사
-          </button>
+          </span>
           {activeLens !== 'all' && (
             <span className="flex items-center gap-1.5 rounded-full border border-brand-600/30 bg-brand-600/10 px-3 py-1 text-xs font-medium text-brand-600">
               <span className="inline-block h-2 w-2 rounded-full border-2 border-brand-600" />
@@ -1062,10 +1039,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           </div>
         )}
 
-        {!isInitLoading && !rpcError && visibleNodes.length > 0 && (
+        {!isInitLoading && !rpcError && nodes.length > 0 && (
           <ForceGraph2D
             ref={graphRef}
-            graphData={{ nodes: visibleNodes as unknown as { id: string }[], links: visibleLinks }}
+            graphData={{ nodes: nodes as unknown as { id: string }[], links }}
             width={dimensions.width}
             height={520}
             nodeId="id"
@@ -1185,7 +1162,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         )}
 
         {/* 안내 힌트 */}
-        {!isInitLoading && !rpcError && visibleNodes.length > 0 && (
+        {!isInitLoading && !rpcError && nodes.length > 0 && (
           <div className="absolute bottom-3 left-3 rounded-lg border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
             점 클릭 → 관련 기사 · 이웃 펼치기 버튼 → 확장 · 선 클릭 → 연결 이유
           </div>
@@ -1411,7 +1388,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       </div>
 
       <p className="mt-2 text-right text-xs text-muted-foreground">
-        중심: {rootEnt?.canonical_name ?? '없음'} · 노드 {visibleNodes.length} · 확장 {expandCount}단계
+        중심: {rootEnt?.canonical_name ?? '없음'} · 노드 {nodes.length} · 확장 {expandCount}단계
       </p>
     </div>
   )
