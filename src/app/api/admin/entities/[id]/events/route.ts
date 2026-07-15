@@ -88,7 +88,7 @@ export async function POST(
       detail: ev.detail,
       sentiment: ev.sentiment,
       source_content_ids: ev.citations,
-      citations: JSON.stringify(ev.citations),
+      citations: ev.citations,
       model: 'report',
     }))
 
