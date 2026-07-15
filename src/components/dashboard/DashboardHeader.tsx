@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { FlaskConical, Menu, Search } from 'lucide-react'
+import { FileText, FlaskConical, Menu, Search } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
@@ -13,12 +14,12 @@ import { cn } from '@/lib/utils'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
-export const NAV_TABS = [
+export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: LucideIcon }[] = [
   { label: '홈',        href: '/dashboard',          exact: true  },
   { label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
   { label: '기업동향',   href: '/dashboard/entities', exact: false },
   { label: '콘텐츠',     href: '/dashboard/contents', exact: false },
-  { label: '리포트',     href: '/dashboard/reports',  exact: false },
+  { label: '리포트',     href: '/dashboard/reports',  exact: false, icon: FileText },
 ]
 
 // 관리자 전용 '실험실' 퀵링크 — 숨김 처리된 하위 카테고리를 모아 보는 별도 페이지
@@ -210,6 +211,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
                 }`}
               >
                 <span className={`h-[5px] w-[5px] shrink-0 rounded-full ${active ? 'bg-brand-600' : 'bg-transparent'}`} />
+                {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
                 {/* id="l1-active-label"는 NavGroupAlign(§지시서 20260712)이 L2 탭 그룹의
                     좌측 시작점을 이 라벨의 텍스트 x좌표에 맞추는 기준점으로 씀 */}
                 <span id={active ? 'l1-active-label' : undefined}>{tab.label}</span>

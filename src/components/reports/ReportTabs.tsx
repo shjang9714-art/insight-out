@@ -1,8 +1,9 @@
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
+import AiMark from '@/components/ui/AiMark'
 
 export const REPORT_TABS = [
-  { id: 'ai', label: 'AI 리포트', href: '/dashboard/reports?view=ai' },
+  { id: 'ai', label: <>AI 리포트<AiMark className="ml-1" /></>, href: '/dashboard/reports?view=ai' },
   { id: 'external', label: '외부 리포트', href: '/dashboard/reports?view=external' },
   { id: 'knowledge', label: '지식보고서', href: '/dashboard/reports?view=knowledge' },
 ] as const

@@ -1,11 +1,12 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 interface InsightViewTabItem<T extends string> {
   id: T
-  label: string
+  label: ReactNode
   /** 라벨 우측 작은 카운트(선택). 1000+ 는 Xk 축약. */
   count?: number
   /** 있으면 <Link>로 렌더(라우팅형 탭). 없으면 <button onClick={onChange}>. */
