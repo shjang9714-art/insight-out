@@ -25,6 +25,8 @@ export default function AdminKeywordRiseAnalyze() {
   const [factCount, setFactCount] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
+  const [copiedPrompt, setCopiedPrompt] = useState('')
+  const [clipboardBlocked, setClipboardBlocked] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,10 +44,19 @@ export default function AdminKeywordRiseAnalyze() {
       const response = await fetch(`/api/admin/keywords/rise?name=${encodeURIComponent(keyword)}`)
       const data = await response.json() as { prompt?: string; factCount?: number; error?: string }
       if (!response.ok) throw new Error(data.error ?? '분석 컨텍스트를 불러오지 못했습니다.')
-      await navigator.clipboard.writeText(data.prompt ?? '')
+      const prompt = data.prompt ?? ''
+      // 프롬프트는 자동복사 성공 여부와 무관하게 항상 확보한다(권한 차단 시 수동복사 폴백용).
+      setCopiedPrompt(prompt)
       setFactCount(data.factCount ?? 0)
-      setIsCopied(true)
-      window.setTimeout(() => setIsCopied(false), 3000)
+      try {
+        if (!navigator.clipboard) throw new Error('클립보드 API 를 사용할 수 없습니다.')
+        await navigator.clipboard.writeText(prompt)
+        setClipboardBlocked(false)
+        setIsCopied(true)
+        window.setTimeout(() => setIsCopied(false), 3000)
+      } catch {
+        setClipboardBlocked(true)
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '분석 컨텍스트 복사에 실패했습니다.')
     } finally {
@@ -123,6 +134,23 @@ export default function AdminKeywordRiseAnalyze() {
           <span className="text-xs text-muted-foreground">근거 사건 {factCount}건</span>
         )}
       </div>
+
+      {copiedPrompt && (
+        <details open={clipboardBlocked} className="rounded-lg border border-border p-3">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+            {clipboardBlocked
+              ? '자동 복사가 차단됐습니다 — 아래 내용을 직접 복사하세요'
+              : '분석 컨텍스트 원문 (펼쳐서 다시 보기)'}
+          </summary>
+          <textarea
+            readOnly
+            value={copiedPrompt}
+            rows={10}
+            onFocus={(event) => event.currentTarget.select()}
+            className="mt-2 w-full rounded-md border border-border bg-background p-2 font-mono text-xs"
+          />
+        </details>
+      )}
 
       <div className="flex flex-col gap-1">
         <label htmlFor="keyword-rise-analysis" className="text-xs text-muted-foreground">
