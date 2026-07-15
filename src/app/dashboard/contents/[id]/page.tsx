@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { ExternalLink, Download, FileText } from 'lucide-react'
 import ArchiveButton from '@/components/archive/ArchiveButton'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
+import CouncilDiscussButton from '@/components/dashboard/CouncilDiscussButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
 import ViewTracker from '@/components/contents/ViewTracker'
@@ -548,6 +549,14 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
 
             {/* 아카이빙 담기 */}
             <ArchiveButton contentId={content.id} />
+
+            {/* COUNCIL로 현재 맥락 토론 진입(362) */}
+            <CouncilDiscussButton
+              title={content.title}
+              summary={content.summary_ko}
+              refType="contents"
+              refId={content.id}
+            />
 
             {/* 리포트 외(뉴스·유튜브)엔 원문 보기 링크 표시 */}
             {!isReport && content.original_url && (
