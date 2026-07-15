@@ -15,7 +15,6 @@ import BackLink from '@/components/BackLink'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import EntityTabs from '@/components/entities/EntityTabs'
-import ReportTabs from '@/components/reports/ReportTabs'
 import ArticleBodyLoader from '@/components/contents/ArticleBodyLoader'
 import ContentArticleView from '@/components/contents/ContentArticleView'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
@@ -250,31 +249,30 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
     <PageContainer variant="reading">
 
       {/* 366 — 문서(PDF/PPTX) 상세는 sticky 해제(정적): PdfViewer를 가리지 않게 한다 */}
-      <div
-        className={cn(
-          '-mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5',
-          !isReport && 'sticky top-14 z-10 md:top-[102px]'
-        )}
-      >
-        {origin === 'entities' ? (
-          <EntityTabs value={view ?? 'competitor'} />
-        ) : isExternalReport ? (
-          <ReportTabs value="external" className="mb-0" />
-        ) : isKnowledgeReport ? (
-          <ReportTabs value="knowledge" className="mb-0" />
-        ) : (
-          <NavGroupAlign>
-            <InsightViewTabs
-              items={CONTENT_SOURCE_TAB_VALUES.map((v) => ({
-                id: v,
-                label: CONTENT_CATEGORY_LABEL[v] ?? v,
-                href: `/dashboard/contents?category=${encodeURIComponent(v)}`,
-              }))}
-              value={(category as ContentCategory) || content.category}
-            />
-          </NavGroupAlign>
-        )}
-      </div>
+      {/* 외부/지식보고서 상세는 "이전으로"·카테고리 태그와 중복되므로 이 탭바 자체를 생략 */}
+      {isExternalReport || isKnowledgeReport ? null : (
+        <div
+          className={cn(
+            '-mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5',
+            !isReport && 'sticky top-14 z-10 md:top-[102px]'
+          )}
+        >
+          {origin === 'entities' ? (
+            <EntityTabs value={view ?? 'competitor'} />
+          ) : (
+            <NavGroupAlign>
+              <InsightViewTabs
+                items={CONTENT_SOURCE_TAB_VALUES.map((v) => ({
+                  id: v,
+                  label: CONTENT_CATEGORY_LABEL[v] ?? v,
+                  href: `/dashboard/contents?category=${encodeURIComponent(v)}`,
+                }))}
+                value={(category as ContentCategory) || content.category}
+              />
+            </NavGroupAlign>
+          )}
+        </div>
+      )}
 
       {/* 뒤로가기 */}
       <div className="mb-6">
