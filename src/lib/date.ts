@@ -47,6 +47,15 @@ export function getKstDateString(date: Date = new Date()): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+/** 임의 시각이 속한 KST 주(월요일 시작)의 월요일을 'YYYY-MM-DD'로. */
+export function getKstWeekMondayString(date: Date = new Date()): string {
+  const { year, month, day, weekday } = getKstDateParts(date)
+  const daysSinceMonday = (weekday + 6) % 7 // Mon=0 ... Sun=6
+  const mondayMs = Date.UTC(year, month - 1, day) - daysSinceMonday * 24 * 60 * 60 * 1000
+  const d = new Date(mondayMs)
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
 /** 임의 시각을 KST 기준 시(0~23)로. */
 export function getKstHour(date: Date = new Date()): number {
   const hour = new Intl.DateTimeFormat('en-US', {

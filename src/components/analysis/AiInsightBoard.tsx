@@ -16,7 +16,7 @@ import {
   type TagBucket,
 } from '@/lib/tag-buckets'
 import DailyInsightList from '@/components/daily-insights/DailyInsightList'
-import DailyInsightPeriodFilter from '@/components/daily-insights/DailyInsightPeriodFilter'
+import WeeklyInsightHeader from '@/components/daily-insights/WeeklyInsightHeader'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import InsightCardsSectionClient, {
   type InsightGroup,
@@ -57,6 +57,12 @@ export interface SignalItem {
 export interface AiInsightBoardProps {
   initialView: AiInsightViewId
   dailyInsights: DailyInsightRow[]
+  dailyInsightWeeks: string[]
+  selectedWeek: string | null
+  isLatestWeek: boolean
+  weekTotal: number
+  weekNewCount: number
+  weekCategoryCoverage: number
   insightGroups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
   trendingTopics: TopicTrend[]
@@ -193,6 +199,12 @@ function keywordChangeIcon(card: KeywordChangeCard) {
 export default function AiInsightBoard({
   initialView,
   dailyInsights,
+  dailyInsightWeeks,
+  selectedWeek,
+  isLatestWeek,
+  weekTotal,
+  weekNewCount,
+  weekCategoryCoverage,
   insightGroups,
   contentMap,
   trendingTopics,
@@ -267,13 +279,17 @@ export default function AiInsightBoard({
         <InsightViewTabs items={PRIMARY_TABS} value={view} onChange={handleTabChange} />
       </NavGroupAlign>
 
-      {/* 핵심 인사이트 — 일일 daily_insights 목록(§지시서 20260711 기간필터·라벨칩·전구이모지) */}
+      {/* 핵심 인사이트 — 주간 daily_insights 목록(§2, 지시서 20260715 주간 복귀) */}
       {view === 'brief' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <DailyInsightPeriodFilter />
-          </div>
-          <DailyInsightList insights={dailyInsights} />
+          <WeeklyInsightHeader
+            weeks={dailyInsightWeeks}
+            selectedWeek={selectedWeek}
+            total={weekTotal}
+            newCount={weekNewCount}
+            categoryCoverage={weekCategoryCoverage}
+          />
+          <DailyInsightList insights={dailyInsights} isLatestWeek={isLatestWeek} />
         </div>
       )}
 

@@ -1,13 +1,13 @@
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { getKstTodayStartIso, getKstDateString } from '@/lib/date'
+import { getKstTodayStartIso } from '@/lib/date'
 import { ENTITY_TYPE_LABEL, type EntityType, type InsightCard, type InsightCardCitation, type WatchlistItem } from '@/lib/types'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { tagTypeToBucket, type KeywordItem } from '@/lib/tag-buckets'
 import { fetchIssueActivity } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
-import { resolveDailyInsightDateRange } from '@/lib/daily-insights/period'
+import { buildWeekSummary } from '@/lib/daily-insights/weeks'
 import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
 import { getKeywordDailyCounts } from '@/lib/keywords/detail'
 import { rankKeywords } from '@/lib/keywords/ranking'
@@ -71,12 +71,11 @@ function computeTrendingTopics(
 
 interface AiInsightsViewProps {
   view?: 'brief' | 'headline' | 'trending' | 'issues' | 'graph' | 'keyword'
-  dailyPeriod?: string
-  dailyFrom?: string
-  dailyTo?: string
+  /** "핵심 인사이트" 주차 선택기(§2) — week_of(월요일, KST) 문자열. 없으면 최신 주차. */
+  week?: string
 }
 
-export default async function AiInsightsView({ view = 'brief', dailyPeriod, dailyFrom, dailyTo }: AiInsightsViewProps) {
+export default async function AiInsightsView({ view = 'brief', week }: AiInsightsViewProps) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -98,21 +97,27 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
   const todayStart   = getKstTodayStartIso()
   const todayStartMs = new Date(todayStart).getTime()
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
-  const todayStr = getKstDateString(new Date(todayStartMs))
-  const dailyDateRange = resolveDailyInsightDateRange(dailyPeriod, dailyFrom, dailyTo, todayStr)
 
-  // "핵심 인사이트" 목록(§지시서 20260711 기간필터·라벨칩·전구이모지 §1) — 일일 daily_insights 소스.
-  // 기본값(필터 미적용)은 무제한 전체 목록, day_of desc → display_order asc.
-  // 기간 필터가 있을 때만 day_of 범위를 gte/lte 로 좁힌다(클라이언트 슬라이싱 금지).
-  let dailyInsightQuery = supabase
+  // "핵심 인사이트" 목록(§2, 지시서 20260715 주간 복귀) — week_of(월요일) 단위로 그룹핑.
+  // 주차 선택기가 고를 수 있는 week 목록을 먼저 조회한 뒤, 선택된 주(기본값 최신)만 필터한다.
+  const { data: weekRows } = await supabase
+    .from('daily_insights')
+    .select('week_of')
+    .eq('status', 'published')
+    .not('week_of', 'is', null)
+    .order('week_of', { ascending: false })
+
+  const dailyInsightWeeks = [...new Set((weekRows ?? []).map((r) => r.week_of as string))]
+  const latestWeek = dailyInsightWeeks[0] ?? null
+  const selectedWeek = week && dailyInsightWeeks.includes(week) ? week : latestWeek
+  const isLatestWeek = selectedWeek !== null && selectedWeek === latestWeek
+
+  const dailyInsightQuery = supabase
     .from('daily_insights')
     .select('*')
     .eq('status', 'published')
-    .order('day_of', { ascending: false })
+    .eq('week_of', selectedWeek ?? '__none__')
     .order('display_order', { ascending: true })
-  if (dailyDateRange) {
-    dailyInsightQuery = dailyInsightQuery.gte('day_of', dailyDateRange.from).lte('day_of', dailyDateRange.to)
-  }
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
   const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes, lguAliasRes] = await Promise.all([
@@ -399,8 +404,9 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
   const fallingKws = classifiedKeywords.filter(k => k.direction === '▽').slice(0, 2)
   const kwStrip    = [...risingKws, ...fallingKws]
 
-  // ─── "핵심 인사이트" 목록 — 최근 daily_insights(§지시서 20260711 fast-follow §1) ──
+  // ─── "핵심 인사이트" 목록 — 선택된 주(week_of)의 daily_insights(§2, 지시서 20260715) ──
   const dailyInsights = (dailyInsightRes.data ?? []) as DailyInsightRow[]
+  const weekSummary = selectedWeek ? buildWeekSummary(selectedWeek, dailyInsights, isLatestWeek) : null
 
   // ─── 클라이언트 보드에 데이터 props 위임 ─────────────────────────────────
   return (
@@ -408,6 +414,12 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
       initialView={view}
       isAdmin={isAdmin}
       dailyInsights={dailyInsights}
+      dailyInsightWeeks={dailyInsightWeeks}
+      selectedWeek={selectedWeek}
+      isLatestWeek={isLatestWeek}
+      weekTotal={weekSummary?.total ?? 0}
+      weekNewCount={weekSummary?.newCount ?? 0}
+      weekCategoryCoverage={weekSummary?.categoryCoverage ?? 0}
       insightGroups={insightGroups}
       contentMap={contentMapRecord}
       trendingTopics={trendingTopics}

@@ -31,6 +31,22 @@ export default async function DailyInsightDetailPage({ params }: PageProps) {
 
   if (!data) notFound()
 
+  const insight = data as DailyInsightRow
+
+  // §2.5③ 관련 인사이트 — 같은 카테고리의 다른 주차 2~4건(published·자기 제외, week_of desc).
+  let relatedInsights: DailyInsightRow[] = []
+  if (insight.category) {
+    const { data: related } = await supabase
+      .from('daily_insights')
+      .select('*')
+      .eq('status', 'published')
+      .eq('category', insight.category)
+      .neq('id', insight.id)
+      .order('week_of', { ascending: false })
+      .limit(4)
+    relatedInsights = (related ?? []) as DailyInsightRow[]
+  }
+
   return (
     <PageContainer variant="reading">
       <div className="space-y-6">
@@ -39,7 +55,7 @@ export default async function DailyInsightDetailPage({ params }: PageProps) {
           fallbackHref="/dashboard/issues"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
-        <DailyInsightDetail insight={data as DailyInsightRow} />
+        <DailyInsightDetail insight={insight} relatedInsights={relatedInsights} />
       </div>
     </PageContainer>
   )

@@ -15,3 +15,15 @@ export const CATEGORY_CHIP_COLOR: Record<string, string> = {
   '정책·정부': 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
   '빅테크·One LG': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
 }
+
+// "핵심 인사이트" 목록 페이지(1단계) 카드 전용 — 무채색 칩 배경 + 색 도트로 카테고리 구분(§2).
+// CATEGORY_CHIP_COLOR(다색 배경)와 달리 배경은 항상 무채색 secondary, 이 값은 도트 색상만 지정.
+export const CATEGORY_DOT_COLOR: Record<string, string> = {
+  '자사·통신사 동향': 'bg-rose-500',
+  'AIDC·클라우드': 'bg-sky-500',
+  'AICC·비즈콜': 'bg-violet-500',
+  '사이버보안': 'bg-red-500',
+  '통신사업·커넥티비티': 'bg-teal-500',
+  '정책·정부': 'bg-amber-500',
+  '빅테크·One LG': 'bg-indigo-500',
+}

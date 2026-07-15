@@ -1,10 +1,13 @@
 import { ExternalLink } from 'lucide-react'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
+import CompetitorMatrix from '@/components/daily-insights/CompetitorMatrix'
+import RelatedInsights from '@/components/daily-insights/RelatedInsights'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 interface DailyInsightDetailProps {
   insight: DailyInsightRow
+  relatedInsights?: DailyInsightRow[]
 }
 
 // 3C 섹션 — 근거 없어 null인 항목은 렌더 자체를 생략(빈 제목만 남기지 않음, §6).
@@ -14,8 +17,11 @@ const TREND_SECTIONS: { key: 'market_trend' | 'competitor_trend' | 'implication'
   { key: 'implication', label: '자사 관점 시사점', emoji: '💡' },
 ]
 
-export default function DailyInsightDetail({ insight }: DailyInsightDetailProps) {
+const SOURCES_ANCHOR_ID = 'daily-insight-sources'
+
+export default function DailyInsightDetail({ insight, relatedInsights = [] }: DailyInsightDetailProps) {
   const sections = TREND_SECTIONS.filter((s) => insight[s.key])
+  const sourceCount = insight.source_articles?.length ?? 0
 
   return (
     <article className="space-y-6">
@@ -29,19 +35,32 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
         <div className="space-y-4">
           {sections.map((s) => (
             <div key={s.key} className="border-l-2 border-brand-600/40 pl-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-700">
                 {s.emoji} {s.label}
               </p>
               <p className="mt-1.5 text-sm leading-relaxed text-foreground">{stripLlmArtifacts(insight[s.key] ?? '')}</p>
+              {/* §2.5② 3C 근거 드릴다운 — 문장별 매핑 대신 인사이트 단위 근거 목록(아래 §근거 기사)으로 폴백 */}
+              {sourceCount > 0 && (
+                <a
+                  href={`#${SOURCES_ANCHOR_ID}`}
+                  className="mt-1 inline-block text-[11px] font-medium text-muted-foreground hover:text-brand-600 hover:underline"
+                >
+                  근거 보기 ({sourceCount})
+                </a>
+              )}
             </div>
           ))}
         </div>
       )}
 
+      {insight.competitor_matrix && insight.competitor_matrix.length > 0 && (
+        <CompetitorMatrix matrix={insight.competitor_matrix} />
+      )}
+
       {insight.source_articles && insight.source_articles.length > 0 && (
-        <section className="space-y-2 rounded-lg bg-muted/40 p-4">
+        <section id={SOURCES_ANCHOR_ID} className="scroll-mt-20 space-y-2 rounded-lg bg-muted/40 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">📰 근거 기사</p>
-          <p className="text-[11px] text-muted-foreground/70">· 지난 24시간 이내 발행</p>
+          <p className="text-[11px] text-muted-foreground/70">· 지난 7일 이내 발행</p>
           <ul className="space-y-2">
             {insight.source_articles.map((a) => (
               <li key={a.content_id} className="text-sm">
@@ -97,6 +116,8 @@ export default function DailyInsightDetail({ insight }: DailyInsightDetailProps)
           </ul>
         </section>
       )}
+
+      <RelatedInsights insights={relatedInsights} />
     </article>
   )
 }

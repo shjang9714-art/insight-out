@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: 'AI가 분석한 시장 인사이트 · 이슈 · 뜨는 토픽을 한눈에.',
 }
 
-type SearchParams = Promise<{ view?: string; period?: string; from?: string; to?: string }>
+type SearchParams = Promise<{ view?: string; week?: string }>
 
 const VALID_VIEWS = ['brief', 'headline', 'trending', 'issues', 'graph', 'keyword'] as const
 type ViewId = typeof VALID_VIEWS[number]
@@ -29,9 +29,7 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
       }>
         <AiInsightsView
           view={view}
-          dailyPeriod={params.period}
-          dailyFrom={params.from}
-          dailyTo={params.to}
+          week={params.week}
         />
       </Suspense>
     </PageContainer>
