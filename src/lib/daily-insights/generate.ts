@@ -5,7 +5,7 @@ import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, type KeyInsightCandidate, type PastArticleRef } from '@/lib/key-insights/candidates'
 import { getKstDateString, getKstWeekMondayString } from '@/lib/date'
-import { dedupeSimilarArticles, jaccardSimilarity } from '@/lib/daily-insights/dedupe'
+import { dedupeSimilarArticles, jaccardSimilarity, titleTokens } from '@/lib/daily-insights/dedupe'
 import { classifyPastArticleCategories, isRelevantPastArticle, relevanceTokens } from '@/lib/daily-insights/relevance'
 import type {
   CompetitorMatrixEntry,
@@ -38,6 +38,10 @@ const PAST_ARTICLE_MAX_AGE_DAYS = 180
 const TOPIC_MERGE_JACCARD_THRESHOLD = 0.2
 // 우연한 공통 불용어 1개만으로 묶이는 걸 막는 최소 공유 토큰 수.
 const TOPIC_MERGE_MIN_SHARED_TOKENS = 2
+// candidates.ts 의 이슈클러스터 신뢰가드(과다연결 클러스터 배제)나 issueId 누락 때문에,
+// 사실상 같은 사건(예: 같은 보도의 다른 매체 표기)이 서로 다른 클러스터로 갈라지는 경우가
+// 관찰됨 — dedupe.ts 의 근접중복 임계값(0.6)보다는 살짝 낮게 잡아 "동일 사건" 교차병합.
+const NEAR_DUP_CLUSTER_MERGE_THRESHOLD = 0.5
 
 // ─── 가이드 §4.1 배제 규칙 — 벤더 제품 블로그·행사성 기사 ────────────────────────────
 // "범용 시황 오피니언"은 candidates.ts→isBriefingRelevant()의 isStockMarketHeavy()가 이미 제외.
@@ -143,6 +147,38 @@ function mergeSinglesByTopic(singles: KeyInsightCandidate[]): KeyInsightCandidat
   return groups.map((g) => g.members)
 }
 
+/**
+ * issueId 기반 클러스터끼리, 또는 issueId 클러스터와 topic-merge 클러스터 사이에 실질적으로
+ * 같은 사건(제목 근접중복)이 걸쳐 있으면 합친다. candidates.ts 의 이슈클러스터 신뢰가드가
+ * 과다연결을 배제하면서 진짜 같은 사건도 갈라놓는 부작용을 여기서 최종 백스톱으로 잡는다.
+ * dedupe.ts 의 근접중복 토큰(숫자 포함, 엄격) 기준을 그대로 쓰되 임계값만 살짝 낮춘다.
+ */
+function mergeNearDuplicateClusters(clusters: KeyInsightCandidate[][]): KeyInsightCandidate[][] {
+  const merged: { members: KeyInsightCandidate[]; tokenSets: Set<string>[] }[] = []
+
+  for (const clusterMembers of clusters) {
+    const tokenSets = clusterMembers.map((c) => titleTokens(c.title))
+    let target: (typeof merged)[number] | null = null
+
+    for (const g of merged) {
+      const isNearDup = tokenSets.some((t) => g.tokenSets.some((gt) => jaccardSimilarity(t, gt) >= NEAR_DUP_CLUSTER_MERGE_THRESHOLD))
+      if (isNearDup) {
+        target = g
+        break
+      }
+    }
+
+    if (target) {
+      target.members.push(...clusterMembers)
+      target.tokenSets.push(...tokenSets)
+    } else {
+      merged.push({ members: [...clusterMembers], tokenSets })
+    }
+  }
+
+  return merged.map((g) => g.members)
+}
+
 /** 카테고리 버킷 내부를 issueId 기준 화제(클러스터)로 나눈다. issueId 없는 후보는 제목 유사도로 추가 그룹핑. */
 function clusterWithinCategory(category: string | null, members: KeyInsightCandidate[]): TopicCluster[] {
   const byIssue = new Map<string, KeyInsightCandidate[]>()
@@ -157,7 +193,7 @@ function clusterWithinCategory(category: string | null, members: KeyInsightCandi
     }
   }
   const mergedSingles = mergeSinglesByTopic(singleCandidates)
-  const clusters = [...byIssue.values(), ...mergedSingles]
+  const clusters = mergeNearDuplicateClusters([...byIssue.values(), ...mergedSingles])
   return clusters
     .map((clusterMembers) => {
       const sorted = rankMembers(clusterMembers)
