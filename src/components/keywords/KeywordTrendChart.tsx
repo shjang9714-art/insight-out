@@ -3,6 +3,7 @@
 import {
   Line,
   LineChart,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,9 +13,12 @@ import type { KeywordDailyCount } from '@/lib/keywords/detail'
 
 interface KeywordTrendChartProps {
   data: KeywordDailyCount[]
+  markers?: { date: string; label: string }[]
 }
 
-export default function KeywordTrendChart({ data }: KeywordTrendChartProps) {
+export default function KeywordTrendChart({ data, markers = [] }: KeywordTrendChartProps) {
+  const countByDate = new Map(data.map((item) => [item.date, item.count]))
+
   return (
     <ResponsiveContainer width="100%" height={240}>
       <LineChart data={data} margin={{ top: 8, right: 12, left: -24, bottom: 0 }}>
@@ -52,6 +56,28 @@ export default function KeywordTrendChart({ data }: KeywordTrendChartProps) {
           dot={false}
           activeDot={{ r: 4, fill: 'var(--color-brand-600)' }}
         />
+        {markers.map((marker) => {
+          const count = countByDate.get(marker.date)
+          if (count === undefined) return null
+          return (
+            <ReferenceDot
+              key={`${marker.date}-${marker.label}`}
+              x={marker.date}
+              y={count}
+              r={4}
+              fill="var(--color-brand-600)"
+              stroke="var(--color-background)"
+              strokeWidth={2}
+              label={{
+                value: marker.label,
+                position: 'top',
+                fill: 'var(--color-brand-600)',
+                fontSize: 10,
+                fontWeight: 600,
+              }}
+            />
+          )
+        })}
       </LineChart>
     </ResponsiveContainer>
   )
