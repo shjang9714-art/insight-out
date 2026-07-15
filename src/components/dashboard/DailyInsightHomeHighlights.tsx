@@ -52,7 +52,7 @@ export default async function DailyInsightHomeHighlights() {
   const cards = pickSeededRandom(pool, 3, todayKst)
 
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-card p-6">
+    <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
       <div className="mb-5 border-b-2 border-foreground/80 pb-3">
         <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-insight-teal-strong">
           <AiMark title="AI 생성 인사이트" />
