@@ -9,6 +9,9 @@ import CompanyDocumentsCollector, {
   type DartCompanyOption,
 } from '@/components/admin/CompanyDocumentsCollector'
 import CompanyDocumentDiscovery from '@/components/admin/CompanyDocumentDiscovery'
+import CompanyDocumentSourceRegistry from '@/components/admin/CompanyDocumentSourceRegistry'
+import CompanyDocumentUploadForm from '@/components/admin/CompanyDocumentUploadForm'
+import CompanyDocumentReviewInbox from '@/components/admin/CompanyDocumentReviewInbox'
 import { readNaverQuota } from '@/lib/company-docs/discovery/naver'
 import { readTavilyQuota } from '@/lib/company-docs/discovery/tavily'
 
@@ -27,12 +30,13 @@ interface MappingRow {
 
 interface DocumentRow {
   content_id: string
+  entity_id: string | null
   doc_type: string
   published_on: string | null
   review_status: string
   ingest_status: string
   dart_rcept_no: string | null
-  contents: { title: string; original_url: string | null; status: string } | { title: string; original_url: string | null; status: string }[] | null
+  contents: { title: string; original_url: string | null; status: string; summary_ko?: string | null } | { title: string; original_url: string | null; status: string; summary_ko?: string | null }[] | null
   entities: { canonical_name: string } | { canonical_name: string }[] | null
 }
 
@@ -101,7 +105,43 @@ export default async function CompanyDocumentsAdminPage() {
     }
   }
 
+  // 355-C ③ — 검토대기 문서(자동수집 미매칭·저신뢰, 사용자 업로드 포함)도 동일하게 격리 조회한다.
+  let reviewQueueData: DocumentRow[] = []
+  let reviewQueueSchemaMissing = false
+  let reviewQueueErrorMessage: string | null = null
+  try {
+    const { data, error } = await supabase
+      .from('company_documents')
+      .select('content_id, entity_id, doc_type, published_on, review_status, ingest_status, dart_rcept_no, contents!company_documents_content_id_fkey(title, original_url, status, summary_ko), entities(canonical_name)')
+      .eq('review_status', '검토대기')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    reviewQueueData = (data ?? []) as unknown as DocumentRow[]
+  } catch (err) {
+    const error = err as { code?: string; message?: string }
+    if (isSchemaMissing(error)) {
+      reviewQueueSchemaMissing = true
+    } else {
+      reviewQueueErrorMessage = error.message ?? '알 수 없는 오류'
+      console.error('[company-docs] 검토대기 문서 조회 실패:', error)
+    }
+  }
+
   const schemaReady = !mappingSchemaMissing && !documentsSchemaMissing
+  const reviewQueueItems = reviewQueueData.map((row) => {
+    const content = firstRelation(row.contents)
+    return {
+      contentId: row.content_id,
+      entityId: row.entity_id,
+      entityName: firstRelation(row.entities)?.canonical_name ?? null,
+      docType: row.doc_type,
+      publishedOn: row.published_on,
+      title: content?.title ?? '제목 없음',
+      originalUrl: content?.original_url ?? null,
+      summaryKo: content?.summary_ko ?? null,
+    }
+  })
   const companies: DartCompanyOption[] = mappingData.map((row) => ({
     corpCode: row.corp_code,
     corpName: row.corp_name,
@@ -135,6 +175,11 @@ export default async function CompanyDocumentsAdminPage() {
           최근 적재 문서를 불러오지 못했습니다: <span className="font-mono text-xs">{documentsErrorMessage}</span>
         </AdminErrorBox>
       )}
+      {reviewQueueErrorMessage && (
+        <AdminErrorBox>
+          검토대기 문서를 불러오지 못했습니다: <span className="font-mono text-xs">{reviewQueueErrorMessage}</span>
+        </AdminErrorBox>
+      )}
 
       <CompanyDocumentsCollector
         companies={companies}
@@ -147,6 +192,14 @@ export default async function CompanyDocumentsAdminPage() {
           initialNaverQuota={naverQuota}
           initialTavilyQuota={tavilyQuota}
         />
+      )}
+
+      {schemaReady && <CompanyDocumentSourceRegistry />}
+
+      {schemaReady && <CompanyDocumentUploadForm />}
+
+      {schemaReady && !reviewQueueSchemaMissing && !reviewQueueErrorMessage && (
+        <CompanyDocumentReviewInbox initialItems={reviewQueueItems} />
       )}
 
       <section className="space-y-3">

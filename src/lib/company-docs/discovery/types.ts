@@ -2,7 +2,8 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeUrl, titleHash } from '@/lib/crawler/normalize'
-import type { CompanyDocumentGroup, CompanyDocumentSourceKind, CompanyDocumentType } from '@/lib/types'
+import { DOC_GROUP_BY_TYPE } from '@/lib/company-docs/constants'
+import type { CompanyDocumentSourceKind, CompanyDocumentType } from '@/lib/types'
 
 /**
  * 355-F 기업자료 발견 커넥터 — 공통 타입·저장 로직.
@@ -89,15 +90,6 @@ export async function recordQuotaCalls(
 
 // ─── 후보 저장 ────────────────────────────────────────────────────────────────
 
-const DOC_GROUP_BY_TYPE: Record<CompanyDocumentType, CompanyDocumentGroup> = {
-  '회사소개': '회사및사업',
-  '전략·보고서': '회사및사업',
-  '행사·발표': '회사및사업',
-  'ESG': '회사및사업',
-  '기술·제품': '기술및제품',
-  'IR·실적': '투자및경영',
-  '투자·피치덱': '투자및경영',
-}
 const DEFAULT_DOC_TYPE: CompanyDocumentType = '전략·보고서'
 
 export interface SaveCandidatesResult {
