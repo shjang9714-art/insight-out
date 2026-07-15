@@ -624,6 +624,70 @@ async function backfillWeeklyFlowIfMissing(admin: ReturnType<typeof createAdminC
   }
 }
 
+/** why_it_matters·implication_lenses·next_steps 백필용 — 이미 확정된 헤드라인/요약을 그대로
+ * 주고, 저장돼 있는 근거 기사(제목·매체·발행일)만으로 새 필드를 다시 생성한다. */
+function buildEnrichmentUserPrompt(
+  category: string | null,
+  headline: string,
+  summaryKo: string,
+  sourceArticles: DailyInsightSourceArticle[]
+): string {
+  const lines = sourceArticles.map(
+    (a) => `제목: ${a.title}\n매체: ${a.source} / 발행일: ${a.published_at ?? '미상'}`
+  )
+  return (
+    `주제 카테고리: ${category ?? '미분류'}\n이미 확정된 헤드라인: ${headline}\n이미 확정된 요약: ${summaryKo}\n` +
+    `근거 기사 ${sourceArticles.length}건:\n\n${lines.join('\n\n')}`
+  )
+}
+
+/**
+ * why_it_matters·next_steps(§8·§5-B) 자가 복구 — 이 필드들이 프롬프트에 추가되기 전에
+ * 생성된 주차는 값이 전부 null이라 화면에 아예 안 뜬다. 헤드라인·요약·근거기사는 이미
+ * 확정된 값을 그대로 두고(재작성 안 함), 새 필드만 다시 생성해 UPDATE 한다.
+ */
+async function backfillMissingEnrichmentForWeek(admin: ReturnType<typeof createAdminClient>, weekOf: string): Promise<void> {
+  const { data: rows, error } = await admin
+    .from('daily_insights')
+    .select('*')
+    .eq('week_of', weekOf)
+    .eq('status', 'published')
+    .is('why_it_matters', null)
+  if (error || !rows || rows.length === 0) return
+
+  const system = buildSystemPrompt()
+
+  for (const row of rows) {
+    const sourceArticles = (row.source_articles as DailyInsightSourceArticle[] | null) ?? []
+    if (sourceArticles.length === 0) continue
+
+    const user = buildEnrichmentUserPrompt(row.category as string | null, row.headline as string, row.summary_ko as string, sourceArticles)
+    const { text: raw, errorReason } = await llmCompleteDetailed('daily_insight', system, user)
+    if (!raw) {
+      console.error(`[핵심Insight][백필] id=${row.id} LLM 실패: ${errorReason ?? '사유 미상'}`)
+      continue
+    }
+
+    const card = parseGroupCard(raw)
+    if (!card) {
+      console.error(`[핵심Insight][백필] id=${row.id} 출력 파싱 실패`)
+      continue
+    }
+
+    const { error: updateError } = await admin
+      .from('daily_insights')
+      .update({
+        why_it_matters: card.why_it_matters,
+        implication_lenses: card.implication_lenses,
+        next_steps: card.next_steps.length > 0 ? card.next_steps : null,
+      })
+      .eq('id', row.id)
+    if (updateError) {
+      console.error(`[핵심Insight][백필] id=${row.id} 저장 실패: ${updateError.message}`)
+    }
+  }
+}
+
 // ─── 메인 함수 ────────────────────────────────────────────────────────────────
 
 export interface GenerateDailyInsightResult {
@@ -675,9 +739,11 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
       }
     }
     if (existing && existing.length > 0) {
-      // daily_insights는 멱등 skip이지만, weekly_flows(§5-A)는 이 기능 배포 전에 생성된 주차라
-      // 아직 없을 수 있다 — 있는 published 행으로 자가 복구 생성(백필)한다.
+      // daily_insights는 멱등 skip이지만, weekly_flows(§5-A)·why_it_matters/next_steps(§8·§5-B)는
+      // 이 기능들이 배포되기 전에 생성된 주차라 아직 없을 수 있다 — 있는 published 행으로
+      // 자가 복구 생성(백필)한다. 헤드라인·3C 등 기존 확정 값은 건드리지 않는다.
       await backfillWeeklyFlowIfMissing(admin, weekOf)
+      await backfillMissingEnrichmentForWeek(admin, weekOf)
       return { ok: true, dayOf, weekOf, generated: 0, skipped: true, failed: false, reason: '이번 주 배치가 이미 존재함(멱등 skip)' }
     }
   }
