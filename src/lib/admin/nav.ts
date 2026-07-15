@@ -129,12 +129,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
-    group: '콘텐츠 검수',
+    group: '콘텐츠 관리',
     items: [
       {
         href: '/admin/contents',
-        label: '콘텐츠 검수',
-        description: '수집·업로드된 콘텐츠의 상태, 품질, 발행 여부를 검수합니다.',
+        label: '콘텐츠 관리',
+        description: '수집·업로드된 콘텐츠의 상태, 품질, 발행 여부를 관리합니다.',
         icon: Newspaper,
       },
       {

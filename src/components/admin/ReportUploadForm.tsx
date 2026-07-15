@@ -402,7 +402,7 @@ export default function ReportUploadForm() {
               <p className="mt-1.5 text-xs opacity-80">· 표지 자동 추출 완료</p>
             ) : (
               <p className="mt-1.5 text-xs text-amber-700">
-                · 표지 자동 추출 실패({coverReasonLabel(extractResult.coverReason)}) — 콘텐츠 검수에서 표지를 직접 올려주세요
+                · 표지 자동 추출 실패({coverReasonLabel(extractResult.coverReason)}) — 콘텐츠 관리에서 표지를 직접 올려주세요
               </p>
             )}
           </div>
