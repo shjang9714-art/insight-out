@@ -6,10 +6,10 @@ import {
   Clock3,
   FileText,
   Network,
-  Sparkles,
   TrendingUp,
 } from 'lucide-react'
 import AiInsightTabs from '@/components/analysis/AiInsightTabs'
+import AiMark from '@/components/ui/AiMark'
 import EntityEventTimeline from '@/components/entities/EntityEventTimeline'
 import KeywordTrendChart from '@/components/keywords/KeywordTrendChart'
 import PageContainer from '@/components/PageContainer'
@@ -185,7 +185,7 @@ function RiseFactorsSection({
     return (
       <section className="mb-8 rounded-xl border border-dashed border-brand-600/30 bg-brand-50/40 p-5 dark:bg-brand-950/10">
         <div className="flex items-start gap-3">
-          <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
+          <AiMark title="AI 분석" className="mt-0.5 size-5" />
           <div>
             <h2 className="text-sm font-semibold text-foreground">상승 요인</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -204,7 +204,7 @@ function RiseFactorsSection({
   return (
     <section className="mb-8 rounded-xl border border-brand-600/20 bg-card p-5" aria-labelledby="rise-factors-title">
       <div className="mb-5 flex items-start gap-3">
-        <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
+        <AiMark title="AI 분석" className="mt-0.5 size-5" />
         <div>
           <h2 id="rise-factors-title" className="text-base font-semibold text-foreground">상승 요인</h2>
           {riseFactors.overview && (
