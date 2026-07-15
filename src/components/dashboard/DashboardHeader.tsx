@@ -62,11 +62,12 @@ function getPageLabel(pathname: string, category: string): string | null {
 
 interface Props {
   onMenuClick?: () => void
+  className?: string
 }
 
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
-export default function DashboardHeader({ onMenuClick }: Props) {
+export default function DashboardHeader({ onMenuClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const category     = searchParams.get('category') ?? ''
@@ -110,7 +111,7 @@ export default function DashboardHeader({ onMenuClick }: Props) {
   }, [])
 
   return (
-    <header className="sticky top-0 z-20 bg-card/90 backdrop-blur-sm">
+    <header className={cn('sticky top-0 z-20 bg-card/90 backdrop-blur-sm', className)}>
 
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-4 sm:px-5">
