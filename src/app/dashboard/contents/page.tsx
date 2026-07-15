@@ -1,16 +1,18 @@
 'use client'
 
-import { Suspense, useState, useEffect, useMemo } from 'react'
+import { Suspense, useState, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { Loader2, Search, X } from 'lucide-react'
+import { LayoutGrid, List, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PageContainer from '@/components/PageContainer'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
+import ContentListRow from '@/components/dashboard/ContentListRow'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
@@ -54,6 +56,30 @@ interface ClusteredItem {
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 20
+const CONTENTS_VIEW_STORAGE_KEY = 'io:contents-view'
+const CONTENTS_VIEW_CHANGE_EVENT = 'io:contents-view-change'
+type ContentsView = 'card' | 'list'
+
+function getNewsViewSnapshot(): ContentsView {
+  const savedView = window.localStorage.getItem(CONTENTS_VIEW_STORAGE_KEY)
+  return savedView === 'list' ? 'list' : 'card'
+}
+
+function getNewsViewServerSnapshot(): ContentsView {
+  return 'card'
+}
+
+function subscribeNewsView(onStoreChange: () => void): () => void {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === CONTENTS_VIEW_STORAGE_KEY) onStoreChange()
+  }
+  window.addEventListener('storage', handleStorage)
+  window.addEventListener(CONTENTS_VIEW_CHANGE_EVENT, onStoreChange)
+  return () => {
+    window.removeEventListener('storage', handleStorage)
+    window.removeEventListener(CONTENTS_VIEW_CHANGE_EVENT, onStoreChange)
+  }
+}
 
 // 콘텐츠 소스타입 선택 바 (4개 고정)
 const CONTENT_SOURCE_TABS = [
@@ -131,18 +157,18 @@ function ContentCardGrid({ items, category, sortByCollected }: {
   return (
     <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
       {items.map(({ item, members }) => (
-        category === '유튜브' ? (
+        category === '유튜브' || category === '뉴스' ? (
           <ContentCard
             key={item.id}
             id={item.id}
             title={item.title}
             summaryKo={item.summary_ko ?? null}
-            category="유튜브"
+            category={item.category}
             sourceName={item.sources?.name ?? item.author ?? null}
             publishedAt={displayDate(item, sortByCollected)}
             thumbnailUrl={coverUrlFor(item)}
-            externalHref={item.original_url}
-            keywords={item.matched_keywords ?? []}
+            externalHref={category === '유튜브' ? item.original_url : null}
+            keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
             lguImpact={item.lgu_impact ?? null}
           />
         ) : (
@@ -165,6 +191,31 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             showPublishedDateBadge={category === '리서치'}
           />
         )
+      ))}
+    </div>
+  )
+}
+
+function ContentRowList({ items, sortByCollected }: {
+  items: ClusteredItem[]
+  sortByCollected: boolean
+}) {
+  return (
+    <div className="space-y-3">
+      {items.map(({ item }) => (
+        <ContentListRow
+          key={item.id}
+          id={item.id}
+          title={item.title}
+          excerpt={toExcerpt(item.summary_ko, item.body_original)}
+          category={item.category}
+          publishedAt={displayDate(item, sortByCollected)}
+          originalUrl={item.original_url}
+          sourceName={item.sources?.name ?? item.author ?? null}
+          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+          thumbnailUrl={coverUrlFor(item)}
+          lguImpact={item.lgu_impact ?? null}
+        />
       ))}
     </div>
   )
@@ -197,6 +248,11 @@ function ContentsContent() {
   const [isLoading, setLoading]   = useState(false)
   const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
+  const newsView = useSyncExternalStore(
+    subscribeNewsView,
+    getNewsViewSnapshot,
+    getNewsViewServerSnapshot,
+  )
   // lgu_impact 컬럼 미적용(42703) 시 false — select 에서 제외하되 카드 배지는 유지한다.
   const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
 
@@ -393,6 +449,11 @@ function ContentsContent() {
     router.replace(`${pathname}?${params.toString()}`)
   }
 
+  const changeNewsView = (view: ContentsView) => {
+    window.localStorage.setItem(CONTENTS_VIEW_STORAGE_KEY, view)
+    window.dispatchEvent(new Event(CONTENTS_VIEW_CHANGE_EVENT))
+  }
+
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
   const pageTitle = category
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
@@ -418,7 +479,7 @@ function ContentsContent() {
       </NavGroupAlign>
 
       {/* 제목 + 건수 */}
-      <div className="mb-5">
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
           {!isLoading && total !== null && (
@@ -427,6 +488,32 @@ function ContentsContent() {
             </p>
           )}
         </div>
+        {category === '뉴스' && (
+          <div className="flex items-center rounded-lg border border-border bg-card p-0.5" role="group" aria-label="뉴스 보기 방식">
+            <Button
+              type="button"
+              variant={newsView === 'card' ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              onClick={() => changeNewsView('card')}
+              aria-label="카드 보기"
+              aria-pressed={newsView === 'card'}
+              title="카드 보기"
+            >
+              <LayoutGrid aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant={newsView === 'list' ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              onClick={() => changeNewsView('list')}
+              aria-label="리스트 보기"
+              aria-pressed={newsView === 'list'}
+              title="리스트 보기"
+            >
+              <List aria-hidden />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* ─── 검색 + 인기 키워드 ──────────────────────────────────────────────── */}
@@ -520,7 +607,11 @@ function ContentsContent() {
                   <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
                     {seg.label}
                   </p>
-                  <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
+                  {category === '뉴스' && newsView === 'list' ? (
+                    <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
+                  ) : (
+                    <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
+                  )}
                 </section>
               ))}
             </div>
