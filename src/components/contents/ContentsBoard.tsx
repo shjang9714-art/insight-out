@@ -459,9 +459,8 @@ export default function ContentsBoard({
     return result
   }, [items, sortByCollected])
 
-  const keywordCountByName = new Map(popularKeywords.map((keyword) => [keyword.name, keyword.count]))
   const keywordChips = [
-    ...selectedKeywords.map((name) => ({ name, count: keywordCountByName.get(name) })),
+    ...selectedKeywords.map((name) => ({ name })),
     ...popularKeywords.filter(({ name }) => !selectedKeywords.includes(name)),
   ]
 
@@ -577,7 +576,7 @@ export default function ContentsBoard({
 
         {keywordChips.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            {keywordChips.map(({ name, count }) => {
+            {keywordChips.map(({ name }) => {
               const isSelected = selectedKeywords.includes(name)
               return (
                 <button
@@ -592,7 +591,7 @@ export default function ContentsBoard({
                       : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
-                  #{name}{count !== undefined ? ` ${count}` : ''}
+                  #{name}
                 </button>
               )
             })}
