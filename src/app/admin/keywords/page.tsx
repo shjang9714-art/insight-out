@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import KeywordManager from '@/components/admin/KeywordManager'
+import AdminKeywordRiseAnalyze from '@/components/admin/AdminKeywordRiseAnalyze'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 export const metadata: Metadata = {
@@ -9,9 +10,10 @@ export const metadata: Metadata = {
 
 export default function AdminKeywordsPage() {
   return (
-    <>
+    <div className="space-y-8">
       <AdminPageHeader />
+      <AdminKeywordRiseAnalyze />
       <KeywordManager />
-    </>
+    </div>
   )
 }

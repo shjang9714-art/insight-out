@@ -19,6 +19,7 @@ import {
   getKeywordSnapshot,
   type KeywordArticle,
 } from '@/lib/keywords/detail'
+import { getRiseFactors, type RiseFactorSet } from '@/lib/keywords/rise'
 import {
   BUCKET_CHIP_CLS,
   TAG_BUCKETS,
@@ -146,6 +147,114 @@ function KeywordArticleTimeline({ articles }: { articles: KeywordArticle[] }) {
   )
 }
 
+function RiseFootnotes({
+  evidence,
+  indexById,
+}: {
+  evidence: string[]
+  indexById: Map<string, number>
+}) {
+  const references = evidence
+    .map((contentId) => ({ contentId, index: indexById.get(contentId) }))
+    .filter((item): item is { contentId: string; index: number } => typeof item.index === 'number')
+  if (references.length === 0) return null
+  return (
+    <span className="ml-1 align-super text-[11px] font-medium text-brand-600">
+      {references.map(({ contentId, index }) => (
+        <Link
+          key={contentId}
+          href={`/dashboard/contents/${contentId}`}
+          prefetch={false}
+          className="hover:underline"
+        >
+          [{index}]
+        </Link>
+      ))}
+    </span>
+  )
+}
+
+function RiseFactorsSection({
+  riseFactors,
+  articles,
+}: {
+  riseFactors: RiseFactorSet | null
+  articles: KeywordArticle[]
+}) {
+  if (!riseFactors) {
+    return (
+      <section className="mb-8 rounded-xl border border-dashed border-brand-600/30 bg-brand-50/40 p-5 dark:bg-brand-950/10">
+        <div className="flex items-start gap-3">
+          <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">상승 요인</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              분석 준비 중입니다. 다음 단계에서 근거 사건을 묶어 상승 배경을 제공합니다.
+            </p>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const articleById = new Map(articles.map((article) => [article.id, article]))
+  const evidenceIds = Array.from(new Set(riseFactors.factors.flatMap((factor) => factor.evidence)))
+  const indexById = new Map(evidenceIds.map((contentId, index) => [contentId, index + 1]))
+
+  return (
+    <section className="mb-8 rounded-xl border border-brand-600/20 bg-card p-5" aria-labelledby="rise-factors-title">
+      <div className="mb-5 flex items-start gap-3">
+        <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
+        <div>
+          <h2 id="rise-factors-title" className="text-base font-semibold text-foreground">상승 요인</h2>
+          {riseFactors.overview && (
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{riseFactors.overview}</p>
+          )}
+        </div>
+      </div>
+
+      <ol className="grid gap-3 md:grid-cols-2">
+        {riseFactors.factors.map((factor, index) => (
+          <li key={`${factor.thesis}-${index}`} className="rounded-lg border border-border bg-background p-4">
+            <div className="mb-2 flex items-start gap-2.5">
+              <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-600 dark:bg-brand-950/30">
+                {index + 1}
+              </span>
+              <h3 className="text-sm font-semibold leading-snug text-foreground">
+                {factor.thesis}
+                <RiseFootnotes evidence={factor.evidence} indexById={indexById} />
+              </h3>
+            </div>
+            <p className="pl-8.5 text-sm leading-relaxed text-muted-foreground">{factor.detail}</p>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mt-5 border-t border-border pt-3">
+        <p className="mb-1.5 text-xs font-medium text-muted-foreground">근거</p>
+        <ol className="space-y-1">
+          {evidenceIds.map((contentId, index) => {
+            const article = articleById.get(contentId)
+            return (
+              <li key={contentId} className="text-xs leading-relaxed text-muted-foreground">
+                <span className="text-brand-600">[{index + 1}]</span>{' '}
+                <Link
+                  href={`/dashboard/contents/${contentId}`}
+                  prefetch={false}
+                  className="transition-colors hover:text-brand-600"
+                >
+                  {article?.title ?? '근거 콘텐츠'}
+                </Link>
+                {article && <> · {formatKstDate(article.publishedAt ?? article.collectedAt)}</>}
+              </li>
+            )
+          })}
+        </ol>
+      </div>
+    </section>
+  )
+}
+
 export async function generateMetadata({ params }: KeywordDetailPageProps): Promise<Metadata> {
   const { name } = await params
   const keyword = decodeKeyword(name) || '키워드'
@@ -160,10 +269,11 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
   const keyword = decodeKeyword(name)
   if (!keyword) notFound()
 
-  const [dailyCounts, snapshot, related] = await Promise.all([
+  const [dailyCounts, snapshot, related, riseFactors] = await Promise.all([
     getKeywordDailyCounts(keyword),
     getKeywordSnapshot(keyword),
     getKeywordRelated(keyword),
+    getRiseFactors(keyword),
   ])
 
   const trendLabel = changeLabel(snapshot.changePct, snapshot.isNew)
@@ -183,6 +293,30 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
     detail: event.detail,
     sentiment: event.sentiment,
     citations: event.citations,
+  }))
+  const factorIndexByContent = new Map<string, number>()
+  riseFactors?.factors.forEach((factor, index) => {
+    factor.evidence.forEach((contentId) => {
+      if (!factorIndexByContent.has(contentId)) factorIndexByContent.set(contentId, index + 1)
+    })
+  })
+  const dateByContent = new Map(
+    related.articles.map((article) => [article.id, getKstDateKey(article.publishedAt ?? article.collectedAt)]),
+  )
+  for (const event of related.events) {
+    for (const contentId of event.citations) dateByContent.set(contentId, event.event_date)
+  }
+  const markerLabelsByDate = new Map<string, Set<number>>()
+  for (const [contentId, factorIndex] of factorIndexByContent) {
+    const date = dateByContent.get(contentId)
+    if (!date) continue
+    const indexes = markerLabelsByDate.get(date) ?? new Set<number>()
+    indexes.add(factorIndex)
+    markerLabelsByDate.set(date, indexes)
+  }
+  const trendMarkers = Array.from(markerLabelsByDate, ([date, indexes]) => ({
+    date,
+    label: Array.from(indexes).map((index) => `[${index}]`).join(''),
   }))
 
   const metrics: MetricCardProps[] = [
@@ -282,19 +416,11 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
             <h2 id="keyword-trend" className="text-base font-semibold text-foreground">관심도 추이</h2>
             <p className="mt-1 text-xs text-muted-foreground">최근 30일 일별 관련 문서 수 · KST 기준</p>
           </div>
-          <KeywordTrendChart data={dailyCounts} />
+          <KeywordTrendChart data={dailyCounts} markers={trendMarkers} />
         </section>
       )}
 
-      <section className="mb-8 rounded-xl border border-dashed border-brand-600/30 bg-brand-50/40 p-5 dark:bg-brand-950/10">
-        <div className="flex items-start gap-3">
-          <Sparkles className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">상승 요인</h2>
-            <p className="mt-1 text-sm text-muted-foreground">분석 준비 중입니다. 다음 단계에서 근거 사건을 묶어 상승 배경을 제공합니다.</p>
-          </div>
-        </div>
-      </section>
+      <RiseFactorsSection riseFactors={riseFactors} articles={related.articles} />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
         <section className="min-w-0" aria-labelledby="keyword-timeline">
