@@ -26,6 +26,8 @@ import { buildReportDownloadName } from '@/lib/contents/report-filename'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
 import { getContentCitations } from '@/lib/contents/citations'
 import CitationsBlock from '@/components/contents/CitationsBlock'
+import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
+import CompanyDocumentCard from '@/components/entities/CompanyDocumentCard'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import FeedCarousel from '@/components/feed/FeedCarousel'
 import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type EntityType } from '@/lib/types'
@@ -589,6 +591,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
           supabase={supabase}
           contentId={id}
           currentMeta={currentMeta}
+          category={content.category}
         />
       </Suspense>
     </PageContainer>
@@ -613,12 +616,16 @@ async function ContentSupplementSections({
   supabase,
   contentId,
   currentMeta,
+  category,
 }: {
   supabase: ReturnType<typeof createSupabaseClient>
   contentId: string
   currentMeta: ContentMeta
+  category: ContentCategory
 }) {
-  const [grouped, youtubeRelated, entityRes, citations] = await Promise.all([
+  const isCompanyDoc = category === '기업자료'
+
+  const [grouped, youtubeRelated, entityRes, citations, companyDocRes] = await Promise.all([
     getRelatedGrouped(supabase, currentMeta),
     getRelatedYoutube(supabase, currentMeta),
     supabase
@@ -627,6 +634,13 @@ async function ContentSupplementSections({
       .eq('content_id', contentId)
       .limit(20),
     getContentCitations(supabase, contentId),
+    isCompanyDoc
+      ? supabase
+          .from('company_documents')
+          .select('entity_id, entities(id, canonical_name)')
+          .eq('content_id', contentId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
   const relatedEntities: EntityRow[] = (entityRes.data ?? [])
@@ -636,10 +650,52 @@ async function ContentSupplementSections({
     })
     .filter((e): e is EntityRow => e !== null)
 
+  // 355-D — 기업자료 ↔ 연결 기업(공식 entity_id) + "이 기업의 다른 자료"(자기 제외)
+  const companyDocEntity = (companyDocRes.data as unknown as {
+    entity_id: string | null
+    entities: { id: string; canonical_name: string } | { id: string; canonical_name: string }[] | null
+  } | null)
+  const linkedEntity = companyDocEntity
+    ? (Array.isArray(companyDocEntity.entities) ? companyDocEntity.entities[0] : companyDocEntity.entities) ?? null
+    : null
+
+  const siblingDocuments = linkedEntity
+    ? (await getPublishedCompanyDocuments(supabase, { entityId: linkedEntity.id, limit: 9 }))
+        .filter((doc) => doc.contentId !== contentId)
+        .slice(0, 8)
+    : []
+
   return (
     <>
       {/* 이 기사를 인용한 리포트·인사이트(313 역참조) — 비어 있으면 CitationsBlock 자체가 렌더 안 함 */}
       <CitationsBlock citations={citations} />
+
+      {/* 355-D — 기업자료 상세: 연결 기업 링크 + 같은 기업의 다른 자료 */}
+      {isCompanyDoc && linkedEntity && (
+        <section className="mt-6 border-t border-border pt-5">
+          <p className="mb-2.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wide">연결된 기업</p>
+          <Link
+            href={`/dashboard/entities/${linkedEntity.id}`}
+            prefetch={false}
+            className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 transition-opacity hover:opacity-75 dark:bg-brand-950/30 dark:text-brand-300"
+          >
+            {linkedEntity.canonical_name}
+          </Link>
+
+          {siblingDocuments.length > 0 && (
+            <div className="mt-5">
+              <p className="mb-2.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wide">
+                이 기업의 다른 자료
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {siblingDocuments.map((doc) => (
+                  <CompanyDocumentCard key={doc.contentId} doc={doc} />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 관련 엔티티 칩 */}
       {relatedEntities.length > 0 && (
