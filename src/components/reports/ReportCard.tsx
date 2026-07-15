@@ -46,21 +46,19 @@ interface ReportCardProps {
   publisher: string | null
   publishedAt: string
   type: AiReportType
+  keywords: string[]
 }
 
 export default function ReportCard({
-  id, title, summary, coverImageUrl, publisher, publishedAt, type,
+  id, title, summary, coverImageUrl, publisher, publishedAt, type, keywords,
 }: ReportCardProps) {
   const Icon = TYPE_ICON[type]
+  const detailHref = `/dashboard/reports/${id}`
 
   return (
-    <Link
-      href={`/dashboard/reports/${id}`}
-      prefetch={false}
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-brand-200 hover:shadow-[0_4px_20px_-6px_rgb(0_0_0/0.15)]"
-    >
+    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-brand-200 hover:shadow-[0_4px_20px_-6px_rgb(0_0_0/0.15)]">
       {/* 표지 — 제목 없이 유형 색 + 아이콘 + 워드마크 */}
-      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+      <Link href={detailHref} prefetch={false} className="relative block aspect-[21/9] overflow-hidden bg-muted">
         {coverImageUrl ? (
           // next/image remotePatterns 미설정 → unoptimized(211 ContentCard 패턴)
           // eslint-disable-next-line @next/next/no-img-element
@@ -73,24 +71,41 @@ export default function ReportCard({
         ) : (
           <div
             aria-hidden
-            className={`flex h-full w-full items-start justify-between bg-gradient-to-br ${TYPE_COVER[type]} p-4`}
+            className={`relative flex h-full w-full bg-gradient-to-br ${TYPE_COVER[type]} p-4`}
           >
-            <Icon className="h-6 w-6 text-white/80" strokeWidth={1.5} />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+            <Icon className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 text-white/25" strokeWidth={1.15} />
+            <span className="ml-auto text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
               Insight Report
             </span>
           </div>
         )}
-      </div>
+      </Link>
 
       <div className="flex flex-1 flex-col p-5">
         <span className={`mb-2.5 w-fit rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TYPE_BADGE_STYLE[type]}`}>
           {type}
         </span>
 
-        <h3 className="mb-2 line-clamp-2 text-[17px] font-bold leading-[1.4] tracking-tight text-foreground transition-colors group-hover:text-brand-600">
-          {title}
-        </h3>
+        <Link href={detailHref} prefetch={false} className="mb-2">
+          <h3 className="line-clamp-2 text-[17px] font-bold leading-[1.4] tracking-tight text-foreground transition-colors group-hover:text-brand-600">
+            {title}
+          </h3>
+        </Link>
+
+        {keywords.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {keywords.map((keyword) => (
+              <Link
+                key={keyword}
+                href={`/dashboard/topics/${encodeURIComponent(keyword)}`}
+                prefetch={false}
+                className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
+              >
+                #{keyword}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {summary && (
           <p className="mb-3 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
@@ -103,12 +118,12 @@ export default function ReportCard({
             {formatDate(publishedAt)}
             {publisher && <> · {publisher}</>}
           </span>
-          <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-foreground/70 transition-colors group-hover:text-brand-600">
+          <Link href={detailHref} prefetch={false} className="inline-flex shrink-0 items-center gap-0.5 font-medium text-foreground/70 transition-colors group-hover:text-brand-600">
             보고서 열기
             <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-          </span>
+          </Link>
         </div>
       </div>
-    </Link>
+    </article>
   )
 }

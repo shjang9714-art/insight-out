@@ -19,7 +19,7 @@ function ReportGridSkeleton() {
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {[0, 1, 2].map((i) => (
         <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="aspect-[16/9] bg-muted animate-pulse" />
+          <div className="aspect-[21/9] bg-muted animate-pulse" />
           <div className="space-y-2 p-4">
             <div className="h-4 w-full rounded bg-muted animate-pulse" />
             <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
@@ -71,6 +71,7 @@ async function ReportsContent() {
           publisher={r.publisher}
           publishedAt={r.published_at}
           type={r.type}
+          keywords={r.keywords}
         />
       ))}
     </div>

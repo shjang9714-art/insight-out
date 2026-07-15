@@ -115,8 +115,14 @@ export default async function ReportDetailPage({ params }: PageProps) {
 
       {/* 349: 표지(유형·발행 메타 → 제목 → 리드)와 본문을 하나의 지면으로 합친다.
           제목이 카드 밖과 본문 안에 따로 있으면 인쇄·PDF에서 두 문서처럼 보인다. */}
-      <div className="rounded-2xl border border-border bg-card p-8 sm:p-12 print:border-0 print:bg-white print:p-0">
-        <header className="mb-10 border-b-2 border-foreground pb-6">
+      <div className={cn(
+        'rounded-2xl border border-border bg-card p-8 print:border-0 print:bg-white print:p-0',
+        report.cover_image_url ? 'sm:p-12' : 'sm:px-12 sm:py-9',
+      )}>
+        <header className={cn(
+          'border-b-2 border-foreground pb-6',
+          report.cover_image_url ? 'mb-10' : 'mb-8',
+        )}>
           {report.cover_image_url && (
             <div className="mb-6 aspect-[21/9] w-full overflow-hidden rounded-xl bg-muted print:hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -146,6 +152,21 @@ export default async function ReportDetailPage({ params }: PageProps) {
           <h1 className="text-[30px] font-bold leading-[1.3] tracking-tight text-foreground sm:text-[34px]">
             {report.title}
           </h1>
+
+          {report.keywords.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-1.5 print:hidden">
+              {report.keywords.map((keyword) => (
+                <Link
+                  key={keyword}
+                  href={`/dashboard/topics/${encodeURIComponent(keyword)}`}
+                  prefetch={false}
+                  className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
+                >
+                  #{keyword}
+                </Link>
+              ))}
+            </div>
+          )}
 
           {reportSummary && (
             <p className="mt-4 text-[17px] leading-[1.8] text-muted-foreground">
