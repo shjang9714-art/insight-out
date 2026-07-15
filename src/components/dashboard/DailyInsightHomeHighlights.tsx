@@ -114,24 +114,31 @@ export default async function DailyInsightHomeHighlights() {
                   </p>
                 )}
 
-                {/* 3C 3줄 미리보기 — 시사점만 강조 */}
-                <ul className="mt-2 space-y-1">
+                {/* 3C 미리보기 — 라벨은 칩, 본문은 잘리지 않고 끝까지 표시(시사점만 강조) */}
+                <ul className="mt-2 space-y-1.5">
                   {TREND_PREVIEW.map(({ key, label }) => {
                     const value = card[key]
                     if (!value) return null
                     const isImplication = key === 'implication'
                     return (
-                      <li
-                        key={key}
-                        className={cn(
-                          'line-clamp-1 text-[12px] leading-relaxed',
-                          isImplication
-                            ? 'font-medium text-brand-700 dark:text-brand-300'
-                            : 'text-muted-foreground'
-                        )}
-                      >
-                        <span className="font-semibold">{label}</span>{' '}
-                        <span>{stripLlmArtifacts(value)}</span>
+                      <li key={key} className="flex items-start gap-1.5 text-[12px] leading-relaxed">
+                        <span
+                          className={cn(
+                            'mt-0.5 inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                            isImplication
+                              ? 'bg-brand-600/15 text-brand-700 dark:text-brand-300'
+                              : 'bg-muted text-muted-foreground'
+                          )}
+                        >
+                          {label}
+                        </span>
+                        <span
+                          className={cn(
+                            isImplication ? 'font-medium text-brand-700 dark:text-brand-300' : 'text-muted-foreground'
+                          )}
+                        >
+                          {stripLlmArtifacts(value)}
+                        </span>
                       </li>
                     )
                   })}

@@ -23,7 +23,7 @@ export default async function WeeklyFlowHighlight() {
   if (!row || flow.length === 0) return null
 
   return (
-    <div className="mb-6 rounded-2xl border border-dashed border-brand-600/30 bg-muted/20 p-6">
+    <div className="mb-8 rounded-2xl border border-dashed border-brand-600/30 bg-muted/20 p-6">
       <div className="mb-4 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
         <Milestone className="h-3.5 w-3.5" />
         이번 주 한눈에 보는 흐름 · {formatWeekLabel(row.week_of)}
