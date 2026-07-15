@@ -11,6 +11,7 @@ import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import type { IssueCard } from '@/lib/issues/activity'
 import type { TopicTrend } from '@/components/analysis/AiInsightBoard'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
+import CouncilWorkspace from '@/components/dashboard/CouncilWorkspace'
 import { LAB_TABS, LAB_VIEW_IDS, type LabViewId } from '@/lib/lab/tabs'
 
 // 실험실(관리자 전용) 페이지 — 숨김 처리된 하위탭을 모아 확인하는 곳.
@@ -166,6 +167,16 @@ export default function LabBoard({
             추적 이슈의 변화 — 건수·논조 변동을 확인합니다
           </p>
           <IssueBoardClient cards={safeIssueCards} showLensSwitcher={false} />
+        </section>
+      )}
+
+      {/* AI 협의체 (베타) */}
+      {view === 'council' && (
+        <section>
+          <p className="mb-4 text-xs text-muted-foreground">
+            베타 — MI 관점의 페르소나와 토론하는 AI 협의체(COUNCIL)를 임베드합니다
+          </p>
+          <CouncilWorkspace />
         </section>
       )}
     </div>
