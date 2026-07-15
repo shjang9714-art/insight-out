@@ -27,8 +27,7 @@ import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import type { IssueCard } from '@/lib/issues/activity'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
-import KeywordClusterMap from '@/components/analysis/KeywordClusterMap'
-import { Building2, ChartNoAxesColumnIncreasing, CircleDot, Cpu, Landmark, LayoutGrid, Sparkles, TrendingUp } from 'lucide-react'
+import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
 import { rankKeywords, type KeywordRankingMode } from '@/lib/keywords/ranking'
 
@@ -99,8 +98,6 @@ const LAB_TABS: { id: AiInsightViewId; label: string }[] = [
 
 const LAB_VIEW_IDS: readonly AiInsightViewId[] = LAB_TABS.map(t => t.id)
 const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS].map(t => t.id)
-
-type KeywordViewMode = 'bubble' | 'card'
 
 interface KeywordChangeCard {
   id: 'rising' | 'new' | 'highlight'
@@ -215,7 +212,6 @@ export default function AiInsightBoard({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [keywordRankingMode, setKeywordRankingMode] = useState<KeywordRankingMode>('rising')
-  const [keywordViewMode, setKeywordViewMode] = useState<KeywordViewMode>('bubble')
 
   // view는 로컬 state로 들고 있지 않고 매 렌더마다 실제 URL에서 직접 파생시킨다.
   // 뒤로가기로 이 페이지가 복원될 때 Next 라우터 캐시가 스테일한 initialView를
@@ -457,41 +453,12 @@ export default function AiInsightBoard({
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
             <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="mb-3">
                 <p className="text-xs text-muted-foreground">
-                  {keywordViewMode === 'bubble'
-                    ? `키워드 클러스터 · 관련 문서가 많은 순 · 최대 ${Math.min(50, classifiedKeywords.length)}개`
-                    : '엔티티별 시그널 요약 · 콘텐츠가 많은 순'}
+                  엔티티별 시그널 요약 · 콘텐츠가 많은 순
                 </p>
-                <div className="grid grid-cols-2 rounded-lg bg-muted p-1" role="group" aria-label="키워드 보기 방식">
-                  {([
-                    { id: 'bubble' as const, label: '버블', icon: CircleDot },
-                    { id: 'card' as const, label: '카드', icon: LayoutGrid },
-                  ]).map(option => {
-                    const Icon = option.icon
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        aria-pressed={keywordViewMode === option.id}
-                        onClick={() => setKeywordViewMode(option.id)}
-                        className={cn(
-                          'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors',
-                          keywordViewMode === option.id
-                            ? 'bg-background text-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        <Icon className="size-3.5" aria-hidden="true" />
-                        {option.label}
-                      </button>
-                    )
-                  })}
-                </div>
               </div>
-              {keywordViewMode === 'bubble' ? (
-                <KeywordClusterMap keywords={classifiedKeywords} />
-              ) : keywordCardItems.length === 0 ? (
+              {keywordCardItems.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
                   시그널 데이터가 있는 엔티티가 없습니다.
                 </div>
