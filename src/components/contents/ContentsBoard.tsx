@@ -9,6 +9,7 @@ import { LayoutGrid, List, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
+import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -169,6 +170,18 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
             lguImpact={item.lgu_impact ?? null}
           />
+        ) : category === '리서치' || category === '지식보고서' ? (
+          <ContentReportCard
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            summary={toExcerpt(item.summary_ko, item.body_original)}
+            category={item.category}
+            sourceName={item.sources?.name ?? item.author ?? null}
+            publishedAt={displayDate(item, sortByCollected)}
+            coverImageUrl={coverUrlFor(item)}
+            keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+          />
         ) : (
           <ContentListCard
             key={item.id}
@@ -186,7 +199,6 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             clusterMembers={members.length > 0 ? members : undefined}
             thumbnailUrl={coverUrlFor(item)}
             lguImpact={item.lgu_impact ?? null}
-            showPublishedDateBadge={category === '리서치' || category === '지식보고서'}
           />
         )
       ))}
