@@ -144,6 +144,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
         icon: FilePlus,
       },
       {
+        href: '/admin/knowledge-reports',
+        label: '지식보고서 관리',
+        description: '내부 지식보고서 PDF·PPTX를 업로드하고 사용자 노출 정보를 관리합니다.',
+        icon: FileText,
+      },
+      {
         href: '/admin/enrich',
         label: '데이터 보강 재처리',
         description: '수집된 콘텐츠의 누락 본문, URL, 썸네일, 자막, 표지, 관련기사, 유튜브 태그를 재처리합니다.',
