@@ -40,6 +40,18 @@ interface EgoNode {
   isCenter: boolean  // root 노드
 }
 
+interface SimulationNode extends EgoNode {
+  x?: number
+  y?: number
+  vx?: number
+  vy?: number
+}
+
+interface CollisionForce {
+  (alpha: number): void
+  initialize(nodes: SimulationNode[]): void
+}
+
 interface EgoLink {
   source: string
   target: string
@@ -134,11 +146,49 @@ function getLinkEndId(end: unknown): string {
   return String(end ?? '')
 }
 
+function forceCollide(radiusFor: (node: EgoNode) => number): CollisionForce {
+  let simulationNodes: SimulationNode[] = []
+
+  const force = ((alpha: number) => {
+    for (let i = 0; i < simulationNodes.length; i += 1) {
+      const nodeA = simulationNodes[i]
+      for (let j = i + 1; j < simulationNodes.length; j += 1) {
+        const nodeB = simulationNodes[j]
+        let dx = (nodeB.x ?? 0) - (nodeA.x ?? 0)
+        let dy = (nodeB.y ?? 0) - (nodeA.y ?? 0)
+        if (dx === 0 && dy === 0) {
+          dx = (j - i) * 0.01
+          dy = 0.01
+        }
+
+        const minDistance = radiusFor(nodeA) + radiusFor(nodeB)
+        const distance = Math.sqrt(dx * dx + dy * dy)
+        if (distance >= minDistance) continue
+
+        const strength = ((minDistance - distance) / distance) * Math.max(alpha, 0.2) * 0.5
+        const moveX = dx * strength
+        const moveY = dy * strength
+        nodeA.vx = (nodeA.vx ?? 0) - moveX
+        nodeA.vy = (nodeA.vy ?? 0) - moveY
+        nodeB.vx = (nodeB.vx ?? 0) + moveX
+        nodeB.vy = (nodeB.vy ?? 0) + moveY
+      }
+    }
+  }) as CollisionForce
+
+  force.initialize = (nextNodes) => {
+    simulationNodes = nextNodes
+  }
+
+  return force
+}
+
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<ForceGraphMethods<any, any> | undefined>(undefined)
+  const fitRequestedRef = useRef(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 520 })
 
@@ -344,23 +394,38 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   // ── force 파라미터 조정 ────────────────────────────────────────────────────
 
+  const configureForces = useCallback(() => {
+    const fg = graphRef.current
+    if (!fg) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const charge = (fg as any).d3Force?.('charge')
+    if (charge?.strength) charge.strength(-600)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(fg as any).d3Force?.(
+      'collide',
+      forceCollide((node) => Math.max(4, node.val * 2.5) + 6),
+    )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const link = (fg as any).d3Force?.('link')
+    // 290 — 강한 관계일수록 목표 거리를 짧게 해 "가까움 = 관련 깊음"이 실제 의미를 갖게 한다.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (link?.distance) link.distance((l: any) => 140 - Math.min(80, Math.log2((l.weight ?? 1) + 1) * 20))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(fg as any).d3ReheatSimulation?.()
+  }, [])
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const fg = graphRef.current
-      if (!fg) return
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const charge = (fg as any).d3Force?.('charge')
-      if (charge?.strength) charge.strength(-280)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const link = (fg as any).d3Force?.('link')
-      // 290 — 상수 거리 폐지: 강한 관계(weight 큼)일수록 목표 거리를 짧게 해 "가까움 = 관련 깊음"이 실제 의미를 갖게 한다.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (link?.distance) link.distance((l: any) => 140 - Math.min(80, Math.log2((l.weight ?? 1) + 1) * 20))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(fg as any).d3ReheatSimulation?.()
-    }, 150)
-    return () => clearTimeout(timer)
-  }, [loadedKey])
+    fitRequestedRef.current = true
+    configureForces()
+    const retryTimer = setTimeout(configureForces, 120)
+    return () => clearTimeout(retryTimer)
+  }, [configureForces, loadedKey])
+
+  const handleEngineStop = useCallback(() => {
+    if (!fitRequestedRef.current) return
+    fitRequestedRef.current = false
+    graphRef.current?.zoomToFit(400, 40)
+  }, [])
 
   // ── 노드 확장 ──────────────────────────────────────────────────────────────
 
@@ -457,13 +522,15 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       setNodes(newNodes)
       setLinks(newLinks)
       setExpandStack(newStack)
+      fitRequestedRef.current = true
+      requestAnimationFrame(configureForces)
     } finally {
       if (resetKeyRef.current === capturedResetKey) {
         loadingNodeIdRef.current = null
         setLoadingNodeId(null)
       }
     }
-  }, [])
+  }, [configureForces])
 
   // ── 한 단계 취소 ───────────────────────────────────────────────────────────
 
@@ -981,10 +1048,11 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             onBackgroundClick={handleBackgroundClick}
             onLinkHover={handleLinkHover}
             onLinkClick={handleLinkClick}
-            cooldownTicks={80}
+            onEngineStop={handleEngineStop}
+            cooldownTicks={180}
             d3AlphaDecay={0.015}
             d3VelocityDecay={0.25}
-            warmupTicks={40}
+            warmupTicks={120}
             enableZoomInteraction
             enablePanInteraction
           />
