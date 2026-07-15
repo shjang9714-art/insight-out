@@ -365,10 +365,12 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
   const weekOf = getKstWeekMondayString(now)
 
   if (!dryRun) {
+    // status='rejected'(반려·재생성 대비 보존)는 "이미 배치가 있다"로 치지 않는다 — published만 카운트.
     const { data: existing, error: existingError } = await admin
       .from('daily_insights')
       .select('id')
       .eq('week_of', weekOf)
+      .eq('status', 'published')
       .limit(1)
     if (existingError) {
       return {
