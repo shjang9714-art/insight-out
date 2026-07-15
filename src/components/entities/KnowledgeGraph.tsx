@@ -200,9 +200,13 @@ function forceCollide(radiusFor: (node: EgoNode) => number): CollisionForce {
 export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<ForceGraphMethods<any, any> | undefined>(undefined)
+  const forcesAppliedRef = useRef(false)
   const fitRequestedRef = useRef(true)
+  const engineRunningRef = useRef(false)
+  const dimensionsWidthRef = useRef(0)
+  const lastFittedWidthRef = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 800, height: 520 })
+  const [dimensions, setDimensions] = useState({ width: 0, height: 520 })
 
   // 렌즈 (canvas 콜백은 RAF 루프에서 실행 → ref로 최신값 전달)
   const [activeLens] = useActiveLens()
@@ -286,11 +290,16 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const ro = new ResizeObserver(() => {
-      setDimensions({ width: el.offsetWidth, height: 520 })
-    })
+    const measure = () => {
+      const width = el.offsetWidth
+      if (width <= 0 || width === dimensionsWidthRef.current) return
+      if (lastFittedWidthRef.current > 0) fitRequestedRef.current = true
+      dimensionsWidthRef.current = width
+      setDimensions({ width, height: 520 })
+    }
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
-    setDimensions({ width: el.offsetWidth, height: 520 })
+    measure()
     return () => ro.disconnect()
   }, [])
 
@@ -332,6 +341,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) {
+          forcesAppliedRef.current = false
+          fitRequestedRef.current = true
+          lastFittedWidthRef.current = 0
           loadedKeyRef.current = thisKey
           setNodes([])
           setLinks([])
@@ -353,6 +365,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           const initEntry: ExpStackEntry = { nodeId: rootId, addedNodeIds: rootNode ? [rootId] : [], addedLinkKeys: [] }
           expandedIdsRef.current = new Set([rootId])
           expandStackRef.current = [initEntry]
+          forcesAppliedRef.current = false
+          fitRequestedRef.current = true
+          lastFittedWidthRef.current = 0
           loadedKeyRef.current = thisKey
           setNodes(rootNode ? [rootNode] : [])
           setLinks([])
@@ -400,6 +415,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             linkKeysRef.current = newLinkKeys
             expandedIdsRef.current = new Set([rootId])
             expandStackRef.current = [initEntry]
+            forcesAppliedRef.current = false
+            fitRequestedRef.current = true
+            lastFittedWidthRef.current = 0
             loadedKeyRef.current = thisKey
 
             setNodes(newNodes)
@@ -416,9 +434,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   // ── force 파라미터 조정 ────────────────────────────────────────────────────
 
-  const configureForces = useCallback(() => {
+  const configureForces = useCallback((): boolean => {
+    if (forcesAppliedRef.current) return true
     const fg = graphRef.current
-    if (!fg) return
+    if (!fg) return false
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const charge = (fg as any).d3Force?.('charge')
     if (charge?.strength) charge.strength(-600)
@@ -432,22 +451,61 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     // 290 — 강한 관계일수록 목표 거리를 짧게 해 "가까움 = 관련 깊음"이 실제 의미를 갖게 한다.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (link?.distance) link.distance((l: any) => 140 - Math.min(80, Math.log2((l.weight ?? 1) + 1) * 20))
+    forcesAppliedRef.current = true
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(fg as any).d3ReheatSimulation?.()
+    return true
   }, [])
 
   useEffect(() => {
-    fitRequestedRef.current = true
-    configureForces()
-    const retryTimer = setTimeout(configureForces, 120)
-    return () => clearTimeout(retryTimer)
+    if (!loadedKey) return
+    let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let attempts = 0
+
+    const ensureForces = () => {
+      if (cancelled || loadedKeyRef.current !== loadedKey) return
+      if (configureForces()) return
+      attempts += 1
+      if (attempts < 20) retryTimer = setTimeout(ensureForces, 50)
+    }
+
+    ensureForces()
+    return () => {
+      cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
+    }
   }, [configureForces, loadedKey])
 
+  const handleEngineTick = useCallback(() => {
+    engineRunningRef.current = true
+    if (!forcesAppliedRef.current) configureForces()
+  }, [configureForces])
+
   const handleEngineStop = useCallback(() => {
-    if (!fitRequestedRef.current) return
+    engineRunningRef.current = false
+    if (!fitRequestedRef.current || !forcesAppliedRef.current || dimensionsWidthRef.current <= 0) return
     fitRequestedRef.current = false
+    lastFittedWidthRef.current = dimensionsWidthRef.current
     graphRef.current?.zoomToFit(400, 40)
   }, [])
+
+  useEffect(() => {
+    if (
+      dimensions.width <= 0 ||
+      lastFittedWidthRef.current <= 0 ||
+      lastFittedWidthRef.current === dimensions.width ||
+      !forcesAppliedRef.current ||
+      engineRunningRef.current
+    ) return
+
+    const fitFrame = requestAnimationFrame(() => {
+      fitRequestedRef.current = false
+      lastFittedWidthRef.current = dimensions.width
+      graphRef.current?.zoomToFit(250, 40)
+    })
+    return () => cancelAnimationFrame(fitFrame)
+  }, [dimensions.width])
 
   // ── 노드 확장 ──────────────────────────────────────────────────────────────
 
@@ -544,8 +602,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       setNodes(newNodes)
       setLinks(newLinks)
       setExpandStack(newStack)
+      forcesAppliedRef.current = false
       fitRequestedRef.current = true
-      requestAnimationFrame(configureForces)
+      configureForces()
     } finally {
       if (resetKeyRef.current === capturedResetKey) {
         loadingNodeIdRef.current = null
@@ -857,7 +916,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   }
 
   return (
-    <div className="relative">
+    <div className="relative w-full min-w-0 max-w-full [contain:inline-size]">
       {/* 빠른 중심 프리셋 */}
       {presets.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
@@ -1000,12 +1059,12 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       </div>
 
       {/* 290 — 데스크톱(lg+): 그래프 + 우측 고정 인스펙터 2열. 모바일: 1열(그래프 아래 카드, DOM 순서 그대로). */}
-      <div className="lg:grid lg:grid-cols-[1fr_320px] lg:items-start lg:gap-4">
+      <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-4">
 
       {/* 그래프 캔버스 */}
       <div
         ref={containerRef}
-        className="relative overflow-hidden rounded-xl border bg-muted/20"
+        className="relative min-w-0 max-w-full overflow-hidden rounded-xl border bg-muted/20"
         style={{ height: 520 }}
       >
         {isInitLoading && (
@@ -1039,7 +1098,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           </div>
         )}
 
-        {!isInitLoading && !rpcError && nodes.length > 0 && (
+        {!isInitLoading && !rpcError && nodes.length > 0 && dimensions.width > 0 && (
           <ForceGraph2D
             ref={graphRef}
             graphData={{ nodes: nodes as unknown as { id: string }[], links }}
@@ -1151,6 +1210,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             onBackgroundClick={handleBackgroundClick}
             onLinkHover={handleLinkHover}
             onLinkClick={handleLinkClick}
+            onEngineTick={handleEngineTick}
             onEngineStop={handleEngineStop}
             cooldownTicks={180}
             d3AlphaDecay={0.015}
