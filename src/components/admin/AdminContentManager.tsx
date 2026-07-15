@@ -1219,7 +1219,7 @@ export default function AdminContentManager() {
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">검수 체크</h3>
+          <h3 className="text-sm font-semibold text-foreground">관리 체크</h3>
           {editReviewWarnings.length > 0 ? (
             <span className="rounded-full bg-risk-soft px-2 py-0.5 text-[11px] font-medium text-risk">
               {editReviewWarnings.length}개 확인
@@ -1966,7 +1966,7 @@ export default function AdminContentManager() {
           <DialogHeader className="mb-0 shrink-0 border-b border-border px-5 py-4 pr-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <DialogTitle>콘텐츠 검수</DialogTitle>
+                <DialogTitle>콘텐츠 관리</DialogTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
                   현재 페이지 {editPosition || '-'} / {contents.length || 0}
                   {pendingCount !== null ? ` · 검토 대기 ${pendingCount}건` : ''}
