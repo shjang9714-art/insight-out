@@ -8,6 +8,7 @@ export const ENTITY_TABS = [
   { id: 'watchlist',  label: '주요 기업',       href: '/dashboard/entities?view=watchlist' },
   { id: 'competitor', label: '경쟁사 최근 뉴스', href: '/dashboard/entities?view=competitor' },
   { id: 'trend',      label: '경쟁사 주간 브리핑', href: '/dashboard/entities?view=trend' },
+  { id: 'documents',  label: '기업·기술 자료',   href: '/dashboard/entities?view=documents' },
 ]
 
 interface EntityTabsProps {

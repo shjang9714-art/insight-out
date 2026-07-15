@@ -103,6 +103,7 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '웹인사이트': 'bg-teal-50 text-teal-700 border-teal-100',
   'AI보고서':  'bg-pink-50 text-pink-700 border-pink-100',
   '지식보고서': 'bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900',
+  '기업자료':  'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
   '유튜브':    'bg-red-50 text-red-700 border-red-100',
   // deprecated
   '가트너':    'bg-purple-50 text-purple-700 border-purple-100',

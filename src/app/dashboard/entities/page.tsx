@@ -18,6 +18,15 @@ import {
 import CompetitorWeeklyList from '@/components/entities/CompetitorWeeklyList'
 import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
 import EntitySectionHeader from '@/components/entities/EntitySectionHeader'
+import CompanyDocumentCard from '@/components/entities/CompanyDocumentCard'
+import CompanyDocumentFilterBar from '@/components/entities/CompanyDocumentFilterBar'
+import {
+  getPublishedCompanyDocuments,
+  getCompanyDocumentEntityOptions,
+  getCompanyDocumentStats,
+} from '@/lib/company-docs/query'
+import type { CompanyDocumentType } from '@/lib/types'
+import { COMPANY_DOC_TYPES } from '@/lib/company-docs/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,9 +35,9 @@ export const metadata: Metadata = {
   description: '관심기업·경쟁사 동향 및 엔티티 관계 탐색 — 기업·기술·이슈를 한눈에 확인합니다.',
 }
 
-type SearchParams = Promise<{ view?: string }>
+type SearchParams = Promise<{ view?: string; entity?: string; docType?: string }>
 
-const VALID_VIEWS = ['watchlist', 'competitor', 'trend'] as const
+const VALID_VIEWS = ['watchlist', 'competitor', 'trend', 'documents'] as const
 
 type ViewId = typeof VALID_VIEWS[number]
 
@@ -192,10 +201,49 @@ async function CompetitorTrendView() {
   )
 }
 
+async function DocumentsView({ entityId, docType }: { entityId?: string; docType?: CompanyDocumentType }) {
+  const supabase = await createSupabase()
+  // 355-B — 기업·기술 자료 탭. 355-A(DART)·355-C(검토함) 승인분(review_status='none')만 노출.
+  const [docs, entityOptions, stats] = await Promise.all([
+    getPublishedCompanyDocuments(supabase, { entityId, docType }),
+    getCompanyDocumentEntityOptions(supabase),
+    getCompanyDocumentStats(supabase),
+  ])
+
+  return (
+    <div>
+      <EntitySectionHeader
+        title="기업·기술 자료"
+        subtitle="공시·IR·기술자료 등 공식 문서를 한곳에서 확인합니다"
+        meta={`총 ${stats.total}건 · 이번주 신규 ${stats.newThisWeek}건`}
+      />
+
+      <CompanyDocumentFilterBar entityOptions={entityOptions} />
+
+      {docs.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
+          <p className="text-sm font-medium text-foreground">해당 조건의 기업자료가 아직 없습니다</p>
+          <p className="text-xs text-muted-foreground">DART 공시 수집·검토 승인 후 이곳에 표시됩니다.</p>
+        </div>
+      ) : (
+        <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+          {docs.map((doc) => (
+            <CompanyDocumentCard key={doc.contentId} doc={doc} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default async function EntitiesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const raw = typeof params.view === 'string' ? params.view : ''
   const view: ViewId = (VALID_VIEWS.includes(raw as ViewId) ? raw : 'watchlist') as ViewId
+  const entityFilter = typeof params.entity === 'string' && params.entity ? params.entity : undefined
+  const docTypeFilter = typeof params.docType === 'string' && (COMPANY_DOC_TYPES as string[]).includes(params.docType)
+    ? (params.docType as CompanyDocumentType)
+    : undefined
 
   return (
     <PageContainer>
@@ -221,6 +269,13 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
       {view === 'trend' && (
         <Suspense fallback={<EntityPanelSkeleton />}>
           <CompetitorTrendView />
+        </Suspense>
+      )}
+
+      {/* 기업·기술 자료 탭(355-B) */}
+      {view === 'documents' && (
+        <Suspense fallback={<EntityPanelSkeleton />}>
+          <DocumentsView entityId={entityFilter} docType={docTypeFilter} />
         </Suspense>
       )}
     </PageContainer>
