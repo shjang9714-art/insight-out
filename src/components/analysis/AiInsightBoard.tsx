@@ -168,9 +168,6 @@ export default function AiInsightBoard({
   const keywordByName = new Map(
     classifiedKeywords.map(keyword => [keyword.name.toLocaleLowerCase('ko-KR'), keyword])
   )
-  const entityIdByName = new Map(
-    allEntities.map(entity => [entity.canonical_name.toLocaleLowerCase('ko-KR'), entity.id])
-  )
   const risingKeywordCount = classifiedKeywords.filter(
     keyword => !keyword.isNew && (keyword.changePct ?? 0) > 0
   ).length
@@ -271,7 +268,7 @@ export default function AiInsightBoard({
               {kwStrip.map((kw) => (
                 <Link
                   key={kw.name}
-                  href={`/dashboard/topics/${encodeURIComponent(kw.name)}`}
+                  href={`/dashboard/keywords/${encodeURIComponent(kw.name)}`}
                   prefetch={false}
                   className={cn(
                     'shrink-0 inline-flex items-center gap-0.5 rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium transition-colors hover:opacity-80',
@@ -374,7 +371,7 @@ export default function AiInsightBoard({
                     return (
                       <Link
                         key={item.entityId}
-                        href={`/dashboard/entities/${item.entityId}?origin=issues&view=keyword`}
+                        href={`/dashboard/keywords/${encodeURIComponent(item.name)}`}
                         prefetch={false}
                         aria-label={`${item.name}, 콘텐츠 ${item.contentCount.toLocaleString()}건`}
                         className={cn(
@@ -451,10 +448,7 @@ export default function AiInsightBoard({
               ) : (
                 <ol className="mt-3 divide-y divide-border">
                   {rankedKeywords.map((keyword, index) => {
-                    const entityId = entityIdByName.get(keyword.name.toLocaleLowerCase('ko-KR'))
-                    const href = entityId
-                      ? `/dashboard/entities/${entityId}?origin=issues&view=keyword`
-                      : `/dashboard/topics/${encodeURIComponent(keyword.name)}`
+                    const href = `/dashboard/keywords/${encodeURIComponent(keyword.name)}`
 
                     return (
                       <li key={keyword.name}>
