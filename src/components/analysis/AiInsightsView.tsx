@@ -113,7 +113,7 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
   }
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes] = await Promise.all([
+  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes, lguAliasRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -162,6 +162,10 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
     user
       ? supabase.from('users').select('role').eq('id', user.id).single()
       : Promise.resolve({ data: null as { role: string } | null }),
+    supabase
+      .from('entity_aliases')
+      .select('entity_id, alias')
+      .in('alias', ['LG유플러스', 'LGU+', 'LG U+']),
   ])
 
   const isAdmin = profileRes.data?.role === 'admin'
@@ -180,7 +184,11 @@ export default async function AiInsightsView({ view = 'brief', dailyPeriod, dail
   }
   const entities = (entityRes.data ?? []) as EntitySummary[]
   const allEntities = (allEntityRes.data ?? []) as AllEntityRow[]
-  const initialCenter = entities.length > 0 ? entities[0] : null
+  const lguNames = new Set(['LG유플러스', 'LGU+', 'LG U+'])
+  const lguAliasEntityIds = new Set((lguAliasRes.data ?? []).map((row) => row.entity_id))
+  const initialCenter = entities.find((entity) => (
+    lguNames.has(entity.canonical_name) || lguAliasEntityIds.has(entity.id)
+  )) ?? entities[0] ?? null
   const totalByType: Record<string, number> = { 전체: allEntities.length }
   for (const type of Object.keys(ENTITY_TYPE_LABEL) as EntityType[]) {
     totalByType[type] = allEntities.filter((e) => e.entity_type === type).length

@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { RotateCcw, Search, Undo2, X } from 'lucide-react'
+import { Plus, RotateCcw, Search, Undo2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
@@ -233,6 +233,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   // 검색
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDrop, setShowSearchDrop] = useState(false)
+  const [showSearchInput, setShowSearchInput] = useState(false)
 
   // 엣지 툴팁 (forLoadedKey !== loadedKey이면 자동 무효화)
   const [edgeTooltip, setEdgeTooltip] = useState<EdgeTooltip | null>(null)
@@ -584,6 +585,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     })
     setSearchQuery('')
     setShowSearchDrop(false)
+    setShowSearchInput(false)
   }
 
   // ── 노드 클릭 ──────────────────────────────────────────────────────────────
@@ -732,9 +734,15 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         .slice(0, 8)
     : []
 
+  const lguNames = new Set(['LG유플러스', 'LGU+', 'LG U+'])
+  const lguEntity = entities.find((entity) => lguNames.has(entity.canonical_name))
   const competitors = entities.filter((e) => e.is_competitor).slice(0, 5)
   const topNonCompetitors = entities.filter((e) => !e.is_competitor).slice(0, 3)
-  const presets = [...competitors, ...topNonCompetitors]
+  const presets = Array.from(new Map(
+    [lguEntity, ...competitors, ...topNonCompetitors]
+      .filter((entity): entity is EntitySummary => entity !== undefined)
+      .map((entity) => [entity.id, entity]),
+  ).values())
 
   const canUndo = expandStack.length > 1
   const expandCount = Math.max(0, expandStack.length - 1)
@@ -768,63 +776,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
   return (
     <div className="relative">
-      {/* 검색 + 제어 버튼 */}
-      <div className="mb-3 flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="엔티티 검색해 중심으로 설정…"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setShowSearchDrop(true) }}
-            onFocus={() => setShowSearchDrop(true)}
-            onBlur={() => setTimeout(() => setShowSearchDrop(false), 150)}
-            className="w-full rounded-lg border bg-background py-1.5 pl-8 pr-3 text-sm outline-none focus:ring-1 focus:ring-brand-600"
-          />
-          {showSearchDrop && searchResults.length > 0 && (
-            <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border bg-background shadow-lg">
-              {searchResults.map((e) => (
-                <button
-                  key={e.id}
-                  onMouseDown={() => selectCenter(e.id)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/50"
-                >
-                  <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: e.is_competitor && e.entity_type === 'company' ? COMPETITOR_COLOR : TYPE_COLOR[e.entity_type] }}
-                  />
-                  <span className="truncate">{e.canonical_name}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                    {ENTITY_TYPE_LABEL[e.entity_type]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <button
-          onClick={handleUndo}
-          disabled={!canUndo}
-          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          title="마지막 확장 취소"
-        >
-          <Undo2 className="h-3.5 w-3.5" />
-          취소
-        </button>
-        <button
-          onClick={handleReset}
-          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          title="1홉으로 초기화"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          초기화
-        </button>
-      </div>
-
       {/* 빠른 중심 프리셋 */}
       {presets.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
-          <span className="self-center text-xs text-muted-foreground">빠른 중심:</span>
+          <span className="self-center text-xs text-muted-foreground">이런 걸 볼 수 있어요:</span>
           {presets.map((e) => (
             <button
               key={e.id}
@@ -845,6 +800,70 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         </div>
       )}
 
+      {/* 직접 검색 + 제어 버튼 */}
+      <div className="mb-3 flex items-center gap-2">
+        {showSearchInput ? (
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="회사·기술 이름으로 찾기"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setShowSearchDrop(true) }}
+              onFocus={() => setShowSearchDrop(true)}
+              onBlur={() => setTimeout(() => setShowSearchDrop(false), 150)}
+              className="w-full rounded-lg border bg-background py-1.5 pl-8 pr-3 text-sm outline-none focus:ring-1 focus:ring-brand-600"
+            />
+            {showSearchDrop && searchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border bg-background shadow-lg">
+                {searchResults.map((e) => (
+                  <button
+                    key={e.id}
+                    onMouseDown={() => selectCenter(e.id)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/50"
+                  >
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: e.is_competitor && e.entity_type === 'company' ? COMPETITOR_COLOR : TYPE_COLOR[e.entity_type] }}
+                    />
+                    <span className="truncate">{e.canonical_name}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {ENTITY_TYPE_LABEL[e.entity_type]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowSearchInput(true)}
+            className="flex flex-1 items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            직접 검색
+          </button>
+        )}
+        <button
+          onClick={handleUndo}
+          disabled={!canUndo}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="마지막 확장 취소"
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+          취소
+        </button>
+        <button
+          onClick={handleReset}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          title="1홉으로 초기화"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          초기화
+        </button>
+      </div>
+
       {/* 현재 중심 정보 */}
       {rootEnt && (
         <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
@@ -863,9 +882,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       {/* 타입 필터 범례 + 렌즈 안내 */}
       <div className="mb-3">
         <div className="mb-2 space-y-0.5 text-xs text-muted-foreground">
-          <p>점 = 기업·기술·인물 등 엔티티 · 크기 = 언급 횟수</p>
+          <p>점 = 기업·기술·인물 등 주요 대상 · 크기 = 언급 횟수</p>
           <p>선 = 함께 뉴스에 등장한 관계 · 굵기·가까움 = 관계 강도</p>
-          <p>점을 누르면 관련 기사, 선을 누르면 두 엔티티의 관계가 보여요.</p>
+          <p>점을 누르면 관련 기사, 선을 누르면 두 대상의 관계가 보여요.</p>
         </div>
         <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">유형 필터 (누르면 숨김)</p>
         <div className="flex flex-wrap gap-2">
