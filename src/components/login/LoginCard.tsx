@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { SetPasswordForm } from '@/components/login/SetPasswordForm'
 
 const RESEND_COOLDOWN_SECONDS = 60
+// Supabase Auth > Email OTP Expiration 설정과 일치시킬 것 — 어긋나면 이 안내가 거짓말이 된다.
+const OTP_VALIDITY_SECONDS = 600
 
 type Step = 'password' | 'otp-send' | 'otp-verify' | 'set-password'
 
@@ -59,6 +61,12 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function formatMmSs(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
 export function LoginCard() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -73,6 +81,8 @@ export function LoginCard() {
   const [showRecovery, setShowRecovery] = useState(false)
   const [loading, setLoading] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null)
+  const [otpRemainingSeconds, setOtpRemainingSeconds] = useState(0)
   const [wasPasswordSet, setWasPasswordSet] = useState(false)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const verifyingRef = useRef(false)
@@ -82,6 +92,15 @@ export function LoginCard() {
     const timer = window.setInterval(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1000)
     return () => window.clearInterval(timer)
   }, [resendCooldown])
+
+  // 인증 코드 남은 유효시간 안내(373) — 실제 만료 판정은 Supabase가 하고, 이건 화면 안내 전용.
+  useEffect(() => {
+    if (step !== 'otp-verify' || otpExpiresAt === null) return
+    const tick = () => setOtpRemainingSeconds(Math.max(0, Math.ceil((otpExpiresAt - Date.now()) / 1000)))
+    tick()
+    const timer = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timer)
+  }, [step, otpExpiresAt])
 
   useEffect(() => {
     if (step === 'otp-verify') codeInputRef.current?.focus()
@@ -132,6 +151,7 @@ export function LoginCard() {
       return false
     }
     setResendCooldown(RESEND_COOLDOWN_SECONDS)
+    setOtpExpiresAt(Date.now() + OTP_VALIDITY_SECONDS * 1000)
     return true
   }
 
@@ -283,6 +303,17 @@ export function LoginCard() {
             <Label htmlFor="otp-code" className="text-slate-700">인증 코드</Label>
             <Input id="otp-code" ref={codeInputRef} type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="······" value={code} onChange={(event) => handleCodeChange(event.target.value)} disabled={loading} aria-describedby="otp-hint" className="h-14 rounded-xl border-slate-200 bg-white text-center text-[24px] font-bold tracking-[0.5em] text-slate-900 placeholder:tracking-[0.3em] placeholder:text-slate-300" />
             <p id="otp-hint" className="mt-0.5 text-xs text-slate-400"><span className="font-medium text-slate-500">{email}</span> 로 6자리 코드를 보냈습니다</p>
+            {otpExpiresAt !== null && (
+              otpRemainingSeconds > 0 ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  코드는 10분간 유효합니다 · 유효시간 <span className="font-medium tabular-nums text-slate-500">{formatMmSs(otpRemainingSeconds)}</span>
+                </p>
+              ) : (
+                <p role="alert" className="mt-1 text-xs font-medium text-destructive">
+                  코드가 만료되었습니다. 재전송해 주세요.
+                </p>
+              )
+            )}
           </div>
           <Button type="submit" disabled={loading || code.length !== 6} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
             {loading && <Spinner />}{loading ? '확인 중...' : '확인'}
