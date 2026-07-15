@@ -142,6 +142,9 @@
   --brand-950: #2e0a1e;
   --brand-solid: #E6007E;
   --brand-solid-hover: #c5006b;
+  /* 전략보고서 형광펜 전용 — 다른 brand-100/200 사용처와 분리한다. */
+  --report-hl: var(--color-brand-100);
+  --report-hl-strong: var(--color-brand-200);
   /* 저대비 무트 마젠타 — 내비 활성 인디케이터 등 얇은 강조용(227) */
   --brand-muted: #A83E63;
   /* 핵심 Insight 섹션 틸 액센트(라이트, 아이브로우 라벨 전용) — white 배경 대비 6.2:1 확보 */
@@ -196,6 +199,9 @@
      14px 라벨은 large-text 예외 미충족이라 별도 어두운 값으로 4.5:1 이상 확보 */
   --brand-solid: #D40074;
   --brand-solid-hover: #B8005F;
+  /* 밝은 본문이 밴드 위에서도 읽히도록 다크에서는 반투명 브랜드색을 쓴다. */
+  --report-hl: color-mix(in srgb, var(--color-brand-600) 34%, transparent);
+  --report-hl-strong: color-mix(in srgb, var(--color-brand-600) 50%, transparent);
   /* 저대비 무트 마젠타(다크) — 배경 대비 확보를 위해 라이트보다 한 톤 밝게(227) */
   --brand-muted: #C76A8A;
   /* 핵심 Insight 섹션 틸 액센트(다크) — 라이트값(#0F6E56)이 다크 카드 배경 대비 2.75:1 로
@@ -640,7 +646,7 @@
    · 소제목: brand-200 (진한 톤, 굵은 글자 뒤로도 보인다)
    · 본문:   brand-100 (연한 톤, 긴 문장에 걸려도 답답하지 않다) */
 .io-report-body mark {
-  background: linear-gradient(transparent 58%, var(--color-brand-100) 58%);
+  background: linear-gradient(transparent 55%, var(--report-hl) 55%);
   color: inherit;
   padding: 0 1px;
   border-radius: 2px;
@@ -649,7 +655,7 @@
 .io-report-body h2 mark,
 .io-report-body h3 mark,
 .io-report-body h4 mark {
-  background: linear-gradient(transparent 60%, var(--color-brand-200) 60%);
+  background: linear-gradient(transparent 55%, var(--report-hl-strong) 55%);
 }
 .io-report-body em {
   font-style: normal;
