@@ -162,6 +162,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             clusterMembers={members.length > 0 ? members : undefined}
             thumbnailUrl={coverUrlFor(item)}
             lguImpact={item.lgu_impact ?? null}
+            showPublishedDateBadge={category === '리서치'}
           />
         )
       ))}
@@ -399,6 +400,7 @@ function ContentsContent() {
 
   // 소스타입 선택 (기본 뉴스)
   const activeSourceTab = (category || '뉴스') as ContentCategory
+  const usesFlatList = category === '리서치' || category === '유튜브'
 
   return (
     <PageContainer>
@@ -509,16 +511,20 @@ function ContentsContent() {
         </div>
       ) : (
         <>
-          <div className="space-y-6">
-            {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
-              <section key={seg.key}>
-                <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
-                  {seg.label}
-                </p>
-                <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
-              </section>
-            ))}
-          </div>
+          {usesFlatList ? (
+            <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+          ) : (
+            <div className="space-y-6">
+              {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
+                <section key={seg.key}>
+                  <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+                    {seg.label}
+                  </p>
+                  <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
+                </section>
+              ))}
+            </div>
+          )}
 
           {/* 더 보기 */}
           {hasMore && (

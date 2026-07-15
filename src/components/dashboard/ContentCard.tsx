@@ -24,6 +24,15 @@ function timeAgo(dateStr: string | null): string {
   })
 }
 
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  })
+}
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface ContentCardProps {
@@ -162,7 +171,11 @@ export default function ContentCard({
         )}
 
         <p className="mt-auto text-[11px] text-muted-foreground">
-          {publishedAt ? `발행 ${timeAgo(publishedAt)}` : '발행일 미상'}
+          {publishedAt
+            ? category === '유튜브'
+              ? `발행 ${formatDate(publishedAt)} · ${timeAgo(publishedAt)}`
+              : `발행 ${timeAgo(publishedAt)}`
+            : '발행일 미상'}
         </p>
       </div>
     </>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import { CalendarDays, ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover from '@/components/dashboard/BrandedCover'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
@@ -39,6 +39,8 @@ interface ContentListCardProps {
   thumbnailUrl?: string | null
   /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
   lguImpact?: string | null
+  /** 일별 헤더가 없는 평면 목록에서 카드 자체에 발행일을 강조한다. */
+  showPublishedDateBadge?: boolean
 }
 
 export default function ContentListCard({
@@ -56,6 +58,7 @@ export default function ContentListCard({
   clusterMembers,
   thumbnailUrl,
   lguImpact,
+  showPublishedDateBadge = false,
 }: ContentListCardProps) {
   const [expanded, setExpanded] = useState(false)
   const dateStr     = formatDate(publishedAt)
@@ -84,6 +87,12 @@ export default function ContentListCard({
             {CONTENT_CATEGORY_LABEL[category] ?? category}
           </span>
           <LguImpactBadge impact={lguImpact} />
+          {showPublishedDateBadge && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              <CalendarDays className="h-3 w-3" aria-hidden />
+              {dateStr ?? '발행일 미상'}
+            </span>
+          )}
           {tags.map((kw) => (
             <span
               key={kw}
