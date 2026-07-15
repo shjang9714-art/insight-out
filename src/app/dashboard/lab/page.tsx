@@ -4,8 +4,9 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
-import LabBoard, { LAB_VIEW_IDS, type LabViewId } from '@/components/analysis/LabBoard'
+import LabBoard from '@/components/analysis/LabBoard'
 import { getLabData } from '@/lib/lab/data'
+import { LAB_VIEW_IDS, type LabViewId } from '@/lib/lab/tabs'
 
 export const dynamic = 'force-dynamic'
 

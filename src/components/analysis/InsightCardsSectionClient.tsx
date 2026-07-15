@@ -26,6 +26,7 @@ import {
 } from '@/lib/insight/card-meta'
 import { BUCKET_CHIP_CLS, type TagBucket } from '@/lib/tag-buckets'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import AiMark from '@/components/ui/AiMark'
 import InsightCardNewsList from './InsightCardNewsList'
 
 // ─── 직렬화 가능 타입 ──────────────────────────────────────────────────────────
@@ -329,13 +330,16 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                     </div>
 
                     {/* 2. 제목 */}
-                    <Link
-                      href={detailHref}
-                      prefetch={false}
-                      className="block text-base font-semibold text-foreground leading-snug hover:text-brand-600 hover:underline"
-                    >
-                      {card.card_headline ?? card.headline}
-                    </Link>
+                    <h3 className="text-base font-semibold leading-snug text-foreground">
+                      <AiMark title="AI 생성 인사이트" className="mr-1" />
+                      <Link
+                        href={detailHref}
+                        prefetch={false}
+                        className="hover:text-brand-600 hover:underline"
+                      >
+                        {card.card_headline ?? card.headline}
+                      </Link>
+                    </h3>
 
                     {/* 3. 핵심 — card_headline이 있고 headline과 다를 때만 */}
                     {card.card_headline && card.card_headline !== card.headline && (

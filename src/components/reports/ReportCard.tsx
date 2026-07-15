@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, LineChart, Radar, Tags, Layers, FileText } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { AiReportType } from '@/lib/types'
+import AiMark from '@/components/ui/AiMark'
 
 /**
  * 349 — AI 리포트 카드 재설계.
@@ -74,7 +75,8 @@ export default function ReportCard({
             className={`relative flex h-full w-full bg-gradient-to-br ${TYPE_COVER[type]} p-4`}
           >
             <Icon className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 text-white/25" strokeWidth={1.15} />
-            <span className="ml-auto text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+            <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+              <AiMark size="sm" className="text-white/70" />
               AI Report
             </span>
           </div>
@@ -82,8 +84,11 @@ export default function ReportCard({
       </Link>
 
       <div className="flex flex-1 flex-col p-5">
-        <span className={`mb-2.5 w-fit rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TYPE_BADGE_STYLE[type]}`}>
-          {type}
+        <span className="mb-2.5 flex items-center gap-1.5">
+          <span className={`w-fit rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TYPE_BADGE_STYLE[type]}`}>
+            {type}
+          </span>
+          <AiMark size="sm" />
         </span>
 
         <Link href={detailHref} prefetch={false} className="mb-2">

@@ -1,9 +1,10 @@
 import Link from 'next/link'
-import { ArrowUpRight, Sparkles } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getKstDateString } from '@/lib/date'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import AiMark from '@/components/ui/AiMark'
 
 /** day_of('YYYY-MM-DD')는 이미 생성 시점에 getKstDateString 으로 확정된 KST 달력일 —
  * 재변환 없이 그대로 쪼개야 Date 재구성 과정에서 생기는 자정 근처 하루 밀림을 피한다. */
@@ -59,7 +60,7 @@ export default async function DailyInsightHomeHighlights() {
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
       <div className="mb-5 border-b-2 border-foreground/80 pb-3">
         <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-insight-teal-strong">
-          <Sparkles className="h-3.5 w-3.5" />
+          <AiMark title="AI 생성 인사이트" />
           오늘의 핵심 인사이트 · {formatKstMonthDay(cards[0].day_of)}
         </div>
         <div className="flex items-baseline justify-between gap-2">
