@@ -71,8 +71,18 @@ interface GeminiTtsResponse {
 
 // ─── 378: 스크립트 청킹 (긴 브리핑 → 60초/단일요청 한도 초과로 인한 504 방지) ─────
 
-/** 청크당 목표 크기(문자). Gemini TTS 단일요청 한도 내 안전 범위. */
-const MAX_CHUNK_CHARS = 1600
+/**
+ * 청크당 목표 크기(문자). 379 실측: Gemini TTS는 대략 ~18~19자/초로 느려서
+ * 981자 청크가 약 52초 걸림 — 1600자(378 값)는 ~85초로 per-chunk 타임아웃(120초)엔
+ * 들어와도 여유가 부족해 700~800자(약 40~45초)로 낮춰 여유를 확보한다.
+ */
+const MAX_CHUNK_CHARS = 750
+
+/** Gemini TTS 실측 처리 속도 역수(초/자). 예산 계산·사전 가드에 공통 사용. */
+const SECONDS_PER_CHAR = 0.055
+
+/** Vercel maxDuration(300초) 대비 여유를 둔 총 예산 — 초과 예상이면 시작 전에 중단시킨다. */
+const TOTAL_BUDGET_SECONDS = 280
 
 /** 문장 종결부호(.!?) 또는 빈 줄(문단 경계) 기준으로 스크립트를 문장 단위로 분리 */
 function splitIntoSentences(text: string): string[] {
@@ -139,7 +149,7 @@ async function synthesizeChunk(params: {
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
           },
         }),
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(120_000),
       })
 
       if (res.status === 429) {
@@ -239,6 +249,18 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
   if (!script) {
     return { ok: false, reason: '스크립트 없음' }
   }
+
+  // 379 — 총 예산 가드: 합성 시작 전에 예상 소요를 계산해, maxDuration(300초) 예산을
+  // 초과할 것으로 보이면 504로 끝나기 전에 명확한 사유로 사전 중단한다.
+  const estimatedSeconds = Math.round(script.length * SECONDS_PER_CHAR)
+  if (estimatedSeconds > TOTAL_BUDGET_SECONDS) {
+    console.error(`[TTS] 예산 초과 사전중단 briefing=${briefingId} chars=${script.length} estimated=${estimatedSeconds}s budget=${TOTAL_BUDGET_SECONDS}s`)
+    return {
+      ok: false,
+      reason: `스크립트가 너무 길어 한 번에 합성할 수 없습니다(약 ${estimatedSeconds}초 예상). 스크립트를 줄이거나 분할 발행하세요.`,
+    }
+  }
+
   const period = getKstPeriod()
   const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 900_000)
 
@@ -277,10 +299,12 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
 
   const pcmChunks: Buffer[] = []
   let sampleRate: number | null = null
+  const synthesisStartedAt = Date.now()
 
   for (let i = 0; i < chunks.length; i++) {
     if (i > 0) await sleep(300) // 청크 간 소폭 간격 — 무료 티어 rate limit 완화
 
+    const chunkStartedAt = Date.now()
     const result = await synthesizeChunk({
       chunk: chunks[i],
       chunkIndex: i,
@@ -289,10 +313,13 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
       voice,
       apiKey,
     })
+    const chunkElapsedMs = Date.now() - chunkStartedAt
 
     if (!result.ok) {
+      console.error(`[TTS] 청크 ${i + 1}/${chunks.length} 실패(${chunkElapsedMs}ms): ${result.reason}`)
       return { ok: false, reason: result.reason }
     }
+    console.log(`[TTS] 청크 ${i + 1}/${chunks.length} 완료: ${chunks[i].length}자, ${chunkElapsedMs}ms`)
 
     if (sampleRate === null) {
       sampleRate = result.sampleRate
@@ -304,6 +331,8 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
 
     pcmChunks.push(result.pcm)
   }
+
+  console.log(`[TTS] briefing=${briefingId} 전체 합성 완료: 청크 ${chunks.length}개, 총 ${Date.now() - synthesisStartedAt}ms`)
 
   const pcmBuffer = Buffer.concat(pcmChunks)
   const finalSampleRate = sampleRate ?? 24000
