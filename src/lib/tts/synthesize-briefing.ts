@@ -69,6 +69,122 @@ interface GeminiTtsResponse {
   }>
 }
 
+// ─── 378: 스크립트 청킹 (긴 브리핑 → 60초/단일요청 한도 초과로 인한 504 방지) ─────
+
+/** 청크당 목표 크기(문자). Gemini TTS 단일요청 한도 내 안전 범위. */
+const MAX_CHUNK_CHARS = 1600
+
+/** 문장 종결부호(.!?) 또는 빈 줄(문단 경계) 기준으로 스크립트를 문장 단위로 분리 */
+function splitIntoSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/** 문장 경계를 지키며 청크당 ~MAX_CHUNK_CHARS 이내로 그리디 병합. 단일 문장이 한도를 넘으면 그 문장 하나만으로 청크를 강제 구성한다. */
+function chunkScript(script: string, maxChars = MAX_CHUNK_CHARS): string[] {
+  const sentences = splitIntoSentences(script)
+  const chunks: string[] = []
+  let current = ''
+
+  for (const sentence of sentences) {
+    if (sentence.length > maxChars) {
+      if (current) { chunks.push(current); current = '' }
+      chunks.push(sentence)
+      continue
+    }
+    const candidate = current ? `${current} ${sentence}` : sentence
+    if (candidate.length > maxChars) {
+      chunks.push(current)
+      current = sentence
+    } else {
+      current = candidate
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks.length ? chunks : [script]
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+type ChunkSynthesisResult =
+  | { ok: true; pcm: Buffer; sampleRate: number }
+  | { ok: false; reason: string; isRateLimit: boolean }
+
+/** 청크 1개를 Gemini TTS로 합성. 429는 최대 2회 백오프 재시도 후에도 실패하면 명확한 사유를 반환. */
+async function synthesizeChunk(params: {
+  chunk: string
+  chunkIndex: number
+  totalChunks: number
+  model: string
+  voice: string
+  apiKey: string
+}): Promise<ChunkSynthesisResult> {
+  const { chunk, chunkIndex, totalChunks, model, voice, apiKey } = params
+  const label = `청크 ${chunkIndex + 1}/${totalChunks}`
+  const MAX_RETRIES = 2
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${GEMINI_TTS_ENDPOINT_BASE}/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: chunk }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+          },
+        }),
+        signal: AbortSignal.timeout(60_000),
+      })
+
+      if (res.status === 429) {
+        const body = await res.text().catch(() => '')
+        console.error(`[TTS] ${label}: Gemini 429(rate limit) 시도 ${attempt + 1}/${MAX_RETRIES + 1}: ${body.slice(0, 300)}`)
+        if (attempt < MAX_RETRIES) {
+          await sleep(1500 * (attempt + 1))
+          continue
+        }
+        return {
+          ok: false,
+          isRateLimit: true,
+          reason: `${label}: Gemini TTS 요청 한도(rate limit)를 초과했습니다. 잠시 후 다시 시도해주세요.`,
+        }
+      }
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        console.error(`[TTS] ${label}: Gemini HTTP ${res.status}: ${body.slice(0, 500)}`)
+        return { ok: false, isRateLimit: false, reason: `${label}: TTS 합성 중 오류가 발생했습니다(HTTP ${res.status}).` }
+      }
+
+      const data = (await res.json()) as GeminiTtsResponse
+      const inline = data.candidates?.[0]?.content?.parts?.[0]?.inlineData
+      if (!inline?.data) {
+        console.error(`[TTS] ${label}: Gemini 응답에 오디오 데이터 없음: ${JSON.stringify(data).slice(0, 500)}`)
+        return { ok: false, isRateLimit: false, reason: `${label}: TTS 응답에 오디오 데이터가 없습니다.` }
+      }
+
+      const rateMatch = /rate=(\d+)/.exec(inline.mimeType ?? '')
+      const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000
+      return { ok: true, pcm: Buffer.from(inline.data, 'base64'), sampleRate }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[TTS] ${label}: 합성 실패(시도 ${attempt + 1}/${MAX_RETRIES + 1}): ${message}`)
+      if (attempt < MAX_RETRIES) {
+        await sleep(1000)
+        continue
+      }
+      return { ok: false, isRateLimit: false, reason: `${label}: TTS 합성 중 오류가 발생했습니다(${message}).` }
+    }
+  }
+  // 도달 불가 — 루프는 항상 return 으로 종료됨
+  return { ok: false, isRateLimit: false, reason: `${label}: TTS 합성 중 알 수 없는 오류가 발생했습니다.` }
+}
+
 /** PCM(16-bit LE, mono) → WAV. mimeType의 rate= 를 파싱해 샘플레이트를 정확히 반영한다. */
 function pcmToWav(pcm: Buffer, sampleRate: number, channels = 1, bitDepth = 16): Buffer {
   const byteRate = sampleRate * channels * (bitDepth / 8)
@@ -155,53 +271,44 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
   const model = getGeminiTtsModel()
   const voice = resolveGeminiVoice(briefing.voice as string | null)
 
-  console.log(`[TTS] briefing=${briefingId} chars=${script.length} month_used=${monthUsed} model=${model} voice=${voice}`)
+  // 4. 스크립트 청킹 + 순차 합성 (378 — 60초/단일요청 한도 초과로 인한 504 방지)
+  const chunks = chunkScript(script)
+  console.log(`[TTS] briefing=${briefingId} chars=${script.length} chunks=${chunks.length} month_used=${monthUsed} model=${model} voice=${voice}`)
 
-  // 4. Gemini TTS 합성
-  let pcmBuffer: Buffer
-  let sampleRate = 24000
-  try {
-    const res = await fetch(`${GEMINI_TTS_ENDPOINT_BASE}/${model}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: script }] }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-        },
-      }),
-      signal: AbortSignal.timeout(60_000),
+  const pcmChunks: Buffer[] = []
+  let sampleRate: number | null = null
+
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) await sleep(300) // 청크 간 소폭 간격 — 무료 티어 rate limit 완화
+
+    const result = await synthesizeChunk({
+      chunk: chunks[i],
+      chunkIndex: i,
+      totalChunks: chunks.length,
+      model,
+      voice,
+      apiKey,
     })
 
-    if (res.status === 429) {
-      const body = await res.text().catch(() => '')
-      console.error(`[TTS] Gemini 429(rate limit): ${body.slice(0, 300)}`)
-      return { ok: false, reason: 'Gemini TTS 요청 한도(rate limit)를 초과했습니다. 잠시 후 다시 시도해주세요.' }
-    }
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      console.error(`[TTS] Gemini HTTP ${res.status}: ${body.slice(0, 500)}`)
-      return { ok: false, reason: 'TTS 합성 중 오류가 발생했습니다.' }
+    if (!result.ok) {
+      return { ok: false, reason: result.reason }
     }
 
-    const data = (await res.json()) as GeminiTtsResponse
-    const inline = data.candidates?.[0]?.content?.parts?.[0]?.inlineData
-    if (!inline?.data) {
-      console.error(`[TTS] Gemini 응답에 오디오 데이터 없음: ${JSON.stringify(data).slice(0, 500)}`)
-      return { ok: false, reason: 'TTS 응답에 오디오 데이터가 없습니다.' }
+    if (sampleRate === null) {
+      sampleRate = result.sampleRate
+    } else if (result.sampleRate !== sampleRate) {
+      const reason = `청크 ${i + 1}/${chunks.length}: 샘플레이트가 일치하지 않습니다(${result.sampleRate} vs ${sampleRate}).`
+      console.error(`[TTS] ${reason}`)
+      return { ok: false, reason }
     }
 
-    const rateMatch = /rate=(\d+)/.exec(inline.mimeType ?? '')
-    if (rateMatch) sampleRate = Number(rateMatch[1])
-    pcmBuffer = Buffer.from(inline.data, 'base64')
-  } catch (err) {
-    console.error('[TTS] Gemini TTS 합성 실패:', err instanceof Error ? err.message : String(err))
-    return { ok: false, reason: 'TTS 합성 중 오류가 발생했습니다.' }
+    pcmChunks.push(result.pcm)
   }
 
-  const wavBuffer = pcmToWav(pcmBuffer, sampleRate)
-  const durationSeconds = Math.round((pcmBuffer.length / (sampleRate * 1 * 2)) * 10) / 10
+  const pcmBuffer = Buffer.concat(pcmChunks)
+  const finalSampleRate = sampleRate ?? 24000
+  const wavBuffer = pcmToWav(pcmBuffer, finalSampleRate)
+  const durationSeconds = Math.round((pcmBuffer.length / (finalSampleRate * 1 * 2)) * 10) / 10
 
   // 5. Storage 업로드
   const storagePath = `${briefing.briefing_date}/${briefingId}.wav`
@@ -210,8 +317,14 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
     .upload(storagePath, wavBuffer, { contentType: 'audio/wav', upsert: true })
 
   if (uploadError) {
+    const bucketMissing = /bucket not found/i.test(uploadError.message)
     console.error('[TTS] Storage 업로드 실패:', uploadError.message)
-    return { ok: false, reason: 'Storage 업로드 중 오류가 발생했습니다.' }
+    return {
+      ok: false,
+      reason: bucketMissing
+        ? '"briefings" Storage 버킷이 없습니다. Supabase 대시보드에서 버킷을 생성해주세요.'
+        : `Storage 업로드 중 오류가 발생했습니다: ${uploadError.message}`,
+    }
   }
 
   const { data: urlData } = admin.storage.from('briefings').getPublicUrl(storagePath)
