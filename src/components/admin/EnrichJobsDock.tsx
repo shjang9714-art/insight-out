@@ -61,15 +61,17 @@ export default function EnrichJobsDock() {
           const progress = getProgress(run)
           const canResume = run.status === 'interrupted' || run.status === 'stopped' || run.status === 'error'
           return (
-            <div key={run.key} className="space-y-2.5 px-4 py-3">
+            <div key={run.runId} className="space-y-2.5 px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <StatusIcon status={run.status} />
-                  <p className="truncate text-sm font-medium text-foreground">{job.label}</p>
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {job.label}{run.itemLabel && <span className="text-muted-foreground"> · {run.itemLabel}</span>}
+                  </p>
                   {run.status !== 'running' && <span className="shrink-0 text-xs text-muted-foreground">{run.status === 'done' ? '완료' : '중단됨'}</span>}
                 </div>
                 {run.status !== 'running' && run.status !== 'done' && (
-                  <Button type="button" size="icon-sm" variant="ghost" onClick={() => dismiss(run.key)} aria-label={`${job.label} 기록 지우기`}>
+                  <Button type="button" size="icon-sm" variant="ghost" onClick={() => dismiss(run.runId)} aria-label={`${job.label} 기록 지우기`}>
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 )}
@@ -91,15 +93,15 @@ export default function EnrichJobsDock() {
 
               <div className="flex items-center gap-2">
                 {run.status === 'running' && (
-                  <Button type="button" size="sm" variant="outline" onClick={() => stopJob(run.key)}>중단</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => stopJob(run.runId)}>중단</Button>
                 )}
                 {canResume && (
-                  <Button type="button" size="sm" variant="outline" onClick={() => resumeJob(run.key)}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => resumeJob(run.runId)}>
                     <RotateCcw className="mr-1.5 h-3.5 w-3.5" />이어서 실행
                   </Button>
                 )}
                 {canResume && (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => dismiss(run.key)}>지우기</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => dismiss(run.runId)}>지우기</Button>
                 )}
               </div>
             </div>

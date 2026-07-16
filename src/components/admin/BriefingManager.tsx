@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { AlertCircle, ChevronDown, ChevronUp, Loader2, Sparkles, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -8,6 +9,8 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { BRIEFING_STATUS_TONE } from '@/lib/admin/status-style'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { useEnrichJobs } from '@/components/admin/EnrichJobsProvider'
+import { buildEnrichRunId } from '@/lib/admin/enrich-jobs'
 
 type BriefingStatus = 'draft' | 'published' | 'archived' | 'failed'
 
@@ -34,7 +37,7 @@ interface BriefingsResponse {
   error?: string
 }
 
-type PendingAction = 'tts' | 'approve' | 'archive' | 'revert' | 'highlights'
+type PendingAction = 'approve' | 'archive' | 'revert'
 
 const STATUS_LABELS: Record<BriefingStatus, string> = {
   draft: '초안',
@@ -52,6 +55,8 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
 })
 
 export default function BriefingManager() {
+  const router = useRouter()
+  const { runs, startJob } = useEnrichJobs()
   const [period, setPeriod] = useState('')
   const [tts, setTts] = useState({ used: 0, cap: 3_500_000 })
   const [briefings, setBriefings] = useState<Briefing[]>([])
@@ -61,6 +66,11 @@ export default function BriefingManager() {
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  // 377 — 오디오 생성·인사이트 재생성은 EnrichJobs 독으로 이관됐다. 완료(done) 전이를
+  // 한 번만 반영하기 위해 이미 처리한 runId를 기억해둔다(독은 완료 5초 후 자동으로 지운다).
+  const handledDoneRunIdsRef = useRef(new Set<string>())
+  // 목록 재조회 트리거 — 값이 바뀔 때마다 아래 fetch 이펙트가 다시 실행된다.
+  const [refetchNonce, setRefetchNonce] = useState(0)
 
   useEffect(() => {
     let isActive = true
@@ -94,7 +104,25 @@ export default function BriefingManager() {
 
     void loadBriefings()
     return () => { isActive = false }
-  }, [])
+  }, [refetchNonce])
+
+  // 377 — 독에서 실행 중인 오디오 생성·인사이트 재생성이 완료되면 목록을 다시 불러와
+  // audio_url·highlights를 반영한다(로컬 fetch+setState 의존 제거).
+  useEffect(() => {
+    let sawNewDone = false
+    for (const [runId, run] of runs) {
+      if (run.status !== 'done') continue
+      if (handledDoneRunIdsRef.current.has(runId)) continue
+      handledDoneRunIdsRef.current.add(runId)
+      sawNewDone = true
+    }
+    if (sawNewDone) {
+      startTransition(() => {
+        setRefetchNonce((n) => n + 1)
+        router.refresh()
+      })
+    }
+  }, [runs, router])
 
   function toggleExpanded(id: string) {
     setExpandedIds((prev) => {
@@ -113,69 +141,14 @@ export default function BriefingManager() {
     })
   }
 
-  async function generateAudio(briefing: Briefing) {
-    setPendingId(briefing.id)
-    setPendingAction('tts')
+  function generateAudio(briefing: Briefing) {
     clearRowError(briefing.id)
-
-    try {
-      const response = await fetch(`/api/admin/briefings/${briefing.id}/tts`, {
-        method: 'POST',
-      })
-      const data = (await response.json()) as { ok: boolean; audioUrl?: string; reason?: string; error?: string }
-
-      if (!response.ok || !data.ok) {
-        const reason = data.reason ?? data.error ?? 'TTS 생성 중 오류가 발생했습니다.'
-        setRowErrors((prev) => ({ ...prev, [briefing.id]: reason }))
-        return
-      }
-
-      setBriefings((current) =>
-        current.map((b) =>
-          b.id === briefing.id ? { ...b, audio_url: data.audioUrl ?? b.audio_url } : b
-        )
-      )
-    } catch {
-      setRowErrors((prev) => ({ ...prev, [briefing.id]: 'TTS 요청 중 네트워크 오류가 발생했습니다.' }))
-    } finally {
-      setPendingId(null)
-      setPendingAction(null)
-    }
+    startJob('admin:briefing-tts', undefined, briefing.id, DATE_FORMATTER.format(new Date(briefing.briefing_date)))
   }
 
-  async function generateHighlights(briefing: Briefing) {
-    setPendingId(briefing.id)
-    setPendingAction('highlights')
+  function generateHighlights(briefing: Briefing) {
     clearRowError(briefing.id)
-
-    try {
-      const response = await fetch(`/api/admin/briefings/${briefing.id}/highlights`, {
-        method: 'POST',
-      })
-      const data = (await response.json()) as {
-        ok: boolean
-        highlights?: { content_id: string; keyword?: string; insight: string; detail?: string }[]
-        reason?: string
-        error?: string
-      }
-
-      if (!response.ok || !data.ok) {
-        const reason = data.reason ?? data.error ?? '인사이트 생성 중 오류가 발생했습니다.'
-        setRowErrors((prev) => ({ ...prev, [briefing.id]: reason }))
-        return
-      }
-
-      setBriefings((current) =>
-        current.map((b) =>
-          b.id === briefing.id ? { ...b, highlights: data.highlights ?? b.highlights } : b
-        )
-      )
-    } catch {
-      setRowErrors((prev) => ({ ...prev, [briefing.id]: '인사이트 요청 중 네트워크 오류가 발생했습니다.' }))
-    } finally {
-      setPendingId(null)
-      setPendingAction(null)
-    }
+    startJob('admin:briefing-highlights', undefined, briefing.id, DATE_FORMATTER.format(new Date(briefing.briefing_date)))
   }
 
   async function changeStatus(briefing: Briefing, nextStatus: 'published' | 'archived' | 'draft') {
@@ -275,6 +248,9 @@ export default function BriefingManager() {
             const rowError = rowErrors[briefing.id]
             const briefingTitle = briefing.title ? stripLlmArtifacts(briefing.title) : null
             const briefingScript = briefing.script ? stripLlmArtifacts(briefing.script) : null
+            // 377 — 오디오 생성·인사이트 재생성은 독(EnrichJobs) 상태 기준으로 진행/중복실행 가드
+            const isTtsRunning = runs.get(buildEnrichRunId('admin:briefing-tts', briefing.id))?.status === 'running'
+            const isHighlightsRunning = runs.get(buildEnrichRunId('admin:briefing-highlights', briefing.id))?.status === 'running'
 
             return (
               <div
@@ -303,15 +279,15 @@ export default function BriefingManager() {
 
                   {/* 액션 버튼 */}
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* 오디오 생성/재생성 */}
+                    {/* 오디오 생성/재생성 — 377: EnrichJobs 독으로 실행(페이지 전환에도 유지) */}
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={isRowPending}
-                      onClick={() => void generateAudio(briefing)}
+                      disabled={isTtsRunning}
+                      onClick={() => generateAudio(briefing)}
                     >
-                      {isRowPending && pendingAction === 'tts' ? (
+                      {isTtsRunning ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Volume2 className="h-3.5 w-3.5" />
@@ -319,15 +295,15 @@ export default function BriefingManager() {
                       {briefing.audio_url ? '재생성' : '오디오 생성'}
                     </Button>
 
-                    {/* 홈 카드용 핵심 인사이트 3줄 생성/재생성 */}
+                    {/* 홈 카드용 핵심 인사이트 3줄 생성/재생성 — 377: EnrichJobs 독으로 실행 */}
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={isRowPending}
-                      onClick={() => void generateHighlights(briefing)}
+                      disabled={isHighlightsRunning}
+                      onClick={() => generateHighlights(briefing)}
                     >
-                      {isRowPending && pendingAction === 'highlights' ? (
+                      {isHighlightsRunning ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Sparkles className="h-3.5 w-3.5" />

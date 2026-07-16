@@ -15,10 +15,25 @@ export type EnrichJobKey =
   | 'admin:pdf-cover-backfill'
   | 'admin:cluster-backfill'
   | 'admin:youtube-tagging'
+  | 'admin:briefing-tts'
+  | 'admin:briefing-highlights'
+
+/**
+ * 하나의 작업(key)에 대해 동시에 여러 실행이 있을 수 있는 러너 식별자.
+ * 전역 작업은 key 그대로(`admin:sentiment`), 항목(per-item) 작업은
+ * `${key}::${itemId}`(예: `admin:briefing-tts::<briefingId>`)로 서로 다른
+ * 항목의 실행이 독립적으로 진행·중복가드 되도록 한다.
+ */
+export type EnrichJobRunId = string
+
+export function buildEnrichRunId(key: EnrichJobKey, itemId?: string): EnrichJobRunId {
+  return itemId ? `${key}::${itemId}` : key
+}
 
 export interface EnrichJobMeta {
   key: EnrichJobKey
   label: string
+  /** 항목작업은 endpoint에 `{id}` 자리표시자를 포함 — 실행 시 itemId로 치환된다. */
   endpoint: string
   usesLlm: boolean
   surface: EnrichJobSurface
@@ -28,6 +43,12 @@ export interface EnrichJobMeta {
   modes?: readonly ['fresh', 'retry']
   dateRange?: true
   confirm?: string
+  /**
+   * 375→377: 전역 일괄 실행 목록(AI 콘텐츠 보강·데이터 보강 페이지)에서 제외되는
+   * 항목(per-item) 작업. 대상 id가 있어야 실행 가능하므로 호출부에서
+   * `startJob(key, params, itemId)`로 직접 디스패치한다.
+   */
+  itemScoped?: true
 }
 
 export interface EnrichJobResult {
@@ -164,6 +185,31 @@ export const ENRICH_JOBS: readonly EnrichJobMeta[] = [
     method: 'POST',
     confirm: '기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 생성하시겠습니까?',
   },
+
+  // 377 — 항목(per-item) 작업. 대상 브리핑 id가 필요해 전역 일괄 실행 목록에는 노출하지
+  // 않고(itemScoped) BriefingManager가 startJob(key, params, briefingId)로 직접 디스패치한다.
+  // 앞으로 추가되는 모든 장시간 트리거(AI 생성·수집·백필 등)는 이 레지스트리에 등록해
+  // useEnrichJobs()로 실행할 것 — 로컬 fetch+pendingAction 패턴은 페이지 전환 시 끊긴다.
+  {
+    key: 'admin:briefing-tts',
+    label: '오디오 생성',
+    endpoint: '/api/admin/briefings/{id}/tts',
+    usesLlm: false,
+    surface: 'data',
+    kind: 'once',
+    method: 'POST',
+    itemScoped: true,
+  },
+  {
+    key: 'admin:briefing-highlights',
+    label: '인사이트 재생성',
+    endpoint: '/api/admin/briefings/{id}/highlights',
+    usesLlm: true,
+    surface: 'ai',
+    kind: 'once',
+    method: 'POST',
+    itemScoped: true,
+  },
 ]
 
 for (const job of ENRICH_JOBS) {
@@ -266,6 +312,11 @@ export function normalizeEnrichResult(key: EnrichJobKey, json: unknown): EnrichJ
         ready: true,
       }
     }
+    // 377 — 항목(per-item) once 작업. 응답 계약(audioUrl / highlights)은 호출부(BriefingManager)가
+    // 별도로 목록을 다시 불러와 반영하므로, 여기서는 성공 여부만 표준 형태로 알리면 된다.
+    case 'admin:briefing-tts':
+    case 'admin:briefing-highlights':
+      return { processed: 1, succeeded: 1, skipped: 0, remaining: null, ready: true }
   }
 }
 
@@ -275,8 +326,9 @@ export function getEnrichJob(key: EnrichJobKey): EnrichJobMeta {
   return job
 }
 
+/** 전역 일괄 실행 목록(AI 콘텐츠 보강·데이터 보강 페이지)용 — itemScoped 작업은 제외. */
 export function getEnrichJobs(surface: EnrichJobSurface): EnrichJobMeta[] {
-  return ENRICH_JOBS.filter((job) => job.surface === surface)
+  return ENRICH_JOBS.filter((job) => job.surface === surface && !job.itemScoped)
 }
 
 export function requireEnrichJob(
