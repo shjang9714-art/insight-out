@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { runCrawl } from '@/lib/crawler/orchestrator'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runJob } from '@/lib/jobs/run-job'
@@ -40,6 +41,19 @@ export async function GET(request: NextRequest) {
 
       return runCrawl(options)
     })
+
+    // 급상승 캐시를 stale로 표시 — Next.js 16 revalidateTag(tag, 'max')는 SWR이라 "다음 방문"에
+    // 백그라운드 재계산이지 즉시 동기 갱신은 아니지만, 크롤 완료 시점에 무효화해둬야 그 "다음
+    // 방문"이 크롤 이전 낡은 캐시를 계속 재사용하는 걸 막는다(실측 2026-07-15 사고: 트래픽이
+    // 뜸한 새벽~야간엔 자연 만료 20분 창이 하루 종일 안 걸릴 수 있음). 스냅샷 크론 자체는
+    // 이 캐시를 아예 안 거치도록 별도 조치함(src/lib/issues/trending.ts computeTrendingEvents
+    // 직접 호출, trending-snapshot/route.ts 참고).
+    try {
+      revalidateTag('trending-events', 'max')
+    } catch (e) {
+      console.error('[크론/crawl] 급상승 캐시 무효화 실패(무시하고 계속):', e)
+    }
+
     return Response.json(summary)
   } catch (err) {
     // 이 라우트는 CRON_SECRET 으로 이미 인증됨(비밀키 보유자만 도달).

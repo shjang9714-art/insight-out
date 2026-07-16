@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { fetchTrendingEvents } from '@/lib/issues/trending'
+import { computeTrendingEvents } from '@/lib/issues/trending'
 import { saveTrendingSnapshot } from '@/lib/issues/trending-snapshot'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runJob } from '@/lib/jobs/run-job'
@@ -20,7 +20,11 @@ export async function GET(request: NextRequest) {
     const explicitDate = request.nextUrl.searchParams.get('date')
     const admin = createAdminClient()
     const result = await runJob(admin, { key: 'cron:trending-snapshot', trigger: 'cron' }, async () => {
-      const trending = await fetchTrendingEvents()
+      // fetchTrendingEvents()(unstable_cache)가 아니라 computeTrendingEvents()를 직접 호출 —
+      // 캐시가 stale-while-revalidate라 트래픽이 뜸한 날엔 크롤 이전 값을 그대로 받을 수 있다
+      // (2026-07-15 실측 사고: 05:00 KST 크롤 후 아무도 접속 안 해 23:50 KST 스냅샷이 전날
+      // 기준일을 저장). 하루 1회뿐인 스냅샷이니 캐시 없이 그 시점 실측값을 직접 계산한다.
+      const trending = await computeTrendingEvents()
 
       if (!trending) {
         return { ok: false as const, error: 'trending_keywords 뷰 조회 실패' }

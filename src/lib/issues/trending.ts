@@ -601,7 +601,11 @@ async function fetchAllIssueArticles(
   return { rows, error: false }
 }
 
-async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
+/**
+ * 캐시를 거치지 않는 원본 계산. cron:trending-snapshot(1일 1회 스냅샷)이 이걸 직접 호출해
+ * fetchTrendingEvents()의 unstable_cache SWR 지연(아래 참고)에 영향받지 않도록 한다.
+ */
+export async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
   const supabase = createPublicClient()
 
   const { data: candidateData, error: viewErr } = await supabase
@@ -824,9 +828,21 @@ async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
  * 헤더 라벨·"오늘 N건" 문구 전부 이 기준일 하루만 사용 — 기준일이 오늘이 아니면
  * "오늘"이라 표시하지 않는다(호출부 IssueSignals.tsx·trending/page.tsx 참고).
  * 20분 단위로 캐시(크롤 주기 대비 매 요청 재계산 방지).
+ * ⚠ unstable_cache는 stale-while-revalidate — 만료 후 첫 요청은 "새로 계산 후 반환"이 아니라
+ * "오래된 값을 즉시 반환 + 백그라운드 재계산"이다. 트래픽이 뜸한 새벽~야간엔 그 첫 요청이
+ * 하루 종일 없을 수 있어, 크론(cron:trending-snapshot 등)이 그 유일한 "첫 요청"이 되면
+ * 크롤 이전의 캐시를 그대로 받는 사고가 난다(2026-07-15 실측 — 05:00 KST 크롤 후 18시간
+ * 넘게 아무도 접속하지 않아 23:50 KST 스냅샷이 전날 캐시를 그대로 저장). 그래서:
+ * 1) 태그를 걸어 크롤 크론이 끝나자마자 revalidateTag(tag, 'max')로 stale 표시(아래 crawl
+ *    route 참고) — Next.js 16의 'max' profile도 여전히 SWR이라 "다음 방문"이 즉시 최신값을
+ *    받는 건 아니지만, 자연 만료(20분) 타이밍에 기대지 않고 크롤 완료 시점에 확실히 무효화는
+ *    해둔다.
+ * 2) 그것만으론 트래픽이 뜸한 날 여전히 부족할 수 있어(SWR은 "다음 방문"이 있어야 재계산이
+ *    걸린다), trending-snapshot 크론 자체는 이 캐시를 아예 안 거치고 computeTrendingEvents()를
+ *    직접 호출해 캐시 상태와 무관하게 항상 그 시점 실측값을 저장한다 — 이게 실질적 고정 조치.
  */
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEvents,
   ['trending-events-v8'],
-  { revalidate: CACHE_REVALIDATE_SECONDS },
+  { revalidate: CACHE_REVALIDATE_SECONDS, tags: ['trending-events'] },
 )
