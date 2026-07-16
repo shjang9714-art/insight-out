@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
-import { COLLECTED_CATEGORY_DEFS, toDbCategories, tabCategoryFor } from '@/lib/categories'
+import { toDbCategories } from '@/lib/categories'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
@@ -116,11 +116,44 @@ const SOURCE_NULL = 'null' // Google News 키워드 검색 수집물 (source_id 
 const EMPTY_SOURCE_VALUE = 'none'
 
 // 카테고리 → 매칭되는 소스 타입 (필터 드롭다운을 해당 타입으로 좁힘)
-const CATEGORY_SOURCE_TYPE: Partial<Record<ContentCategory, SourceType>> = {
+const CATEGORY_SOURCE_TYPE: Partial<Record<string, SourceType>> = {
   '뉴스':      'news_site',
-  '리포트':    'report_publisher',
+  '외부리포트': 'report_publisher',
   '웹인사이트': 'web_insight',
   '유튜브':    'youtube_channel',
+}
+
+/**
+ * 376 — 어드민 전용 콘텐츠 관리 탭 (시스템 메뉴 순서: 콘텐츠 뉴스/유튜브/웹인사이트 → 리포트 외부리포트/지식보고서).
+ * `CATEGORY_DEFS`(src/lib/categories.ts)는 사용자 화면(CategoryGrid·SearchBar)과 공유하므로 직접 수정하지 않고
+ * 여기서만 순서·라벨·dbCategories 매핑을 별도로 다룬다.
+ */
+interface AdminCategoryTab {
+  id: string
+  label: string
+  dbCategories: ContentCategory[]
+}
+
+const ADMIN_CATEGORY_TABS: AdminCategoryTab[] = [
+  { id: '뉴스',      label: '뉴스',      dbCategories: ['뉴스'] },
+  { id: '유튜브',    label: '유튜브',    dbCategories: ['유튜브'] },
+  { id: '웹인사이트', label: '웹인사이트', dbCategories: ['웹인사이트', '오피니언'] },
+  { id: '외부리포트', label: '외부리포트', dbCategories: ['리포트', '가트너', 'KRG'] },
+  { id: '지식보고서', label: '지식보고서', dbCategories: ['지식보고서'] },
+]
+
+/** 탭 id → 조회할 dbCategories. 어드민 탭이 아니면 null (호출부에서 toDbCategories 로 폴백) */
+function adminTabDbCategories(tabId: string): ContentCategory[] | null {
+  return ADMIN_CATEGORY_TABS.find((t) => t.id === tabId)?.dbCategories ?? null
+}
+
+/** URL 파라미터(구 라벨 포함) → 어드민 탭 id. 매칭되는 탭이 없으면 원값 그대로(비-탭 카테고리 필터로 폴백) */
+function adminTabIdFor(rawCategory: string): string {
+  if (rawCategory === '리서치') return '외부리포트' // 구 "리서치" 탭 라벨 호환
+  const tab = ADMIN_CATEGORY_TABS.find(
+    (t) => t.id === rawCategory || (t.dbCategories as readonly string[]).includes(rawCategory)
+  )
+  return tab ? tab.id : rawCategory
 }
 
 function getBodyState(r: AdminContentRow): 'full' | 'snippet' | 'none' {
@@ -446,7 +479,7 @@ export default function AdminContentManager() {
   // 필터 (URL 파라미터로 초기값 설정)
   const [category,      setCategory]      = useState(() => {
     const c = searchParams.get('category')
-    return c ? tabCategoryFor(c) : 'all'
+    return c ? adminTabIdFor(c) : 'all'
   })
   const [sourceId,      setSourceId]      = useState(() => {
     const s = searchParams.get('source')
@@ -576,7 +609,7 @@ export default function AdminContentManager() {
           .order('collected_at', { ascending: false })
         if (status !== 'all')             q = q.eq('status', status as ContentStatus)
         if (category !== 'all') {
-          const dbCats = toDbCategories(category as ContentCategory)
+          const dbCats = adminTabDbCategories(category) ?? toDbCategories(category as ContentCategory)
           if (dbCats.length === 1)        q = q.eq('category', dbCats[0])
           else if (dbCats.length > 1)     q = q.in('category', dbCats)
           else                            q = q.eq('category', '__none__' as ContentCategory)
@@ -1197,15 +1230,15 @@ export default function AdminContentManager() {
         ? `${MAX_BODY_BACKFILL_IDS}건까지만 처리됩니다.`
         : null
 
-  // 카테고리 탭 (전체 + 수집 카테고리만, 생성물 제외)
+  // 카테고리 탭 (전체 + 어드민 전용 탭 — 시스템 메뉴 순서)
   const categoryTabs: { value: string; label: string }[] = [
     { value: 'all', label: '전체' },
-    ...COLLECTED_CATEGORY_DEFS.map((d) => ({ value: d.category, label: d.label })),
+    ...ADMIN_CATEGORY_TABS.map((t) => ({ value: t.id, label: t.label })),
   ]
 
   // 선택된 카테고리에 맞는 소스만 (없으면 전체)
   const mappedType = category !== 'all'
-    ? CATEGORY_SOURCE_TYPE[category as ContentCategory]
+    ? CATEGORY_SOURCE_TYPE[category]
     : undefined
   const sourceOptions = mappedType ? sources.filter((s) => s.type === mappedType) : sources
 
@@ -1516,7 +1549,17 @@ export default function AdminContentManager() {
         </AdminErrorBox>
       )}
 
-      {/* ── 카테고리 탭 (205 — 최상단, 209 — 공유 세그먼트 박스로 통일) ── */}
+      {/* ── 376 — AI리포트·핵심인사이트는 별도 테이블·별도 어드민(링크만) ── */}
+      <div className="flex flex-wrap gap-4 text-sm">
+        <Link href="/admin/reports" prefetch={false} className="font-medium text-brand-600 hover:underline">
+          AI리포트 관리 →
+        </Link>
+        <Link href="/admin/insights" prefetch={false} className="font-medium text-brand-600 hover:underline">
+          핵심인사이트 관리 →
+        </Link>
+      </div>
+
+      {/* ── 카테고리 탭 (205 — 최상단, 209 — 공유 세그먼트 박스로 통일, 376 — 시스템 메뉴 순서) ── */}
       <div className="border-b border-border pb-4">
         <AdminTabs
           items={categoryTabs}
