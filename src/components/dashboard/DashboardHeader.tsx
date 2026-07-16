@@ -12,6 +12,7 @@ import SearchBar from '@/components/dashboard/SearchBar'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
+import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
@@ -221,7 +222,9 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
               >
                 <span className={`h-[5px] w-[5px] shrink-0 rounded-full ${active ? 'bg-brand-600' : 'bg-transparent'}`} />
                 {tab.icon && <tab.icon className="h-3.5 w-3.5 shrink-0" />}
-                <span>{tab.label}</span>
+                {/* id="l1-active-label"는 NavGroupAlign(§지시서 20260712)이 L2 탭 그룹의
+                    좌측 시작점을 이 라벨의 텍스트 x좌표에 맞추는 기준점으로 씀 */}
+                <span id={active ? 'l1-active-label' : undefined}>{tab.label}</span>
               </Link>
             )
           })}
@@ -280,24 +283,29 @@ function L2Row({
 
   return (
     <nav className="hidden min-h-[30px] md:flex" aria-label="하위 메뉴">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 pt-1 pb-1 sm:px-5 tracking-[-0.01em]">
-        {l2 && l2.section.tabs.map((tab) => {
-          const active = !isPreview && tab.id === l2.activeId
-          return (
-            // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
-            <Link
-              key={tab.id}
-              href={buildL2Href(l2.section, tab, pathname, searchParams)}
-              className={cn(
-                'inline-flex items-center gap-1.5 whitespace-nowrap pt-1 pb-1 text-[15px] transition-colors',
-                active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-brand-600' : 'bg-transparent')} />
-              {tab.label}
-            </Link>
-          )
-        })}
+      <div className="mx-auto flex w-full max-w-6xl items-center px-4 pt-1 pb-1 sm:px-5">
+        {/* Lv.2 탭 그룹은 항상 활성 Lv.1 라벨(#l1-active-label)의 텍스트 시작
+            x좌표에서 시작해야 한다(§지시서 20260712/20260713/20260716) —
+            372에서 헤더 sticky 통합 후에도 이 규칙은 유지 */}
+        <NavGroupAlign className="flex items-center gap-6 tracking-[-0.01em]">
+          {l2 && l2.section.tabs.map((tab) => {
+            const active = !isPreview && tab.id === l2.activeId
+            return (
+              // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
+              <Link
+                key={tab.id}
+                href={buildL2Href(l2.section, tab, pathname, searchParams)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 whitespace-nowrap pt-1 pb-1 text-[15px] transition-colors',
+                  active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-brand-600' : 'bg-transparent')} />
+                {tab.label}
+              </Link>
+            )
+          })}
+        </NavGroupAlign>
       </div>
     </nav>
   )
