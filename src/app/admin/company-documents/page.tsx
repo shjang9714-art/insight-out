@@ -8,6 +8,7 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import CompanyDocumentsCollector, {
   type DartCompanyOption,
 } from '@/components/admin/CompanyDocumentsCollector'
+import CompanyDocumentDartResolver from '@/components/admin/CompanyDocumentDartResolver'
 import CompanyDocumentDiscovery from '@/components/admin/CompanyDocumentDiscovery'
 import CompanyDocumentSourceRegistry from '@/components/admin/CompanyDocumentSourceRegistry'
 import CompanyDocumentUploadForm from '@/components/admin/CompanyDocumentUploadForm'
@@ -186,6 +187,8 @@ export default async function CompanyDocumentsAdminPage() {
         defaultSince={defaultSince()}
         schemaReady={schemaReady && !mappingErrorMessage}
       />
+
+      {schemaReady && <CompanyDocumentDartResolver />}
 
       {schemaReady && (
         <CompanyDocumentDiscovery
