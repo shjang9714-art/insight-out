@@ -54,7 +54,8 @@ export interface OnboardingStep1 {
   name: string
   team: string
   default_lens: LensKey
-  selected_services: string[]
+  /** 맞춤 추천 피드 카테고리 키 배열 (FEED_CATEGORIES, users.feed_categories 에 저장) */
+  selected_categories: string[]
 }
 
 export interface OnboardingStep2 {

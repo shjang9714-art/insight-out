@@ -185,6 +185,18 @@ export function LoginCard() {
       return
     }
 
+    // 세션 쿠키가 자리잡기 전에 다음 단계로 넘어가면 화면이 안 바뀌는 것처럼 보일 수 있어,
+    // 다음 요청(has-password) 전에 세션이 실제로 반영됐는지 확인한다.
+    const { data: { user: verifiedUser } } = await supabase.auth.getUser()
+    if (!verifiedUser) {
+      setError('인증에 실패했습니다. 다시 시도해 주세요.')
+      setLoading(false)
+      verifyingRef.current = false
+      setCode('')
+      codeInputRef.current?.focus()
+      return
+    }
+
     const response = await fetch('/api/me/has-password', { cache: 'no-store' })
     const result = await response.json() as { hasPassword?: boolean; error?: string }
     if (!response.ok || typeof result.hasPassword !== 'boolean') {

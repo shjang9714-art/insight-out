@@ -16,20 +16,14 @@ import { cn } from '@/lib/utils'
 import type { OnboardingStep1 } from '@/lib/types'
 import { LENS_PRESETS, type LensKey } from '@/lib/lens'
 import ServiceSelectionGrid from '@/components/mypage/ServiceSelectionGrid'
+import { FEED_CATEGORIES } from '@/lib/feed/categories'
 
+// 'mine' 렌즈는 user_services(담당 서비스)를 읽어 거르는데, 온보딩에서는 더 이상
+// 담당 서비스를 수집하지 않아 고르면 홈이 빈 화면이 된다 — 온보딩 선택지에서만 제외.
+// 대시보드·마이페이지 등 다른 곳의 mine 렌즈 자체는 그대로 둔다.
 const FILTER_OPTIONS: { value: LensKey; label: string; description: string }[] = (
-  ['mine', 'watch', 'all'] as const
+  ['watch', 'all'] as const
 ).map((key) => ({ value: key, label: LENS_PRESETS[key].label, description: LENS_PRESETS[key].desc }))
-
-const SERVICE_OPTIONS = [
-  'Connectivity',
-  '보안/클라우드',
-  'M2M',
-  'AICC',
-  'AIDC',
-  '모빌리티',
-  '기업솔루션',
-]
 
 interface Props {
   defaultValues: OnboardingStep1
@@ -44,6 +38,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
     const next: typeof errors = {}
     if (!form.name.trim()) next.name = '이름을 입력해주세요.'
     if (!isOrgGroup(form.team)) next.team = '그룹을 선택해주세요.'
+    if (form.selected_categories.length < 1) next.selected_categories = '관심사를 1개 이상 선택해주세요.'
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -115,17 +110,21 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
           })}
         </div>
 
-        {/* 담당 서비스는 항상 노출 — watch/all을 골라도 담당 서비스는 받는다(309) */}
+        {/* 관심사(맞춤 추천 피드 카테고리) — 홈 카드(FeedCategoryModal)와 동일한 FEED_CATEGORIES 소스 */}
         <div className="flex flex-col gap-2 mt-1">
-          <p className="text-xs text-muted-foreground">담당 서비스를 선택해주세요. 여러 개 선택 가능합니다.</p>
+          <Label>관심사 <span className="text-red-500">*</span></Label>
+          <p className="text-xs text-muted-foreground">
+            관심 있는 분야를 선택하면 홈 화면 맞춤 추천 피드를 채워드려요. 여러 개 선택 가능합니다.
+          </p>
           <ServiceSelectionGrid
-            items={SERVICE_OPTIONS.map((name) => ({ id: name, name }))}
-            selectedIds={form.selected_services}
-            onChange={(selected_services) => setForm({ ...form, selected_services })}
+            items={FEED_CATEGORIES.map((category) => ({ id: category.key, name: category.label }))}
+            selectedIds={form.selected_categories}
+            onChange={(selected_categories) => setForm({ ...form, selected_categories })}
             compact
           />
+          {errors.selected_categories && <p className="text-xs text-red-500">{errors.selected_categories}</p>}
           <p className="text-xs text-muted-foreground">
-            가입 이후 프로필에서 담당 서비스를 변경할 수 있습니다.
+            관심사는 마이페이지/홈에서 언제든지 수정할 수 있어요.
           </p>
         </div>
       </div>
