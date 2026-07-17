@@ -124,7 +124,19 @@ type ChunkSynthesisResult =
   | { ok: true; pcm: Buffer; sampleRate: number }
   | { ok: false; reason: string; isRateLimit: boolean }
 
-/** 청크 1개를 Gemini TTS로 합성. 429는 최대 2회 백오프 재시도 후에도 실패하면 명확한 사유를 반환. */
+/**
+ * 청크 1개를 Gemini TTS로 합성.
+ * - 429는 두 종류를 구분한다(381 실측, gemini-3.1-flash-tts-preview 기준):
+ *   1) 일일 무료 쿼터 소진(RESOURCE_EXHAUSTED, quotaId에 "PerDay" 포함) — 재시도해도
+ *      자정 전까지 절대 안 풀리므로 즉시 중단하고 "내일 다시 시도" 안내로 반환.
+ *   2) 그 외(분당 rate limit 등 일시적 429) — 최대 2회 백오프 재시도.
+ * - 503(일시적 용량 부족 — 프리뷰 모델이 간헐적으로 "high demand" 503을 반환)도 최대 2회
+ *   백오프 재시도하되, rate limit이 아니라 가용성 문제이므로 isRateLimit은 세우지 않는다
+ *   (route.ts 등 호출부가 "요청 한도 초과"로 오인하지 않도록 구분).
+ * - 텍스트-생성 가드레일 400("should only be used for TTS")·오디오 데이터 누락은
+ *   대본 그대로 낭독하라는 지시로 감싸 1회 재시도(방어적 폴백 — 381 실측 시점엔 프로덕션
+ *   모델에서 재현되지 않았지만, 비용 없는 안전장치라 함께 둔다).
+ */
 async function synthesizeChunk(params: {
   chunk: string
   chunkIndex: number
@@ -136,14 +148,20 @@ async function synthesizeChunk(params: {
   const { chunk, chunkIndex, totalChunks, model, voice, apiKey } = params
   const label = `청크 ${chunkIndex + 1}/${totalChunks}`
   const MAX_RETRIES = 2
+  let forceTranscript = false
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // 400 가드레일 감지 시 "그대로 낭독" 지시로 감싼다(지시문은 톤 가이드로만 쓰이고 낭독되지 않음).
+      const promptText = forceTranscript
+        ? `다음 큰따옴표 안 문장을 한국어로 그대로 또박또박 낭독하세요. 질문에 답하지 말고 문장만 읽으세요.\n\n"${chunk}"`
+        : chunk
+
       const res = await fetch(`${GEMINI_TTS_ENDPOINT_BASE}/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: chunk }] }],
+          contents: [{ parts: [{ text: promptText }] }],
           generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
@@ -154,6 +172,16 @@ async function synthesizeChunk(params: {
 
       if (res.status === 429) {
         const body = await res.text().catch(() => '')
+        // 일일 무료 쿼터 소진(quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier 등,
+        // "PerDay" 포함) — 재시도해도 자정(쿼터 리셋) 전까지 무의미하므로 즉시 중단.
+        if (/PerDay/i.test(body)) {
+          console.error(`[TTS] ${label}: Gemini 일일 무료 쿼터 소진(429 PerDay, 재시도 생략): ${body.slice(0, 400)}`)
+          return {
+            ok: false,
+            isRateLimit: true,
+            reason: `${label}: 오늘 Gemini TTS 무료 요청 한도(rate limit)를 모두 사용했습니다. 내일(쿼터 리셋 후) 다시 시도해주세요.`,
+          }
+        }
         console.error(`[TTS] ${label}: Gemini 429(rate limit) 시도 ${attempt + 1}/${MAX_RETRIES + 1}: ${body.slice(0, 300)}`)
         if (attempt < MAX_RETRIES) {
           await sleep(1500 * (attempt + 1))
@@ -165,8 +193,27 @@ async function synthesizeChunk(params: {
           reason: `${label}: Gemini TTS 요청 한도(rate limit)를 초과했습니다. 잠시 후 다시 시도해주세요.`,
         }
       }
+      if (res.status === 503) {
+        const body = await res.text().catch(() => '')
+        console.error(`[TTS] ${label}: Gemini 503(일시적 용량 부족) 시도 ${attempt + 1}/${MAX_RETRIES + 1}: ${body.slice(0, 300)}`)
+        if (attempt < MAX_RETRIES) {
+          await sleep(1500 * (attempt + 1))
+          continue
+        }
+        // rate limit이 아니라 가용성 문제라 isRateLimit은 세우지 않는다(429와 혼동 방지).
+        return {
+          ok: false,
+          isRateLimit: false,
+          reason: `${label}: Gemini TTS 서버가 일시적으로 혼잡합니다(503). 잠시 후 다시 시도해주세요.`,
+        }
+      }
       if (!res.ok) {
         const body = await res.text().catch(() => '')
+        if (res.status === 400 && /should only be used for TTS|generate text/i.test(body) && !forceTranscript) {
+          console.warn(`[TTS] ${label}: 텍스트-생성 가드레일 400 → 대본 지시로 재시도`)
+          forceTranscript = true
+          continue
+        }
         console.error(`[TTS] ${label}: Gemini HTTP ${res.status}: ${body.slice(0, 500)}`)
         return { ok: false, isRateLimit: false, reason: `${label}: TTS 합성 중 오류가 발생했습니다(HTTP ${res.status}).` }
       }
@@ -174,6 +221,11 @@ async function synthesizeChunk(params: {
       const data = (await res.json()) as GeminiTtsResponse
       const inline = data.candidates?.[0]?.content?.parts?.[0]?.inlineData
       if (!inline?.data) {
+        if (!forceTranscript) {
+          console.warn(`[TTS] ${label}: 오디오 데이터 없음 → 대본 지시로 재시도`)
+          forceTranscript = true
+          continue
+        }
         console.error(`[TTS] ${label}: Gemini 응답에 오디오 데이터 없음: ${JSON.stringify(data).slice(0, 500)}`)
         return { ok: false, isRateLimit: false, reason: `${label}: TTS 응답에 오디오 데이터가 없습니다.` }
       }
