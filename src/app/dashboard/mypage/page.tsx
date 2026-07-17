@@ -35,6 +35,7 @@ export default function MyPage() {
     name: '',
     department: FIXED_DEPARTMENT,
     team: '',
+    team_name: '',
     default_lens: 'all',
   })
   const [profileStatus, setProfileStatus] = useState<SaveStatus>('idle')
@@ -121,7 +122,7 @@ export default function MyPage() {
         archivesRes,
         watchlistRows,
       ] = await Promise.all([
-        supabase.from('users').select('name, department, team, default_lens').eq('id', user.id).single(),
+        supabase.from('users').select('name, department, team, team_name, default_lens').eq('id', user.id).single(),
         supabase.from('user_services').select('service_id').eq('user_id', user.id),
         supabase.from('services').select('*').order('order'),
         supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
@@ -144,7 +145,7 @@ export default function MyPage() {
       if (userRes.error?.code === '42703') {
         const { data: fallback } = await supabase
           .from('users')
-          .select('name, department, team')
+          .select('name, department, team, team_name')
           .eq('id', user.id)
           .single()
         userRow = fallback ? { ...fallback, default_lens: 'all' as LensKey } : null
@@ -155,6 +156,7 @@ export default function MyPage() {
           name: userRow.name ?? '',
           department: (userRow.department as Department) ?? '기타',
           team: userRow.team ?? '',
+          team_name: userRow.team_name ?? '',
           default_lens: (userRow.default_lens as LensKey) ?? 'all',
         })
       }
@@ -204,6 +206,10 @@ export default function MyPage() {
       setProfileError('그룹을 선택해주세요.')
       return
     }
+    if (!profile.team_name.trim()) {
+      setProfileError('팀 이름을 입력해주세요.')
+      return
+    }
 
     setProfileError(null)
     setProfileStatus('saving')
@@ -213,6 +219,7 @@ export default function MyPage() {
       const result = await saveProfile({
         name: profile.name,
         team: profile.team,
+        team_name: profile.team_name,
       })
       if (result.error) throw new Error(result.error)
 

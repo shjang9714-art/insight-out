@@ -7,6 +7,7 @@ const SELF_WRITABLE = [
   'name',
   'department',
   'team',
+  'team_name',
   'default_lens',
   'onboarding_completed',
   'feed_categories',

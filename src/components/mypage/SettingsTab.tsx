@@ -148,6 +148,16 @@ export default function SettingsTab({
             </div>
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="team_name">팀 이름 <span className="text-negative">*</span></Label>
+            <Input
+              id="team_name"
+              value={profile.team_name}
+              onChange={(e) => setProfile({ ...profile, team_name: e.target.value })}
+              placeholder="예: 클라우드사업팀"
+            />
+          </div>
+
           {profileError && <p className="text-xs text-negative">{profileError}</p>}
 
           <Button type="submit" disabled={profileStatus === 'saving'} className="mt-1 h-10 w-full">

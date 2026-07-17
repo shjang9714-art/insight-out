@@ -19,6 +19,7 @@ export default function OnboardingPage() {
   const [step1Data, setStep1Data] = useState<OnboardingStep1>({
     name: '',
     team: '',
+    team_name: '',
     default_lens: 'all',
     selected_categories: [],
   })
@@ -40,6 +41,7 @@ export default function OnboardingPage() {
       const profileResult = await completeOnboarding({
         name: data.name,
         team: data.team,
+        team_name: data.team_name,
         default_lens: data.default_lens,
       })
       if (profileResult.error) throw new Error(profileResult.error)

@@ -22,6 +22,7 @@ export interface UserProfile {
   name: string
   department: Department
   team: string
+  team_name: string
   position?: string
   role: UserRole
   content_filter_mode: ContentFilterMode
@@ -53,6 +54,7 @@ export interface NewsletterSubscription {
 export interface OnboardingStep1 {
   name: string
   team: string
+  team_name: string
   default_lens: LensKey
   /** 맞춤 추천 피드 카테고리 키 배열 (FEED_CATEGORIES, users.feed_categories 에 저장) */
   selected_categories: string[]

@@ -8,6 +8,7 @@ import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 interface CompleteOnboardingInput {
   name: string
   team: string
+  team_name: string
   default_lens: LensKey
 }
 
@@ -26,7 +27,8 @@ function getErrorCode(error: unknown): string | null {
 export async function completeOnboarding(input: CompleteOnboardingInput): Promise<ActionResult> {
   const name = input.name.trim()
   const team = input.team.trim()
-  if (!name || !isOrgGroup(team) || !LENS_KEYS.includes(input.default_lens)) {
+  const team_name = input.team_name.trim()
+  if (!name || !isOrgGroup(team) || !team_name || !LENS_KEYS.includes(input.default_lens)) {
     return { error: '온보딩 입력값이 올바르지 않습니다.' }
   }
 
@@ -38,6 +40,7 @@ export async function completeOnboarding(input: CompleteOnboardingInput): Promis
     name,
     department: FIXED_DEPARTMENT,
     team,
+    team_name,
     onboarding_completed: true,
   }
 

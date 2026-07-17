@@ -38,6 +38,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
     const next: typeof errors = {}
     if (!form.name.trim()) next.name = '이름을 입력해주세요.'
     if (!isOrgGroup(form.team)) next.team = '그룹을 선택해주세요.'
+    if (!form.team_name.trim()) next.team_name = '팀 이름을 입력해주세요.'
     if (form.selected_categories.length < 1) next.selected_categories = '관심사를 1개 이상 선택해주세요.'
     setErrors(next)
     return Object.keys(next).length === 0
@@ -79,6 +80,18 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
           </SelectContent>
         </Select>
         {errors.team && <p className="text-xs text-red-500">{errors.team}</p>}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="team_name">팀 이름 <span className="text-red-500">*</span></Label>
+        <Input
+          id="team_name"
+          placeholder="예: 클라우드사업팀"
+          value={form.team_name}
+          onChange={(e) => setForm({ ...form, team_name: e.target.value })}
+          aria-invalid={!!errors.team_name}
+        />
+        {errors.team_name && <p className="text-xs text-red-500">{errors.team_name}</p>}
       </div>
 
       <div className="flex flex-col gap-2">

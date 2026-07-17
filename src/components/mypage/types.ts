@@ -9,6 +9,7 @@ export interface ProfileForm {
   name: string
   department: Department
   team: string
+  team_name: string
   default_lens: LensKey
 }
 
