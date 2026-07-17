@@ -20,7 +20,7 @@ export default function OnboardingPage() {
     name: '',
     team: '',
     default_lens: 'all',
-    selected_services: [],
+    selected_categories: [],
   })
 
   useEffect(() => {
@@ -44,30 +44,15 @@ export default function OnboardingPage() {
       })
       if (profileResult.error) throw new Error(profileResult.error)
 
-      if (data.selected_services.length > 0) {
-        const { data: matchedServices, error: servicesError } = await supabase
-          .from('services')
-          .select('id, name')
-          .in('name', data.selected_services)
-        if (servicesError) {
-          console.error('[onboarding] services 조회 오류:', servicesError)
-          throw new Error('담당 서비스 정보를 불러오는 데 실패했습니다.')
-        }
-
-        if (matchedServices && matchedServices.length > 0) {
-          const userServiceRows = matchedServices.map((s) => ({
-            user_id: user.id,
-            service_id: s.id,
-            is_pinned: false,
-          }))
-          const { error: userServicesError } = await supabase
-            .from('user_services')
-            .upsert(userServiceRows, { onConflict: 'user_id,service_id' })
-          if (userServicesError) {
-            console.error('[onboarding] user_services upsert 오류:', userServicesError)
-            throw new Error('담당 서비스 저장에 실패했습니다.')
-          }
-        }
+      // 관심사(피드 카테고리) 저장 — 홈 카드(FeedCategoryModal)와 동일한 API/컬럼 재사용
+      const bootstrapRes = await fetch('/api/preferences/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category_keys: data.selected_categories }),
+      })
+      if (!bootstrapRes.ok) {
+        const body = await bootstrapRes.json().catch(() => ({}))
+        throw new Error(body.error ?? '관심사 저장에 실패했습니다.')
       }
 
       // 뉴스레터 구독 기본 등록 (is_active=true, 로그인 이메일)
@@ -86,8 +71,8 @@ export default function OnboardingPage() {
         // 뉴스레터 실패는 온보딩을 막지 않음 — 경고만
       }
 
-      router.refresh()
       router.push('/dashboard')
+      router.refresh()
     } catch (err) {
       const message = err instanceof Error ? err.message : '오류가 발생했습니다.'
       setError(message)

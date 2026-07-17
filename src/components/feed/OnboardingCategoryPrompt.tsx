@@ -37,7 +37,7 @@ export default function OnboardingCategoryPrompt() {
         🎯 관심 카테고리를 골라 맞춤 피드를 만들어요
       </h2>
       <p className="mb-4 text-xs text-muted-foreground">
-        통신·보안·모빌리티·AIDC·AICC 중 관심 있는 분야를 선택하면 관련 콘텐츠를 모아 보여드려요.
+        통신·보안·AI 등 11개 분야 중 관심 있는 분야를 선택하면 관련 콘텐츠를 모아 보여드려요.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">

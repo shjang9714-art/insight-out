@@ -101,6 +101,8 @@ export default function FeedCategoryModal({
           <DialogTitle>관심 카테고리를 선택하세요</DialogTitle>
           <DialogDescription>
             선택한 카테고리의 해시태그를 기준으로 맞춤 콘텐츠를 추천해 드려요.
+            <br />
+            관심사는 홈 화면의 &apos;관심사 눌러 추천받기&apos;에서 언제든지 다시 선택할 수 있어요.
           </DialogDescription>
         </DialogHeader>
 
