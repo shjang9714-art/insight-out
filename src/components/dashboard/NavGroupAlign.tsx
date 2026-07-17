@@ -6,6 +6,12 @@ import { cn } from '@/lib/utils'
 interface Props {
   children: React.ReactNode
   className?: string
+  // 활성 Lv.1 탭이 바뀔 때마다 재측정을 트리거하는 키(보통 activeL1Href). 새로고침 없는
+  // SPA 네비게이션에서는 컴포넌트가 리마운트되지 않아 아래 useLayoutEffect가 마운트 시
+  // 1회만 실행되고 끝나버리므로, 활성 탭이 바뀌어도 marginLeft가 이전 탭 위치에 고착되는
+  // 버그가 있었다(§지시서 20260716b). 이 키를 의존성 배열에 넣어 매 활성 탭 변경마다
+  // 다시 측정하도록 한다.
+  remeasureKey?: string | null
 }
 
 // 헤더(Lv.1)가 늦게 마운트되는 경우를 대비한 재시도 한도 — 대략 300ms(20 프레임) 안에는
@@ -25,8 +31,13 @@ const MAX_RETRY_FRAMES = 20
  * 이중으로 더해 컨테이너에 padding이 있는 경우 그만큼 어긋나는 버그가 있었음).
  * L1 nav가 숨겨지는 모바일 폭(`md` 미만)이나 헤더가 아직 마운트되지 않은 경우엔 라벨이
  * 없거나 폭이 0이라 marginLeft 0(좌측 정렬)로 자연히 폴백 — null 참조로 죽지 않는다.
+ *
+ * `remeasureKey`(활성 L1 탭)가 바뀔 때마다 재측정한다 — 새로고침 없는 SPA 네비게이션은
+ * 이 컴포넌트를 리마운트하지 않으므로, 이 키가 없으면 최초 마운트 시 위치에 영구히
+ * 고착된 채로 남는다(§지시서 20260716b — 실사용 클릭 이동에서 L2 탭 줄이 이전 활성
+ * 탭의 x좌표에 박제되는 버그의 원인이었음. `#l1-nav-row` padding 버그와는 별개).
  */
-export default function NavGroupAlign({ children, className }: Props) {
+export default function NavGroupAlign({ children, className, remeasureKey }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [marginLeft, setMarginLeft] = useState(0)
 
@@ -64,7 +75,7 @@ export default function NavGroupAlign({ children, className }: Props) {
       window.removeEventListener('resize', measure)
       if (rafId) cancelAnimationFrame(rafId)
     }
-  }, [])
+  }, [remeasureKey])
 
   return (
     <div ref={ref} className={cn('w-fit', className)} style={{ marginLeft }}>

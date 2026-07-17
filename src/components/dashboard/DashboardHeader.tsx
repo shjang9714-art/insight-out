@@ -287,7 +287,9 @@ function L2Row({
         {/* Lv.2 탭 그룹은 항상 활성 Lv.1 라벨(#l1-active-label)의 텍스트 시작
             x좌표에서 시작해야 한다(§지시서 20260712/20260713/20260716) —
             372에서 헤더 sticky 통합 후에도 이 규칙은 유지 */}
-        <NavGroupAlign className="flex items-center gap-6 tracking-[-0.01em]">
+        {/* remeasureKey=activeL1Href(진짜 활성 탭) — 프리뷰가 아니라 실제 라우트가
+            바뀔 때만 재측정. 프리뷰 중에는 위치를 건드리지 않는다(§지시서 20260716b) */}
+        <NavGroupAlign className="flex items-center gap-6 tracking-[-0.01em]" remeasureKey={activeL1Href}>
           {l2 && l2.section.tabs.map((tab) => {
             const active = !isPreview && tab.id === l2.activeId
             return (
