@@ -1,5 +1,10 @@
 # Insight Out — Admin Restructure Plan
 
+> ⚠️ **재검토 중 (2026-07-17) — IA는 최종안으로 대체 방향.**
+> 사이드바 그룹 구조(7그룹 객체중심)는 `docs/어드민-개편-최종안-2026-07-17.md`(11그룹 대상중심)로 **대체**된다.
+> 단, 이 문서의 **audit 근거·객체↔테이블↔API 매핑·파괴적 작업 리스크 체크리스트는 구현 참고자료로 유지**한다.
+> 차이·살릴 것 상세: `docs/어드민-개편-갭분석-2026-07-17.md` §4. 완전 폐기/보존 여부는 David 결정 대기.
+
 Planning date: 2026-07-10
 Source of truth: `ADMIN_SYSTEM_AUDIT.md` (repository-only audit). This document is a plan only. **No application behavior is changed here.** Route/table/file references are taken verbatim from the audit.
 

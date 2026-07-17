@@ -1,12 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import AdminTabs from '@/components/admin/ui/AdminTabs'
+import AdminTabShell from '@/components/admin/ui/AdminTabShell'
 import ReportUploadForm from '@/components/admin/ReportUploadForm'
 import TextPasteForm from '@/components/admin/TextPasteForm'
 import UrlImportForm from '@/components/admin/UrlImportForm'
-
-type Tab = 'file' | 'paste' | 'url'
 
 const TABS = [
   { value: 'file',  label: '파일 업로드' },
@@ -15,15 +12,14 @@ const TABS = [
 ]
 
 export default function ContentAddTabs() {
-  const [tab, setTab] = useState<Tab>('file')
-
   return (
-    <div>
-      <div className="mb-6">
-        <AdminTabs items={TABS} value={tab} onChange={(v) => setTab(v as Tab)} aria-label="콘텐츠 추가 방식" />
-      </div>
-
-      {tab === 'file' ? <ReportUploadForm /> : tab === 'paste' ? <TextPasteForm /> : <UrlImportForm />}
-    </div>
+    <AdminTabShell
+      tabs={TABS}
+      defaultTab="file"
+      aria-label="콘텐츠 추가 방식"
+      renderContent={(tab) =>
+        tab === 'file' ? <ReportUploadForm /> : tab === 'paste' ? <TextPasteForm /> : <UrlImportForm />
+      }
+    />
   )
 }
