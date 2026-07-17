@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import ContentAddTabs from '@/components/admin/ContentAddTabs'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 export const metadata: Metadata = {
   title: '콘텐츠 추가 | 어드민 | Insight Out',
@@ -9,9 +9,8 @@ export const metadata: Metadata = {
 
 export default function AdminUploadPage() {
   return (
-    <>
-      <AdminPageHeader />
+    <Suspense fallback={null}>
       <ContentAddTabs />
-    </>
+    </Suspense>
   )
 }

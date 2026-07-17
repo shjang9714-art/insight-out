@@ -171,3 +171,18 @@ export function findAdminNavItem(pathname: string): AdminNavItem | null {
     .filter(i => i.href !== '/admin' && pathname.startsWith(i.href))
     .sort((a, b) => b.href.length - a.href.length)[0] ?? null
 }
+
+/** pathname → { 그룹명, 항목 }. 브레드크럼용. 정확 일치 우선, 없으면 최장 startsWith. */
+export function findAdminNavLocation(pathname: string): { group: string; item: AdminNavItem } | null {
+  for (const g of ADMIN_NAV_GROUPS) {
+    const exact = g.items.find(i => i.href === pathname)
+    if (exact) return { group: g.group, item: exact }
+  }
+  for (const g of ADMIN_NAV_GROUPS) {
+    const pref = g.items
+      .filter(i => i.href !== '/admin' && pathname.startsWith(i.href))
+      .sort((a, b) => b.href.length - a.href.length)[0]
+    if (pref) return { group: g.group, item: pref }
+  }
+  return null
+}
