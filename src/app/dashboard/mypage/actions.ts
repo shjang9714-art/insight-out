@@ -10,6 +10,7 @@ interface SaveProfileInput {
   /** 347: 부문은 Ent 부문 단일 고정 — 클라이언트 입력을 신뢰하지 않고 서버에서 FIXED_DEPARTMENT 로 저장한다 */
   department?: unknown
   team: string
+  team_name: string
 }
 
 interface ActionResult {
@@ -33,7 +34,8 @@ async function getAuthenticatedUserId(): Promise<string | null> {
 export async function saveProfile(input: SaveProfileInput): Promise<ActionResult> {
   const name = input.name.trim()
   const team = input.team.trim()
-  if (!name || !isOrgGroup(team)) {
+  const team_name = input.team_name.trim()
+  if (!name || !isOrgGroup(team) || !team_name) {
     return { error: '프로필 입력값이 올바르지 않습니다.' }
   }
 
@@ -41,7 +43,7 @@ export async function saveProfile(input: SaveProfileInput): Promise<ActionResult
   if (!userId) return { error: '로그인 정보를 찾을 수 없습니다.' }
 
   try {
-    await updateOwnProfile(userId, { name, department: FIXED_DEPARTMENT, team })
+    await updateOwnProfile(userId, { name, department: FIXED_DEPARTMENT, team, team_name })
     return { error: null }
   } catch (error) {
     console.error('[mypage] 프로필 저장 실패:', error)

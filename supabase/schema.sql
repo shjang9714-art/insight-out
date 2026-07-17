@@ -24,6 +24,7 @@ create table public.users (
   name                 text not null default '',
   department           department not null default '기타',
   team                 text not null default '',
+  team_name            text not null default '',
   position             text,
   role                 user_role not null default 'user',
   onboarding_completed boolean not null default false,
