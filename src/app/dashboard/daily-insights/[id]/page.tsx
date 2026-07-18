@@ -47,7 +47,7 @@ export default async function DailyInsightDetailPage({ params }: PageProps) {
   }
 
   return (
-    <PageContainer variant="reading">
+    <PageContainer variant="reading" className="max-w-6xl">
       <div className="space-y-6">
         <BackLink
           fallbackHref="/dashboard/issues"

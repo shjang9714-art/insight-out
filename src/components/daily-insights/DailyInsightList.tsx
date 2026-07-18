@@ -56,7 +56,7 @@ function InsightCard({ item, isLatestWeek }: { item: DailyInsightRow; isLatestWe
       </div>
 
       {sections.length > 0 && (
-        <div className="space-y-2.5 border-t border-border/60 pt-3">
+        <div className="grid grid-cols-1 gap-2.5 border-t border-border/60 pt-3 md:grid-cols-3">
           {sections.map((s) => (
             <div
               key={s.key}
@@ -79,54 +79,58 @@ function InsightCard({ item, isLatestWeek }: { item: DailyInsightRow; isLatestWe
         </div>
       )}
 
-      {previewSources.length > 0 && (
-        <div className="space-y-1.5 border-t border-border/60 pt-3">
-          <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
-            <FileText className="h-3 w-3" /> 근거 기사
-          </p>
-          <ul className="space-y-1">
-            {previewSources.map((a) => (
-              <li key={a.content_id} className="text-xs text-muted-foreground">
-                {a.url ? (
-                  <a
-                    href={a.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-foreground hover:text-brand-600 hover:underline"
-                  >
-                    {a.title}
-                    <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                  </a>
-                ) : (
-                  <span className="font-medium text-foreground">{a.title}</span>
+      {(previewSources.length > 0 || pastArticles.length > 0) && (
+        <div className="grid grid-cols-1 gap-4 border-t border-border/60 pt-3 md:grid-cols-2">
+          {previewSources.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
+                <FileText className="h-3 w-3" /> 근거 기사
+              </p>
+              <ul className="space-y-1">
+                {previewSources.map((a) => (
+                  <li key={a.content_id} className="text-xs text-muted-foreground">
+                    {a.url ? (
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-foreground hover:text-brand-600 hover:underline"
+                      >
+                        {a.title}
+                        <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="font-medium text-foreground">{a.title}</span>
+                    )}
+                    <span className="ml-1 text-muted-foreground/70">({a.source})</span>
+                  </li>
+                ))}
+                {extraSourceCount > 0 && (
+                  <li className="text-[11px] text-muted-foreground/60">외 {extraSourceCount}건</li>
                 )}
-                <span className="ml-1 text-muted-foreground/70">({a.source})</span>
-              </li>
-            ))}
-            {extraSourceCount > 0 && (
-              <li className="text-[11px] text-muted-foreground/60">외 {extraSourceCount}건</li>
-            )}
-          </ul>
-        </div>
-      )}
+              </ul>
+            </div>
+          )}
 
-      {pastArticles.length > 0 && (
-        <div className="space-y-1.5 border-t border-border/60 pt-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">🕰️ 과거 관련 기사</p>
-          <ul className="space-y-1">
-            {pastArticles.map((p) => (
-              <li key={p.content_id} className="text-xs text-muted-foreground">
-                {p.url ? (
-                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground hover:text-brand-600 hover:underline">
-                    {p.title}
-                  </a>
-                ) : (
-                  <span className="font-medium text-foreground">{p.title}</span>
-                )}
-                <span className="ml-1 text-muted-foreground/70">{p.published_at ? `(${p.published_at.slice(0, 7)})` : ''}</span>
-              </li>
-            ))}
-          </ul>
+          {pastArticles.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">🕰️ 과거 관련 기사</p>
+              <ul className="space-y-1">
+                {pastArticles.map((p) => (
+                  <li key={p.content_id} className="text-xs text-muted-foreground">
+                    {p.url ? (
+                      <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground hover:text-brand-600 hover:underline">
+                        {p.title}
+                      </a>
+                    ) : (
+                      <span className="font-medium text-foreground">{p.title}</span>
+                    )}
+                    <span className="ml-1 text-muted-foreground/70">{p.published_at ? `(${p.published_at.slice(0, 7)})` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -152,7 +156,7 @@ export default function DailyInsightList({ insights, isLatestWeek }: DailyInsigh
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div className="flex flex-col gap-4">
       {insights.map((item) => (
         <InsightCard key={item.id} item={item} isLatestWeek={isLatestWeek} />
       ))}
