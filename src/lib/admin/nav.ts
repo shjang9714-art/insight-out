@@ -14,7 +14,6 @@ import {
   Mail,
   Users,
   Boxes,
-  Radar,
   ClipboardList,
   Ban,
   Settings,
@@ -25,7 +24,6 @@ import {
   Gauge,
   LayoutTemplate,
   FileText,
-  CalendarClock,
   History,
   KeyRound,
   FileArchive,
@@ -72,10 +70,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '인사이트',
     items: [
-      { href: '/admin/insights', label: '핵심인사이트', description: 'AI 인사이트 카드의 생성·검수·발행. 이슈·일일핵심을 흡수 예정(S3).', icon: Sparkles },
-      { href: '/admin/issues', label: '이슈 관리', description: '주요 이슈 클러스터와 관련 콘텐츠 매칭. 핵심인사이트로 흡수 예정(S3).', icon: Radar },
-      { href: '/admin/daily-insights', label: '일일 핵심 Insight', description: '자동 게시된 일일 핵심 Insight를 사후 검토·편집·반려. 핵심인사이트로 흡수 예정(S3).', icon: CalendarClock },
-      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중 — S)', icon: BarChart3, disabled: true, badge: '준비중' },
+      { href: '/admin/insights', label: '핵심인사이트', description: 'AI 인사이트 카드·이슈·일일 핵심을 한 화면 탭으로 생성·검수·발행합니다.', icon: Sparkles },
+      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
       { href: '/admin/relations', label: '관계지도', description: '기업·인물·기관·기술 관계와 근거 콘텐츠 관리. (준비중)', icon: Network, disabled: true, badge: '준비중' },
     ],
   },

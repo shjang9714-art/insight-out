@@ -183,7 +183,7 @@ export function AdminSidebar() {
                             {openRequestCount}
                           </span>
                         )}
-                        {item.href === '/admin/daily-insights' && dailyInsightReviewCount > 0 && (
+                        {item.href === '/admin/insights' && dailyInsightReviewCount > 0 && (
                           <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
                             {dailyInsightReviewCount}
                           </span>
