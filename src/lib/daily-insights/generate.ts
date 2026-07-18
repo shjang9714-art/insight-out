@@ -320,7 +320,10 @@ function buildSystemPrompt(): string {
     'next_steps 를 빈 배열 []로 둔다(단계 억지로 채우지 않음).\n' +
     '12. 입력에 없는 사실·수치·회사명·인용을 창작하지 않는다(단 action 렌즈·next_steps 의 ' +
     '개연성 서술 자체는 허용, 사실 요소만 창작 금지).\n' +
-    '13. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '13. 모든 문장은 ~다체(~한다/~이다/~했다)로만 작성하고 ~습니다체(~합니다/~입니다/~했습니다)는 ' +
+    '절대 쓰지 않는다. 위 모든 필드(headline·summary_ko·market_trend·competitor_trend·implication·' +
+    'why_it_matters·implication_lenses·next_steps 포함)에 예외 없이 적용한다.\n' +
+    '14. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
     '출력 스키마:\n' +
     '{"headline":"...","summary_ko":"...","market_trend":"...|null","competitor_trend":"...|null",' +
     '"implication":"...","why_it_matters":"...|null",' +
@@ -570,7 +573,9 @@ function buildFlowSystemPrompt(): string {
     '3. 각 text는 1~2문장, 짧고 명확하게.\n' +
     '4. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
     '5. headline: 이번 주 이 이슈를 대표하는 한 줄.\n' +
-    '6. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '6. 모든 문장은 ~다체(~한다/~이다/~했다)로만 작성하고 ~습니다체(~합니다/~입니다/~했습니다)는 ' +
+    '절대 쓰지 않는다. headline·flow[].text 모두 예외 없이 적용한다.\n' +
+    '7. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
     '출력 스키마: {"headline":"...","flow":[{"phase":"...","text":"..."}]}'
   )
 }
