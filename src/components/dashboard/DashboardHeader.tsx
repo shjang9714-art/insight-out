@@ -77,8 +77,6 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
   const [isAdmin, setIsAdmin]       = useState(false)
-  // L1 호버 시 그 섹션의 L2를 미리보기(372) — null이면 활성 섹션의 L2로 복귀
-  const [previewL1Href, setPreviewL1Href] = useState<string | null>(null)
 
   const today = new Date().toLocaleDateString('ko-KR', {
     month: 'long', day: 'numeric', weekday: 'short',
@@ -210,10 +208,6 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
               <Link
                 key={tab.href}
                 href={tab.href}
-                onMouseEnter={() => setPreviewL1Href(tab.href)}
-                onFocus={() => setPreviewL1Href(tab.href)}
-                onMouseLeave={() => setPreviewL1Href(null)}
-                onBlur={() => setPreviewL1Href(null)}
                 className={`inline-flex items-center gap-2 py-1.5 text-[17px] transition-colors ${
                   active
                     ? 'font-medium text-foreground'
@@ -254,7 +248,6 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
       {/* ── L2 하위 탭 (md+, sticky 헤더에 통합·상시노출) ──────────────────────── */}
       <L2Row
         activeL1Href={activeL1Href}
-        previewL1Href={previewL1Href}
         pathname={pathname}
         searchParams={searchParams}
       />
@@ -264,22 +257,20 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
 
 // ─── L2 행 ──────────────────────────────────────────────────────────────────
 // L1 sticky 헤더 안에 통합해 스크롤해도 함께 고정되고 항상 노출된다(372).
-// 호버 중인 L1(previewL1Href)이 있으면 그 섹션을 미리보기, 없으면 실제 활성 섹션을 보여준다.
+// 마우스 위치와 무관하게 항상 실제 활성 라우트(activeL1Href)의 하위 탭만 보여준다
+// — 호버로 내용/위치가 바뀌는 "프리뷰" 기능은 제거됨(§지시서 20260718). 이유:
+// 사용자가 요청한 적 없는 기능이었고, 마우스만 올려도 L2 내용·위치가 바뀌어
+// 실제 활성 상태를 오인하게 만드는 버그로 이어졌다(§지시서 20260716b/20260718).
 function L2Row({
   activeL1Href,
-  previewL1Href,
   pathname,
   searchParams,
 }: {
   activeL1Href: string | null
-  previewL1Href: string | null
   pathname: string
   searchParams: URLSearchParams
 }) {
-  const displayL1Href = previewL1Href ?? activeL1Href
-  const l2 = displayL1Href ? getL2ForSection(displayL1Href, pathname, searchParams) : null
-  // 프리뷰 중엔 실제 활성 탭이 아니므로 강조하지 않는다(호버=프리뷰, 클릭=확정).
-  const isPreview = previewL1Href !== null && previewL1Href !== activeL1Href
+  const l2 = activeL1Href ? getL2ForSection(activeL1Href, pathname, searchParams) : null
 
   return (
     <nav className="hidden min-h-[30px] md:flex" aria-label="하위 메뉴">
@@ -287,11 +278,10 @@ function L2Row({
         {/* Lv.2 탭 그룹은 항상 활성 Lv.1 라벨(#l1-active-label)의 텍스트 시작
             x좌표에서 시작해야 한다(§지시서 20260712/20260713/20260716) —
             372에서 헤더 sticky 통합 후에도 이 규칙은 유지 */}
-        {/* remeasureKey=activeL1Href(진짜 활성 탭) — 프리뷰가 아니라 실제 라우트가
-            바뀔 때만 재측정. 프리뷰 중에는 위치를 건드리지 않는다(§지시서 20260716b) */}
+        {/* remeasureKey=activeL1Href — 실제 라우트가 바뀔 때마다 재측정(§지시서 20260716b) */}
         <NavGroupAlign className="flex items-center gap-6 tracking-[-0.01em]" remeasureKey={activeL1Href}>
           {l2 && l2.section.tabs.map((tab) => {
-            const active = !isPreview && tab.id === l2.activeId
+            const active = tab.id === l2.activeId
             return (
               // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
               <Link
