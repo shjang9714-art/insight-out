@@ -84,6 +84,10 @@ const SECONDS_PER_CHAR = 0.055
 /** Vercel maxDuration(300초) 대비 여유를 둔 총 예산 — 초과 예상이면 시작 전에 중단시킨다. */
 const TOTAL_BUDGET_SECONDS = 280
 
+/** 청크 간 간격(ms). 무료 티어 분당 요청 한도(RPM) 완화용. env로 조절 가능(재배포만).
+ *  기본 15초 — 순차 합성(~40초/청크)과 합쳐 요청 간격 ~55초로 벌린다. */
+const CHUNK_GAP_MS = Number(process.env.TTS_CHUNK_GAP_MS ?? 15_000)
+
 /** 문장 종결부호(.!?) 또는 빈 줄(문단 경계) 기준으로 스크립트를 문장 단위로 분리 */
 function splitIntoSentences(text: string): string[] {
   return text
@@ -184,7 +188,7 @@ async function synthesizeChunk(params: {
         }
         console.error(`[TTS] ${label}: Gemini 429(rate limit) 시도 ${attempt + 1}/${MAX_RETRIES + 1}: ${body.slice(0, 300)}`)
         if (attempt < MAX_RETRIES) {
-          await sleep(1500 * (attempt + 1))
+          await sleep(8_000 * (attempt + 1)) // 8s·16s — 분당 리셋 대비(385)
           continue
         }
         return {
@@ -197,7 +201,7 @@ async function synthesizeChunk(params: {
         const body = await res.text().catch(() => '')
         console.error(`[TTS] ${label}: Gemini 503(일시적 용량 부족) 시도 ${attempt + 1}/${MAX_RETRIES + 1}: ${body.slice(0, 300)}`)
         if (attempt < MAX_RETRIES) {
-          await sleep(1500 * (attempt + 1))
+          await sleep(8_000 * (attempt + 1)) // 8s·16s — 분당 리셋 대비(385)
           continue
         }
         // rate limit이 아니라 가용성 문제라 isRateLimit은 세우지 않는다(429와 혼동 방지).
@@ -304,7 +308,10 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
 
   // 379 — 총 예산 가드: 합성 시작 전에 예상 소요를 계산해, maxDuration(300초) 예산을
   // 초과할 것으로 보이면 504로 끝나기 전에 명확한 사유로 사전 중단한다.
-  const estimatedSeconds = Math.round(script.length * SECONDS_PER_CHAR)
+  const estimatedChunks = Math.max(1, Math.ceil(script.length / MAX_CHUNK_CHARS))
+  const estimatedSeconds = Math.round(
+    script.length * SECONDS_PER_CHAR + (estimatedChunks - 1) * (CHUNK_GAP_MS / 1000),
+  )
   if (estimatedSeconds > TOTAL_BUDGET_SECONDS) {
     console.error(`[TTS] 예산 초과 사전중단 briefing=${briefingId} chars=${script.length} estimated=${estimatedSeconds}s budget=${TOTAL_BUDGET_SECONDS}s`)
     return {
@@ -354,7 +361,7 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
   const synthesisStartedAt = Date.now()
 
   for (let i = 0; i < chunks.length; i++) {
-    if (i > 0) await sleep(300) // 청크 간 소폭 간격 — 무료 티어 rate limit 완화
+    if (i > 0) await sleep(CHUNK_GAP_MS) // 청크 간 간격 — 무료 티어 RPM 완화(385)
 
     const chunkStartedAt = Date.now()
     const result = await synthesizeChunk({
