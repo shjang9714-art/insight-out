@@ -11,6 +11,7 @@ import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import CouncilDiscussButton from '@/components/dashboard/CouncilDiscussButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
+import RecordActiveCategoryHint from '@/components/contents/RecordActiveCategoryHint'
 import ViewTracker from '@/components/contents/ViewTracker'
 import BackLink from '@/components/BackLink'
 import EntityTabs from '@/components/entities/EntityTabs'
@@ -270,6 +271,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
       </div>
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
+      <RecordActiveCategoryHint category={content.category} />
       <ViewTracker contentId={content.id} />
 
       <article>
@@ -461,7 +463,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
             ) : isReport ? (
               <>
                 {content.summary_ko && (
-                  <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
+                  <p className="mb-6 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                     {content.summary_ko}
                   </p>
                 )}
