@@ -52,7 +52,10 @@ export async function parseNewsSiteFeedXml(xml: string, since: string): Promise<
 
   for (const item of feed.items) {
     // 당일 발행 정책: 발행일 누락·파싱 실패·기준일 이전 항목은 제외
-    const pubDateStr = item.isoDate ?? item.pubDate
+    // 원본 pubDate 를 우선 사용 — item.isoDate 는 rss-parser 가 이미 new Date().toISOString() 로
+    // 변환한 값이라, 타임존 표기 없는 날짜 문자열의 경우 서버(UTC) 기준으로 오해석된 상태다.
+    // 원본 문자열을 parseFeedDate 에 넘겨야 타임존 유무를 직접 판단해 KST 로 올바르게 보정할 수 있다.
+    const pubDateStr = item.pubDate ?? item.isoDate
     const publishedAt = getPublishedAtSince(pubDateStr, since)
     if (!publishedAt) continue
 
