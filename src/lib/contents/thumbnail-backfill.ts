@@ -33,7 +33,7 @@ interface ThumbnailRow {
   original_url: string
 }
 
-async function pendingCount(
+export async function pendingCount(
   admin: SupabaseClient,
   mode: 'fresh' | 'retry',
   from?: string | null,

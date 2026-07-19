@@ -42,7 +42,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function pendingCount(admin: SupabaseClient, mode: 'fresh' | 'retry'): Promise<number> {
+export async function pendingCount(admin: SupabaseClient, mode: 'fresh' | 'retry'): Promise<number> {
   let q = admin
     .from('contents')
     .select('id', { count: 'exact', head: true })

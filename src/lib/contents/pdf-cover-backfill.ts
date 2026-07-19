@@ -33,7 +33,7 @@ interface PdfContentRow {
   file_path: string
 }
 
-async function pendingCount(admin: SupabaseClient, mode: 'fresh' | 'retry'): Promise<number> {
+export async function pendingCount(admin: SupabaseClient, mode: 'fresh' | 'retry'): Promise<number> {
   const q = admin
     .from('contents')
     .select('id', { count: 'exact', head: true })

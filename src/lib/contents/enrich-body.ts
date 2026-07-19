@@ -159,7 +159,7 @@ export async function enrichByIds(
   return { processed, improved, skipped, truncated }
 }
 
-async function pendingCount(
+export async function pendingCount(
   admin: SupabaseClient,
   from?: string | null,
   to?: string | null,

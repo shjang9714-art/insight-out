@@ -59,7 +59,7 @@ function repOf(row: { id: string; cluster_id: string | null }): string {
   return row.cluster_id ?? row.id
 }
 
-async function pendingCount(
+export async function pendingCount(
   admin: SupabaseClient,
   from?: string | null,
   to?: string | null,

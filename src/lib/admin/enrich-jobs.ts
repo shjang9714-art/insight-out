@@ -15,6 +15,7 @@ export type EnrichJobKey =
   | 'admin:pdf-cover-backfill'
   | 'admin:cluster-backfill'
   | 'admin:youtube-tagging'
+  | 'admin:translate-backfill'
   | 'admin:briefing-tts'
   | 'admin:briefing-highlights'
 
@@ -185,6 +186,16 @@ export const ENRICH_JOBS: readonly EnrichJobMeta[] = [
     method: 'POST',
     confirm: '기존 유튜브 콘텐츠(최대 100건)에 해시태그·관련 엔티티 태깅을 생성하시겠습니까?',
   },
+  {
+    key: 'admin:translate-backfill',
+    label: '유튜브 영문 본문 번역',
+    endpoint: '/api/admin/translate-backfill',
+    usesLlm: false,
+    surface: 'data',
+    kind: 'loop',
+    method: 'POST',
+    limit: 20,
+  },
 
   // 377 — 항목(per-item) 작업. 대상 브리핑 id가 필요해 전역 일괄 실행 목록에는 노출하지
   // 않고(itemScoped) BriefingManager가 startJob(key, params, briefingId)로 직접 디스패치한다.
@@ -294,6 +305,8 @@ export function normalizeEnrichResult(key: EnrichJobKey, json: unknown): EnrichJ
       return normalizeLoopResult(key, record, 'filled', 'skipped')
     case 'admin:youtube-transcript':
       return normalizeLoopResult(key, record, 'fetched', 'skipped')
+    case 'admin:translate-backfill':
+      return normalizeLoopResult(key, record, 'translated', 'skipped')
     case 'admin:canonical-backfill':
       return normalizeLoopResult(key, record, 'resolved', undefined, ['deduped'])
     case 'admin:cluster-backfill':
