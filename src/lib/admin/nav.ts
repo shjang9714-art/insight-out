@@ -88,10 +88,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '콘텐츠',
     items: [
-      { href: '/admin/content?type=news', label: '뉴스', description: '뉴스 소스 관리·수집·본문추출·검수·발행. (준비중 — S4)', icon: Newspaper, disabled: true, badge: '준비중' },
-      { href: '/admin/content?type=web-insight', label: '웹인사이트', description: '전문기관·기업 블로그 등 고부가 콘텐츠 수집·관리. (준비중 — S4)', icon: Globe, disabled: true, badge: '준비중' },
-      { href: '/admin/content?type=youtube', label: '유튜브', description: '채널·영상 수집, 자막·요약, 콘텐츠 선별. (준비중 — S4)', icon: Video, disabled: true, badge: '준비중' },
-      { href: '/admin/contents', label: '콘텐츠 관리', description: '수집·업로드 콘텐츠의 상태·품질·발행 관리. 뉴스/웹인사이트/유튜브로 분화 예정(S4).', icon: Newspaper },
+      { href: '/admin/contents?category=뉴스', label: '뉴스', description: '뉴스 콘텐츠 수집·검수·발행을 관리합니다.', icon: Newspaper },
+      { href: '/admin/contents?category=웹인사이트', label: '웹인사이트', description: '전문기관·기업 블로그 등 고부가 콘텐츠를 관리합니다.', icon: Globe },
+      { href: '/admin/contents?category=유튜브', label: '유튜브', description: '채널·영상 콘텐츠와 자막·요약을 관리합니다.', icon: Video },
       { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록. 각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
       { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 수집 소스 등록·관리. 각 콘텐츠 소스 탭으로 이동 예정(S4).', icon: Rss },
       { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이). 각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
@@ -102,7 +101,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '리포트',
     items: [
       { href: '/admin/reports', label: 'AI 리포트', description: '전략보고서 생성·재생성·표지·HITL 발행. 프롬프트·AI보강 결합 예정(S7).', icon: FileText },
-      { href: '/admin/external-reports', label: '외부리포트', description: '외부 PDF·PPT·문서 등록·발행. (준비중 — S7)', icon: FileArchive, disabled: true, badge: '준비중' },
+      { href: '/admin/contents?category=외부리포트', label: '외부리포트', description: '외부 PDF·PPT·문서 리포트를 등록·발행합니다.', icon: FileArchive },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
       { href: '/admin/prompts', label: '프롬프트 콘솔', description: 'AI 생성기 프롬프트 편집·저장. AI 리포트>프롬프트 탭으로 통합 예정(S7).', icon: Sparkles },
@@ -158,27 +157,45 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
 ]
 
-/** pathname → nav 항목 조회. 정확 일치 우선, 없으면 최장 startsWith 매칭 */
-export function findAdminNavItem(pathname: string): AdminNavItem | null {
-  const all = ADMIN_NAV_GROUPS.flatMap(g => g.items)
-  const exact = all.find(i => i.href === pathname)
-  if (exact) return exact
-  return all
-    .filter(i => i.href !== '/admin' && pathname.startsWith(i.href))
-    .sort((a, b) => b.href.length - a.href.length)[0] ?? null
+/** href 문자열을 pathname/쿼리로 분해 */
+function splitHref(href: string): { pathname: string; params: URLSearchParams } {
+  const [pathname, qs = ''] = href.split('?')
+  return { pathname, params: new URLSearchParams(qs) }
 }
 
-/** pathname → { 그룹명, 항목 }. 브레드크럼용. 정확 일치 우선, 없으면 최장 startsWith. */
-export function findAdminNavLocation(pathname: string): { group: string; item: AdminNavItem } | null {
-  for (const g of ADMIN_NAV_GROUPS) {
-    const exact = g.items.find(i => i.href === pathname)
-    if (exact) return { group: g.group, item: exact }
+/** href의 쿼리 조건을 현재 검색 파라미터가 모두 만족하는가 */
+function queryMatches(href: string, search?: URLSearchParams | null): boolean {
+  const { params } = splitHref(href)
+  for (const [k, v] of params) {
+    if ((search?.get(k) ?? null) !== v) return false
   }
-  for (const g of ADMIN_NAV_GROUPS) {
-    const pref = g.items
-      .filter(i => i.href !== '/admin' && pathname.startsWith(i.href))
-      .sort((a, b) => b.href.length - a.href.length)[0]
-    if (pref) return { group: g.group, item: pref }
-  }
-  return null
+  return true
+}
+
+/** pathname(+선택적 쿼리) → nav 항목 조회. 정확 일치 우선, 없으면 최장 startsWith 매칭 */
+export function findAdminNavItem(pathname: string, search?: URLSearchParams | null): AdminNavItem | null {
+  const all = ADMIN_NAV_GROUPS.flatMap(g => g.items)
+  // 1) pathname 정확일치 + 쿼리 조건 만족 (쿼리 있는 항목 우선)
+  const exact = all
+    .filter(i => splitHref(i.href).pathname === pathname && queryMatches(i.href, search))
+    .sort((a, b) => splitHref(b.href).params.size - splitHref(a.href).params.size)[0]
+  if (exact) return exact
+  // 2) 폴백: pathname 최장 startsWith (기존 동작)
+  return all
+    .filter(i => {
+      const p = splitHref(i.href).pathname
+      return p !== '/admin' && pathname.startsWith(p)
+    })
+    .sort((a, b) => splitHref(b.href).pathname.length - splitHref(a.href).pathname.length)[0] ?? null
+}
+
+/** pathname(+선택적 쿼리) → { 그룹명, 항목 }. 브레드크럼용. */
+export function findAdminNavLocation(
+  pathname: string,
+  search?: URLSearchParams | null,
+): { group: string; item: AdminNavItem } | null {
+  const item = findAdminNavItem(pathname, search)
+  if (!item) return null
+  const group = ADMIN_NAV_GROUPS.find(g => g.items.includes(item))
+  return group ? { group: group.group, item } : null
 }

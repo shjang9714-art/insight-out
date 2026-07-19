@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { AdminSidebar } from '@/components/admin/AdminSidebar'
 import { AdminThemeScope } from '@/components/admin/AdminThemeScope'
 import EnrichJobsProvider from '@/components/admin/EnrichJobsProvider'
@@ -17,7 +18,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <AdminThemeScope>
       <EnrichJobsProvider>
-        <AdminSidebar />
+        <Suspense fallback={null}>
+          <AdminSidebar />
+        </Suspense>
         <main className="flex-1 min-w-0">
           <div className="mx-auto max-w-7xl px-8 py-8">{children}</div>
         </main>

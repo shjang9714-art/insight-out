@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { findAdminNavLocation } from '@/lib/admin/nav'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminTabs, { type AdminTabItem } from '@/components/admin/ui/AdminTabs'
@@ -24,7 +24,8 @@ export default function AdminTabShell({
   titleOverride, descriptionOverride, 'aria-label': ariaLabel,
 }: Props) {
   const pathname = usePathname()
-  const loc = findAdminNavLocation(pathname)
+  const searchParams = useSearchParams()
+  const loc = findAdminNavLocation(pathname, searchParams)
   const values = tabs.map(t => t.value)
   const [active, setActive] = useTabParam(values, defaultTab)
 

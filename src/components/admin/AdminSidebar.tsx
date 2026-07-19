@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ADMIN_NAV_GROUPS } from '@/lib/admin/nav'
@@ -12,6 +12,7 @@ import { AdminThemeToggle } from '@/components/admin/AdminThemeToggle'
 export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState('')
 
   // 187: 미완료(대기+진행) 운영 요청 개수 배지 (in-admin 알림)
@@ -47,8 +48,23 @@ export function AdminSidebar() {
   }, [])
 
   function isActive(href: string) {
-    if (href === '/admin') return pathname === '/admin'
-    return pathname === href || pathname.startsWith(href + '/')
+    const [hrefPath, qs = ''] = href.split('?')
+    if (hrefPath === '/admin' && !qs) return pathname === '/admin'
+    const pathOk = pathname === hrefPath || pathname.startsWith(hrefPath + '/')
+    if (!pathOk) return false
+    if (!qs) {
+      // 쿼리 없는 항목: 같은 pathname에 쿼리 있는 항목이 활성일 땐 양보한다
+      const hasQuerySibling = ADMIN_NAV_GROUPS.some(g => g.items.some(it => {
+        const [p, q] = it.href.split('?')
+        if (p !== hrefPath || !q) return false
+        return new URLSearchParams(q).get('category') === searchParams.get('category')
+      }))
+      return !hasQuerySibling
+    }
+    for (const [k, v] of new URLSearchParams(qs)) {
+      if (searchParams.get(k) !== v) return false
+    }
+    return true
   }
 
   const trimmedQuery = query.trim().toLowerCase()

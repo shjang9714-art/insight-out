@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { findAdminNavItem } from '@/lib/admin/nav'
 import { findAdminPageHelp } from '@/lib/admin/help'
 import InfoHelp from './InfoHelp'
@@ -13,7 +13,8 @@ interface Props {
 
 export default function AdminPageHeader({ actions, titleOverride, descriptionOverride }: Props) {
   const pathname = usePathname()
-  const item = findAdminNavItem(pathname)
+  const searchParams = useSearchParams()
+  const item = findAdminNavItem(pathname, searchParams)
   const help = findAdminPageHelp(pathname)
   const Icon = item?.icon
   const title = titleOverride ?? item?.label ?? '어드민'

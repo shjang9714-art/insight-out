@@ -9,7 +9,12 @@ export const metadata: Metadata = {
   description: '수집 콘텐츠의 게시 상태와 삭제를 관리합니다.',
 }
 
-export default function AdminContentsPage() {
+export default async function AdminContentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string }>
+}) {
+  const sp = await searchParams
   return (
     <>
       <AdminPageHeader />
@@ -19,7 +24,7 @@ export default function AdminContentsPage() {
           콘텐츠를 불러오는 중입니다.
         </div>
       }>
-        <AdminContentManager />
+        <AdminContentManager key={sp.category ?? 'all'} />
       </Suspense>
     </>
   )
