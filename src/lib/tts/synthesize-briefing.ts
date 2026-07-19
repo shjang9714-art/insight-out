@@ -432,7 +432,7 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
   // 7. briefings 갱신 (audio_url·voice — status 는 건드리지 않음)
   const { error: updateError } = await admin
     .from('briefings')
-    .update({ audio_url: audioUrl, voice, audio_duration_seconds: durationSeconds })
+    .update({ audio_url: audioUrl, voice, audio_duration_seconds: Math.round(durationSeconds) })
     .eq('id', briefingId)
 
   if (updateError) {
