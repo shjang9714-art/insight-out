@@ -82,9 +82,9 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
 // ─── 라우트별 강제 활성 탭(기존 페이지의 value prop 하드코딩과 1:1) ───────────────
 // l1Href가 호출 측에서 이미 결정돼 넘어오므로, 여기서는 pathname만으로 판정한다.
 const FORCED_L2: {
-  test: (pathname: string) => boolean
+  test: (pathname: string, categoryHint?: string | null) => boolean
   l1Href: string
-  activeId: (searchParams: URLSearchParams) => string
+  activeId: (searchParams: URLSearchParams, categoryHint?: string | null) => string
 }[] = [
   // 경쟁사 주간 브리핑 상세 — CompetitorWeeklyDetailPage의 <EntityTabs value="trend" />
   {
@@ -116,6 +116,20 @@ const FORCED_L2: {
     l1Href: '/dashboard/issues',
     activeId: () => 'keyword',
   },
+  // 콘텐츠 상세(/dashboard/contents/[id])가 지식보고서인 경우 — 경로는 "콘텐츠"
+  // 소속이지만 실제로는 리포트 L1의 "지식보고서" 탭이 활성이어야 한다(RecordActiveCategoryHint
+  // 로 전달된 categoryHint 기준 판정 — page.tsx는 서버 컴포넌트라 URL만으론 category를 못 읽는다).
+  {
+    test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && cat === '지식보고서',
+    l1Href: '/dashboard/reports',
+    activeId: () => 'knowledge',
+  },
+  // 콘텐츠 상세가 외부 리포트(리포트/가트너/KRG)인 경우 — 리포트 L1의 "외부 리포트" 탭
+  {
+    test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && ['리포트', '가트너', 'KRG'].includes(cat ?? ''),
+    l1Href: '/dashboard/reports',
+    activeId: () => 'external',
+  },
 ]
 
 export interface ActiveL2 {
@@ -127,13 +141,16 @@ export interface ActiveL2 {
 export function getL2ForSection(
   l1Href: string,
   pathname: string,
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
+  categoryHint: string | null = null
 ): ActiveL2 | null {
   const section = NAV_SECTIONS[l1Href]
   if (!section) return null
 
-  const forced = FORCED_L2.find((f) => f.l1Href === l1Href && f.test(pathname))
-  const activeId = forced ? forced.activeId(searchParams) : (searchParams.get(section.paramKey) ?? section.defaultId)
+  const forced = FORCED_L2.find((f) => f.l1Href === l1Href && f.test(pathname, categoryHint))
+  const activeId = forced
+    ? forced.activeId(searchParams, categoryHint)
+    : (searchParams.get(section.paramKey) ?? section.defaultId)
   return { section, activeId }
 }
 

@@ -13,6 +13,7 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
+import { useActiveCategoryContext } from '@/lib/nav/active-category-context'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
@@ -36,6 +37,12 @@ const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   '/dashboard/issues':   ['/dashboard/daily-insights', '/dashboard/keywords'],
   '/dashboard/entities': ['/dashboard/insights'],
 }
+
+// 콘텐츠 상세(/dashboard/contents/[id])인데 실제 category가 리포트류(지식보고서/
+// 리포트/가트너/KRG)면 경로는 "콘텐츠" 소속이라도 "리포트" L1이 활성이어야 한다.
+// RecordActiveCategoryHint → ActiveCategoryProvider로 전달된 category로 판정한다.
+const CONTENT_DETAIL_PATTERN = /^\/dashboard\/contents\/[^/]+$/
+const REPORT_TYPE_CATEGORIES = ['지식보고서', '리포트', '가트너', 'KRG']
 
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
@@ -73,6 +80,10 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   const searchParams = useSearchParams()
   const category     = searchParams.get('category') ?? ''
   const pageLabel    = getPageLabel(pathname, category)
+  const { activeContentCategory } = useActiveCategoryContext()
+  const isContentDetail = CONTENT_DETAIL_PATTERN.test(pathname)
+  const contentDetailCategoryHint = isContentDetail ? activeContentCategory : null
+  const isReportTypeContentDetail = REPORT_TYPE_CATEGORIES.includes(contentDetailCategoryHint ?? '')
 
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
@@ -88,7 +99,9 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
   const activeL1Href = isEntityDetailFromIssues
     ? '/dashboard/issues'
-    : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
+    : isReportTypeContentDetail
+      ? '/dashboard/reports'
+      : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -250,6 +263,7 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
         activeL1Href={activeL1Href}
         pathname={pathname}
         searchParams={searchParams}
+        categoryHint={contentDetailCategoryHint}
       />
     </header>
   )
@@ -265,12 +279,14 @@ function L2Row({
   activeL1Href,
   pathname,
   searchParams,
+  categoryHint,
 }: {
   activeL1Href: string | null
   pathname: string
   searchParams: URLSearchParams
+  categoryHint: string | null
 }) {
-  const l2 = activeL1Href ? getL2ForSection(activeL1Href, pathname, searchParams) : null
+  const l2 = activeL1Href ? getL2ForSection(activeL1Href, pathname, searchParams, categoryHint) : null
 
   return (
     <nav className="hidden min-h-[30px] md:flex" aria-label="하위 메뉴">

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { X } from 'lucide-react'
 import DashboardHeader, { NAV_TABS, isTabActive } from '@/components/dashboard/DashboardHeader'
 import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
+import { ActiveCategoryProvider } from '@/lib/nav/active-category-context'
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -74,8 +75,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      <DashboardShell>{children}</DashboardShell>
-    </Suspense>
+    <ActiveCategoryProvider>
+      <Suspense fallback={<div className="min-h-screen bg-background" />}>
+        <DashboardShell>{children}</DashboardShell>
+      </Suspense>
+    </ActiveCategoryProvider>
   )
 }
