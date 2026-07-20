@@ -28,9 +28,10 @@ const FILTER_OPTIONS: { value: LensKey; label: string; description: string }[] =
 interface Props {
   defaultValues: OnboardingStep1
   onNext: (data: OnboardingStep1) => void
+  loading?: boolean
 }
 
-export default function Step1Profile({ defaultValues, onNext }: Props) {
+export default function Step1Profile({ defaultValues, onNext, loading = false }: Props) {
   const [form, setForm] = useState<OnboardingStep1>(defaultValues)
   const [errors, setErrors] = useState<Partial<Record<keyof OnboardingStep1, string>>>({})
 
@@ -46,7 +47,7 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (validate()) onNext(form)
+    if (!loading && validate()) onNext(form)
   }
 
   return (
@@ -142,8 +143,8 @@ export default function Step1Profile({ defaultValues, onNext }: Props) {
         </div>
       </div>
 
-      <Button type="submit" className="mt-2 w-full h-10">
-        다음
+      <Button type="submit" className="mt-2 w-full h-10" disabled={loading}>
+        {loading ? '저장 중...' : '다음'}
       </Button>
     </form>
   )

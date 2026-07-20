@@ -10,29 +10,51 @@ import type { OnboardingStep1 } from '@/lib/types'
 
 const STEPS = ['프로필 등록']
 
+// 제출 실패(특히 "unexpected response" 류)에 대비한 안전장치용 sessionStorage 키.
+// 원인(미들웨어 리다이렉트 등)을 고쳐도 배포 환경 변수·네트워크 문제로 재발할 수 있어
+// 별도 방어선을 둔다: 실패 시 입력값을 저장하고 새로고침 → 복원 후 자동 재제출(최대 1회).
+const PENDING_SUBMIT_KEY = 'onboarding-pending-submit'
+const RETRY_FLAG_KEY = 'onboarding-auto-retried'
+
+function isUnexpectedResponseError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /unexpected response/i.test(message)
+}
+
+function readPendingSubmit(): OnboardingStep1 | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_SUBMIT_KEY)
+    return raw ? (JSON.parse(raw) as OnboardingStep1) : null
+  } catch {
+    return null
+  }
+}
+
+const EMPTY_STEP1_DATA: OnboardingStep1 = {
+  name: '',
+  team: '',
+  team_name: '',
+  default_lens: 'all',
+  selected_categories: [],
+}
+
 export default function OnboardingPage() {
   const router = useRouter()
   const supabase = createClient()
 
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [restoreKey, setRestoreKey] = useState(0)
 
-  const [step1Data, setStep1Data] = useState<OnboardingStep1>({
-    name: '',
-    team: '',
-    team_name: '',
-    default_lens: 'all',
-    selected_categories: [],
-  })
-
-  useEffect(() => {
-    // 로그인 이메일 확보 불필요 — 뉴스레터 단계 제거로 authEmail 미사용
-  }, [])
+  const [step1Data, setStep1Data] = useState<OnboardingStep1>(EMPTY_STEP1_DATA)
 
   const progress = 100
 
   const handleStep1Submit = async (data: OnboardingStep1) => {
     setStep1Data(data)
     setError(null)
+    setLoading(true)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -73,13 +95,45 @@ export default function OnboardingPage() {
         // 뉴스레터 실패는 온보딩을 막지 않음 — 경고만
       }
 
+      window.sessionStorage.removeItem(PENDING_SUBMIT_KEY)
+      window.sessionStorage.removeItem(RETRY_FLAG_KEY)
       router.push('/dashboard')
       router.refresh()
     } catch (err) {
-      const message = err instanceof Error ? err.message : '오류가 발생했습니다.'
+      if (isUnexpectedResponseError(err) && window.sessionStorage.getItem(RETRY_FLAG_KEY) !== '1') {
+        // 배포 직후 등 서버 액션 응답이 깨지는 케이스 — 입력값을 저장해 두고 새로고침 후
+        // 자동으로 한 번만 재제출한다. 두 번째도 실패하면 아래 일반 에러 처리로 빠진다.
+        window.sessionStorage.setItem(PENDING_SUBMIT_KEY, JSON.stringify(data))
+        window.sessionStorage.setItem(RETRY_FLAG_KEY, '1')
+        window.location.reload()
+        return
+      }
+      window.sessionStorage.removeItem(RETRY_FLAG_KEY)
+      const message = isUnexpectedResponseError(err)
+        ? '일시적인 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+        : err instanceof Error ? err.message : '오류가 발생했습니다.'
       setError(message)
+    } finally {
+      setLoading(false)
     }
   }
+
+  useEffect(() => {
+    // 새로고침 전에 저장해 둔 입력값이 있으면 복원하고 자동으로 재제출한다.
+    // (재시도 플래그가 없으면 저장된 값만 있고 재시도 대상이 아닌 상태이므로 무시)
+    const pending = readPendingSubmit()
+    const shouldRetry = window.sessionStorage.getItem(RETRY_FLAG_KEY) === '1'
+    if (!pending || !shouldRetry) return
+    window.sessionStorage.removeItem(PENDING_SUBMIT_KEY)
+    // setState 를 effect 본문에서 곧바로 호출하면 react-hooks/set-state-in-effect 에 걸려,
+    // 마이크로태스크 경계(async IIFE) 뒤로 미룬다 — 동작은 동일(마운트 직후 1회 복원+재제출).
+    void (async () => {
+      setStep1Data(pending)
+      setRestoreKey((key) => key + 1)
+      await handleStep1Submit(pending)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
@@ -103,8 +157,10 @@ export default function OnboardingPage() {
           )}
 
           <Step1Profile
+            key={restoreKey}
             defaultValues={step1Data}
             onNext={handleStep1Submit}
+            loading={loading}
           />
         </div>
 
