@@ -9,7 +9,6 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import SearchBar from '@/components/dashboard/SearchBar'
-import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
@@ -52,22 +51,6 @@ export function isTabActive(href: string, exact: boolean, pathname: string): boo
   )
 }
 
-// ─── 유틸 ──────────────────────────────────────────────────────────────────────
-
-function getPageLabel(pathname: string, category: string): string | null {
-  if (pathname === '/dashboard') return null
-  if (/^\/dashboard\/contents\/.+/.test(pathname)) return '콘텐츠 상세'
-  if (pathname.startsWith('/dashboard/contents')) {
-    if (!category) return '전체 콘텐츠'
-    return CONTENT_CATEGORY_LABEL[category as ContentCategory] ?? category
-  }
-  if (pathname.startsWith('/dashboard/youtube'))   return '유튜브 영상'
-  if (pathname.startsWith('/dashboard/search'))    return '검색'
-  if (pathname.startsWith('/dashboard/mypage'))    return '마이페이지'
-  if (pathname.startsWith('/dashboard/briefings')) return '지난 브리핑'
-  return null
-}
-
 interface Props {
   onMenuClick?: () => void
   className?: string
@@ -79,7 +62,6 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const category     = searchParams.get('category') ?? ''
-  const pageLabel    = getPageLabel(pathname, category)
   const { activeContentCategory } = useActiveCategoryContext()
   const isContentDetail = CONTENT_DETAIL_PATTERN.test(pathname)
   // category 쿼리파라미터가 있으면(카드 클릭 진입) 첫 렌더부터 바로 읽을 수 있어
@@ -131,7 +113,7 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-4 sm:px-5">
 
-        {/* 좌측: 햄버거(모바일) + 로고 + 브레드크럼 */}
+        {/* 좌측: 햄버거(모바일) + 로고 */}
         <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={onMenuClick}
@@ -151,13 +133,6 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
             />
             <span className="font-semibold text-foreground">Insight Out</span>
           </Link>
-          {pageLabel && (
-            <div className="hidden items-center gap-0.5 lg:flex">
-              <span className="rounded-lg px-2 py-1.5 text-xs font-semibold text-brand-600">
-                {pageLabel}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* 중앙: 검색 (md+) */}
