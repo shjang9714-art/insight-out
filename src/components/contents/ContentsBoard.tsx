@@ -295,6 +295,8 @@ export default function ContentsBoard({
   const [queryError, setQueryError] = useState<string | null>(null)
   const [retryToken, setRetryToken] = useState(0)
   const loadingPhase = useLoadingPhase(isLoading)
+  // 395 — 직전 category를 들고 있다가 바뀌면 쿼리 전에 목록을 비운다(잔상 방지).
+  const prevCategoryRef = useRef(category)
   const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
   const newsView = useSyncExternalStore(
@@ -373,6 +375,14 @@ export default function ContentsBoard({
   // ── 콘텐츠 쿼리 ─────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
+
+    // 395 — 카테고리가 바뀌면 이전 카테고리의 카드가 잔상으로 남지 않도록 쿼리 전에 즉시 비운다.
+    // 검색어·키워드 칩·정렬·페이지네이션 변경 시에는(category 불변) 목록을 그대로 유지한다(394 유지).
+    if (prevCategoryRef.current !== category) {
+      prevCategoryRef.current = category
+      setItems([])
+      setTotal(null)
+    }
 
     const fetchContents = async () => {
       setLoading(true)
@@ -625,7 +635,9 @@ export default function ContentsBoard({
       </div>
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
-      {/* 394 — 원칙: 최초 로딩(목록 없음) = 정확한 스켈레톤 / 재조회(목록 있음) = 기존 목록 유지 + 진행선. */}
+      {/* 394 — 원칙: 최초 로딩(목록 없음) = 정확한 스켈레톤 / 재조회(목록 있음) = 기존 목록 유지.
+          395 — "이전 목록 유지"는 category 불변(검색·칩·정렬·더보기)에만 적용. category가 바뀌면
+          위 useEffect가 즉시 setItems([])하므로 items.length===0 경로(스켈레톤)를 탄다 — 잔상 없음. */}
       {queryError ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           {queryError}
@@ -669,13 +681,9 @@ export default function ContentsBoard({
         </div>
       ) : (
         <div className="relative">
-          {/* 재조회 중 — 목록은 유지하고 상단 진행선 + 미세한 opacity 로만 알린다(원형 스피너 금지: 범위가 전체 목록이라 국소 신호가 부적절). */}
-          {isLoading && (
-            <div className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden rounded-full bg-brand-600/15">
-              <div className="h-full w-full animate-pulse bg-brand-600" />
-            </div>
-          )}
-          <div className={cn('transition-opacity duration-150', isLoading && 'opacity-[0.85]')}>
+          {/* 395 — 상단 바 형태의 로딩 표시는 경고 배너처럼 읽혀 삭제. opacity만 유지(검색·칩 전환 시 "바뀌는 중" 최소 신호).
+              더 보기(page>1)는 기존 목록 전체가 흐려지면 안 되므로 대상에서 제외한다. */}
+          <div className={cn('transition-opacity duration-150', isLoading && page === 1 && 'opacity-[0.85]')}>
             {usesFlatList ? (
               <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
             ) : (
