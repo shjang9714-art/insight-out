@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
-import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
 
-// Pretendard variable font (한글 + 영문 모두 커버, 사용자 PC 폰트 의존 제거)
-const pretendard = localFont({
-  src: "../../public/fonts/PretendardVariable.woff2",
-  variable: "--font-pretendard",
-  display: "swap",
-  weight: "45 920",
-});
+// Pretendard (한글 + 영문 모두 커버, 사용자 PC 폰트 의존 제거)는 393에서 next/font/local(서브셋 미지원,
+// 2.06MB 통째 로드) 대신 globals.css 의 dynamic subset @font-face(--font-pretendard)로 전환했다.
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -32,7 +26,7 @@ export default function RootLayout({
     <html
       lang="ko"
       suppressHydrationWarning
-      className={`${pretendard.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <ThemeProvider>{children}</ThemeProvider>

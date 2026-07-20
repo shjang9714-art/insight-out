@@ -1,8 +1,16 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* 393 — Pretendard dynamic subset(@font-face + unicode-range 92조각). 브라우저가 실제 쓰이는 글자
+   범위의 조각만 받는다(글리프 전체를 담은 2.06MB 단일 파일 대비). */
+@import "./fonts/pretendard-dynamic-subset.css";
 
 @custom-variant dark (&:is(.dark *));
+
+:root {
+  /* next/font/local(pretendard 변수) 대체 — 위 @font-face 의 font-family 를 그대로 참조 */
+  --font-pretendard: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
 
 @theme inline {
   --color-background: var(--background);
