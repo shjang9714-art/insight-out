@@ -118,6 +118,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
     .eq('status', 'published')
     .eq('week_of', selectedWeek ?? '__none__')
     .order('display_order', { ascending: true })
+    .order('created_at', { ascending: false })
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
   const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes, lguAliasRes] = await Promise.all([

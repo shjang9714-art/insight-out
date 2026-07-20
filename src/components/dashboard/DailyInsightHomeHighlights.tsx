@@ -44,12 +44,16 @@ export default async function DailyInsightHomeHighlights() {
     .eq('status', 'published')
     .eq('week_of', latestWeek)
     .order('display_order', { ascending: true })
+    .order('created_at', { ascending: false })
 
   const pool = (weekInsights ?? []) as DailyInsightRow[]
   if (pool.length === 0) return null
 
+  // 첫 칸은 이번 주 display_order 최솟값(보통 0)인 인사이트로 고정(§핵심 인사이트 상단 고정),
+  // 나머지 2건만 그 항목을 제외한 후보 중에서 날짜 시드 랜덤으로 채운다.
+  const [pinned, ...rest] = pool
   const todayKst = getKstDateString()
-  const cards = pickSeededRandom(pool, 3, todayKst)
+  const cards = [pinned, ...pickSeededRandom(rest, 2, todayKst)]
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
