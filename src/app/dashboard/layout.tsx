@@ -1,81 +1,46 @@
-'use client'
-
-import { useState } from 'react'
-import { usePathname } from 'next/navigation'
+import { headers } from 'next/headers'
 import { Suspense } from 'react'
-import Link from 'next/link'
-import { X } from 'lucide-react'
-import DashboardHeader, { NAV_TABS, isTabActive } from '@/components/dashboard/DashboardHeader'
-import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
+import DashboardShell from '@/components/dashboard/DashboardShell'
 import { ActiveCategoryProvider } from '@/lib/nav/active-category-context'
+import { createClient } from '@/lib/supabase/server'
 
-function DashboardShell({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const pathname = usePathname()
+// DashboardHeader.tsx의 CONTENT_DETAIL_PATTERN과 반드시 동일해야 한다.
+const CONTENT_DETAIL_PATTERN = /^\/dashboard\/contents\/([^/]+)$/
 
-  return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader className="print:hidden" onMenuClick={() => setSidebarOpen(true)} />
+// 콘텐츠 상세(/dashboard/contents/[id])를 새로고침·직접 URL로 진입할 때, 링크의
+// ?category=(카드 클릭 진입)도 RecordActiveCategoryHint의 mount 교정도 아직 없는
+// "첫 서버 렌더" 시점에 상단 네비가 잘못된 기본 탭("콘텐츠 - 뉴스")을 그렸다가 튀는
+// 깜빡임이 있었다(§20260720 fix/nav-active-server-side). 이 레이아웃이 서버에서
+// 직접 category를 조회해 ActiveCategoryProvider의 초기값으로 주입하면, 그 값을
+// 그대로 쓰는 DashboardHeader(클라이언트 컴포넌트)도 SSR HTML부터 이미 정확하다.
+//
+// 참고: 이 초기값은 "첫 로드"에만 적용된다. 같은 레이아웃 아래에서 다른 콘텐츠
+// 상세로 클라이언트 네비게이션(SPA)하는 경우, 공통 레이아웃(이 파일)은 재실행되지
+// 않으므로 기존 ?category 쿼리(있으면 즉시) 또는 RecordActiveCategoryHint(없으면
+// mount 시 폴백)가 계속 그 역할을 한다 — 둘 다 그대로 유지.
+async function resolveInitialCategory(pathname: string): Promise<string | null> {
+  const match = CONTENT_DETAIL_PATTERN.exec(pathname)
+  if (!match) return null
 
-      {/* 풀폭 본문 */}
-      <main className="mx-auto w-full max-w-6xl print:max-w-none">
-        {children}
-      </main>
+  const id = match[1]
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('contents')
+    .select('category')
+    .eq('id', id)
+    .eq('status', 'published')
+    .single()
 
-      {/* 모바일 드로어 (md 미만에서만) */}
-      {sidebarOpen && (
-        <div className="print:hidden">
-          <div
-            className="fixed inset-0 z-30 bg-black/30 md:hidden"
-            onClick={() => setSidebarOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-card md:hidden">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <span className="text-sm font-semibold text-foreground">메뉴</span>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"
-                aria-label="닫기"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <nav className="p-2">
-              {NAV_TABS.map((tab) => {
-	                const active = isTabActive(tab.href, tab.exact, pathname)
-	                return (
-	                  // prefetch-ok: 네비 탭 — 개수 고정, 이동 잦음
-	                  <Link
-	                    key={tab.href}
-                    href={tab.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30'
-                        : 'text-foreground/80 hover:bg-accent'
-                    }`}
-                  >
-                    <span>{tab.label}</span>
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-        </div>
-      )}
-
-      {/* 플로팅 모닝브리핑 미니 플레이어 */}
-      <div className="print:hidden">
-        <FloatingBriefingMini />
-      </div>
-    </div>
-  )
+  return (data as { category: string } | null)?.category ?? null
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const hdrs = await headers()
+  const pathname = hdrs.get('x-pathname') ?? ''
+  const initialCategory = await resolveInitialCategory(pathname)
+
   return (
-    <ActiveCategoryProvider>
+    <ActiveCategoryProvider initialCategory={initialCategory}>
       <Suspense fallback={<div className="min-h-screen bg-background" />}>
         <DashboardShell>{children}</DashboardShell>
       </Suspense>
