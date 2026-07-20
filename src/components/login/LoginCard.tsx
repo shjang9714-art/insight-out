@@ -106,6 +106,21 @@ export function LoginCard() {
     if (step === 'otp-verify') codeInputRef.current?.focus()
   }, [step])
 
+  // 비밀번호 재설정 후 /login?password=updated 로 돌아왔을 때, 이미 마운트된 카드가
+  // 'set-password' 단계에 멈춰 있지 않도록 로그인 폼 상태로 초기화한다.
+  // (렌더 중 조정 — setState-in-effect 로 처리하면 react-hooks/set-state-in-effect 에 걸림)
+  const [prevPasswordUpdated, setPrevPasswordUpdated] = useState(passwordUpdated)
+  if (passwordUpdated !== prevPasswordUpdated) {
+    setPrevPasswordUpdated(passwordUpdated)
+    if (passwordUpdated) {
+      setStep('password')
+      setCode('')
+      setPassword('')
+      setWasPasswordSet(false)
+      setLoading(false)
+    }
+  }
+
   const handlePasswordLogin = async (event: React.FormEvent) => {
     event.preventDefault()
     const normalizedEmail = email.trim()
