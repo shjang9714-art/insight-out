@@ -121,7 +121,9 @@ export default function ContentCard({
   const catColor = CATEGORY_COLOR[category] ?? 'bg-muted text-muted-foreground'
   // 252 — 유튜브는 externalHref(원본 URL)를 썸네일 추출용으로만 쓰고, 클릭은 인앱 상세로(이탈 방지).
   const isExternal = Boolean(externalHref) && category !== '유튜브'
-  const resolvedHref = isExternal ? externalHref! : (href ?? `/dashboard/contents/${id}`)
+  const resolvedHref = isExternal
+    ? externalHref!
+    : (href ?? `/dashboard/contents/${id}?category=${encodeURIComponent(category)}`)
 
   // 211 — 모든 카드가 표지를 갖는다(썸네일 없으면 BrandedCover 표시 시점 렌더, 저장 없음)
   const inner = (

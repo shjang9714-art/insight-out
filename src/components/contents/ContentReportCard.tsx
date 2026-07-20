@@ -31,7 +31,7 @@ export default function ContentReportCard({
 
   return (
     <ReportStyleCard
-      href={`/dashboard/contents/${id}`}
+      href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`}
       title={title}
       summary={summary}
       coverImageUrl={coverImageUrl}
