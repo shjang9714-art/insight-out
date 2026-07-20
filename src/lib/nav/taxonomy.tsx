@@ -117,8 +117,9 @@ const FORCED_L2: {
     activeId: () => 'keyword',
   },
   // 콘텐츠 상세(/dashboard/contents/[id])가 지식보고서인 경우 — 경로는 "콘텐츠"
-  // 소속이지만 실제로는 리포트 L1의 "지식보고서" 탭이 활성이어야 한다(RecordActiveCategoryHint
-  // 로 전달된 categoryHint 기준 판정 — page.tsx는 서버 컴포넌트라 URL만으론 category를 못 읽는다).
+  // 소속이지만 실제로는 리포트 L1의 "지식보고서" 탭이 활성이어야 한다. categoryHint는
+  // 링크의 ?category= 쿼리파라미터(첫 렌더부터 확정, 우선)이거나 그게 없을 때
+  // RecordActiveCategoryHint가 mount 시 알려주는 값(폴백)이다.
   {
     test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && cat === '지식보고서',
     l1Href: '/dashboard/reports',

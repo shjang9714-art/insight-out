@@ -194,7 +194,7 @@ export default function ContentListCard({
 
   // 252 — 유튜브도 인앱 상세로(새 탭 이탈 방지). "원문" 버튼은 위 풋터에서 별도 제공.
   return (
-    <Link href={`/dashboard/contents/${id}`} prefetch={false} className={cardClass}>
+    <Link href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`} prefetch={false} className={cardClass}>
       <article className="h-full">{inner}</article>
     </Link>
   )

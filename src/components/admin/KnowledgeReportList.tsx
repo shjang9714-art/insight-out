@@ -118,7 +118,7 @@ export default function KnowledgeReportList({ reports, onUpdated, onDeleted }: K
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{extension}</span>
-                        <Link href={`/dashboard/contents/${report.id}`} prefetch={false} className="font-semibold text-foreground hover:text-brand-600">
+                        <Link href={`/dashboard/contents/${report.id}?category=${encodeURIComponent('지식보고서')}`} prefetch={false} className="font-semibold text-foreground hover:text-brand-600">
                           {report.title}
                         </Link>
                       </div>

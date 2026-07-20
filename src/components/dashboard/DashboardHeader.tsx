@@ -82,7 +82,10 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   const pageLabel    = getPageLabel(pathname, category)
   const { activeContentCategory } = useActiveCategoryContext()
   const isContentDetail = CONTENT_DETAIL_PATTERN.test(pathname)
-  const contentDetailCategoryHint = isContentDetail ? activeContentCategory : null
+  // category 쿼리파라미터가 있으면(카드 클릭 진입) 첫 렌더부터 바로 읽을 수 있어
+  // 깜빡임이 없다 — 없으면(인용 링크 등 category 미포함 진입) activeContentCategory
+  // 컨텍스트로 폴백(RecordActiveCategoryHint가 mount 시 알려줌, 여전히 약간의 지연 가능).
+  const contentDetailCategoryHint = isContentDetail ? (category || activeContentCategory) : null
   const isReportTypeContentDetail = REPORT_TYPE_CATEGORIES.includes(contentDetailCategoryHint ?? '')
 
   const [userName, setUserName]     = useState<string | null>(null)
