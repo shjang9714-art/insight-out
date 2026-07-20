@@ -120,9 +120,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/keywords', label: '키워드', description: '콘텐츠 서비스/카테고리 분류 기준 키워드 원장을 관리합니다.', icon: Tags },
       { href: '/admin/keyword-groups', label: '키워드 그룹·시그널 기준', description: '수집 seed, 검색 seed, include/exclude pattern, 시그널 기준을 관리합니다.', icon: Network },
       { href: '/admin/entities', label: '엔티티 사전', description: '기업·조직·인물 등 엔티티와 별칭·정규화 기준을 관리합니다.', icon: Boxes },
-      { href: '/admin/taxonomy', label: '분류·카테고리', description: '콘텐츠 유형·산업·기술·주제·노출 카테고리 체계. (준비중 — S5)', icon: FolderTree, disabled: true, badge: '준비중' },
+      { href: '/admin/taxonomy', label: '분류·카테고리', description: 'DB 카테고리와 사용자 화면·어드민 탭 매핑을 조회합니다. (조회 전용)', icon: FolderTree },
       { href: '/admin/exclusion-rules', label: '제외 규칙', description: '수집 제외 도메인·키워드·URL, 중복·저품질 기준을 관리합니다.', icon: Ban },
-      { href: '/admin/tags', label: '공통 태그', description: '여러 콘텐츠에서 공용하는 태그 원장. (준비중 — S5)', icon: Tags, disabled: true, badge: '준비중' },
     ],
   },
   {
