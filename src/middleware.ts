@@ -8,7 +8,17 @@ import {
 } from '@/lib/profile-cache-cookie'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  // 대시보드 레이아웃(서버 컴포넌트)이 현재 pathname을 알아야 콘텐츠 상세(/dashboard/
+  // contents/[id]) 진입 시 상단 네비 초기 활성 탭을 서버에서 확정할 수 있다(§20260720
+  // fix/nav-active-server-side) — Server Component는 headers()로만 요청 헤더를 읽을 수
+  // 있어 여기서 미리 심어둔다. request.cookies.set()이 이후 request.headers를 바꾸므로
+  // NextResponse.next() 호출 시점마다 request.headers를 새로 복제해 x-pathname을 얹는다.
+  const withPathname = () => {
+    const headers = new Headers(request.headers)
+    headers.set('x-pathname', request.nextUrl.pathname)
+    return headers
+  }
+  let supabaseResponse = NextResponse.next({ request: { headers: withPathname() } })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,7 +32,7 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           )
-          supabaseResponse = NextResponse.next({ request })
+          supabaseResponse = NextResponse.next({ request: { headers: withPathname() } })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
