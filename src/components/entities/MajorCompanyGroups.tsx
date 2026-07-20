@@ -5,6 +5,7 @@ import type { MajorCompanyCard, MajorGroupBucket } from '@/lib/entities/major-co
 import { cleanNarrative } from '@/lib/text/clean-narrative'
 import CompanySymbol from '@/components/entities/CompanySymbol'
 import EntitySectionHeader from '@/components/entities/EntitySectionHeader'
+import AiMark from '@/components/ui/AiMark'
 
 /** 6.29–7.5 (en dash) */
 function formatShortPeriod(start: string, end: string): string {
@@ -52,7 +53,7 @@ function ImplicationBlock({ text, className }: { text: string; className?: strin
   return (
     <div className={cn('rounded-lg bg-brand-50/60 px-3.5 py-3 dark:bg-brand-950/20', className)}>
       <p className="text-[11px] font-semibold tracking-tight text-brand-700 dark:text-brand-300">
-        LG U+ 시사점
+        LG U+ 시사점<AiMark size="sm" className="ml-1" />
       </p>
       <p className="mt-1 text-[13px] leading-relaxed text-foreground/75 line-clamp-3">
         {cleanNarrative(text)}

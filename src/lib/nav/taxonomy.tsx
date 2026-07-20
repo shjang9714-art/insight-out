@@ -6,6 +6,16 @@ import AiMark from '@/components/ui/AiMark'
 // 각 섹션의 L2 항목·URL(param/value)·기본 활성 탭은 기존 InsightViewTabs 사용처
 // (ContentsBoard·AiInsightBoard·AiInsightTabs·EntityTabs·ReportTabs)와 1:1 일치.
 
+/** 397 — AI 생성물 탭 라벨. 심볼은 글자 좌측 상단에 작게 얹는다(어깨글자 형태). */
+function aiLabel(text: string) {
+  return (
+    <span className="relative inline-block">
+      <AiMark size="sm" className="absolute -left-2 -top-1.5" />
+      {text}
+    </span>
+  )
+}
+
 export interface L2Tab {
   id: string
   label: ReactNode
@@ -35,7 +45,7 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     defaultId: 'brief',
     preserveParams: true,
     tabs: [
-      { id: 'brief', label: '핵심 인사이트', value: 'brief' },
+      { id: 'brief', label: aiLabel('핵심 인사이트'), value: 'brief' },
       { id: 'keyword', label: '키워드 분석', value: 'keyword' },
       { id: 'graph', label: '관계지도', value: 'graph' },
     ],
@@ -49,7 +59,7 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     tabs: [
       { id: 'watchlist', label: '주요 기업', value: 'watchlist' },
       { id: 'competitor', label: '경쟁사 최근 뉴스', value: 'competitor' },
-      { id: 'trend', label: '경쟁사 주간 브리핑', value: 'trend' },
+      { id: 'trend', label: aiLabel('경쟁사 주간 브리핑'), value: 'trend' },
       { id: 'documents', label: '기업·기술 자료', value: 'documents' },
     ],
   },
@@ -72,9 +82,9 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     defaultId: 'ai',
     preserveParams: false,
     tabs: [
-      { id: 'ai', label: <>AI 리포트<AiMark className="ml-1" /></>, value: 'ai' },
+      { id: 'ai', label: aiLabel('AI 리포트'), value: 'ai' },
       { id: 'external', label: '외부 리포트', value: 'external' },
-      { id: 'knowledge', label: '지식보고서', value: 'knowledge' },
+      { id: 'knowledge', label: aiLabel('지식보고서'), value: 'knowledge' },
     ],
   },
 }
