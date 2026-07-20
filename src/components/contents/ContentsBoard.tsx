@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
@@ -11,6 +11,7 @@ import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
+import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
@@ -118,26 +119,58 @@ function groupByKstDay(
   return result
 }
 
-// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
+// ─── 로딩 사다리 (394) ────────────────────────────────────────────────────────
+// ~200ms: 무표시 → 200ms~: 스켈레톤(뜨면 최소 350ms 유지) → 1.5s~: 안내문구 → 5s~: 지연 안내+재시도.
+// 지연·최소유지는 세트로 — 하나만 있으면 경계값에서 반대방향 깜빡임이 남는다.
 
-function SkeletonCard() {
-  return (
-    <div className="animate-pulse rounded-2xl border border-border bg-card p-5">
-      <div className="mb-3 flex gap-1.5">
-        <div className="h-5 w-14 rounded-md bg-muted" />
-        <div className="h-5 w-20 rounded-md bg-muted" />
-      </div>
-      <div className="mb-2 h-5 w-full rounded bg-muted" />
-      <div className="mb-1 h-5 w-4/5 rounded bg-muted" />
-      <div className="mt-3 space-y-1.5">
-        <div className="h-3.5 w-full rounded bg-muted" />
-        <div className="h-3.5 w-5/6 rounded bg-muted" />
-        <div className="h-3.5 w-2/3 rounded bg-muted" />
-      </div>
-      <div className="mt-4 h-3 w-1/3 rounded bg-muted" />
-    </div>
-  )
+const SKELETON_SHOW_DELAY_MS = 200
+const SKELETON_MIN_VISIBLE_MS = 350
+const SLOW_NOTICE_MS = 1_500
+const VERY_SLOW_NOTICE_MS = 5_000
+
+type LoadingPhase = 'idle' | 'skeleton' | 'slow' | 'verySlow'
+
+function useLoadingPhase(isLoading: boolean): LoadingPhase {
+  const [phase, setPhase] = useState<LoadingPhase>('idle')
+  const shownAtRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (isLoading) {
+      const showTimer = window.setTimeout(() => {
+        shownAtRef.current = Date.now()
+        setPhase('skeleton')
+      }, SKELETON_SHOW_DELAY_MS)
+      const slowTimer = window.setTimeout(() => setPhase('slow'), SLOW_NOTICE_MS)
+      const verySlowTimer = window.setTimeout(() => setPhase('verySlow'), VERY_SLOW_NOTICE_MS)
+      return () => {
+        window.clearTimeout(showTimer)
+        window.clearTimeout(slowTimer)
+        window.clearTimeout(verySlowTimer)
+      }
+    }
+
+    const shownAt = shownAtRef.current
+    if (shownAt === null) {
+      setPhase('idle')
+      return
+    }
+    const elapsed = Date.now() - shownAt
+    if (elapsed >= SKELETON_MIN_VISIBLE_MS) {
+      shownAtRef.current = null
+      setPhase('idle')
+      return
+    }
+    const hideTimer = window.setTimeout(() => {
+      shownAtRef.current = null
+      setPhase('idle')
+    }, SKELETON_MIN_VISIBLE_MS - elapsed)
+    return () => window.clearTimeout(hideTimer)
+  }, [isLoading])
+
+  return phase
 }
+
+// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
 function ContentCardGrid({ items, category, sortByCollected }: {
   items: ClusteredItem[]
@@ -240,7 +273,9 @@ export default function ContentsBoard({
   const searchParams = useSearchParams()
 
   // ── URL 파라미터 ─────────────────────────────────────────────────────────────
-  const category = fixedCategory ?? (searchParams.get('category') ?? '') as ContentCategory | ''
+  // 394 — 무파라미터 진입 시에도 '뉴스'를 즉시 유효 카테고리로 취급해 category='' 1차 쿼리를 없앤다.
+  // 아래 useEffect가 URL을 ?category=뉴스로 맞추지만, 그 갱신은 이 값과 동일하므로 재조회를 유발하지 않는다.
+  const category = fixedCategory ?? ((searchParams.get('category') as ContentCategory | null) || '뉴스')
   const searchQuery = searchParams.get('q')?.trim().slice(0, 100) ?? ''
   const keywordParam = searchParams.get('kw') ?? ''
   const selectedKeywords = useMemo(
@@ -258,6 +293,8 @@ export default function ContentsBoard({
   const [total, setTotal]         = useState<number | null>(null)
   const [isLoading, setLoading]   = useState(false)
   const [queryError, setQueryError] = useState<string | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
+  const loadingPhase = useLoadingPhase(isLoading)
   const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
   const newsView = useSyncExternalStore(
@@ -406,7 +443,7 @@ export default function ContentsBoard({
     fetchContents()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, searchQuery, selectedKeywords, page, sort, sortByCollected, schemaPendingMessage])
+  }, [category, searchQuery, selectedKeywords, page, sort, sortByCollected, schemaPendingMessage, retryToken])
 
   // ── 더 보기 ──────────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
@@ -417,6 +454,9 @@ export default function ContentsBoard({
     window.history.replaceState(null, '', `${pathname}?${p.toString()}`)
   }
   const hasMore = total !== null && items.length < total
+
+  // 394 — 5초 지연 안내의 "다시 시도" 버튼. 의존성 배열의 retryToken만 바꿔 동일 쿼리를 재실행한다.
+  const handleRetry = () => setRetryToken((t) => t + 1)
 
   // ── cluster 그룹핑 (표시 전용 — total·더보기는 원시 items 기준 유지) ──────────
   const clusteredItems = useMemo<ClusteredItem[]>(() => {
@@ -489,10 +529,14 @@ export default function ContentsBoard({
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
-          {!isLoading && total !== null && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              총 {total.toLocaleString()}건
-            </p>
+          {items.length === 0 && (loadingPhase === 'slow' || loadingPhase === 'verySlow') ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">최신 콘텐츠를 불러오는 중</p>
+          ) : (
+            !isLoading && total !== null && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                총 {total.toLocaleString()}건
+              </p>
+            )
           )}
         </div>
         {category === '뉴스' && (
@@ -547,9 +591,9 @@ export default function ContentsBoard({
           )}
         </div>
 
-        {keywordChips.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            {keywordChips.map(({ name }) => {
+        {/* 394 — 항상 렌더 + 최소 높이 예약(칩 한 줄 높이). /api/contents/keywords 응답이 늦게 와도 아래 목록이 밀리지 않는다. */}
+        <div className="flex min-h-[34px] flex-wrap items-center gap-2">
+          {keywordChips.map(({ name }) => {
               const isSelected = selectedKeywords.includes(name)
               return (
                 <button
@@ -577,19 +621,35 @@ export default function ContentsBoard({
                 모두 지우기
               </button>
             )}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
+      {/* 394 — 원칙: 최초 로딩(목록 없음) = 정확한 스켈레톤 / 재조회(목록 있음) = 기존 목록 유지 + 진행선. */}
       {queryError ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           {queryError}
         </div>
-      ) : isLoading && page === 1 ? (
-        <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
+      ) : items.length === 0 && isLoading ? (
+        loadingPhase === 'idle' ? null : (
+          <div>
+            {loadingPhase === 'verySlow' && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
+                <span>데이터 응답이 평소보다 늦어지고 있습니다</span>
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="font-medium text-brand-600 hover:text-brand-700"
+                >
+                  다시 시도
+                </button>
+              </div>
+            )}
+            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+              {Array.from({ length: 6 }).map((_, i) => <ContentCardSkeleton key={i} index={i} />)}
+            </div>
+          </div>
+        )
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <p className="text-sm font-medium text-foreground">
@@ -608,25 +668,33 @@ export default function ContentsBoard({
           )}
         </div>
       ) : (
-        <>
-          {usesFlatList ? (
-            <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
-          ) : (
-            <div className="space-y-6">
-              {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
-                <section key={seg.key}>
-                  <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
-                    {seg.label}
-                  </p>
-                  {category === '뉴스' && newsView === 'list' ? (
-                    <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
-                  ) : (
-                    <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
-                  )}
-                </section>
-              ))}
+        <div className="relative">
+          {/* 재조회 중 — 목록은 유지하고 상단 진행선 + 미세한 opacity 로만 알린다(원형 스피너 금지: 범위가 전체 목록이라 국소 신호가 부적절). */}
+          {isLoading && (
+            <div className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden rounded-full bg-brand-600/15">
+              <div className="h-full w-full animate-pulse bg-brand-600" />
             </div>
           )}
+          <div className={cn('transition-opacity duration-150', isLoading && 'opacity-[0.85]')}>
+            {usesFlatList ? (
+              <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+            ) : (
+              <div className="space-y-6">
+                {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
+                  <section key={seg.key}>
+                    <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+                      {seg.label}
+                    </p>
+                    {category === '뉴스' && newsView === 'list' ? (
+                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
+                    ) : (
+                      <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
+                    )}
+                  </section>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 더 보기 */}
           {hasMore && (
@@ -647,7 +715,7 @@ export default function ContentsBoard({
               </button>
             </div>
           )}
-        </>
+        </div>
       )}
     </>
   )

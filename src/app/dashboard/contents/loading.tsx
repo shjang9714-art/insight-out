@@ -1,4 +1,5 @@
 import PageContainer from '@/components/PageContainer'
+import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
 
 export default function Loading() {
   return (
@@ -19,19 +20,9 @@ export default function Loading() {
         <div className="h-8 w-20 rounded-lg bg-muted animate-pulse" />
       </div>
 
-      {/* 카드 그리드 스켈레톤(2~3열) */}
+      {/* 카드 그리드 스켈레톤 — 실제 카드와 동일한 ContentCardSkeleton(394) */}
       <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-        {[0, 1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="aspect-[16/9] bg-muted animate-pulse" />
-            <div className="space-y-2 p-5">
-              <div className="h-4 w-full rounded bg-muted animate-pulse" />
-              <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
-              <div className="h-3 w-full rounded bg-muted animate-pulse" />
-              <div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
-            </div>
-          </div>
-        ))}
+        {Array.from({ length: 6 }).map((_, i) => <ContentCardSkeleton key={i} index={i} />)}
       </div>
     </PageContainer>
   )

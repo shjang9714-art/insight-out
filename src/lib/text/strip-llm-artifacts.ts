@@ -1,4 +1,9 @@
-const INLINE_UUID_MARKER = /\s*\[[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\]/g
+// 394 — 원래는 정형 UUID 하나만 잡았다. 실측 결과 LLM이 자릿수를 흔들어 적거나(7자리 등)
+// 콤마로 여러 개를 나열하는 경우가 있어, hex 그룹을 범위로 두고 콤마+공백 구분 반복을 허용한다.
+const UUIDISH_SOURCE = '[0-9a-fA-F]{6,8}(?:-[0-9a-fA-F]{3,4}){3}-[0-9a-fA-F]{10,12}'
+const INLINE_UUID_MARKER = new RegExp(
+  String.raw`\s*\[\s*${UUIDISH_SOURCE}(?:\s*,\s*${UUIDISH_SOURCE})*\s*\]`, 'g'
+)
 const RAW_QUOTE_TAG = /<\/?\s*quote(?:\s+[^>]*)?>/gi
 const ESCAPED_QUOTE_TAG = /&lt;\/?\s*quote(?:\s+[^&]*?)?&gt;/gi
 
