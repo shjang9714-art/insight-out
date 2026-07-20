@@ -52,12 +52,18 @@ export async function middleware(request: NextRequest) {
   // 클라이언트는 그냥 실패로 처리됨), 관리자 API는 각 라우트 핸들러에서 role을 자체 재검증하고
   // 있어 아래 profile 조회가 완전히 중복 — API 요청마다 걸리던 Supabase 왕복 1회를 절감
   const isApiRoute = pathname.startsWith('/api/')
+  // 온보딩 제출은 서버 액션(POST /onboarding, Next-Action 헤더 포함)으로 들어온다.
+  // 미들웨어가 이 요청에 리다이렉트(예: 이전 부분 실패로 onboarding_completed 가 이미
+  // true 라 /dashboard 로 되돌림)를 돌려주면, 클라이언트는 Server Action 응답 대신
+  // 리다이렉트를 받아 "An unexpected response was received from the server" 로 깨진다.
+  // 액션 자체가 인증·상태를 다시 검증하므로 게이팅 리다이렉트 대상에서 제외한다.
+  const isOnboardingAction = pathname === '/onboarding' && request.headers.get('next-action') !== null
 
-  if (!user && !publicPaths.some((p) => pathname.startsWith(p))) {
+  if (!user && !isOnboardingAction && !publicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && !isApiRoute && (!publicPaths.some((p) => pathname.startsWith(p)) || pathname === '/login')) {
+  if (user && !isApiRoute && !isOnboardingAction && (!publicPaths.some((p) => pathname.startsWith(p)) || pathname === '/login')) {
     // gating 필드를 서명 쿠키로 캐시해
     // 매 페이지 이동마다 붙던 users profile DB 왕복을 생략(지시서 232 Part A).
     // 온보딩 미완 상태는 캐시하지 않음 — 완료 직후 전이에서 낡은 false 쿠키가
