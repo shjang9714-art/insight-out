@@ -1,16 +1,9 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
-import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
-import AdminCompetitorWeeklyGenerate from '@/components/admin/AdminCompetitorWeeklyGenerate'
-import AdminCompetitorWeeklyAnalyze from '@/components/admin/AdminCompetitorWeeklyAnalyze'
-import AdminCompetitorWeeklySchedule from '@/components/admin/AdminCompetitorWeeklySchedule'
-import CompetitorWeeklyManager, {
-  type CompetitorWeeklyRow,
-} from '@/components/admin/CompetitorWeeklyManager'
-import { ListChecks } from 'lucide-react'
+import CompetitorWeeklyHub from '@/components/admin/CompetitorWeeklyHub'
+import type { CompetitorWeeklyRow } from '@/components/admin/CompetitorWeeklyManager'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,23 +35,8 @@ export default async function CompetitorWeeklyAdminPage() {
   const reports = (error ? [] : (data as CompetitorWeeklyRow[] | null)) ?? []
 
   return (
-    <div className="space-y-10">
-      <AdminPageHeader />
-
-      <AdminCompetitorWeeklyGenerate />
-
-      <AdminCompetitorWeeklyAnalyze />
-
-      <AdminCompetitorWeeklySchedule />
-
-      <div>
-        <AdminSectionHeader icon={ListChecks} title="최근 브리핑" hint="최신 10건 (초안 포함)" />
-        {error && error.code === '42P01' ? (
-          <AdminEmptyState message="주간 브리핑 테이블이 아직 준비되지 않았습니다 (SQL 미적용)." className="p-8 rounded-lg" />
-        ) : (
-          <CompetitorWeeklyManager initialReports={reports} />
-        )}
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <CompetitorWeeklyHub initialReports={reports} schemaMissing={error?.code === '42P01'} />
+    </Suspense>
   )
 }
