@@ -88,7 +88,9 @@ export default function FloatingBriefingMini() {
       })
       return
     }
-    const audio = new Audio(briefing.audio_url)
+    const audio = new Audio()
+    audio.preload = 'none' // ← src 보다 먼저 — 재생 전 자동 다운로드 차단(391)
+    audio.src = briefing.audio_url
     audioRef.current = audio
     if (briefing.audio_duration_seconds) startTransition(() => setDuration(briefing.audio_duration_seconds!))
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration || briefing.audio_duration_seconds || 0))
