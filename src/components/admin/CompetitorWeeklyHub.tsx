@@ -35,7 +35,7 @@ export default function CompetitorWeeklyHub({ initialReports, schemaMissing }: C
           : tab === 'generate'
             ? <AdminCompetitorWeeklyGenerate />
             : tab === 'analyze'
-              ? <AdminCompetitorWeeklyAnalyze />
+              ? <AdminCompetitorWeeklyAnalyze reports={initialReports} />
               : <AdminCompetitorWeeklySchedule />
       }
     />

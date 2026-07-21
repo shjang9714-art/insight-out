@@ -255,6 +255,8 @@ export interface GenerateCompetitorWeeklyResult {
   status: 'draft' | 'published'
   sections: number
   reason?: string
+  /** 398 — 실제로 사건이 뽑혀 섹션이 만들어진 영역만(사건 0건인 영역은 건너뛰므로 매주 다를 수 있다). 성공 시에만 채운다. */
+  areas?: { key: string; label: string }[]
 }
 
 export async function generateCompetitorWeeklyReport(
@@ -397,5 +399,6 @@ export async function generateCompetitorWeeklyReport(
   }
 
   console.log(`[CompetitorWeekly] ${weekStart}~${weekEnd} 패스① 완료 (영역 ${sections.length}개) — 분석 대기(draft)`)
-  return { weekStart, weekEnd, status: 'draft', sections: sections.length }
+  const areas = sections.map((s) => ({ key: s.area_key, label: s.area_label }))
+  return { weekStart, weekEnd, status: 'draft', sections: sections.length, areas }
 }

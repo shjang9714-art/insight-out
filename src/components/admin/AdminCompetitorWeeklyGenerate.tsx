@@ -10,12 +10,18 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import InfoHelp from '@/components/admin/ui/InfoHelp'
 import { COMPETITOR_WEEKLY_HELP } from '@/lib/admin/help'
 
+interface CompetitorWeeklyArea {
+  key: string
+  label: string
+}
+
 interface CompetitorWeeklyResult {
   weekStart: string
   weekEnd: string
   status: string
   sections: number
   reason?: string
+  areas?: CompetitorWeeklyArea[]
 }
 
 export default function AdminCompetitorWeeklyGenerate() {
@@ -34,7 +40,7 @@ export default function AdminCompetitorWeeklyGenerate() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       })
-      const data = await res.json() as { weekStart?: string; weekEnd?: string; status?: string; sections?: number; reason?: string; error?: string }
+      const data = await res.json() as { weekStart?: string; weekEnd?: string; status?: string; sections?: number; reason?: string; areas?: CompetitorWeeklyArea[]; error?: string }
       if (!res.ok) throw new Error(data.error ?? '생성 실패')
       setResult({
         weekStart: data.weekStart ?? '',
@@ -42,6 +48,7 @@ export default function AdminCompetitorWeeklyGenerate() {
         status: data.status ?? 'draft',
         sections: data.sections ?? 0,
         reason: data.reason,
+        areas: data.areas,
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : '경쟁사 주간 브리핑 생성에 실패했습니다.')
@@ -69,11 +76,15 @@ export default function AdminCompetitorWeeklyGenerate() {
         </Button>
       </div>
       {result && (
-        <p className="text-sm text-muted-foreground">
-          {result.status === 'published'
-            ? `${result.weekStart} ~ ${result.weekEnd} 발행됨 (사업영역 ${result.sections}개)`
-            : result.reason ?? '생성된 리포트 없음'}
-        </p>
+        // 398 — reason 유무로 성패를 가른다(status는 348 설계상 패스①은 항상 draft라 무의미).
+        result.reason || result.sections === 0 ? (
+          <AdminErrorBox>{result.reason ?? '알 수 없는 오류로 생성된 사업영역이 없습니다.'}</AdminErrorBox>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {result.weekStart} ~ {result.weekEnd} 사실추출 완료 (사업영역 {result.sections}개
+            {result.areas && result.areas.length > 0 ? ` — ${result.areas.map((a) => a.label).join(' · ')}` : ''}) — 분석(패스②) 대기
+          </p>
+        )
       )}
       {error && <AdminErrorBox>{error}</AdminErrorBox>}
     </div>

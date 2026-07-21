@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import type { CompetitorWeeklyRow } from '@/components/admin/CompetitorWeeklyManager'
 
 interface DroppedItem { area: string; slot: string; text: string; reason: string }
 
@@ -18,14 +19,28 @@ interface ImportResult {
   warnings: DroppedItem[]
 }
 
-export default function AdminCompetitorWeeklyAnalyze() {
-  const [weekStart, setWeekStart] = useState('')
+// 398 — CompetitorWeeklyManager의 STATUS_LABELS와 동일 값(비공개라 여기 자체 정의).
+const STATUS_LABEL: Record<string, string> = {
+  draft: '초안',
+  published: '발행됨',
+  archived: '보관',
+}
+
+interface AdminCompetitorWeeklyAnalyzeProps {
+  /** 398 — 새 API 없이 페이지가 이미 조회한 최근 10건(CompetitorWeeklyHub prop)을 재사용해 주 선택 드롭다운을 채운다. */
+  reports: CompetitorWeeklyRow[]
+}
+
+export default function AdminCompetitorWeeklyAnalyze({ reports }: AdminCompetitorWeeklyAnalyzeProps) {
+  const [weekStart, setWeekStart] = useState(reports[0]?.week_start ?? '')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [contextInfo, setContextInfo] = useState<{ areaCount: number; eventCount: number } | null>(null)
   const [analysisText, setAnalysisText] = useState('')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const selectedAreaLabels = reports.find((r) => r.week_start === weekStart)?.sections.map((s) => s.area_label) ?? []
 
   const handleCopyContext = async () => {
     if (!weekStart) { setError('주 시작일(월요일, YYYY-MM-DD)을 입력하세요.'); return }
@@ -75,30 +90,51 @@ export default function AdminCompetitorWeeklyAnalyze() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="space-y-2">
         <div className="flex flex-col gap-1">
           <label htmlFor="cw-week" className="text-xs text-muted-foreground">주 시작일 (월요일)</label>
-          <input
-            id="cw-week"
-            type="date"
-            value={weekStart}
-            onChange={(e) => setWeekStart(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
-          />
+          {reports.length === 0 ? (
+            <p className="text-xs text-muted-foreground">먼저 사실 추출(생성)을 실행하세요.</p>
+          ) : (
+            <select
+              id="cw-week"
+              value={weekStart}
+              onChange={(e) => setWeekStart(e.target.value)}
+              className="h-9 w-fit rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              {reports.map((r) => (
+                <option key={r.week_start} value={r.week_start}>
+                  {r.week_start} ~ {r.week_end.slice(5)} ({STATUS_LABEL[r.status] ?? r.status})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={handleCopyContext} disabled={loading} className="gap-1.5">
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? '복사됨' : '① 분석 컨텍스트 복사'}
-        </Button>
-        {contextInfo && (
-          <span className="text-xs text-muted-foreground">
-            영역 {contextInfo.areaCount}개 · 사건 {contextInfo.eventCount}건
-          </span>
+
+        {/* 398 — 선택된 주의 영역 목록(패스①에서 실제로 만들어진 섹션만). */}
+        {selectedAreaLabels.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            영역 {selectedAreaLabels.length}개 — {selectedAreaLabels.join(' · ')}
+          </p>
         )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={handleCopyContext} disabled={loading || reports.length === 0} className="gap-1.5">
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? '복사됨' : '① 분석 컨텍스트 복사'}
+          </Button>
+          {contextInfo && (
+            <span className="text-xs text-muted-foreground">
+              영역 {contextInfo.areaCount}개 · 사건 {contextInfo.eventCount}건
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="cw-analysis" className="text-xs text-muted-foreground">② Claude 분석 결과 (JSON)</label>
+        <label htmlFor="cw-analysis" className="text-xs text-muted-foreground">
+          ② Claude 분석 결과 — 객체 {'{ summary, overall_impact, areas: [...] }'}
+        </label>
         <textarea
           id="cw-analysis"
           value={analysisText}
