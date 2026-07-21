@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import NewsletterManager from '@/components/admin/NewsletterManager'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import NewsletterHub from '@/components/admin/NewsletterHub'
 
 export const metadata: Metadata = {
   title: '뉴스레터 | Insight Out 어드민',
@@ -34,13 +34,11 @@ export default async function AdminNewsletterPage() {
   }
 
   return (
-    <div>
-      <AdminPageHeader />
-
-      <NewsletterManager
+    <Suspense fallback={null}>
+      <NewsletterHub
         initialSettings={settings ?? defaultSettings}
         initialIssues={issues ?? []}
       />
-    </div>
+    </Suspense>
   )
 }
