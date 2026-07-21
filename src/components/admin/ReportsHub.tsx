@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, FileText } from 'lucide-react'
+import AdminTabShell from '@/components/admin/ui/AdminTabShell'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
@@ -10,7 +11,12 @@ import ReportRow, { type AdminReportListItem } from '@/components/admin/reports/
 
 type Filter = 'all' | 'published' | 'unpublished'
 
-export default function ReportsManager() {
+const TABS = [
+  { value: 'list',   label: '발행 콘텐츠' },
+  { value: 'create', label: '리포트 생성' },
+]
+
+export default function ReportsHub() {
   const [reports, setReports] = useState<AdminReportListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -59,35 +65,44 @@ export default function ReportsManager() {
   const publishedCount = reports.filter((r) => r.published_at).length
 
   return (
-    <div className="space-y-6">
-      <ReportCreateForm onCreated={() => void load()} />
+    <AdminTabShell
+      tabs={TABS}
+      defaultTab="list"
+      aria-label="AI 리포트 관리"
+      renderContent={(tab) =>
+        tab === 'list' ? (
+          <div className="space-y-6">
+            {error && <AdminErrorBox onDismiss={() => setError(null)}>{error}</AdminErrorBox>}
 
-      {error && <AdminErrorBox onDismiss={() => setError(null)}>{error}</AdminErrorBox>}
+            <div className="flex flex-wrap items-center gap-2">
+              <AdminFilterChip active={filter === 'all'} onClick={() => setFilter('all')} count={reports.length}>전체</AdminFilterChip>
+              <AdminFilterChip active={filter === 'published'} onClick={() => setFilter('published')} count={publishedCount}>발행</AdminFilterChip>
+              <AdminFilterChip active={filter === 'unpublished'} onClick={() => setFilter('unpublished')} count={reports.length - publishedCount}>미발행</AdminFilterChip>
+            </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <AdminFilterChip active={filter === 'all'} onClick={() => setFilter('all')} count={reports.length}>전체</AdminFilterChip>
-        <AdminFilterChip active={filter === 'published'} onClick={() => setFilter('published')} count={publishedCount}>발행</AdminFilterChip>
-        <AdminFilterChip active={filter === 'unpublished'} onClick={() => setFilter('unpublished')} count={reports.length - publishedCount}>미발행</AdminFilterChip>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 불러오는 중…
-        </div>
-      ) : filtered.length === 0 ? (
-        <AdminEmptyState message="조건에 맞는 보고서가 없습니다." icon={FileText} />
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((r) => (
-            <ReportRow
-              key={r.id}
-              report={r}
-              onChanged={() => void load()}
-              onDeleted={() => void load()}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 불러오는 중…
+              </div>
+            ) : filtered.length === 0 ? (
+              <AdminEmptyState message="조건에 맞는 보고서가 없습니다." icon={FileText} />
+            ) : (
+              <div className="space-y-3">
+                {filtered.map((r) => (
+                  <ReportRow
+                    key={r.id}
+                    report={r}
+                    onChanged={() => void load()}
+                    onDeleted={() => void load()}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <ReportCreateForm onCreated={() => void load()} />
+        )
+      }
+    />
   )
 }

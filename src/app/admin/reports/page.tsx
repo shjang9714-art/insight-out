@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import ReportsManager from '@/components/admin/ReportsManager'
+import { Suspense } from 'react'
+import ReportsHub from '@/components/admin/ReportsHub'
 
 export const metadata: Metadata = {
   title: '전략보고서 관리 | 어드민 | Insight Out',
@@ -9,9 +9,8 @@ export const metadata: Metadata = {
 
 export default function AdminReportsPage() {
   return (
-    <div className="space-y-6">
-      <AdminPageHeader />
-      <ReportsManager />
-    </div>
+    <Suspense fallback={null}>
+      <ReportsHub />
+    </Suspense>
   )
 }
