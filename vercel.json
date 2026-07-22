@@ -39,7 +39,7 @@
     },
     {
       "path": "/api/cron/competitor-weekly",
-      "schedule": "0 * * * *"
+      "schedule": "0 21 * * *"
     },
     {
       "path": "/api/cron/trending-snapshot",
