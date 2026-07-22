@@ -16,6 +16,7 @@ export type EnrichJobKey =
   | 'admin:cluster-backfill'
   | 'admin:youtube-tagging'
   | 'admin:translate-backfill'
+  | 'admin:competitor-weekly'
   | 'admin:briefing-tts'
   | 'admin:briefing-highlights'
 
@@ -197,10 +198,21 @@ export const ENRICH_JOBS: readonly EnrichJobMeta[] = [
     limit: 20,
   },
 
-  // 377 — 항목(per-item) 작업. 대상 브리핑 id가 필요해 전역 일괄 실행 목록에는 노출하지
-  // 않고(itemScoped) BriefingManager가 startJob(key, params, briefingId)로 직접 디스패치한다.
+  // 377·403 — 화면에서 직접 실행하는 항목(per-item)·단일 장시간 작업. 전역 일괄 실행
+  // 목록에는 노출하지 않고(itemScoped) 각 호출부가 startJob으로 직접 디스패치한다.
   // 앞으로 추가되는 모든 장시간 트리거(AI 생성·수집·백필 등)는 이 레지스트리에 등록해
   // useEnrichJobs()로 실행할 것 — 로컬 fetch+pendingAction 패턴은 페이지 전환 시 끊긴다.
+  {
+    key: 'admin:competitor-weekly',
+    label: '주간 브리핑 생성',
+    endpoint: '/api/admin/competitor-weekly',
+    usesLlm: true,
+    surface: 'ai',
+    kind: 'once',
+    method: 'POST',
+    itemScoped: true,
+    confirm: '최근 완결된 주(월~일)의 경쟁사 동향을 사업영역별로 종합한 주간 브리핑을 생성하시겠습니까? (LLM 호출)',
+  },
   {
     key: 'admin:briefing-tts',
     label: '오디오 생성',
@@ -324,6 +336,14 @@ export function normalizeEnrichResult(key: EnrichJobKey, json: unknown): EnrichJ
         remaining: null,
         ready: true,
       }
+    }
+    case 'admin:competitor-weekly': {
+      const sections = requireNumber(record, 'sections', key)
+      const reason = record.reason
+      if (typeof reason === 'string' || sections === 0) {
+        throw new Error(typeof reason === 'string' ? reason : '생성된 사업영역이 없습니다.')
+      }
+      return { processed: 1, succeeded: 1, skipped: 0, remaining: null, ready: true }
     }
     // 377 — 항목(per-item) once 작업. 응답 계약(audioUrl / highlights)은 호출부(BriefingManager)가
     // 별도로 목록을 다시 불러와 반영하므로, 여기서는 성공 여부만 표준 형태로 알리면 된다.
