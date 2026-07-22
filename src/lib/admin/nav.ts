@@ -92,7 +92,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/contents?category=웹인사이트', label: '웹인사이트', description: '전문기관·기업 블로그 등 고부가 콘텐츠를 관리합니다.', icon: Globe },
       { href: '/admin/contents?category=유튜브', label: '유튜브', description: '채널·영상 콘텐츠와 자막·요약을 관리합니다.', icon: Video },
       { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록. 각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
-      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 수집 소스 등록·관리. 각 콘텐츠 소스 탭으로 이동 예정(S4).', icon: Rss },
+      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
       { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이). 각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
       { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리. 콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
     ],

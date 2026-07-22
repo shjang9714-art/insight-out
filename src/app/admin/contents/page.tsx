@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
-import AdminContentManager from '@/components/admin/AdminContentManager'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import ContentHub from '@/components/admin/ContentHub'
 
 export const metadata: Metadata = {
   title: '콘텐츠 관리 | 어드민 | Insight Out',
@@ -16,16 +15,13 @@ export default async function AdminContentsPage({
 }) {
   const sp = await searchParams
   return (
-    <>
-      <AdminPageHeader />
-      <Suspense fallback={
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          콘텐츠를 불러오는 중입니다.
-        </div>
-      }>
-        <AdminContentManager key={sp.category ?? 'all'} />
-      </Suspense>
-    </>
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        콘텐츠를 불러오는 중입니다.
+      </div>
+    }>
+      <ContentHub key={sp.category ?? 'all'} category={sp.category} />
+    </Suspense>
   )
 }

@@ -30,6 +30,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { toDbCategories } from '@/lib/categories'
 import { ADMIN_CATEGORY_TABS, adminTabDbCategories, adminTabIdFor } from '@/lib/admin/content-tabs'
+import { CATEGORY_SOURCE_TYPE } from '@/lib/admin/content-source-types'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
@@ -115,14 +116,6 @@ const SOURCE_ALL = 'all'
 const SOURCE_NULL = 'null' // Google News 키워드 검색 수집물 (source_id is null)
 // 편집 폼에서 "없음" 출처
 const EMPTY_SOURCE_VALUE = 'none'
-
-// 카테고리 → 매칭되는 소스 타입 (필터 드롭다운을 해당 타입으로 좁힘)
-const CATEGORY_SOURCE_TYPE: Partial<Record<string, SourceType>> = {
-  '뉴스':      'news_site',
-  '외부리포트': 'report_publisher',
-  '웹인사이트': 'web_insight',
-  '유튜브':    'youtube_channel',
-}
 
 function getBodyState(r: AdminContentRow): 'full' | 'snippet' | 'none' {
   if (!r.body_fetched_at) return 'none'
