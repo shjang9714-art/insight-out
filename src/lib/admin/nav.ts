@@ -70,7 +70,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '인사이트',
     items: [
-      { href: '/admin/insights', label: '핵심인사이트', description: 'AI 인사이트 카드·이슈·일일 핵심을 한 화면 탭으로 생성·검수·발행합니다.', icon: Sparkles },
+      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
+      { href: '/admin/issues', label: '이슈 관리', description: '이슈 생성·발행·키워드 매칭·콘텐츠 배정.', icon: TrendingUp },
+      { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
       { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
       { href: '/admin/relations', label: '관계지도', description: '기업·인물·기관·기술 관계와 근거 콘텐츠 관리. (준비중)', icon: Network, disabled: true, badge: '준비중' },
     ],
