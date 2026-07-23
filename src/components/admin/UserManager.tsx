@@ -6,11 +6,34 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, ShieldCheck, ShieldOff, CheckCircle, XCircle, Clock } from 'lucide-react'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Loader2, ShieldCheck, ShieldOff, CheckCircle, XCircle, Clock, Pencil } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
-import { updateUserRole, promoteByEmail, approveUser, rejectUser } from '@/app/admin/users/actions'
+import {
+  updateUserRole,
+  promoteByEmail,
+  approveUser,
+  rejectUser,
+  updateUserProfileByAdmin,
+} from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
+import { DEPARTMENT_DISPLAY_LABEL, FIXED_DEPARTMENT, isOrgGroup, ORG_GROUPS } from '@/lib/org'
 import { cn } from '@/lib/utils'
 
 interface UserRow {
@@ -40,6 +63,13 @@ export default function UserManager({ initialUsers }: Props) {
   const [formError, setFormError] = useState<string | null>(null)
   const [formSuccess, setFormSuccess] = useState<string | null>(null)
   const [isPromoting, setIsPromoting] = useState(false)
+
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null)
+  const [draftName, setDraftName] = useState('')
+  const [draftTeam, setDraftTeam] = useState('')
+  const [draftTeamName, setDraftTeamName] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
 
   // ── role 토글 ──────────────────────────────────────────────────────────────
 
@@ -124,6 +154,62 @@ export default function UserManager({ initialUsers }: Props) {
       }
       setApprovingId(null)
     })
+  }
+
+  // ── 사용자 정보 편집 ──────────────────────────────────────────────────────
+
+  const handleEditOpen = (user: UserRow) => {
+    const currentTeam = user.team ?? ''
+    setEditingUser(user)
+    setDraftName(user.name)
+    setDraftTeam(isOrgGroup(currentTeam) ? currentTeam : '')
+    setDraftTeamName(user.team_name ?? '')
+    setEditError(null)
+  }
+
+  const handleEditOpenChange = (open: boolean) => {
+    if (!open && !isSavingProfile) {
+      setEditingUser(null)
+      setEditError(null)
+    }
+  }
+
+  const handleProfileSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingUser || isSavingProfile) return
+
+    setEditError(null)
+    setIsSavingProfile(true)
+
+    try {
+      const result = await updateUserProfileByAdmin(editingUser.id, {
+        name: draftName,
+        team: draftTeam,
+        team_name: draftTeamName,
+      })
+
+      if (!result.ok) {
+        setEditError(result.error)
+        return
+      }
+
+      const savedName = draftName.trim()
+      const savedTeamName = draftTeamName.trim()
+      setUsers(prev => prev.map(user => (
+        user.id === editingUser.id
+          ? {
+              ...user,
+              name: savedName,
+              department: FIXED_DEPARTMENT,
+              team: draftTeam,
+              team_name: savedTeamName,
+            }
+          : user
+      )))
+      setEditingUser(null)
+    } finally {
+      setIsSavingProfile(false)
+    }
   }
 
   // ── 렌더 ──────────────────────────────────────────────────────────────────
@@ -328,6 +414,14 @@ export default function UserManager({ initialUsers }: Props) {
                         </button>
                       )}
                       <button
+                        type="button"
+                        onClick={() => handleEditOpen(u)}
+                        className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        정보 수정
+                      </button>
+                      <button
                         onClick={() => handleToggleRole(u)}
                         disabled={togglingId === u.id || isPending}
                         className={cn(
@@ -353,6 +447,90 @@ export default function UserManager({ initialUsers }: Props) {
           </table>
         </div>
       )}
+
+      <Dialog open={editingUser !== null} onOpenChange={handleEditOpenChange}>
+        <DialogContent className="max-w-md">
+          <form onSubmit={handleProfileSave}>
+            <DialogHeader>
+              <DialogTitle>사용자 정보 수정</DialogTitle>
+              <DialogDescription>
+                이름과 조직 정보를 수정합니다. 권한과 승인 상태는 변경되지 않습니다.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-user-name">
+                  이름 <span className="text-negative">*</span>
+                </Label>
+                <Input
+                  id="edit-user-name"
+                  value={draftName}
+                  onChange={event => setDraftName(event.target.value)}
+                  placeholder="홍길동"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-user-department">부문</Label>
+                <Input
+                  id="edit-user-department"
+                  value={DEPARTMENT_DISPLAY_LABEL}
+                  readOnly
+                  className="bg-muted text-muted-foreground"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-user-team">
+                  그룹 <span className="text-negative">*</span>
+                </Label>
+                <Select value={draftTeam} onValueChange={setDraftTeam}>
+                  <SelectTrigger id="edit-user-team" className="w-full">
+                    <SelectValue placeholder="그룹을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ORG_GROUPS.map(group => (
+                      <SelectItem key={group} value={group}>{group}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-user-team-name">팀</Label>
+                <Input
+                  id="edit-user-team-name"
+                  value={draftTeamName}
+                  onChange={event => setDraftTeamName(event.target.value)}
+                  placeholder="예: 클라우드사업팀"
+                />
+              </div>
+
+              {editError && (
+                <p className="text-xs text-negative" role="alert">{editError}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline" size="sm" disabled={isSavingProfile}>
+                  취소
+                </Button>
+              </DialogClose>
+              <Button type="submit" size="sm" disabled={isSavingProfile}>
+                {isSavingProfile ? (
+                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />저장 중...</>
+                ) : (
+                  '저장'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
