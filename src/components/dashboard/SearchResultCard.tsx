@@ -15,11 +15,9 @@ interface Props {
   excerpt: string | null
   publishedAt: string | null
   typeBadge: { label: string; className: string }
-  /** 카테고리·유형 등 자료 종류 배지 옆에 추가로 붙일 작은 배지(선택) */
-  subBadge?: string | null
 }
 
-export default function SearchResultCard({ href, title, excerpt, publishedAt, typeBadge, subBadge }: Props) {
+export default function SearchResultCard({ href, title, excerpt, publishedAt, typeBadge }: Props) {
   const dateStr = formatDate(publishedAt)
 
   return (
@@ -30,11 +28,6 @@ export default function SearchResultCard({ href, title, excerpt, publishedAt, ty
             <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${typeBadge.className}`}>
               {typeBadge.label}
             </span>
-            {subBadge && (
-              <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                {subBadge}
-              </span>
-            )}
           </div>
 
           <p className="line-clamp-1 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">

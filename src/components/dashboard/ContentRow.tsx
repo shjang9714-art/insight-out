@@ -51,8 +51,6 @@ interface Props {
   clusterMembers?: ClusterMember[]
   /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
   lguImpact?: string | null
-  /** 통합 검색 등 자료 종류 구분이 필요한 화면에서만 전달 — 없으면 배지 미표시 */
-  typeBadge?: { label: string; className: string }
 }
 
 export default function ContentRow({
@@ -70,7 +68,6 @@ export default function ContentRow({
   keywords,
   lguImpact,
   clusterMembers,
-  typeBadge,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const catStyle    = CATEGORY_STYLE[category] ?? 'bg-muted text-muted-foreground'
@@ -83,11 +80,6 @@ export default function ContentRow({
     <div className="min-w-0 flex-1 space-y-1.5">
       {/* 상단: 카테고리 배지 + 해시태그 */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {typeBadge && (
-          <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${typeBadge.className}`}>
-            {typeBadge.label}
-          </span>
-        )}
         <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${catStyle}`}>
           {CONTENT_CATEGORY_LABEL[category] ?? category}
         </span>
