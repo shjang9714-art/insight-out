@@ -61,6 +61,7 @@ export default function FloatingBriefingMini() {
   const [open, setOpen]               = useState(false)
   const [briefing, setBriefing]       = useState<Briefing | null | undefined>(undefined)
   const [playing, setPlaying]         = useState(false)
+  const [playbackActive, setPlaybackActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration]       = useState(0)
   const [scriptOpen, setScriptOpen]   = useState(false)
@@ -95,22 +96,19 @@ export default function FloatingBriefingMini() {
     if (briefing.audio_duration_seconds) startTransition(() => setDuration(briefing.audio_duration_seconds!))
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration || briefing.audio_duration_seconds || 0))
     audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime))
-    audio.addEventListener('ended', () => { setPlaying(false); setCurrentTime(0) })
+    audio.addEventListener('ended', () => {
+      setPlaying(false)
+      setPlaybackActive(false)
+      setCurrentTime(0)
+    })
     return () => {
       audio.pause()
       audioRef.current = null
       setPlaying(false)
+      setPlaybackActive(false)
       setCurrentTime(0)
     }
   }, [briefing?.audio_url, briefing?.audio_duration_seconds])
-
-  // 플레이어 닫힐 때 오디오 정지
-  useEffect(() => {
-    if (!open && audioRef.current) {
-      audioRef.current.pause()
-      setPlaying(false)
-    }
-  }, [open])
 
   // 외부 클릭 시 닫기
   useEffect(() => {
@@ -127,7 +125,21 @@ export default function FloatingBriefingMini() {
   function togglePlay() {
     if (!audioRef.current) return
     if (playing) { audioRef.current.pause(); setPlaying(false) }
-    else { audioRef.current.play(); setPlaying(true) }
+    else {
+      audioRef.current.play()
+      setPlaying(true)
+      setPlaybackActive(true)
+    }
+  }
+
+  function handleStop() {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    setPlaying(false)
+    setPlaybackActive(false)
+    setCurrentTime(0)
   }
 
   function handleRestart() {
@@ -148,11 +160,12 @@ export default function FloatingBriefingMini() {
   const isLoading = briefing === undefined
   const briefingTitle = briefing?.title ? stripLlmArtifacts(briefing.title) : null
   const briefingScript = briefing?.script ? stripLlmArtifacts(briefing.script) : null
+  const showCollapsedPlayer = !open && playbackActive
 
   return (
     <div
       ref={cardRef}
-      className="fixed bottom-[calc(4rem+0.75rem+env(safe-area-inset-bottom))] right-6 z-50 md:bottom-6"
+      className="fixed right-4 bottom-[calc(4rem+0.75rem+env(safe-area-inset-bottom))] left-4 z-50 flex flex-col items-end md:right-6 md:bottom-6 md:left-auto"
     >
 
       {/* ── iPod nano 스타일 미니 플레이어 ────────────────────────────────── */}
@@ -285,22 +298,60 @@ export default function FloatingBriefingMini() {
         </div>
       )}
 
-      {/* ── 플로팅 버튼 ─────────────────────────────────────────────────── */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all',
-          open
-            ? 'bg-brand-700 shadow-brand-600/20'
-            : 'bg-brand-600 hover:bg-brand-700',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2'
-        )}
-        aria-label="오늘의 브리핑 열기"
-        aria-expanded={open}
-      >
-        <Radio className="h-4 w-4" />
-        <span>오늘의 브리핑</span>
-      </button>
+      {/* ── 축소 미니 바: 카드가 닫혀도 재생 세션 유지 ─────────────────── */}
+      {showCollapsedPlayer ? (
+        <div className="w-full overflow-hidden rounded-xl bg-zinc-900 text-white shadow-2xl ring-1 ring-white/10 md:w-80">
+          <div className="flex items-center gap-2 px-3 py-2.5">
+            <button
+              onClick={() => setOpen(true)}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+              aria-label="브리핑 플레이어 펼치기"
+            >
+              <Radio className="h-4 w-4 shrink-0 text-brand-600" />
+              <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                {briefingTitle ?? '모닝브리핑'}
+              </span>
+              <ChevronUp className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+            </button>
+            <button
+              onClick={togglePlay}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-white transition-colors hover:bg-zinc-600"
+              aria-label={playing ? '일시정지' : '재생'}
+            >
+              {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 pl-0.5" />}
+            </button>
+            <button
+              onClick={handleStop}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+              aria-label="재생 완전 종료"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="h-0.5 bg-zinc-700" aria-hidden="true">
+            <div
+              className="h-full bg-brand-600 transition-all"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            'flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all',
+            open
+              ? 'bg-brand-700 shadow-brand-600/20'
+              : 'bg-brand-600 hover:bg-brand-700',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2'
+          )}
+          aria-label="오늘의 브리핑 열기"
+          aria-expanded={open}
+        >
+          <Radio className="h-4 w-4" />
+          <span>오늘의 브리핑</span>
+        </button>
+      )}
     </div>
   )
 }
