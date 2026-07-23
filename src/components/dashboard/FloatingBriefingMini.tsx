@@ -150,7 +150,10 @@ export default function FloatingBriefingMini() {
   const briefingScript = briefing?.script ? stripLlmArtifacts(briefing.script) : null
 
   return (
-    <div ref={cardRef} className="fixed bottom-6 right-6 z-50">
+    <div
+      ref={cardRef}
+      className="fixed bottom-[calc(4rem+0.75rem+env(safe-area-inset-bottom))] right-6 z-50 md:bottom-6"
+    >
 
       {/* ── iPod nano 스타일 미니 플레이어 ────────────────────────────────── */}
       {open && (
