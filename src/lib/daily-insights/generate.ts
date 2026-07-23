@@ -531,8 +531,10 @@ async function buildRelatedPast(
 }
 
 // ─── §5-A 이번 주 흐름(weekly_flows) ───────────────────────────────────────────
-// 그 주 daily_insights 중 "가장 중요한 이슈" 1건을 골라 원인→사건→확산→후속발표→시장반응
-// 흐름으로 재구성한다. 인사이트 생성이 끝난 rows(이미 3C·근거기사 확정됨)를 그대로 재료로 쓴다.
+// 그 주 daily_insights 중 "가장 중요한 이슈" 상위 2~3건을 골라 각각 원인→사건→확산→후속발표
+// →시장반응 흐름으로 재구성한다. 인사이트 생성이 끝난 rows(이미 3C·근거기사 확정됨)를 그대로
+// 재료로 쓴다. rank(1=가장 중요) 로 (week_of, rank) 복합키에 저장.
+const MAX_WEEKLY_FLOWS = 3
 
 function categoryTierRank(category: string | null): number {
   if (!category) return 3
@@ -541,9 +543,10 @@ function categoryTierRank(category: string | null): number {
   return 2
 }
 
-/** 근거기사 수 → 카테고리 Tier → 최신성 순으로 그 주 가장 중요한 이슈 1건을 고른다. */
-function pickFlowWinner(rows: Record<string, unknown>[]): Record<string, unknown> | null {
-  if (rows.length === 0) return null
+/** 근거기사 수 → 카테고리 Tier → 최신성 순으로 그 주 가장 중요한 이슈 상위 max건을 고른다.
+ * rows는 이미 서로 다른 이슈(daily_insights 각 행)라 별도 중복 제거는 필요 없다. */
+function pickFlowWinners(rows: Record<string, unknown>[], max: number): Record<string, unknown>[] {
+  if (rows.length === 0) return []
   const scored = rows.map((r) => {
     const category = (r.category as string | null) ?? null
     const sourceArticles = (r.source_articles as DailyInsightSourceArticle[] | null) ?? []
@@ -558,7 +561,7 @@ function pickFlowWinner(rows: Record<string, unknown>[]): Record<string, unknown
     if (a.sourceCount !== b.sourceCount) return b.sourceCount - a.sourceCount
     return b.latestMs - a.latestMs
   })
-  return scored[0].row
+  return scored.slice(0, max).map((s) => s.row)
 }
 
 function buildFlowSystemPrompt(): string {
@@ -566,17 +569,19 @@ function buildFlowSystemPrompt(): string {
     '당신은 LG유플러스 전략기획팀의 애널리스트다. 아래 이번 주 핵심 이슈 하나를 ' +
     '"원인 → 사건 → 확산 → 후속 발표 → 시장 반응" 시간순 흐름으로 재구성한다.\n\n' +
     '규칙:\n' +
-    '1. flow는 배열 [{"phase":"원인","text":"..."}, ...]. phase는 원인/사건/확산/후속 발표/시장 반응 ' +
-    '중 입력 근거로 실제 확인되는 것만, 시간순으로 넣는다.\n' +
-    '2. 근거로 확인 안 되는 단계는 통째로 생략한다 — 5단계를 억지로 다 채우지 않는다. ' +
+    '1. flow는 배열 [{"phase":"원인","text":"...","articleIndex":1}, ...]. phase는 원인/사건/확산/' +
+    '후속 발표/시장 반응 중 입력 근거로 실제 확인되는 것만, 시간순으로 넣는다.\n' +
+    '2. articleIndex는 그 단계 문장의 근거가 된 "근거 기사" 목록의 번호(1부터 시작) 하나만 적는다. ' +
+    '여러 기사에 걸쳐 있거나 특정 기사 하나로 못 좁히면 articleIndex 필드 자체를 생략한다(번호 추측·창작 금지).\n' +
+    '3. 근거로 확인 안 되는 단계는 통째로 생략한다 — 5단계를 억지로 다 채우지 않는다. ' +
     '흐름을 그릴 근거가 부족하면 flow를 빈 배열 []로 둔다.\n' +
-    '3. 각 text는 1~2문장, 짧고 명확하게.\n' +
-    '4. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
-    '5. headline: 이번 주 이 이슈를 대표하는 한 줄.\n' +
-    '6. 모든 문장은 ~다체(~한다/~이다/~했다)로만 작성하고 ~습니다체(~합니다/~입니다/~했습니다)는 ' +
+    '4. 각 text는 1~2문장, 짧고 명확하게.\n' +
+    '5. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
+    '6. headline: 이번 주 이 이슈를 대표하는 한 줄.\n' +
+    '7. 모든 문장은 ~다체(~한다/~이다/~했다)로만 작성하고 ~습니다체(~합니다/~입니다/~했습니다)는 ' +
     '절대 쓰지 않는다. headline·flow[].text 모두 예외 없이 적용한다.\n' +
-    '7. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
-    '출력 스키마: {"headline":"...","flow":[{"phase":"...","text":"..."}]}'
+    '8. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '출력 스키마: {"headline":"...","flow":[{"phase":"...","text":"...","articleIndex":1}]}'
   )
 }
 
@@ -588,7 +593,7 @@ function buildFlowUserPrompt(winner: Record<string, unknown>): string {
   const implication = winner.implication as string | null
   const sourceArticles = (winner.source_articles as DailyInsightSourceArticle[] | null) ?? []
   const sourcesText = sourceArticles
-    .map((a) => `- ${a.title} (${a.source}${a.published_at ? `, ${a.published_at}` : ''})`)
+    .map((a, i) => `${i + 1}. ${a.title} (${a.source}${a.published_at ? `, ${a.published_at}` : ''})`)
     .join('\n')
 
   return (
@@ -596,7 +601,7 @@ function buildFlowUserPrompt(winner: Record<string, unknown>): string {
     (marketTrend ? `시장 동향: ${marketTrend}\n` : '') +
     (competitorTrend ? `경쟁사 동향: ${competitorTrend}\n` : '') +
     (implication ? `자사 시사점: ${implication}\n` : '') +
-    `근거 기사(${sourceArticles.length}건):\n${sourcesText}`
+    `근거 기사(${sourceArticles.length}건, articleIndex는 아래 번호를 그대로 사용):\n${sourcesText}`
   )
 }
 
@@ -605,9 +610,11 @@ export interface WeeklyFlowGenResult {
   flow: WeeklyFlowStep[]
 }
 
-async function generateWeeklyFlow(rows: Record<string, unknown>[]): Promise<WeeklyFlowGenResult | null> {
-  const winner = pickFlowWinner(rows)
-  if (!winner) return null
+/** rank가 매겨진 단일 이슈의 흐름을 생성. article은 LLM이 지목한 articleIndex로 winner의
+ * source_articles를 코드가 직접 룩업해 붙인다(content_id/title/url/source/published_at 모두
+ * 원본 그대로) — LLM은 번호만 고르고 사실 정보는 창작하지 않는다. */
+async function generateWeeklyFlow(winner: Record<string, unknown>): Promise<WeeklyFlowGenResult | null> {
+  const sourceArticles = (winner.source_articles as DailyInsightSourceArticle[] | null) ?? []
 
   const system = buildFlowSystemPrompt()
   const user = buildFlowUserPrompt(winner)
@@ -631,11 +638,74 @@ async function generateWeeklyFlow(rows: Record<string, unknown>[]): Promise<Week
       const phase = typeof e.phase === 'string' ? e.phase.trim() : ''
       const text = typeof e.text === 'string' ? e.text.trim() : ''
       if (!phase || !text || text.toLowerCase() === 'null') return null
-      return { phase, text }
+
+      const idxRaw = e.articleIndex
+      const idx = typeof idxRaw === 'number' ? idxRaw : typeof idxRaw === 'string' ? Number(idxRaw) : NaN
+      const article =
+        Number.isInteger(idx) && idx >= 1 && idx <= sourceArticles.length ? sourceArticles[idx - 1] : undefined
+
+      return article ? { phase, text, article } : { phase, text }
     })
     .filter((s): s is WeeklyFlowStep => s !== null)
 
+  // published_at 기준 시간순 정렬 — 근거 기사가 붙은 단계끼리만 재정렬한다. 근거 기사가 없는
+  // 단계는 비교 불가이므로 stable sort로 원래 상대 위치를 유지한다(날짜 지어내기 방지).
+  flow.sort((a, b) => {
+    const at = a.article?.published_at ? new Date(a.article.published_at).getTime() : NaN
+    const bt = b.article?.published_at ? new Date(b.article.published_at).getTime() : NaN
+    if (!Number.isFinite(at) || !Number.isFinite(bt)) return 0
+    return at - bt
+  })
+
   return { headline, flow }
+}
+
+export interface WeeklyFlowGenEntry {
+  rank: number
+  headline: string
+  flow: WeeklyFlowStep[]
+}
+
+/** 그 주 상위 max(기본 3)개 이슈 각각의 흐름을 rank(1=가장 중요) 순으로 생성. LLM 실패로
+ * 개별 이슈가 빠지면 그 rank만 건너뛰고 나머지는 계속 진행(부분 실패 허용). */
+export async function generateWeeklyFlows(
+  rows: Record<string, unknown>[],
+  max: number = MAX_WEEKLY_FLOWS
+): Promise<WeeklyFlowGenEntry[]> {
+  const winners = pickFlowWinners(rows, max)
+  const entries: WeeklyFlowGenEntry[] = []
+  for (let i = 0; i < winners.length; i++) {
+    const result = await generateWeeklyFlow(winners[i])
+    if (result) entries.push({ rank: i + 1, headline: result.headline, flow: result.flow })
+  }
+  return entries
+}
+
+/** weekly_flows를 rank별로 멱등 upsert하고, 이번에 생성 안 된 더 낮은 rank의 기존 행(유령 행)을
+ * 정리한다 — 예: 지난주엔 이슈가 3개였는데 이번엔 2개뿐이면 기존 rank=3 행을 지운다. */
+async function upsertWeeklyFlows(
+  admin: ReturnType<typeof createAdminClient>,
+  weekOf: string,
+  entries: WeeklyFlowGenEntry[]
+): Promise<void> {
+  if (entries.length === 0) return
+
+  const { error: upsertError } = await admin
+    .from('weekly_flows')
+    .upsert(
+      entries.map((e) => ({ week_of: weekOf, rank: e.rank, headline: e.headline, flow: e.flow })),
+      { onConflict: 'week_of,rank' }
+    )
+  if (upsertError) {
+    console.error(`[핵심Insight][주간흐름] weekOf=${weekOf} weekly_flows 저장 실패: ${upsertError.message}`)
+    return
+  }
+
+  const maxRank = Math.max(...entries.map((e) => e.rank))
+  const { error: deleteError } = await admin.from('weekly_flows').delete().eq('week_of', weekOf).gt('rank', maxRank)
+  if (deleteError) {
+    console.error(`[핵심Insight][주간흐름] weekOf=${weekOf} 유령 행 정리 실패: ${deleteError.message}`)
+  }
 }
 
 /**
@@ -654,15 +724,8 @@ async function backfillWeeklyFlowIfMissing(admin: ReturnType<typeof createAdminC
     .eq('status', 'published')
   if (error || !weekRows || weekRows.length === 0) return
 
-  const weeklyFlow = await generateWeeklyFlow(weekRows)
-  if (!weeklyFlow) return
-
-  const { error: upsertError } = await admin
-    .from('weekly_flows')
-    .upsert({ week_of: weekOf, headline: weeklyFlow.headline, flow: weeklyFlow.flow }, { onConflict: 'week_of' })
-  if (upsertError) {
-    console.error(`[핵심Insight][주간흐름] weekOf=${weekOf} 백필 저장 실패: ${upsertError.message}`)
-  }
+  const entries = await generateWeeklyFlows(weekRows)
+  await upsertWeeklyFlows(admin, weekOf, entries)
 }
 
 /** why_it_matters·implication_lenses·next_steps 백필용 — 이미 확정된 헤드라인/요약을 그대로
@@ -742,8 +805,8 @@ export interface GenerateDailyInsightResult {
   errorReason?: string | null
   /** dryRun 전용 — 실제로 insert 되지 않은 미리보기 행(검증용). 운영 호출에서는 항상 undefined. */
   previewRows?: Record<string, unknown>[]
-  /** dryRun 전용 — weekly_flows 에 실제로 upsert 되지 않은 미리보기(검증용). */
-  previewWeeklyFlow?: WeeklyFlowGenResult | null
+  /** dryRun 전용 — weekly_flows 에 실제로 upsert 되지 않은 미리보기(검증용, rank 순 배열). */
+  previewWeeklyFlows?: WeeklyFlowGenEntry[]
 }
 
 /**
@@ -867,7 +930,7 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
   }
 
   // §5-A 이번 주 흐름 — daily_insight 배치와 같은 주기로 갱신. 실패해도 본 배치는 막지 않는다.
-  const weeklyFlow = await generateWeeklyFlow(rows)
+  const weeklyFlowEntries = await generateWeeklyFlows(rows)
 
   if (dryRun) {
     return {
@@ -878,7 +941,7 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
       skipped: false,
       failed: false,
       previewRows: rows,
-      previewWeeklyFlow: weeklyFlow,
+      previewWeeklyFlows: weeklyFlowEntries,
     }
   }
 
@@ -888,14 +951,7 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
     return { ok: false, dayOf, weekOf, generated: 0, skipped: false, failed: true, errorReason: `DB 저장 실패: ${insertError.message}` }
   }
 
-  if (weeklyFlow) {
-    const { error: flowError } = await admin
-      .from('weekly_flows')
-      .upsert({ week_of: weekOf, headline: weeklyFlow.headline, flow: weeklyFlow.flow }, { onConflict: 'week_of' })
-    if (flowError) {
-      console.error(`[핵심Insight][주간흐름] weekOf=${weekOf} weekly_flows 저장 실패: ${flowError.message}`)
-    }
-  }
+  await upsertWeeklyFlows(admin, weekOf, weeklyFlowEntries)
 
   return { ok: true, dayOf, weekOf, generated: rows.length, skipped: false, failed: false }
 }

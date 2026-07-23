@@ -39,14 +39,19 @@ export interface NextStep {
   text: string
 }
 
-/** 지시서 20260716 §5-A — 홈 "이번 주 한눈에 보는 흐름"(weekly_flows 테이블, 주차당 1행). */
+/** 지시서 20260716 §5-A — 홈 "이번 주 한눈에 보는 흐름"(weekly_flows 테이블, 주차당 최대 3행/rank).
+ * article은 이 단계 문장의 근거가 된 개별 기사 — LLM이 지어낸 게 아니라 daily_insights의
+ * source_articles에서 코드가 그대로 룩업해 붙인 값. 근거 기사를 특정 못 하면 생략(optional). */
 export interface WeeklyFlowStep {
   phase: string
   text: string
+  article?: DailyInsightSourceArticle
 }
 
 export interface WeeklyFlowRow {
   week_of: string
+  /** 그 주 이슈 중요도 순위, 1이 가장 중요. (week_of, rank) 복합키. */
+  rank: number
   headline: string | null
   flow: WeeklyFlowStep[] | null
   created_at: string

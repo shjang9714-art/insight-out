@@ -2248,6 +2248,7 @@ COMMENT ON COLUMN "public"."users"."has_password" IS '340 — auth.users.encrypt
 
 CREATE TABLE IF NOT EXISTS "public"."weekly_flows" (
     "week_of" "date" NOT NULL,
+    "rank" smallint DEFAULT 1 NOT NULL,
     "headline" "text",
     "flow" "jsonb",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -2881,7 +2882,7 @@ ALTER TABLE ONLY "public"."users"
 --
 
 ALTER TABLE ONLY "public"."weekly_flows"
-    ADD CONSTRAINT "weekly_flows_pkey" PRIMARY KEY ("week_of");
+    ADD CONSTRAINT "weekly_flows_pkey" PRIMARY KEY ("week_of", "rank");
 
 
 --
