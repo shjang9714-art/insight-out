@@ -218,6 +218,10 @@ export interface CrawlSummary {
   rejected: number
   held: number
   details: CrawlSourceDetail[]
+  /** ok=false(전체 실패) 사유 요약 — run-job.ts 의 job_runs.error 에 그대로 기록됨.
+   *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
+   *  경고 흔적을 남긴다. */
+  error?: string
 }
 
 export interface RunCrawlOptions extends CrawlScheduleOptions {
@@ -919,10 +923,11 @@ async function crawlKeywordSearch(
   exclusionHits: Map<string, number> = new Map(),
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
   deadline?: number
-): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean }> {
+): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean; firstError?: string }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let hadError = false
   let truncated = false
+  let firstError: string | undefined
   const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
   const adapter = getAdapter('news_site')!
   const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }
@@ -951,18 +956,20 @@ async function crawlKeywordSearch(
         const result = await processCrawlItem(
           admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
-        if (result.partial) hadError = true
+        if (result.partial) {
+          hadError = true
+          if (!firstError) firstError = `seed "${seed}": ${result.errorMessage ?? '아이템 처리 실패'}`
+        }
       }
     } catch (err) {
-      console.error(
-        `[크롤러] 키워드 검색 오류 (seed: "${seed}"):`,
-        err instanceof Error ? err.message : String(err)
-      )
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[크롤러] 키워드 검색 오류 (seed: "${seed}"):`, message)
       hadError = true
+      if (!firstError) firstError = `seed "${seed}": ${message}`
     }
   }
 
-  return { counts, hadError, truncated }
+  return { counts, hadError, truncated, firstError }
 }
 
 /** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
@@ -1021,10 +1028,11 @@ async function crawlCompanySearch(
   minBodyLength: number,
   budgetMs: number,
   overallDeadline?: number
-): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number }> {
+): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number; firstError?: string }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let hadError = false
   let processedSeeds = 0
+  let firstError: string | undefined
   // 이 phase 자체 예산(budgetMs)과 크롤 전체 소프트 데드라인 중 먼저 오는 쪽을 따른다.
   const deadline = overallDeadline !== undefined
     ? Math.min(Date.now() + budgetMs, overallDeadline)
@@ -1054,18 +1062,20 @@ async function crawlCompanySearch(
         const result = await processCrawlItem(
           admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
-        if (result.partial) hadError = true
+        if (result.partial) {
+          hadError = true
+          if (!firstError) firstError = `seed "${seed}": ${result.errorMessage ?? '아이템 처리 실패'}`
+        }
       }
     } catch (err) {
-      console.error(
-        `[크롤러] 회사 seed 검색 오류 (seed: "${seed}"):`,
-        err instanceof Error ? err.message : String(err)
-      )
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[크롤러] 회사 seed 검색 오류 (seed: "${seed}"):`, message)
       hadError = true
+      if (!firstError) firstError = `seed "${seed}": ${message}`
     }
   }
 
-  return { counts, hadError, processedSeeds }
+  return { counts, hadError, processedSeeds, firstError }
 }
 
 /** keyword_groups DB 행 — 게이트·태깅·시그널용 */
@@ -1499,6 +1509,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       inserted:  kwResult.counts.inserted,
       duplicate: kwResult.counts.duplicate,
       rejected:  kwResult.counts.rejected,
+      error:     kwResult.firstError,
     })
     if (!kwResult.hadError) successCount++
   }
@@ -1521,6 +1532,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       inserted:  companyResult.counts.inserted,
       duplicate: companyResult.counts.duplicate,
       rejected:  companyResult.counts.rejected,
+      error:     companyResult.firstError,
     })
     if (!companyResult.hadError) successCount++
     console.log(`[크롤러] 회사 seed 수집 완료: ${companyResult.processedSeeds}/${companySeeds.length}개 시드 처리`)
@@ -1541,8 +1553,34 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   // enrichment tail — 신규 적재분 풀본문 추출 (실패해도 크롤 결과 보존)
   await enrichRecentContents(admin, runStartedAt, softDeadline)
 
+  // 실패 사유를 job_runs 에 구체적으로 남기기 위한 집계.
+  // status !== 'success' 이면서 error 가 있는 항목(소스/키워드 검색/회사 seed 검색 전부 포함)만 뽑아
+  // "어느 소스가 왜" 실패했는지 한 문장으로 요약한다. 각 사유는 200자로 잘라 error 컬럼 폭주 방지.
+  const problemDetails = details.filter(d => d.status !== 'success' && d.error)
+  const errorSummary = problemDetails.length > 0
+    ? `${problemDetails.length}/${details.length}개 소스 이슈: ` +
+      problemDetails
+        .map(d => `${d.source}[${d.status}](${(d.error ?? '').slice(0, 200)})`)
+        .join('; ')
+        .slice(0, 1800)
+    : undefined
+
+  // "소스 1개만 실패해도 전체 failed" 는 과했음(07-22 사고 조사).
+  // 시도한 것(개별 소스 + 키워드/회사 seed 검색)이 하나라도 성공했으면 부분 실패로 보고 전체는
+  // 성공 처리하되, errorSummary 를 남겨 job_runs.meta 로 경고를 추적할 수 있게 한다.
+  // 전부 실패했을 때(성공 0건)만 진짜 전체 실패로 판정한다.
+  const attemptedAnything =
+    dueSources.length > 0 || searchSeeds.length > 0 || companySeeds.length > 0
+  const ok = !attemptedAnything || successCount > 0
+
+  if (!ok) {
+    console.error(`[크롤러] 크롤 전체 실패 — ${errorSummary ?? '성공한 소스 없음(사유 미상)'}`)
+  } else if (problemDetails.length > 0) {
+    console.warn(`[크롤러] 부분 실패 있었으나 전체는 성공 처리 — ${errorSummary}`)
+  }
+
   return {
-    ok: failedCount === 0,
+    ok,
     sources_total: dueSources.length,
     success: successCount,
     failed: failedCount,
@@ -1552,5 +1590,6 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     rejected: totalRejected,
     held: totalHeld,
     details,
+    error: errorSummary,
   }
 }
