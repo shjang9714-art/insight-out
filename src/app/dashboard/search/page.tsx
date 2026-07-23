@@ -10,7 +10,7 @@ import ContentRow from '@/components/dashboard/ContentRow'
 import SearchResultCard from '@/components/dashboard/SearchResultCard'
 import { tagsOf } from '@/lib/contents/excerpt'
 import { normalizeCompany } from '@/lib/search/company-alias'
-import { MATERIAL_TYPE_DEFS, isMaterialType, type MaterialType } from '@/lib/search/material-types'
+import { SEARCH_FILTER_DEFS, isSearchFilterKey, searchFilterDef, type SearchFilterKey } from '@/lib/search/search-filters'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -45,10 +45,10 @@ interface IssueRow {
   created_at: string
 }
 
-/** 통합 검색 결과 — 자료 종류별 원본 row 를 공통 카드 렌더용으로 정규화 */
+/** 통합 검색 결과 — 소스 테이블별 원본 row 를 공통 카드 렌더용으로 정규화 */
 interface UnifiedResult {
   key: string
-  type: MaterialType
+  source: 'content' | 'daily_insights' | 'issues'
   sortDate: string // ISO — 병합 정렬용
   content?: ContentSearchRow
   insight?: DailyInsightRow
@@ -68,11 +68,6 @@ function getKeywords(item: ContentSearchRow): string[] {
 
 function getServices(item: ContentSearchRow): string[] {
   return item.content_services.map((cs) => cs.services?.name).filter((n): n is string => Boolean(n))
-}
-
-function typeBadgeOf(type: MaterialType) {
-  const def = MATERIAL_TYPE_DEFS.find((d) => d.type === type)!
-  return { label: def.label, className: def.badgeClass }
 }
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
@@ -96,14 +91,14 @@ function SearchContent() {
   const searchParams = useSearchParams()
 
   const q = searchParams.get('q')?.trim() ?? ''
-  const rawType = searchParams.get('type')
-  const typeFilter: MaterialType | '' = isMaterialType(rawType) ? rawType : ''
+  const rawFilter = searchParams.get('filter')
+  const filter: SearchFilterKey | '' = isSearchFilterKey(rawFilter) ? rawFilter : ''
 
   const [results, setResults]   = useState<UnifiedResult[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError]       = useState<string | null>(null)
 
-  // 전체 자료 종류(콘텐츠·인사이트·보고서·이슈) 통합 검색 — ILIKE 멀티컬럼, 자료 종류별 병렬 조회 후 병합
+  // 통합 검색(콘텐츠·핵심인사이트·이슈) — 카테고리 필터(전체/뉴스/유튜브/웹인사이트/리포트/핵심인사이트/이슈)
   useEffect(() => {
     if (!q) {
       startTransition(() => { setResults(null); setLoading(false) })
@@ -122,35 +117,43 @@ function SearchContent() {
       const escapedQ = searchTerm.replace(/[%_]/g, '\\$&')
       const ilikePat = `%${escapedQ}%`
 
-      const wantsType = (t: MaterialType) => !typeFilter || typeFilter === t
+      const activeDef = filter ? searchFilterDef(filter) : null
+      // '전체'거나, 필터가 content 소속(뉴스/유튜브/웹인사이트/리포트)일 때만 contents 조회
+      const wantsContent  = !activeDef || activeDef.source === 'content'
+      const wantsInsight  = !activeDef || activeDef.source === 'daily_insights'
+      const wantsIssue    = !activeDef || activeDef.source === 'issues'
+      // 특정 카테고리(뉴스/유튜브/웹인사이트/리포트) 선택 시에만 contents.category 제한, '전체'는 제한 없음
+      const contentCategories = activeDef?.source === 'content' ? activeDef.categories : undefined
 
       const fetchContents = async (): Promise<UnifiedResult[]> => {
-        if (!wantsType('content')) return []
+        if (!wantsContent) return []
         const orFilter = [
           `title.ilike.${ilikePat}`,
           `summary_ko.ilike.${ilikePat}`,
           `body_original.ilike.${ilikePat}`,
         ].join(',')
-        const { data, error: err } = await supabase
+        let query = supabase
           .from('contents')
           .select(
             'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
           )
           .or(orFilter)
           .eq('status', 'published')
+        if (contentCategories) query = query.in('category', contentCategories)
+        const { data, error: err } = await query
           .order('published_at', { ascending: false, nullsFirst: false })
           .limit(MAX_RESULTS)
         if (err) { console.error('[search] contents 조회 오류:', err); return [] }
         return ((data ?? []) as unknown as ContentSearchRow[]).map((row) => ({
           key: `content-${row.id}`,
-          type: 'content' as const,
+          source: 'content' as const,
           sortDate: row.published_at ?? EPOCH,
           content: row,
         }))
       }
 
       const fetchInsights = async (): Promise<UnifiedResult[]> => {
-        if (!wantsType('insight')) return []
+        if (!wantsInsight) return []
         const orFilter = [
           `headline.ilike.${ilikePat}`,
           `summary_ko.ilike.${ilikePat}`,
@@ -168,14 +171,14 @@ function SearchContent() {
         if (err) { console.error('[search] daily_insights 조회 오류:', err); return [] }
         return ((data ?? []) as DailyInsightRow[]).map((row) => ({
           key: `insight-${row.id}`,
-          type: 'insight' as const,
+          source: 'daily_insights' as const,
           sortDate: new Date(row.day_of).toISOString(),
           insight: row,
         }))
       }
 
       const fetchIssues = async (): Promise<UnifiedResult[]> => {
-        if (!wantsType('issue')) return []
+        if (!wantsIssue) return []
         const orFilter = [
           `title.ilike.${ilikePat}`,
           `summary.ilike.${ilikePat}`,
@@ -190,7 +193,7 @@ function SearchContent() {
         if (err) { console.error('[search] issues 조회 오류:', err); return [] }
         return ((data ?? []) as IssueRow[]).map((row) => ({
           key: `issue-${row.id}`,
-          type: 'issue' as const,
+          source: 'issues' as const,
           sortDate: row.created_at,
           issue: row,
         }))
@@ -217,7 +220,7 @@ function SearchContent() {
       }
     })
     return () => { cancelled = true }
-  }, [q, typeFilter])
+  }, [q, filter])
 
   return (
     <div className="px-4 py-6 sm:px-6">
@@ -294,7 +297,7 @@ function SearchContent() {
       {q && !isLoading && results !== null && results.length > 0 && (
         <div className="space-y-2">
           {results.map((item) => {
-            if (item.type === 'content' && item.content) {
+            if (item.source === 'content' && item.content) {
               const c = item.content
               return (
                 <ContentRow
@@ -311,12 +314,12 @@ function SearchContent() {
                   author={c.author}
                   sourceName={c.sources?.name ?? null}
                   keywords={tagsOf(getKeywords(c), c.category, getServices(c))}
-                  typeBadge={typeBadgeOf('content')}
                 />
               )
             }
-            if (item.type === 'insight' && item.insight) {
+            if (item.source === 'daily_insights' && item.insight) {
               const it = item.insight
+              const def = SEARCH_FILTER_DEFS.find((d) => d.key === 'insight')!
               return (
                 <SearchResultCard
                   key={item.key}
@@ -324,12 +327,13 @@ function SearchContent() {
                   title={it.headline}
                   excerpt={it.summary_ko}
                   publishedAt={it.day_of}
-                  typeBadge={typeBadgeOf('insight')}
+                  typeBadge={{ label: def.label, className: def.badgeClass }}
                 />
               )
             }
-            if (item.type === 'issue' && item.issue) {
+            if (item.source === 'issues' && item.issue) {
               const i = item.issue
+              const def = SEARCH_FILTER_DEFS.find((d) => d.key === 'issue')!
               return (
                 <SearchResultCard
                   key={item.key}
@@ -337,7 +341,7 @@ function SearchContent() {
                   title={i.title}
                   excerpt={i.summary}
                   publishedAt={i.created_at}
-                  typeBadge={typeBadgeOf('issue')}
+                  typeBadge={{ label: def.label, className: def.badgeClass }}
                 />
               )
             }
