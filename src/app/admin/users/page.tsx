@@ -18,7 +18,7 @@ export default async function AdminUsersPage() {
 
   const { data: users } = await svc
     .from('users')
-    .select('id, email, name, department, team, position, role, approval_status, created_at')
+    .select('id, email, name, department, team, team_name, position, role, approval_status, created_at')
     .order('created_at', { ascending: false })
 
   return (

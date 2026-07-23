@@ -19,6 +19,7 @@ interface UserRow {
   name: string
   department: string | null
   team: string | null
+  team_name: string | null
   position: string | null
   role: UserRole
   approval_status: ApprovalStatus
@@ -199,7 +200,7 @@ export default function UserManager({ initialUsers }: Props) {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">{u.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      {u.name || '이름 미입력'} · {u.department || '부서 미입력'} · {u.team || '팀 미입력'}
+                      {u.name || '이름 미입력'} · {u.department || '부문 미입력'} · 그룹 {u.team || '—'} · 팀 {u.team_name || '—'}
                     </p>
                   </div>
                   <div className="ml-4 flex items-center gap-2">
@@ -255,7 +256,7 @@ export default function UserManager({ initialUsers }: Props) {
               <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">이메일</th>
                 <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">부서</th>
+                <th className="px-4 py-3">조직</th>
                 <th className="px-4 py-3">권한</th>
                 <th className="px-4 py-3">승인</th>
                 <th className="px-4 py-3">가입일</th>
@@ -267,14 +268,18 @@ export default function UserManager({ initialUsers }: Props) {
                 <tr key={u.id} className="transition-colors hover:bg-accent/50">
                   <td className="max-w-[200px] truncate px-4 py-3 font-medium text-foreground" title={u.email}>{u.email}</td>
                   <td className="max-w-[200px] truncate px-4 py-3 text-muted-foreground" title={u.name ?? undefined}>{u.name || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td className="px-4 py-3">
-                    {u.department ? (
-                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                        {u.department}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td
+                    className="min-w-[150px] px-4 py-3"
+                    title={u.department ?? undefined}
+                  >
+                    <p className="text-xs font-medium text-foreground">
+                      <span className="mr-1 text-muted-foreground">그룹</span>
+                      {u.team || <span className="text-muted-foreground/40">—</span>}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      <span className="mr-1">팀</span>
+                      {u.team_name || <span className="text-muted-foreground/40">—</span>}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
                     {u.role === 'admin' ? (
