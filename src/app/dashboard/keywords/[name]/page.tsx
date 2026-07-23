@@ -290,7 +290,8 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
     signal_type: event.signal_type,
     headline: event.headline,
     detail: event.detail,
-    sentiment: event.sentiment,
+    biz_impact: event.biz_impact,
+    biz_impact_reason: event.biz_impact_reason,
     citations: event.citations,
   }))
   const factorIndexByContent = new Map<string, number>()
