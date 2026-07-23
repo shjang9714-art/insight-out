@@ -114,6 +114,9 @@ export default function ReportCreateForm({ onCreated }: ReportCreateFormProps) {
             <ReportSourcePicker
               selectedIssueIds={selectedIssueIds}
               onChangeIssueIds={setSelectedIssueIds}
+              onIssuePicked={(issue) => {
+                if (!topic.trim()) setTopic(issue.title)
+              }}
               selectedContentIds={selectedContentIds}
               onChangeContentIds={setSelectedContentIds}
             />

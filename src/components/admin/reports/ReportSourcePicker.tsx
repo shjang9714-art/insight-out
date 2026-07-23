@@ -20,6 +20,7 @@ interface ContentRow {
 interface ReportSourcePickerProps {
   selectedIssueIds: Set<string>
   onChangeIssueIds: (ids: Set<string>) => void
+  onIssuePicked?: (issue: { id: string; title: string }) => void
   selectedContentIds: Set<string>
   onChangeContentIds: (ids: Set<string>) => void
 }
@@ -29,7 +30,7 @@ interface ReportSourcePickerProps {
  * dashboard/reports/new(구 유저 워크벤치)의 소스 선택 UI를 어드민용으로 축약 재사용.
  */
 export default function ReportSourcePicker({
-  selectedIssueIds, onChangeIssueIds, selectedContentIds, onChangeContentIds,
+  selectedIssueIds, onChangeIssueIds, onIssuePicked, selectedContentIds, onChangeContentIds,
 }: ReportSourcePickerProps) {
   const [issues, setIssues] = useState<IssueRow[]>([])
   const [contentSearch, setContentSearch] = useState('')
@@ -70,9 +71,14 @@ export default function ReportSourcePicker({
     return () => clearTimeout(t)
   }, [contentSearch, searchContents])
 
-  const toggleIssue = (id: string) => {
+  const toggleIssue = (issue: IssueRow) => {
     const next = new Set(selectedIssueIds)
-    if (next.has(id)) next.delete(id); else next.add(id)
+    if (next.has(issue.id)) {
+      next.delete(issue.id)
+    } else {
+      next.add(issue.id)
+      onIssuePicked?.({ id: issue.id, title: issue.title })
+    }
     onChangeIssueIds(next)
   }
 
@@ -96,7 +102,7 @@ export default function ReportSourcePicker({
                 <button
                   key={iss.id}
                   type="button"
-                  onClick={() => toggleIssue(iss.id)}
+                  onClick={() => toggleIssue(iss)}
                   className={cn(
                     'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-accent/40',
                     checked && 'bg-brand-600/5',
