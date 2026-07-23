@@ -27,7 +27,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 interface AdminCompetitorWeeklyAnalyzeProps {
-  /** 398 — 새 API 없이 페이지가 이미 조회한 최근 10건(CompetitorWeeklyHub prop)을 재사용해 주 선택 드롭다운을 채운다. */
+  /** 398 — 새 API 없이 페이지가 이미 조회한 최근 10건을 재사용해 주 선택 드롭다운을 채운다. */
   reports: CompetitorWeeklyRow[]
 }
 
@@ -82,15 +82,6 @@ export default function AdminCompetitorWeeklyAnalyze({ reports }: AdminCompetito
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">경쟁사 주간 브리핑 분석 (패스② · LLM 수동 분석)</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          사실 추출(생성)이 끝난 주에 대해 프롬프트+데이터를 복사 → 원하는 LLM(Claude·GPT 등)에 붙여넣기 → 결과
-          JSON을 다시 붙여넣으면 근거 검증 후 저장됩니다. 복사 버튼에 지시문·출력 형식·사건 데이터가 모두 담깁니다.
-          근거가 없는 문장은 저장되지 않습니다.
-        </p>
-      </div>
-
       <div className="space-y-2">
         <div className="flex flex-col gap-1">
           <label htmlFor="cw-week" className="text-xs text-muted-foreground">주 시작일 (월요일)</label>

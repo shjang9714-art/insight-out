@@ -4,9 +4,7 @@
 import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
-import InfoHelp from '@/components/admin/ui/InfoHelp'
 import { useEnrichJobs } from '@/components/admin/EnrichJobsProvider'
-import { COMPETITOR_WEEKLY_HELP } from '@/lib/admin/help'
 import { buildEnrichRunId } from '@/lib/admin/enrich-jobs'
 
 export default function AdminCompetitorWeeklyGenerate() {
@@ -18,13 +16,6 @@ export default function AdminCompetitorWeeklyGenerate() {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-      <div className="flex items-center gap-1.5">
-        <h2 className="text-sm font-semibold text-foreground">경쟁사 주간 브리핑 생성 (패스① 사실추출)</h2>
-        <InfoHelp copy={COMPETITOR_WEEKLY_HELP} />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        경쟁사(통신 3사 중심) 기사를 사업영역별(AIDC·AICC·통신B2B·보안·클라우드·IT 등)로 종합해 위기·기회를 판정합니다. 기본은 최근 완결된 주(월~일).
-      </p>
       <div className="flex items-center gap-3 flex-wrap">
         <Button
           onClick={() => startJob('admin:competitor-weekly', undefined, undefined, '주간 브리핑 생성')}
@@ -41,7 +32,7 @@ export default function AdminCompetitorWeeklyGenerate() {
       </div>
       {run?.status === 'done' && (
         <p className="text-sm text-muted-foreground">
-          생성 완료 — 발행 브리핑 탭에서 새 초안을 확인해주세요.
+          생성 완료 — 경쟁사 주간 브리핑 메뉴에서 새 초안을 확인해주세요.
         </p>
       )}
       {hasFailed && <AdminErrorBox>{run.error ?? run.message}</AdminErrorBox>}

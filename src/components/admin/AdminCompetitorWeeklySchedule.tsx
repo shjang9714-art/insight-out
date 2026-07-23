@@ -7,8 +7,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
-import InfoHelp from '@/components/admin/ui/InfoHelp'
-import { COMPETITOR_WEEKLY_SCHEDULE_HELP } from '@/lib/admin/help'
 import { cn } from '@/lib/utils'
 
 interface ScheduleSettings {
@@ -107,11 +105,6 @@ export default function AdminCompetitorWeeklySchedule() {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-      <div className="flex items-center gap-1.5">
-        <h2 className="text-sm font-semibold text-foreground">발행 스케줄</h2>
-        <InfoHelp copy={COMPETITOR_WEEKLY_SCHEDULE_HELP} />
-      </div>
-
       {isLoading ? (
         <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…

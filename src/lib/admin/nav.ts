@@ -82,7 +82,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { href: '/admin/companies', label: '주요기업', description: '주요기업 목록·프로필·기업별 콘텐츠 관리. (준비중 — S8)', icon: Building2, disabled: true, badge: '준비중' },
       { href: '/admin/competitors', label: '경쟁사동향', description: '경쟁사 최근 뉴스 수집·선별·노출. (준비중 — S8)', icon: TrendingUp, disabled: true, badge: '준비중' },
-      { href: '/admin/competitor-weekly', label: '경쟁사 주간리포트', description: '경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성·확인합니다.', icon: FileText },
+      { href: '/admin/competitor-weekly', label: '경쟁사 주간 브리핑', description: '사업영역별 주간 브리핑 발행 목록.', icon: FileText },
+      { href: '/admin/competitor-weekly/generate', label: '주간 브리핑 생성', description: '사실 추출 → 분석 2단계로 새 브리핑을 만듭니다.', icon: Sparkles },
       { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재. 주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
       { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화. (도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
     ],
