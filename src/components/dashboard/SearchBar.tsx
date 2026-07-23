@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CATEGORY_DEFS } from '@/lib/categories'
+import { MATERIAL_TYPE_DEFS, isMaterialType, type MaterialType } from '@/lib/search/material-types'
 import type { ContentCategory } from '@/lib/types'
 
 interface Props {
@@ -15,6 +16,9 @@ export default function SearchBar({ onClose }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const currentCategory = (searchParams.get('category') ?? '') as ContentCategory | ''
+  const rawType = searchParams.get('type')
+  const currentType: MaterialType | '' = isMaterialType(rawType) ? rawType : ''
+  const currentQ = searchParams.get('q')?.trim() ?? ''
 
   const [searchQuery, setSearchQuery]   = useState('')
   // null = 명시 선택 없음 → currentCategory(URL 맥락) 사용
@@ -23,8 +27,15 @@ export default function SearchBar({ onClose }: Props) {
   const scopeRef    = useRef<HTMLDivElement>(null)
   const scopeBtnRef = useRef<HTMLButtonElement>(null)
 
+  // 자료 종류(콘텐츠/인사이트/보고서/이슈) — 주제 카테고리와 별개 축
+  const [typeOverride, setTypeOverride] = useState<MaterialType | '' | null>(null)
+  const [typeOpen, setTypeOpen]         = useState(false)
+  const typeRef    = useRef<HTMLDivElement>(null)
+  const typeBtnRef = useRef<HTMLButtonElement>(null)
+
   // 명시 선택 > URL 맥락 우선순위
   const scopeSelection = scopeOverride !== null ? scopeOverride : currentCategory
+  const typeSelection  = typeOverride  !== null ? typeOverride  : currentType
 
   // 바깥 클릭 시 스코프 메뉴 닫기
   useEffect(() => {
@@ -47,19 +58,57 @@ export default function SearchBar({ onClose }: Props) {
     return () => document.removeEventListener('keydown', handler)
   }, [scopeOpen])
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    const q = searchQuery.trim()
+  // 바깥 클릭 시 자료종류 메뉴 닫기
+  useEffect(() => {
+    if (!typeOpen) return
+    const handler = (e: MouseEvent) => {
+      if (
+        typeRef.current    && !typeRef.current.contains(e.target as Node) &&
+        typeBtnRef.current && !typeBtnRef.current.contains(e.target as Node)
+      ) setTypeOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [typeOpen])
+
+  // ESC 닫기
+  useEffect(() => {
+    if (!typeOpen) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setTypeOpen(false) }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [typeOpen])
+
+  const navigateSearch = (q: string, category: ContentCategory | '', type: MaterialType | '') => {
     if (!q) return
     const p = new URLSearchParams()
     p.set('q', q)
-    if (scopeSelection) p.set('category', scopeSelection)
+    if (category) p.set('category', category)
+    if (type) p.set('type', type)
     router.push(`/dashboard/search?${p.toString()}`)
+  }
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    const q = searchQuery.trim()
+    navigateSearch(q, scopeSelection, typeSelection)
     onClose?.()
+  }
+
+  // 자료 종류 선택 즉시 반영 — 이미 검색 중(URL 또는 입력 중 검색어)이면 바로 재검색
+  const handleTypeSelect = (type: MaterialType | '') => {
+    setTypeOverride(type)
+    setTypeOpen(false)
+    const q = currentQ || searchQuery.trim()
+    if (q) navigateSearch(q, scopeSelection, type)
   }
 
   const scopeLabel = scopeSelection
     ? (CATEGORY_DEFS.find((d) => d.category === scopeSelection)?.label ?? scopeSelection)
+    : '전체'
+
+  const typeLabel = typeSelection
+    ? (MATERIAL_TYPE_DEFS.find((d) => d.type === typeSelection)?.label ?? typeSelection)
     : '전체'
 
   return (
@@ -112,6 +161,57 @@ export default function SearchBar({ onClose }: Props) {
                 >
                   <def.Icon className="h-3.5 w-3.5 shrink-0" />
                   <span>{def.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 자료 종류 칩 */}
+        <div className="relative shrink-0">
+          <button
+            ref={typeBtnRef}
+            type="button"
+            onClick={() => setTypeOpen((v) => !v)}
+            className={cn(
+              'flex h-full items-center gap-1 border-r border-border/60 px-2.5 text-[11px] font-medium transition-colors',
+              typeSelection
+                ? 'text-brand-700 dark:text-brand-400'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <span className="max-w-[56px] truncate">{typeLabel}</span>
+            <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', typeOpen && 'rotate-180')} />
+          </button>
+
+          {/* 자료 종류 드롭다운 */}
+          {typeOpen && (
+            <div
+              ref={typeRef}
+              className="absolute left-0 top-full z-40 mt-1 w-32 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+            >
+              {/* 전체 */}
+              <button
+                type="button"
+                onClick={() => handleTypeSelect('')}
+                className={cn(
+                  'flex w-full items-center px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-accent',
+                  !typeSelection && 'bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
+                )}
+              >
+                전체
+              </button>
+              {MATERIAL_TYPE_DEFS.map((def) => (
+                <button
+                  key={def.type}
+                  type="button"
+                  onClick={() => handleTypeSelect(def.type)}
+                  className={cn(
+                    'flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-accent',
+                    typeSelection === def.type && 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
+                  )}
+                >
+                  {def.label}
                 </button>
               ))}
             </div>
