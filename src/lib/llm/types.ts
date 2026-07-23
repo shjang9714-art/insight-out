@@ -1,4 +1,4 @@
-export type LlmTask = 'classify' | 'summarize' | 'report' | 'briefing' | 'key_insight' | 'daily_insight'
+export type LlmTask = 'classify' | 'summarize' | 'report' | 'briefing' | 'key_insight' | 'daily_insight' | 'newsletter_card_insight'
 
 export interface LlmResult {
   text: string
