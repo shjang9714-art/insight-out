@@ -40,7 +40,8 @@ export interface KeywordEvent {
   signal_type: string | null
   headline: string
   detail: string | null
-  sentiment: '긍정' | '중립' | '부정' | null
+  biz_impact: 'crisis' | 'opportunity' | 'neutral' | null
+  biz_impact_reason: string | null
   citations: string[]
   generatedAt: string | null
 }
@@ -112,7 +113,8 @@ interface EntityEventRow {
   signal_type: string | null
   headline: string
   detail: string | null
-  sentiment: '긍정' | '중립' | '부정' | null
+  biz_impact: 'crisis' | 'opportunity' | 'neutral' | null
+  biz_impact_reason: string | null
   citations: string[] | null
   generated_at: string | null
 }
@@ -301,7 +303,7 @@ const loadKeywordRelations = cache(async (name: string): Promise<KeywordRelated>
     entity
       ? supabase
           .from('entity_events')
-          .select('id, event_date, signal_type, headline, detail, sentiment, citations, generated_at')
+          .select('id, event_date, signal_type, headline, detail, biz_impact, biz_impact_reason, citations, generated_at')
           .eq('entity_id', entity.id)
           .order('event_date', { ascending: false })
           .limit(30)
@@ -393,7 +395,8 @@ const loadKeywordRelations = cache(async (name: string): Promise<KeywordRelated>
     signal_type: event.signal_type,
     headline: event.headline,
     detail: event.detail,
-    sentiment: event.sentiment,
+    biz_impact: event.biz_impact,
+    biz_impact_reason: event.biz_impact_reason,
     citations: Array.isArray(event.citations) ? event.citations : [],
     generatedAt: event.generated_at,
   }))

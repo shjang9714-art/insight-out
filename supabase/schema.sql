@@ -1471,7 +1471,10 @@ CREATE TABLE IF NOT EXISTS "public"."entity_events" (
     "model" "text",
     "generated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "entity_events_sentiment_check" CHECK (("sentiment" = ANY (ARRAY['긍정'::"text", '중립'::"text", '부정'::"text"])))
+    "biz_impact" "text",
+    "biz_impact_reason" "text",
+    CONSTRAINT "entity_events_sentiment_check" CHECK (("sentiment" = ANY (ARRAY['긍정'::"text", '중립'::"text", '부정'::"text"]))),
+    CONSTRAINT "entity_events_biz_impact_check" CHECK (("biz_impact" = ANY (ARRAY['crisis'::"text", 'opportunity'::"text", 'neutral'::"text"])))
 );
 
 

@@ -10,7 +10,9 @@ export interface EntityEventItem {
   signal_type: string | null
   headline: string
   detail: string | null
-  sentiment: '긍정' | '중립' | '부정' | null
+  /** LG U+(자사) 관점 위기/기회/중립 판정. null 이면 중립으로 표시 */
+  biz_impact: 'crisis' | 'opportunity' | 'neutral' | null
+  biz_impact_reason: string | null
   citations: string[]
 }
 
@@ -29,12 +31,18 @@ const SIGNAL_STYLE: Record<string, string> = {
 
 const DEFAULT_SIGNAL_STYLE = 'border-border bg-muted text-muted-foreground'
 
-// ─── 논조 점/라벨 ──────────────────────────────────────────────────────────────
+// ─── 자사(LG U+) 관점 위기/기회 라벨 ─────────────────────────────────────────
 
-const SENTIMENT_STYLE: Record<string, string> = {
-  '긍정': 'bg-positive-soft text-positive',
-  '중립': 'bg-muted text-muted-foreground',
-  '부정': 'bg-negative-soft text-negative',
+const BIZ_IMPACT_LABEL: Record<'crisis' | 'opportunity' | 'neutral', string> = {
+  crisis: '위기',
+  opportunity: '기회',
+  neutral: '중립',
+}
+
+const BIZ_IMPACT_STYLE: Record<'crisis' | 'opportunity' | 'neutral', string> = {
+  crisis: 'bg-negative-soft text-negative',
+  opportunity: 'bg-positive-soft text-positive',
+  neutral: 'bg-muted text-muted-foreground',
 }
 
 // ─── 갱신 시각 표기 ───────────────────────────────────────────────────────────
@@ -98,14 +106,20 @@ export default function EntityEventTimeline({ events, updatedAt }: Props) {
                       {ev.signal_type}
                     </span>
                   )}
-                  {ev.sentiment && (
-                    <span className={cn(
-                      'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                      SENTIMENT_STYLE[ev.sentiment]
-                    )}>
-                      {ev.sentiment}
-                    </span>
-                  )}
+                  {(() => {
+                    const bizImpact = ev.biz_impact ?? 'neutral'
+                    return (
+                      <span
+                        className={cn(
+                          'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                          BIZ_IMPACT_STYLE[bizImpact]
+                        )}
+                        title={ev.biz_impact_reason ?? undefined}
+                      >
+                        {BIZ_IMPACT_LABEL[bizImpact]}
+                      </span>
+                    )
+                  })()}
                 </div>
 
                 {/* 헤드라인 */}
