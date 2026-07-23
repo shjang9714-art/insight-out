@@ -1903,7 +1903,8 @@ CREATE TABLE IF NOT EXISTS "public"."newsletter_issues" (
     "recipient_cnt" integer DEFAULT 0 NOT NULL,
     "status" "text" DEFAULT 'pending'::"text" NOT NULL,
     "triggered_by" "text" DEFAULT 'cron'::"text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "payload" "jsonb"
 );
 
 
@@ -4621,6 +4622,8 @@ CREATE POLICY "contents: admin 전체 조회" ON "public"."contents" FOR SELECT 
 
 CREATE POLICY "contents: 인증 사용자 조회" ON "public"."contents" FOR SELECT USING ((("auth"."role"() = 'authenticated'::"text") AND ("status" = 'published'::"public"."content_status")));
 
+CREATE POLICY "contents: 익명 공개 조회(뉴스레터)" ON "public"."contents" FOR SELECT TO "anon" USING (("status" = 'published'::"public"."content_status"));
+
 
 --
 -- Name: crawl_logs; Type: ROW SECURITY; Schema: public; Owner: -
@@ -4720,6 +4723,8 @@ CREATE POLICY "daily_insights: admin 전체 조회" ON "public"."daily_insights"
 --
 
 CREATE POLICY "daily_insights: 인증 사용자 published 조회" ON "public"."daily_insights" FOR SELECT USING ((("auth"."role"() = 'authenticated'::"text") AND ("status" = 'published'::"text")));
+
+CREATE POLICY "daily_insights: 익명 공개 조회(뉴스레터)" ON "public"."daily_insights" FOR SELECT TO "anon" USING (("status" = 'published'::"text"));
 
 
 --
@@ -5260,6 +5265,8 @@ CREATE POLICY "sources: admin 관리" ON "public"."sources" USING ("public"."is_
 --
 
 CREATE POLICY "sources: 인증 사용자 조회" ON "public"."sources" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+CREATE POLICY "sources: 익명 공개 조회(뉴스레터)" ON "public"."sources" FOR SELECT TO "anon" USING (true);
 
 
 --

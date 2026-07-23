@@ -5,6 +5,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { runNewsletterDispatch } from '@/lib/newsletter/dispatch'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
+import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
 
 async function requireAdmin() {
   const cookieStore = await cookies()
@@ -95,37 +96,40 @@ export async function getPreviewHtml() {
     .eq('id', 1)
     .single()
 
-  const { data: contents } = await db
-    .from('contents')
-    .select('id, title, category, summary_ko, original_url, sources(name)')
-    .eq('status', 'published')
-    .order('is_editor_pick', { ascending: false })
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .limit(settings?.card_count ?? 5)
-
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'
 
-  const cards = (contents ?? []).map((c) => {
-    const src = c.sources as unknown
-    const sourceName =
-      Array.isArray(src) && src.length > 0
-        ? (src[0] as { name: string }).name
-        : src && typeof (src as { name?: unknown }).name === 'string'
-          ? (src as { name: string }).name
-          : null
-    return {
-      title: c.title,
-      category: c.category,
-      sourceName,
-      summaryKo: c.summary_ko,
-      url: c.original_url ?? `${baseUrl}/dashboard/contents/${c.id}`,
-    }
+  // 관리자 미리보기 — 주식 필터·티저는 실제 발송과 동일 로직 재사용, 카드 인사이트는
+  // 반복 클릭 시 매번 LLM을 호출하지 않도록 생략(무거운 재생성 반복 금지).
+  const prepared = await prepareNewsletterIssue(db, {
+    cardCount: settings?.card_count ?? 5,
+    baseUrl,
+    generateInsights: false,
   })
+
+  const { count: sentIssueCount } = await db
+    .from('newsletter_issues')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'sent')
 
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const html = buildNewsletterHtml({
     dateLabel: today,
-    cards,
+    issueNo: (sentIssueCount ?? 0) + 1,
+    greetingName: null,
+    cards: prepared.cards.map((c) => ({
+      title: c.title,
+      category: c.category,
+      sourceName: c.sourceName,
+      summaryKo: c.summaryKo,
+      detailUrl: c.detailUrl,
+      originalUrl: c.originalUrl,
+      insight: c.insight,
+    })),
+    dailyInsight: prepared.dailyInsight
+      ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
+      : null,
+    knowledgeReports: prepared.knowledgeReports,
+    companyTrends: prepared.companyTrends,
     unsubscribeUrl: `${baseUrl}/api/newsletter/unsubscribe?token=PREVIEW`,
   })
 
