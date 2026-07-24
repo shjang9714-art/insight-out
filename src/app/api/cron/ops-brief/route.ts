@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBrevoEmail } from '@/lib/email/brevo'
 import { gatherDailyBrief, buildDailyBriefHtml } from '@/lib/ops/daily-brief'
 import { runJob } from '@/lib/jobs/run-job'
+import { detectOpsIssues } from '@/lib/ops/detect-issues'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
     const result = await runJob(admin, { key: 'cron:ops-brief', trigger: 'cron' }, async () => {
+      await detectOpsIssues(admin)
       const brief = await gatherDailyBrief(admin)
       const override = (process.env.OPS_BRIEF_RECIPIENTS ?? '').split(',').map(v => v.trim()).filter(Boolean)
       let recipients = override

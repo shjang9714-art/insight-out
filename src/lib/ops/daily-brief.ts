@@ -4,9 +4,11 @@ import { LLM_PROVIDERS } from '@/lib/llm'
 
 export type BriefSeverity = 'critical' | 'warning' | 'notice'
 export interface BriefAlert { severity: BriefSeverity; message: string }
+export interface BriefIssue { title: string; severity: BriefSeverity; occurrence_count: number; first_seen_at: string | null; last_seen_at: string | null; recommended_action: string | null }
 export interface DailyBrief {
   date: string
   alerts: BriefAlert[]
+  issues: BriefIssue[]
   system: { crawlFailed: number; crawlPartial: number; backlog: number; failedJobs: number }
   collection: { today: number; published: number; rejected: number; pending: number; topSourceShare: number; activeSources: number }
   usage: { llm: { provider: string; used: number; limit: number; percent: number }[]; translationChars: number; translationCap: number; ttsChars: number; ttsCap: number }
@@ -20,7 +22,7 @@ const pct = (used: number, limit: number) => limit > 0 ? Math.round(used / limit
 export async function gatherDailyBrief(admin: SupabaseClient): Promise<DailyBrief> {
   const start = dayStart()
   const period = month()
-  const [failed, partial, backlog, today, published, rejected, pending, activeSources, failedJobs, users, newUsers, pendingUsers, inactive, sourceRows, llm, settings, translation, tts] = await Promise.all([
+  const [failed, partial, backlog, today, published, rejected, pending, activeSources, failedJobs, users, newUsers, pendingUsers, inactive, sourceRows, llm, settings, translation, tts, issuesResult] = await Promise.all([
     admin.from('crawl_logs').select('id', { count: 'exact', head: true }).gte('started_at', start).eq('status', 'failed'),
     admin.from('crawl_logs').select('id', { count: 'exact', head: true }).gte('started_at', start).eq('status', 'partial'),
     admin.from('contents').select('id', { count: 'exact', head: true }).is('body_fetched_at', null).not('original_url', 'is', null),
@@ -39,6 +41,7 @@ export async function gatherDailyBrief(admin: SupabaseClient): Promise<DailyBrie
     admin.from('llm_settings').select('provider, monthly_token_limit').eq('enabled', true),
     admin.from('translation_usage').select('chars').eq('period', period),
     admin.from('tts_usage').select('chars').eq('period', period),
+    admin.from('ops_issues').select('title, severity, occurrence_count, first_seen_at, last_seen_at, recommended_action').in('status', ['open', 'acknowledged', 'in_progress']).in('severity', ['critical', 'warning']).order('severity').order('last_seen_at', { ascending: false }),
   ])
   const counts = (q: { count?: number | null }) => q.count ?? 0
   const sourceCounts = new Map<string, number>(); for (const row of sourceRows.data ?? []) sourceCounts.set(row.source_id, (sourceCounts.get(row.source_id) ?? 0) + 1)
@@ -56,8 +59,10 @@ export async function gatherDailyBrief(admin: SupabaseClient): Promise<DailyBrie
   if (counts(failed) > 0 && counts(failed) === counts(activeSources)) alerts.push({ severity: 'critical', message: '오늘 수집이 전면 실패했습니다.' })
   if (usage.some(u => u.percent >= 95) || pct(translationChars, translationCap) >= 95 || pct(ttsChars, ttsCap) >= 95) alerts.push({ severity: 'critical', message: '외부 사용량이 월 한도의 95% 이상입니다.' })
   if (counts(backlog) > 100 || counts(partial) > 0 || topSourceShare >= 70) alerts.push({ severity: 'warning', message: `본문 보강 대기 ${counts(backlog)}건, 수집 일부 실패 ${counts(partial)}건, 최고 매체 비중 ${topSourceShare}%입니다.` })
+  const issues = (issuesResult.data ?? []) as BriefIssue[]
+  if (issues.length) alerts.splice(0, alerts.length, ...issues.map(i => ({ severity: i.severity, message: `${i.title} — ${i.occurrence_count}회 발생${i.recommended_action ? ` · 권장: ${i.recommended_action}` : ''}` })))
   if (!alerts.length) alerts.push({ severity: 'notice', message: '주요 시스템 정상' })
-  return { date: new Date().toISOString(), alerts, system: { crawlFailed: counts(failed), crawlPartial: counts(partial), backlog: counts(backlog), failedJobs: counts(failedJobs) }, collection: { today: counts(today), published: counts(published), rejected: counts(rejected), pending: counts(pending), topSourceShare, activeSources: counts(activeSources) }, usage: { llm: usage, translationChars, translationCap, ttsChars, ttsCap }, users: { total: counts(users), newToday: counts(newUsers), pending: counts(pendingUsers), inactive7d: counts(inactive) } }
+  return { date: new Date().toISOString(), alerts, issues, system: { crawlFailed: counts(failed), crawlPartial: counts(partial), backlog: counts(backlog), failedJobs: counts(failedJobs) }, collection: { today: counts(today), published: counts(published), rejected: counts(rejected), pending: counts(pending), topSourceShare, activeSources: counts(activeSources) }, usage: { llm: usage, translationChars, translationCap, ttsChars, ttsCap }, users: { total: counts(users), newToday: counts(newUsers), pending: counts(pendingUsers), inactive7d: counts(inactive) } }
 }
 
 const esc = (v: unknown) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c))
