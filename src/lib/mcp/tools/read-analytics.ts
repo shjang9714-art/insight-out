@@ -31,7 +31,7 @@ const COMPANY_DOC_TYPES: [CompanyDocumentType, ...CompanyDocumentType[]] = [
 ]
 
 export function registerAnalyticsReadTools(server: McpServer) {
-  server.registerTool('report_list', {
+  server.registerTool('ai_report_list', {
     title: '발행 AI 리포트 목록',
     description: '발행된 AI 전략 리포트만 조회합니다. 반환된 id를 report_get에서 상세 근거로 사용할 수 있습니다.',
     inputSchema: { limit: z.number().int().min(1).max(50).optional() },
@@ -47,7 +47,7 @@ export function registerAnalyticsReadTools(server: McpServer) {
     } catch (error) { return dbError(error, 'ai_reports') }
   })
 
-  server.registerTool('report_get', {
+  server.registerTool('ai_report_get', {
     title: '발행 AI 리포트 상세',
     description: '발행된 AI 리포트 한 건의 본문과 안전한 메타데이터를 조회합니다. 미발행 리포트는 반환하지 않습니다.',
     inputSchema: { id: z.string().uuid() },
