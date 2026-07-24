@@ -48,6 +48,10 @@
     {
       "path": "/api/cron/event-timeline-refresh",
       "schedule": "10 21 */3 * *"
+    },
+    {
+      "path": "/api/cron/ops-brief",
+      "schedule": "0 23 * * *"
     }
   ]
 }
