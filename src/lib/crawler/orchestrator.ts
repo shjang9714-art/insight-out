@@ -434,11 +434,7 @@ async function processCrawlItem(
       counts.rejectedBy.tooShort++
       return {}
     }
-    if (!src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength) {  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
-      counts.rejected++
-      counts.rejectedBy.bodyTooShort++
-      return {}
-    }
+    const bodyShort = !src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength
     if (exclusionMatch?.action === 'reject') {
       counts.rejected++
       counts.rejectedBy.excludeRule++
@@ -519,6 +515,11 @@ async function processCrawlItem(
       reviewReason = reviewReason ?? bodyReason
     }
     if (contentStatus === 'published') reviewReason = null
+    // 짧은 RSS 본문은 관련도 판정 결과와 무관하게 풀본문 보강 전까지 보류한다.
+    if (bodyShort) {
+      contentStatus = 'pending'
+      reviewReason = 'body_short'
+    }
 
     const translatedContent =
       item.language === 'en' && item.body
@@ -1094,6 +1095,8 @@ interface EnrichRow {
   body_original: string | null
   status: string | null
   review_reason: string | null
+  source_id: string | null
+  matched_groups: string[] | null
 }
 
 // 본문이 개선됐을 때만 재판정 대상으로 삼는 review_reason — low_relevance/llm_irrelevant/
@@ -1149,12 +1152,13 @@ export async function mergeByCanonical(admin: SupabaseClient, rowId: string, can
 async function enrichRecentContents(
   admin: SupabaseClient,
   runStartedAt: string,
-  deadline?: number
+  deadline?: number,
+  keywordGroupCount = 0
 ): Promise<void> {
   try {
     const { data: rows, error } = await admin
       .from('contents')
-      .select('id, original_url, body_original, status, review_reason')
+      .select('id, original_url, body_original, status, review_reason, source_id, matched_groups')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
       .gte('collected_at', runStartedAt)
@@ -1166,6 +1170,15 @@ async function enrichRecentContents(
       return
     }
     if (!rows?.length) return
+
+    const sourceIds = [...new Set((rows as EnrichRow[]).map(row => row.source_id).filter((id): id is string => Boolean(id)))]
+    const sourceMap = new Map<string, { trust_tier: number; type: string }>()
+    if (sourceIds.length) {
+      const { data: sources, error: sourceError } = await admin
+        .from('sources').select('id, trust_tier, type').in('id', sourceIds)
+      if (sourceError) console.warn('[보강] 소스 관련도 정보 조회 실패:', sourceError.message)
+      for (const source of sources ?? []) sourceMap.set(source.id, source)
+    }
 
     console.log(`[보강] 풀본문 추출 대상: ${rows.length}건`)
 
@@ -1222,8 +1235,19 @@ async function enrichRecentContents(
             BODY_REVIEW_REASONS.has(row.review_reason) &&
             assessBodyQuality(extracted, { minLen: SUMMARY_MIN_BODY_LEN }) === null
           ) {
-            update.status = 'published'
-            update.review_reason = null
+            const source = row.source_id ? sourceMap.get(row.source_id) : undefined
+            const relevancePass =
+              (row.matched_groups?.length ?? 0) > 0 ||
+              keywordGroupCount === 0 ||
+              (source?.trust_tier ?? 0) >= 2 ||
+              source?.type === 'web_insight'
+            if (relevancePass) {
+              update.status = 'published'
+              update.review_reason = null
+            } else {
+              update.status = 'pending'
+              update.review_reason = 'low_relevance'
+            }
           }
 
           await admin
@@ -1551,7 +1575,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   }
 
   // enrichment tail — 신규 적재분 풀본문 추출 (실패해도 크롤 결과 보존)
-  await enrichRecentContents(admin, runStartedAt, softDeadline)
+  await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
 
   // 실패 사유를 job_runs 에 구체적으로 남기기 위한 집계.
   // status !== 'success' 이면서 error 가 있는 항목(소스/키워드 검색/회사 seed 검색 전부 포함)만 뽑아
