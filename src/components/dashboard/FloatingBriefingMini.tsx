@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, startTransition } from 'react'
 import Link from 'next/link'
-import { Radio, X, Play, Pause, ChevronDown, ChevronUp, SkipBack } from 'lucide-react'
+import { Radio, X, Play, Pause, ChevronDown, ChevronUp, SkipBack, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
@@ -124,12 +124,19 @@ export default function FloatingBriefingMini() {
 
   function togglePlay() {
     if (!audioRef.current) return
-    if (playing) { audioRef.current.pause(); setPlaying(false) }
-    else {
-      audioRef.current.play()
-      setPlaying(true)
-      setPlaybackActive(true)
+    if (playing) {
+      audioRef.current.pause()
+      setPlaying(false)
+      return
     }
+
+    const playPromise = audioRef.current.play()
+    setPlaying(true)
+    setPlaybackActive(true)
+    playPromise.catch(() => {
+      setPlaying(false)
+      setPlaybackActive(false)
+    })
   }
 
   function handleStop() {
@@ -210,43 +217,54 @@ export default function FloatingBriefingMini() {
                 </p>
 
                 {/* 진행 바 */}
-                <div className="mt-3 space-y-1">
-                  <div
-                    role="slider"
-                    aria-label="재생 위치"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(progress * 100)}
-                    tabIndex={0}
-                    className="relative h-1 cursor-pointer rounded-full bg-zinc-700"
-                    onClick={hasAudio ? handleSeek : undefined}
-                  >
+                {hasAudio && (
+                  <div className="mt-3 space-y-1">
                     <div
-                      className="absolute inset-y-0 left-0 rounded-full bg-brand-600 transition-all"
-                      style={{ width: `${progress * 100}%` }}
-                    />
+                      role="slider"
+                      aria-label="재생 위치"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(progress * 100)}
+                      tabIndex={0}
+                      className="relative h-1 cursor-pointer rounded-full bg-zinc-700"
+                      onClick={handleSeek}
+                    >
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-brand-600 transition-all"
+                        style={{ width: `${progress * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] tabular-nums text-zinc-500">
+                      <span>{formatTime(currentTime)}</span>
+                      <span>{duration > 0 ? formatTime(duration) : '--:--'}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[10px] tabular-nums text-zinc-500">
-                    <span>{formatTime(currentTime)}</span>
-                    <span>{duration > 0 ? formatTime(duration) : '--:--'}</span>
-                  </div>
-                </div>
+                )}
 
                 {/* 스크립트 폴백 (오디오 없을 때) */}
-                {!hasAudio && briefingScript && (
+                {!hasAudio && (
                   <div className="mt-2">
-                    <p className="mb-1 text-[10px] text-zinc-500">오디오 준비 전 · 스크립트 제공</p>
-                    <button
-                      onClick={() => setScriptOpen((v) => !v)}
-                      className="flex items-center gap-0.5 text-[10px] font-medium text-brand-600 hover:underline"
-                    >
-                      스크립트 보기
-                      {scriptOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
-                    </button>
-                    {scriptOpen && (
-                      <p className="mt-1.5 max-h-24 overflow-y-auto text-[10px] leading-relaxed text-zinc-400">
-                        {briefingScript}
-                      </p>
+                    <p className="mb-1 flex items-center gap-1 text-[10px] text-zinc-400">
+                      <FileText className="h-3 w-3 text-brand-600" />
+                      {briefingScript
+                        ? '오디오 준비 중 · 스크립트로 보기'
+                        : '오디오·스크립트 준비 중'}
+                    </p>
+                    {briefingScript && (
+                      <>
+                        <button
+                          onClick={() => setScriptOpen((v) => !v)}
+                          className="flex items-center gap-0.5 text-[10px] font-medium text-brand-600 hover:underline"
+                        >
+                          스크립트 보기
+                          {scriptOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                        </button>
+                        {scriptOpen && (
+                          <p className="mt-1.5 max-h-24 overflow-y-auto text-[10px] leading-relaxed text-zinc-400">
+                            {briefingScript}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -260,19 +278,33 @@ export default function FloatingBriefingMini() {
             <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-zinc-700 shadow-inner ring-1 ring-white/5">
               {/* 재생/일시정지 중앙 버튼 */}
               <button
-                onClick={hasAudio ? togglePlay : undefined}
-                disabled={!hasAudio || isLoading || !briefing}
+                onClick={
+                  hasAudio
+                    ? togglePlay
+                    : briefing
+                      ? () => setScriptOpen((v) => !v)
+                      : undefined
+                }
+                disabled={isLoading || !briefing}
                 className={cn(
                   'flex h-12 w-12 items-center justify-center rounded-full transition-all',
                   hasAudio && briefing
                     ? 'bg-zinc-900 text-white shadow-md hover:bg-zinc-800 active:scale-95'
-                    : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+                    : briefing
+                      ? 'bg-zinc-900 text-brand-600 shadow-md hover:bg-zinc-800 active:scale-95'
+                      : 'cursor-not-allowed bg-zinc-800 text-zinc-600'
                 )}
-                aria-label={playing ? '일시정지' : '재생'}
+                aria-label={
+                  hasAudio
+                    ? playing ? '일시정지' : '재생'
+                    : '스크립트 보기'
+                }
               >
-                {playing
-                  ? <Pause className="h-5 w-5" />
-                  : <Play className="h-5 w-5 pl-0.5" />
+                {!hasAudio && briefing
+                  ? <FileText className="h-5 w-5" />
+                  : playing
+                    ? <Pause className="h-5 w-5" />
+                    : <Play className="h-5 w-5 pl-0.5" />
                 }
               </button>
 
