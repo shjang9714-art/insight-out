@@ -11,6 +11,7 @@ import { SetPasswordForm } from '@/components/login/SetPasswordForm'
 const RESEND_COOLDOWN_SECONDS = 60
 // Supabase Auth > Email OTP Expiration 설정과 일치시킬 것 — 어긋나면 이 안내가 거짓말이 된다.
 const OTP_VALIDITY_SECONDS = 600
+const REMEMBERED_EMAIL_KEY = 'insightout:remembered-email'
 
 type Step = 'password' | 'otp-send' | 'otp-verify' | 'set-password'
 
@@ -75,6 +76,7 @@ export function LoginCard() {
 
   const [step, setStep] = useState<Step>('password')
   const [email, setEmail] = useState('')
+  const [rememberEmail, setRememberEmail] = useState(false)
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +88,18 @@ export function LoginCard() {
   const [wasPasswordSet, setWasPasswordSet] = useState(false)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const verifyingRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const timer = window.setTimeout(() => {
+      const rememberedEmail = window.localStorage.getItem(REMEMBERED_EMAIL_KEY)
+      if (rememberedEmail) {
+        setEmail(rememberedEmail)
+        setRememberEmail(true)
+      }
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (resendCooldown <= 0) return
@@ -128,6 +142,8 @@ export function LoginCard() {
       setError('올바른 이메일 주소를 입력해 주세요.')
       return
     }
+    if (rememberEmail) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail)
+    else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY)
     if (!password) {
       setError('비밀번호를 입력해 주세요.')
       return
@@ -177,6 +193,8 @@ export function LoginCard() {
       setError('올바른 이메일 주소를 입력해 주세요.')
       return
     }
+    if (rememberEmail) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail)
+    else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY)
     setEmail(normalizedEmail)
     if (await sendCode(normalizedEmail)) {
       setCode('')
@@ -296,6 +314,10 @@ export function LoginCard() {
             <Label htmlFor="password" className="text-slate-700">비밀번호</Label>
             <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={loading} className="h-12 rounded-xl border-slate-200 bg-white text-[15px] text-slate-900" />
           </div>
+          <label htmlFor="remember-email" className="flex items-center gap-2 text-sm text-slate-600">
+            <input id="remember-email" type="checkbox" checked={rememberEmail} onChange={(event) => setRememberEmail(event.target.checked)} disabled={loading} className="size-4 rounded border-slate-300 accent-brand-600" />
+            아이디 저장
+          </label>
           <Button type="submit" disabled={loading} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
             {loading && <Spinner />}{loading ? '로그인 중...' : '로그인'}
           </Button>
