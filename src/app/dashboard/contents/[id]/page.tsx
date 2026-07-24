@@ -6,8 +6,7 @@ import { createServerClient } from '@supabase/ssr'
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import { ExternalLink, Download, FileText } from 'lucide-react'
-import ArchiveButton from '@/components/archive/ArchiveButton'
-import BookmarkButton from '@/components/bookmark/BookmarkButton'
+import LoginGatedActions from '@/components/contents/LoginGatedActions'
 import CouncilDiscussButton from '@/components/dashboard/CouncilDiscussButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
@@ -169,6 +168,8 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   const { id } = await params
   const { origin, view } = await searchParams
   const { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase } = await getContentRow(id)
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const isLoggedIn = Boolean(authUser)
 
   if (error || !data) {
     notFound()
@@ -272,7 +273,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
       <RecordActiveCategoryHint category={content.category} />
-      <ViewTracker contentId={content.id} />
+      {isLoggedIn && <ViewTracker contentId={content.id} />}
 
       <article>
         {hasKoreanTranslation && !isReport ? (
@@ -310,8 +311,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
                   <span>{dateStr ? `발행 ${dateStr}` : '발행일 미상'}</span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <BookmarkButton contentId={content.id} />
-                  <ArchiveButton contentId={content.id} />
+                  <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
                   {content.original_url && (
                     linkDead ? (
                       <span
@@ -374,8 +374,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
             lguImpact={lguImpact}
             actions={
               <>
-                <BookmarkButton contentId={content.id} />
-                <ArchiveButton contentId={content.id} />
+                <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
                 {!isReport && content.original_url && (
                   linkDead ? (
                     <span
@@ -531,19 +530,18 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
           />
 
           <div className="flex items-center gap-2">
-            {/* 북마크 저장 */}
-            <BookmarkButton contentId={content.id} />
+            {/* 북마크·아카이빙 — 비로그인 방문자에겐 로그인 유도 링크로 대체 */}
+            <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
 
-            {/* 아카이빙 담기 */}
-            <ArchiveButton contentId={content.id} />
-
-            {/* COUNCIL로 현재 맥락 토론 진입(362) */}
-            <CouncilDiscussButton
-              title={content.title}
-              summary={content.summary_ko}
-              refType="contents"
-              refId={content.id}
-            />
+            {/* COUNCIL로 현재 맥락 토론 진입(362) — 로그인 전용 */}
+            {isLoggedIn && (
+              <CouncilDiscussButton
+                title={content.title}
+                summary={content.summary_ko}
+                refType="contents"
+                refId={content.id}
+              />
+            )}
 
             {/* 리포트 외(뉴스·유튜브)엔 원문 보기 링크 표시 */}
             {!isReport && content.original_url && (

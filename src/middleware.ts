@@ -47,7 +47,15 @@ export async function middleware(request: NextRequest) {
   // /api/cron/* 는 자체 CRON_SECRET 로 인증, /api/version 은 공개 배포정보,
   // /api/mcp 는 자체 Bearer(MCP_TOKEN) 인증 →
   // 로그인 가드에서 제외 (제외 안 하면 세션 없는 요청이 /login 으로 리다이렉트됨)
-  const publicPaths = ['/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe', '/api/webhooks/brevo', '/api/mcp', '/api/council', '/manifest.webmanifest', '/sw.js']
+  // 뉴스레터 링크는 비로그인 상태로 클릭될 수 있어(지시서 20260723 로그인 장벽 옵션 1),
+  // 콘텐츠 상세·인사이트 상세 2종 경로만 예외로 공개한다. 다른 /dashboard 경로는 계속 보호.
+  // (지식보고서·리포트류 콘텐츠도 /dashboard/contents/[id] 로 렌더되므로 별도 경로가 필요 없다 —
+  // STEP 0에서 /dashboard/reports/[id] 는 별개의 사용자 생성 AI 보고서 라우트임을 확인했다.)
+  const publicPaths = [
+    '/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe',
+    '/api/webhooks/brevo', '/api/mcp', '/api/council', '/manifest.webmanifest', '/sw.js',
+    '/dashboard/contents/', '/dashboard/daily-insights/',
+  ]
   // API 라우트는 JSON 응답이라 온보딩/승인/관리자 리다이렉트 대상이 될 수 없고(리다이렉트해도
   // 클라이언트는 그냥 실패로 처리됨), 관리자 API는 각 라우트 핸들러에서 role을 자체 재검증하고
   // 있어 아래 profile 조회가 완전히 중복 — API 요청마다 걸리던 Supabase 왕복 1회를 절감
@@ -193,6 +201,12 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse
 }
 
+// ⚠️ 이 파일을 향후 Next.js 16 컨벤션(`src/proxy.ts`의 `proxy` 함수)으로 옮길 때,
+// 위 publicPaths의 '/dashboard/contents/', '/dashboard/daily-insights/' 두 항목을
+// 반드시 함께 옮길 것 — 과거 이 프로젝트에서 proxy.ts가 죽은 코드로 방치돼 가드가
+// 실제로 적용되지 않은 사고가 있었다. 빌드 후 .next/server/middleware-manifest.json 에
+// middleware 항목이 잡히는지, matcher가 이 파일의 config.matcher와 일치하는지로 검증할 것
+// (지시서 20260723 로그인 장벽 옵션 1 검증 시 next build + next start 로 실측 확인함).
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',

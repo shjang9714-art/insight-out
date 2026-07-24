@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CATEGORY_DEFS } from '@/lib/categories'
-import type { ContentCategory } from '@/lib/types'
+import { SEARCH_FILTER_DEFS, isSearchFilterKey, type SearchFilterKey } from '@/lib/search/search-filters'
 
 interface Props {
   onClose?: () => void
@@ -14,104 +13,117 @@ interface Props {
 export default function SearchBar({ onClose }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
-  const currentCategory = (searchParams.get('category') ?? '') as ContentCategory | ''
+  const rawFilter = searchParams.get('filter')
+  const currentFilter: SearchFilterKey | '' = isSearchFilterKey(rawFilter) ? rawFilter : ''
+  const currentQ = searchParams.get('q')?.trim() ?? ''
 
-  const [searchQuery, setSearchQuery]   = useState('')
-  // null = 명시 선택 없음 → currentCategory(URL 맥락) 사용
-  const [scopeOverride, setScopeOverride] = useState<ContentCategory | '' | null>(null)
-  const [scopeOpen, setScopeOpen]         = useState(false)
-  const scopeRef    = useRef<HTMLDivElement>(null)
-  const scopeBtnRef = useRef<HTMLButtonElement>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  // null = 명시 선택 없음 → currentFilter(URL 맥락) 사용
+  const [filterOverride, setFilterOverride] = useState<SearchFilterKey | '' | null>(null)
+  const [filterOpen, setFilterOpen]         = useState(false)
+  const filterRef    = useRef<HTMLDivElement>(null)
+  const filterBtnRef = useRef<HTMLButtonElement>(null)
 
   // 명시 선택 > URL 맥락 우선순위
-  const scopeSelection = scopeOverride !== null ? scopeOverride : currentCategory
+  const filterSelection = filterOverride !== null ? filterOverride : currentFilter
 
-  // 바깥 클릭 시 스코프 메뉴 닫기
+  // 바깥 클릭 시 메뉴 닫기
   useEffect(() => {
-    if (!scopeOpen) return
+    if (!filterOpen) return
     const handler = (e: MouseEvent) => {
       if (
-        scopeRef.current    && !scopeRef.current.contains(e.target as Node) &&
-        scopeBtnRef.current && !scopeBtnRef.current.contains(e.target as Node)
-      ) setScopeOpen(false)
+        filterRef.current    && !filterRef.current.contains(e.target as Node) &&
+        filterBtnRef.current && !filterBtnRef.current.contains(e.target as Node)
+      ) setFilterOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [scopeOpen])
+  }, [filterOpen])
 
   // ESC 닫기
   useEffect(() => {
-    if (!scopeOpen) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setScopeOpen(false) }
+    if (!filterOpen) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setFilterOpen(false) }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [scopeOpen])
+  }, [filterOpen])
+
+  const navigateSearch = (q: string, filter: SearchFilterKey | '') => {
+    if (!q) return
+    const p = new URLSearchParams()
+    p.set('q', q)
+    if (filter) p.set('filter', filter)
+    router.push(`/dashboard/search?${p.toString()}`)
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = searchQuery.trim()
-    if (!q) return
-    const p = new URLSearchParams()
-    p.set('q', q)
-    if (scopeSelection) p.set('category', scopeSelection)
-    router.push(`/dashboard/search?${p.toString()}`)
+    navigateSearch(q, filterSelection)
     onClose?.()
   }
 
-  const scopeLabel = scopeSelection
-    ? (CATEGORY_DEFS.find((d) => d.category === scopeSelection)?.label ?? scopeSelection)
+  // 카테고리 선택 즉시 반영 — 이미 검색 중(URL 또는 입력 중 검색어)이면 바로 재검색
+  const handleFilterSelect = (filter: SearchFilterKey | '') => {
+    setFilterOverride(filter)
+    setFilterOpen(false)
+    const q = currentQ || searchQuery.trim()
+    if (q) navigateSearch(q, filter)
+  }
+
+  const filterLabel = filterSelection
+    ? (SEARCH_FILTER_DEFS.find((d) => d.key === filterSelection)?.label ?? filterSelection)
     : '전체'
 
   return (
     <form onSubmit={handleSearch} className="w-full">
       <div className="flex items-stretch overflow-hidden rounded-lg border border-border bg-muted focus-within:border-brand-600 focus-within:bg-background focus-within:ring-2 focus-within:ring-brand-100">
 
-        {/* 스코프 칩 */}
+        {/* 카테고리 필터 칩 */}
         <div className="relative shrink-0">
           <button
-            ref={scopeBtnRef}
+            ref={filterBtnRef}
             type="button"
-            onClick={() => setScopeOpen((v) => !v)}
+            onClick={() => setFilterOpen((v) => !v)}
             className={cn(
               'flex h-full items-center gap-1 border-r border-border/60 px-2.5 text-[11px] font-medium transition-colors',
-              scopeSelection
+              filterSelection
                 ? 'text-brand-700 dark:text-brand-400'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            <span className="max-w-[56px] truncate">{scopeLabel}</span>
-            <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', scopeOpen && 'rotate-180')} />
+            <span className="max-w-[64px] truncate">{filterLabel}</span>
+            <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', filterOpen && 'rotate-180')} />
           </button>
 
-          {/* 스코프 드롭다운 */}
-          {scopeOpen && (
+          {/* 카테고리 드롭다운 */}
+          {filterOpen && (
             <div
-              ref={scopeRef}
-              className="absolute left-0 top-full z-40 mt-1 w-40 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+              ref={filterRef}
+              className="absolute left-0 top-full z-40 mt-1 w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
             >
               {/* 전체 */}
               <button
                 type="button"
-                onClick={() => { setScopeOverride(''); setScopeOpen(false) }}
+                onClick={() => handleFilterSelect('')}
                 className={cn(
                   'flex w-full items-center px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-accent',
-                  !scopeSelection && 'bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
+                  !filterSelection && 'bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
                 )}
               >
                 전체
               </button>
-              {CATEGORY_DEFS.map((def) => (
+              {SEARCH_FILTER_DEFS.map((def) => (
                 <button
-                  key={def.id}
+                  key={def.key}
                   type="button"
-                  onClick={() => { setScopeOverride(def.category); setScopeOpen(false) }}
+                  onClick={() => handleFilterSelect(def.key)}
                   className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-accent',
-                    scopeSelection === def.category && 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
+                    'flex w-full items-center px-3 py-2 text-left text-xs transition-colors hover:bg-accent',
+                    filterSelection === def.key && 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-400'
                   )}
                 >
-                  <def.Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{def.label}</span>
+                  {def.label}
                 </button>
               ))}
             </div>

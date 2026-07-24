@@ -18,7 +18,9 @@ export interface EntityEvent {
   signal_type: string | null
   headline: string          // 사건 한 줄
   detail: string | null
-  sentiment: '긍정' | '중립' | '부정' | null
+  /** LG U+(자사) 관점 재판정 — 사건 자체의 긍/부정이 아니라 자사에게 위기인지 기회인지 */
+  biz_impact: 'crisis' | 'opportunity' | 'neutral' | null
+  biz_impact_reason: string | null
   citations: string[]       // content_id (환각 가드 통과분)
 }
 
@@ -35,7 +37,7 @@ interface ContentInput {
 
 // ─── 프롬프트 ─────────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
+const SYSTEM_PROMPT = `당신은 LG U+ B2B 전략 담당자다.
 아래 기사 목록을 근거로 이 기업의 굵직한 사건만 시간순으로 추려라.
 잡다한 일상 기사·반복 언급은 제외하고, 기업 전략·시장 지위에 영향을 준 사건만 선별.
 
@@ -48,6 +50,13 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
 6. headline·detail 서술문 안에 <quote> 같은 태그나 [content_id]·[uuid] 형태의 근거 ID를 절대 쓰지 마라. 근거는 citations 배열로만 표현한다.
 7. JSON 배열만 출력. 최대 15개 사건.
 
+biz_impact 판정 — 사건 자체가 좋은 뉴스냐 나쁜 뉴스냐가 아니라, **LG U+에게** 위기인지 기회인지 자사 관점으로 판정:
+- 경쟁사(SKT, KT 등)의 수주·신제품·기술 우위·시장점유율 확대 등 성과는 LG U+ 관점에서 "crisis"(위기 — 경쟁 압박).
+- LG U+ 자사의 성과, LG U+에 유리한 규제·시장 변화, LG U+가 진입할 여지가 있는 신시장·수요 신호는 "opportunity"(기회).
+- 자사와 무관하거나 위기/기회 어느 쪽으로도 판단 근거가 약하면 "neutral".
+- 기계적으로 원래 논조를 뒤집지 말 것 — 사건 내용을 보고 자사 영향을 새로 판단.
+- biz_impact_reason에 판정 근거를 한 줄로 명시(예: "SKT의 대형 수주로 경쟁 심화").
+
 출력 스키마 (배열):
 [
   {
@@ -55,7 +64,8 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
     "signal_type": "신제품 또는 null",
     "headline": "사건 한 줄 제목",
     "detail": "1문장 설명(선택)",
-    "sentiment": "긍정|중립|부정|null",
+    "biz_impact": "crisis|opportunity|neutral|null",
+    "biz_impact_reason": "판정 근거 한 줄",
     "citations": ["content_id_1"]
   }
 ]`
@@ -107,10 +117,14 @@ function parseAndValidate(raw: string, validIdSet: Set<string>): EntityEvent[] {
       ? stripLlmArtifacts(ev.detail.trim())
       : null
 
-    // sentiment
-    const rawSentiment = typeof ev.sentiment === 'string' ? ev.sentiment.trim() : null
-    const sentiment = (rawSentiment === '긍정' || rawSentiment === '중립' || rawSentiment === '부정')
-      ? rawSentiment
+    // biz_impact — LG U+ 자사 관점 위기/기회/중립
+    const rawBizImpact = typeof ev.biz_impact === 'string' ? ev.biz_impact.trim() : null
+    const biz_impact = (rawBizImpact === 'crisis' || rawBizImpact === 'opportunity' || rawBizImpact === 'neutral')
+      ? rawBizImpact
+      : null
+
+    const biz_impact_reason = typeof ev.biz_impact_reason === 'string' && ev.biz_impact_reason.trim()
+      ? stripLlmArtifacts(ev.biz_impact_reason.trim())
       : null
 
     // citations 환각 가드: 입력 집합에 존재하는 id만
@@ -119,7 +133,7 @@ function parseAndValidate(raw: string, validIdSet: Set<string>): EntityEvent[] {
       : []
     const citations = rawCitations.filter(id => validIdSet.has(id))
 
-    results.push({ event_date: rawDate, signal_type, headline, detail, sentiment, citations })
+    results.push({ event_date: rawDate, signal_type, headline, detail, biz_impact, biz_impact_reason, citations })
   }
 
   return results

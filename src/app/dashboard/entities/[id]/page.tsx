@@ -150,7 +150,7 @@ async function loadEntityEvents(
   try {
     const { data: evData, error: evError } = await supabase
       .from('entity_events')
-      .select('id, event_date, signal_type, headline, detail, sentiment, citations, generated_at')
+      .select('id, event_date, signal_type, headline, detail, biz_impact, biz_impact_reason, citations, generated_at')
       .eq('entity_id', id)
       .order('event_date', { ascending: false })
       .limit(30)
@@ -168,7 +168,8 @@ async function loadEntityEvents(
       signal_type: string | null
       headline: string
       detail: string | null
-      sentiment: '긍정' | '중립' | '부정' | null
+      biz_impact: 'crisis' | 'opportunity' | 'neutral' | null
+      biz_impact_reason: string | null
       citations: string[] | null
       generated_at: string | null
     }[]
@@ -179,7 +180,8 @@ async function loadEntityEvents(
       signal_type: row.signal_type,
       headline: stripLlmArtifacts(row.headline),
       detail: row.detail ? stripLlmArtifacts(row.detail) : row.detail,
-      sentiment: row.sentiment,
+      biz_impact: row.biz_impact,
+      biz_impact_reason: row.biz_impact_reason,
       citations: Array.isArray(row.citations) ? row.citations : [],
     }))
 
