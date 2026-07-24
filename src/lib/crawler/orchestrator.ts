@@ -24,6 +24,9 @@ import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
+import { fetchNaverNewsItems } from './adapters/naver-news'
+import { readQuotaCalls, recordQuotaCalls, todayKst } from '@/lib/company-docs/discovery/types'
+import { NAVER_DAILY_QUOTA } from '@/lib/company-docs/discovery/naver'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -50,6 +53,11 @@ const googleNewsRss = (q: string) =>
 // ── 회사 seed 검색 수집(259) 상수 ───────────────────────────────────────
 const MAX_COMPANY_SEEDS = 120
 const COMPANY_SEARCH_BUDGET_MS = 20_000
+
+// ── 네이버 전용 뉴스 수집기 상수 — 태깅only, 기업자료 발견 커넥터와 자격증명·
+// 계정 쿼터(일일 25,000건) 공유. 크롤 1회당 최대 searchSeeds 개수(≤30)만큼만 호출.
+const NAVER_NEWS_QUOTA_PROVIDER = 'naver-news-search'
+const NAVER_DISCOVERY_QUOTA_PROVIDER = 'naver-discovery'
 
 // maxDuration(300초) 안에서 우아하게 멈추기 위한 크롤 전체 소프트 데드라인.
 // 하드킬(강제종료)과 달리 여기 걸리면 runJob 이 정상적으로 succeeded/partial 로 기록한다.
@@ -973,6 +981,95 @@ async function crawlKeywordSearch(
   return { counts, hadError, truncated, firstError }
 }
 
+/**
+ * 네이버 전용 뉴스 수집기(태깅only) — 검색 Open API news.json 을 크롤러 파이프라인에 연결.
+ * - crawlKeywordSearch 와 동일한 searchSeeds(keyword_groups.search_seeds)를 재사용해 별도
+ *   설정 없이 "단일 소스"로 동작. Google News 키워드 검색과 나란히 도는 보강 경로다.
+ * - 무거운 후처리(LLM 요약)는 다른 소스와 동일하게 크롤 경로에서 원래부터 제외되어 있고
+ *   (summary-backfill 크론이 채움), 관련도 애매 밴드만 기존 예산(classifyBudget) 안에서
+ *   LLM 재판정된다 — 별도 "태깅only 전용 경로"를 새로 만들지 않고 기존 파이프라인 그대로 재사용.
+ * - 자격증명 없거나(NAVER_SEARCH_CLIENT_ID/SECRET 미설정) 기업자료 발견 커넥터와 공유하는
+ *   계정 일일 쿼터(25,000건)에 근접하면 skipped 로 반환하고 조용히 건너뜀(크롤 무중단).
+ */
+async function crawlNaverNewsSearch(
+  admin: SupabaseClient,
+  seeds: string[],
+  keywords: CrawlKeyword[],
+  groups: ScoringGroup[],
+  translationBudget: TranslationBudget,
+  classifyBudget: TranslationBudget,
+  aliasMap: Map<string, string> = new Map(),
+  issueList: IssueMatchDef[] = [],
+  exclusionRules: ExclusionRule[] = [],
+  exclusionHits: Map<string, number> = new Map(),
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  deadline?: number
+): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean; skipped: boolean; message?: string }> {
+  const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
+
+  const clientId = process.env.NAVER_SEARCH_CLIENT_ID?.trim()
+  const clientSecret = process.env.NAVER_SEARCH_CLIENT_SECRET?.trim()
+  if (!clientId || !clientSecret) {
+    return {
+      counts, hadError: false, truncated: false, skipped: true,
+      message: 'NAVER_SEARCH_CLIENT_ID/NAVER_SEARCH_CLIENT_SECRET이 설정되지 않아 실행하지 않았습니다.',
+    }
+  }
+
+  const period = todayKst()
+  const [usedNews, usedDiscovery] = await Promise.all([
+    readQuotaCalls(admin, NAVER_NEWS_QUOTA_PROVIDER, period),
+    readQuotaCalls(admin, NAVER_DISCOVERY_QUOTA_PROVIDER, period),
+  ])
+  const used = usedNews + usedDiscovery
+  if (used + seeds.length > NAVER_DAILY_QUOTA) {
+    return {
+      counts, hadError: false, truncated: false, skipped: true,
+      message: `네이버 계정 일일 쿼터(${NAVER_DAILY_QUOTA.toLocaleString()}건, 기업자료 발견 커넥터와 공유)에 근접해 실행하지 않았습니다. (오늘 사용 ${used.toLocaleString()}건)`,
+    }
+  }
+
+  const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
+  const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }
+  let hadError = false
+  let truncated = false
+  let callCount = 0
+
+  for (const seed of seeds) {
+    if (deadline !== undefined && Date.now() >= deadline) {
+      truncated = true
+      break
+    }
+    try {
+      const rawItems = await withRetry(
+        () => fetchNaverNewsItems(seed, since, { clientId, clientSecret }),
+        3,
+        [500, 1000, 2000]
+      )
+      callCount += 1
+      counts.fetched += rawItems.length
+
+      for (const item of rawItems) {
+        const result = await processCrawlItem(
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+        )
+        if (result.partial) hadError = true
+      }
+    } catch (err) {
+      console.error(
+        `[크롤러] 네이버 뉴스 검색 오류 (seed: "${seed}"):`,
+        err instanceof Error ? err.message : String(err)
+      )
+      hadError = true
+      callCount += 1
+    }
+  }
+
+  await recordQuotaCalls(admin, NAVER_NEWS_QUOTA_PROVIDER, period, callCount)
+
+  return { counts, hadError, truncated, skipped: false }
+}
+
 /** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
 interface CuratedCompanyRow {
   name: string
@@ -1536,6 +1633,34 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       error:     kwResult.firstError,
     })
     if (!kwResult.hadError) successCount++
+  }
+
+  // 네이버 전용 뉴스 수집기(태깅only) — Google News 키워드 검색과 같은 seed 를 재사용해
+  // 국내 검색엔진 커버리지를 보강. 개별 소스 수집(sourceIds 지정) 시 skip.
+  if (!options.sourceIds?.length && searchSeeds.length > 0) {
+    console.log(`[크롤러] 네이버 뉴스 검색 수집 시작: ${searchSeeds.length}개 시드`)
+    const naverResult = await crawlNaverNewsSearch(
+      admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
+    )
+    if (naverResult.skipped) {
+      console.log(`[크롤러] 네이버 뉴스 검색 skip: ${naverResult.message}`)
+    } else {
+      if (naverResult.truncated) console.warn('[크롤러] 네이버 뉴스 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
+      totalFetched    += naverResult.counts.fetched
+      totalInserted   += naverResult.counts.inserted
+      totalDuplicates += naverResult.counts.duplicate
+      totalRejected   += naverResult.counts.rejected
+      totalHeld       += naverResult.counts.held
+      details.push({
+        source:    '네이버 뉴스 검색',
+        status:    naverResult.hadError ? 'partial' : 'success',
+        fetched:   naverResult.counts.fetched,
+        inserted:  naverResult.counts.inserted,
+        duplicate: naverResult.counts.duplicate,
+        rejected:  naverResult.counts.rejected,
+      })
+      if (!naverResult.hadError) successCount++
+    }
   }
 
   // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds 지정) 시 skip.
