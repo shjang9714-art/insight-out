@@ -66,6 +66,7 @@ function normalizeRow(row: CompanyDocumentRow): CompanyDocumentListItem {
 }
 
 interface GetPublishedCompanyDocumentsOptions {
+  contentId?: string
   entityId?: string
   docType?: CompanyDocumentType
   limit?: number
@@ -73,7 +74,7 @@ interface GetPublishedCompanyDocumentsOptions {
 
 export async function getPublishedCompanyDocuments(
   supabase: SupabaseClient,
-  { entityId, docType, limit = 30 }: GetPublishedCompanyDocumentsOptions = {}
+  { contentId, entityId, docType, limit = 30 }: GetPublishedCompanyDocumentsOptions = {}
 ): Promise<CompanyDocumentListItem[]> {
   let query = supabase
     .from('company_documents')
@@ -83,10 +84,12 @@ export async function getPublishedCompanyDocuments(
       entities(canonical_name)
     `)
     .eq('review_status', 'none')
+    .eq('access_scope', 'public')
     .order('published_on', { ascending: false, nullsFirst: false })
     .limit(limit)
 
   if (entityId) query = query.eq('entity_id', entityId)
+  if (contentId) query = query.eq('content_id', contentId)
   if (docType) query = query.eq('doc_type', docType)
 
   const { data, error } = await query

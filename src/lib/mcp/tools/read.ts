@@ -20,6 +20,9 @@ interface ContentRow {
   published_at: string | null
   matched_groups: string[] | null
   importance_score: number | null
+  sentiment: string | null
+  lgu_impact: string | null
+  matched_keywords: string[] | null
 }
 
 function contentLine(c: ContentRow): string {
@@ -114,8 +117,9 @@ export function registerReadTools(server: McpServer) {
         const admin = createAdminClient()
         const { data, error } = await admin
           .from('contents')
-          .select('id, title, summary_ko, body_original, body_translated_ko, transcript_ko, category, author, original_url, published_at, matched_groups')
+          .select('id, title, summary_ko, body_original, body_translated_ko, transcript_ko, category, author, original_url, published_at, matched_groups, sentiment, lgu_impact, matched_keywords')
           .eq('id', id)
+          .eq('status', 'published')
           .single()
 
         if (error) return dbError(error, 'contents')
@@ -135,6 +139,8 @@ export function registerReadTools(server: McpServer) {
             `id: ${c.id}`,
             `발행: ${c.published_at?.slice(0, 10) ?? '-'} | 매체: ${c.author ?? '-'} | 분류: ${c.category}`,
             `태그: ${(c.matched_groups ?? []).join('/') || '-'}`,
+            `논조: ${c.sentiment ?? '-'} | LGU+ 임팩트: ${c.lgu_impact ?? '-'}`,
+            `키워드: ${(c.matched_keywords ?? []).join(', ') || '-'}`,
             `링크: ${c.original_url ?? '-'}`,
             '',
             `요약: ${c.summary_ko ?? '-'}`,
