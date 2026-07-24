@@ -23,6 +23,13 @@ export interface EnrichBodyRow {
   thumbnail_url?: string | null
   status?: string | null
   review_reason?: string | null
+  source_id?: string | null
+  matched_groups?: string[] | null
+}
+
+interface RelevanceContext {
+  keywordGroupCount: number
+  sources: Map<string, { trust_tier: number; type: string }>
 }
 
 export interface DrainOptions {
@@ -49,6 +56,26 @@ export interface EnrichByIdsResult {
 
 const MAX_IDS_PER_CALL = 50
 
+async function getRelevanceContext(
+  admin: SupabaseClient,
+  rows: EnrichBodyRow[],
+  keywordGroupCount?: number,
+): Promise<RelevanceContext> {
+  const [groupResult, sourceResult] = await Promise.all([
+    keywordGroupCount === undefined
+      ? admin.from('keyword_groups').select('name', { count: 'exact', head: true }).eq('is_active', true)
+      : Promise.resolve({ count: keywordGroupCount, data: null, error: null }),
+    (async () => {
+      const ids = [...new Set(rows.map(row => row.source_id).filter((id): id is string => Boolean(id)))]
+      if (!ids.length) return { data: [], error: null }
+      return admin.from('sources').select('id, trust_tier, type').in('id', ids)
+    })(),
+  ])
+  const sources = new Map<string, { trust_tier: number; type: string }>()
+  for (const source of sourceResult.data ?? []) sources.set(source.id, source)
+  return { keywordGroupCount: groupResult.count ?? 0, sources }
+}
+
 /**
  * 단일 콘텐츠 행의 풀본문을 추출해 DB에 업데이트한다.
  * - improved: 풀본문 추출 성공 → body_original + body_fetched_at 업데이트
@@ -58,6 +85,7 @@ const MAX_IDS_PER_CALL = 50
 export async function enrichOneBody(
   admin: SupabaseClient,
   row: EnrichBodyRow,
+  relevance?: RelevanceContext,
 ): Promise<'improved' | 'marked' | 'error'> {
   try {
     const resolved = await resolveArticleUrl(row.original_url)
@@ -106,8 +134,19 @@ export async function enrichOneBody(
         BODY_REVIEW_REASONS.has(row.review_reason) &&
         assessBodyQuality(extracted, { minLen: SUMMARY_MIN_BODY_LEN }) === null
       ) {
-        update.status = 'published'
-        update.review_reason = null
+        const source = row.source_id ? relevance?.sources.get(row.source_id) : undefined
+        const relevancePass =
+          (row.matched_groups?.length ?? 0) > 0 ||
+          (relevance?.keywordGroupCount ?? 0) === 0 ||
+          (source?.trust_tier ?? 0) >= 2 ||
+          source?.type === 'web_insight'
+        if (relevancePass) {
+          update.status = 'published'
+          update.review_reason = null
+        } else {
+          update.status = 'pending'
+          update.review_reason = 'low_relevance'
+        }
       }
 
       await admin
@@ -142,15 +181,17 @@ export async function enrichByIds(
 
   const { data: targets } = await admin
     .from('contents')
-    .select('id, original_url, body_original, thumbnail_url, status, review_reason')
+    .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups')
     .in('id', limitedIds)
     .not('original_url', 'is', null)
 
   let processed = 0, improved = 0, skipped = 0
 
-  for (const row of (targets ?? []) as EnrichBodyRow[]) {
+  const rows = (targets ?? []) as EnrichBodyRow[]
+  const relevance = await getRelevanceContext(admin, rows)
+  for (const row of rows) {
     if (deadline !== undefined && Date.now() >= deadline) break
-    const result = await enrichOneBody(admin, row)
+    const result = await enrichOneBody(admin, row, relevance)
     if (result === 'improved') improved++
     else skipped++
     processed++
@@ -185,13 +226,15 @@ export async function drainBackfill(
   { limit = 30, from, to, deadline }: DrainOptions = {},
 ): Promise<DrainResult> {
   let processed = 0, improved = 0, skipped = 0, remaining = 0
+  const { count: keywordGroupCount } = await admin
+    .from('keyword_groups').select('name', { count: 'exact', head: true }).eq('is_active', true)
 
   while (true) {
     if (deadline !== undefined && Date.now() >= deadline) break
 
     let targetQ = admin
       .from('contents')
-      .select('id, original_url, body_original, thumbnail_url, status, review_reason')
+      .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
     if (from) targetQ = targetQ.gte('collected_at', from)
@@ -206,8 +249,10 @@ export async function drainBackfill(
       break
     }
 
-    for (const row of targets as EnrichBodyRow[]) {
-      const result = await enrichOneBody(admin, row)
+    const rows = targets as EnrichBodyRow[]
+    const relevance = await getRelevanceContext(admin, rows, keywordGroupCount ?? 0)
+    for (const row of rows) {
+      const result = await enrichOneBody(admin, row, relevance)
       if (result === 'improved') improved++
       else skipped++
     }
