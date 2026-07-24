@@ -1,0 +1,20 @@
+name: enrich-drain
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # 10분마다(UTC). GitHub 무료 티어는 수 분 지연 가능
+  workflow_dispatch: {}       # 수동 실행(테스트)
+
+concurrency:
+  group: enrich-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call body-backfill enrich drain
+        run: |
+          curl -sS -X GET "https://insight-out-app.vercel.app/api/cron/body-backfill" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail-with-body
