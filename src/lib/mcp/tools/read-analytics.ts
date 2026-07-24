@@ -157,6 +157,40 @@ export function registerAnalyticsReadTools(server: McpServer) {
     } catch (error) { return dbError(error, 'briefings') }
   })
 
+  server.registerTool('newsletter_list', {
+    title: '발송 뉴스레터 목록',
+    description: '발송 완료 또는 일부 발송된 뉴스레터만 최신순으로 조회합니다. 수신자 개인 정보는 포함하지 않습니다.',
+    inputSchema: { limit: z.number().int().min(1).max(50).optional() },
+  }, async ({ limit }, extra) => {
+    const g = guard(extra); if (g.err) return g.err
+    try {
+      const { data, error } = await createAdminClient().from('newsletter_issues')
+        .select('id, sent_on, subject, recipient_cnt')
+        .in('status', ['sent', 'partial'])
+        .order('sent_on', { ascending: false })
+        .limit(limit ?? 20)
+      if (error) return dbError(error, 'newsletter_issues')
+      return ok(rowsText(data ?? [], '발송된 뉴스레터가 없습니다.'))
+    } catch (error) { return dbError(error, 'newsletter_issues') }
+  })
+
+  server.registerTool('newsletter_get', {
+    title: '발송 뉴스레터 상세',
+    description: '발송된 뉴스레터 한 건의 제목·날짜·수록 기사 id·발송 본문(payload)을 조회합니다. content_ids의 각 기사는 content_get으로 연결할 수 있으며 수신자 정보는 포함하지 않습니다.',
+    inputSchema: { id: z.string().uuid() },
+  }, async ({ id }, extra) => {
+    const g = guard(extra); if (g.err) return g.err
+    try {
+      const { data, error } = await createAdminClient().from('newsletter_issues')
+        .select('id, sent_on, subject, content_ids, payload')
+        .eq('id', id)
+        .in('status', ['sent', 'partial'])
+        .maybeSingle()
+      if (error) return dbError(error, 'newsletter_issues')
+      return ok(data ? textValue(data) : '발송되지 않은 뉴스레터이거나 존재하지 않습니다.')
+    } catch (error) { return dbError(error, 'newsletter_issues') }
+  })
+
   server.registerTool('entity_events', {
     title: '기업 엔티티 이벤트',
     description: '발행 기사 기반 확정 이벤트 타임라인을 entity_id로만 조회합니다. 전체 이벤트 덤프는 지원하지 않습니다.',
