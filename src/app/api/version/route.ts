@@ -9,12 +9,21 @@ export const runtime = 'nodejs'
 
 export async function GET() {
   const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? 'local'
-  return NextResponse.json({
-    commit: sha,
-    shortCommit: sha.slice(0, 7),
-    branch: process.env.VERCEL_GIT_COMMIT_REF ?? 'unknown',
-    message: process.env.VERCEL_GIT_COMMIT_MESSAGE ?? '',
-    env: process.env.VERCEL_ENV ?? 'development',
-    deployedAt: new Date().toISOString(),
-  })
+  return NextResponse.json(
+    {
+      commit: sha,
+      shortCommit: sha.slice(0, 7),
+      branch: process.env.VERCEL_GIT_COMMIT_REF ?? 'unknown',
+      message: process.env.VERCEL_GIT_COMMIT_MESSAGE ?? '',
+      env: process.env.VERCEL_ENV ?? 'development',
+      deployedAt: new Date().toISOString(),
+    },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'CDN-Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control': 'no-store',
+      },
+    },
+  )
 }
