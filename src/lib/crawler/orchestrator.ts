@@ -24,6 +24,7 @@ import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
+import { fetchNaverNews } from './adapters/naver-news'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -951,9 +952,11 @@ async function crawlKeywordSearch(
         3,
         [500, 1000, 2000]
       )
-      counts.fetched += rawItems.length
+      const naverItems = await fetchNaverNews(seed, since, { maxItems: 200 })
+      const searchItems = [...rawItems, ...naverItems]
+      counts.fetched += searchItems.length
 
-      for (const item of rawItems) {
+      for (const item of searchItems) {
         const result = await processCrawlItem(
           admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
