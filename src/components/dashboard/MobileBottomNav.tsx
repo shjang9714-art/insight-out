@@ -14,7 +14,7 @@ const MOBILE_TABS = [
   { label: '리포트', href: '/dashboard/reports', exact: false, icon: FileText, isFab: false },
 ] as const
 
-export function MobileBottomNav() {
+export function MobileBottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const pathname = usePathname()
 
   return (
@@ -29,11 +29,11 @@ export function MobileBottomNav() {
 
           if (tab.isFab) {
             return (
-              // prefetch-ok: 모바일 주 네비 — 개수 고정, 이동 잦음
-              <Link
+              <button
                 key={tab.href}
-                href={tab.href}
-                aria-current={active ? 'page' : undefined}
+                type="button"
+                onClick={onSearchClick}
+                aria-label="검색 열기"
                 className="relative -top-3 flex min-w-0 flex-col items-center justify-start gap-1"
               >
                 <span
@@ -47,7 +47,7 @@ export function MobileBottomNav() {
                 <span className={cn('text-[10px] font-semibold', active ? 'text-brand-600' : 'text-foreground')}>
                   {tab.label}
                 </span>
-              </Link>
+              </button>
             )
           }
 

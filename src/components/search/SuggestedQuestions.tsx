@@ -36,9 +36,10 @@ async function fetchTopThemes(): Promise<string[]> {
 
 interface Props {
   className?: string
+  onSelect?: (q: string) => void
 }
 
-export default function SuggestedQuestions({ className }: Props) {
+export default function SuggestedQuestions({ className, onSelect }: Props) {
   const router = useRouter()
   const ctx = useLensContext()
   const [questions, setQuestions] = useState<string[]>([])
@@ -61,7 +62,7 @@ export default function SuggestedQuestions({ className }: Props) {
         {questions.map(q => (
           <button
             key={q}
-            onClick={() => router.push(`/dashboard/search?q=${encodeURIComponent(q)}`)}
+            onClick={() => onSelect ? onSelect(q) : router.push(`/dashboard/search?q=${encodeURIComponent(q)}`)}
             className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-brand-600 hover:bg-brand-100 hover:text-brand-700"
           >
             {q}

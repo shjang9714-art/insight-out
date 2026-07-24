@@ -7,9 +7,11 @@ import { X } from 'lucide-react'
 import DashboardHeader, { NAV_TABS, isTabActive } from '@/components/dashboard/DashboardHeader'
 import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
 import { MobileBottomNav } from '@/components/dashboard/MobileBottomNav'
+import SearchOverlay from '@/components/mobile/SearchOverlay'
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const pathname = usePathname()
 
   return (
@@ -21,7 +23,8 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         {children}
       </main>
 
-      <MobileBottomNav />
+      <MobileBottomNav onSearchClick={() => setSearchOpen(true)} />
+      <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* 모바일 드로어 (md 미만에서만) */}
       {sidebarOpen && (

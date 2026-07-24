@@ -8,9 +8,10 @@ import { SEARCH_FILTER_DEFS, isSearchFilterKey, type SearchFilterKey } from '@/l
 
 interface Props {
   onClose?: () => void
+  onSubmit?: (q: string, filter: SearchFilterKey | '') => void
 }
 
-export default function SearchBar({ onClose }: Props) {
+export default function SearchBar({ onClose, onSubmit }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const rawFilter = searchParams.get('filter')
@@ -59,7 +60,8 @@ export default function SearchBar({ onClose }: Props) {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = searchQuery.trim()
-    navigateSearch(q, filterSelection)
+    if (onSubmit) onSubmit(q, filterSelection)
+    else navigateSearch(q, filterSelection)
     onClose?.()
   }
 
@@ -68,7 +70,10 @@ export default function SearchBar({ onClose }: Props) {
     setFilterOverride(filter)
     setFilterOpen(false)
     const q = currentQ || searchQuery.trim()
-    if (q) navigateSearch(q, filter)
+    if (q) {
+      if (onSubmit) onSubmit(q, filter)
+      else navigateSearch(q, filter)
+    }
   }
 
   const filterLabel = filterSelection
