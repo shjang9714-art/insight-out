@@ -8,6 +8,8 @@ export interface LlmResult {
 export interface LlmProvider {
   name: string
   isConfigured(): boolean
+  /** 등록된 API 키 개수. 키 값은 외부에 노출하지 않는다. */
+  getKeyCount(): number
   /** model 미지정 시 provider 기본값 사용 */
   complete(system: string, user: string, model?: string): Promise<LlmResult | null>
 }

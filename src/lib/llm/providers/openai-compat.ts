@@ -76,6 +76,10 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
       return getKeys(keysEnv).length > 0
     },
 
+    getKeyCount() {
+      return getKeys(keysEnv).length
+    },
+
     async complete(system, user, model?: string) {
       const keys = getKeys(keysEnv)
       if (!keys.length) return null

@@ -8,6 +8,7 @@ import cerebrasProvider from '@/lib/llm/providers/cerebras'
 import sambanovaProvider from '@/lib/llm/providers/sambanova'
 import mistralProvider from '@/lib/llm/providers/mistral'
 import openrouterProvider from '@/lib/llm/providers/openrouter'
+import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import { LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
 
 export type { LlmTask }
@@ -175,7 +176,8 @@ export async function llmCompleteDetailed(
 
         const s = settings.get(route.provider)
         if (s?.enabled === false) continue
-        if ((usage.get(route.provider) ?? 0) >= (s?.limit ?? 1_000_000)) continue
+        const tokenLimit = (s?.limit ?? 1_000_000) * getProviderKeyCount(provider)
+        if ((usage.get(route.provider) ?? 0) >= tokenLimit) continue
 
         console.log(`[LLM] task=${task} provider=${route.provider} model=${route.model_id}`)
         const { result, errorReason, hardLimit } = await completeWithRetry(provider, system, user, route.model_id)
@@ -198,7 +200,8 @@ export async function llmCompleteDetailed(
       const s = settings.get(provider.name)
       if (!provider.isConfigured() || s?.enabled === false) continue
       if (isOnCooldown(provider.name)) continue
-      if ((usage.get(provider.name) ?? 0) >= (s?.limit ?? 1_000_000)) continue
+      const tokenLimit = (s?.limit ?? 1_000_000) * getProviderKeyCount(provider)
+      if ((usage.get(provider.name) ?? 0) >= tokenLimit) continue
 
       console.log(`[LLM] fallback provider=${provider.name}`)
       const { result, errorReason, hardLimit } = await completeWithRetry(provider, system, user)
