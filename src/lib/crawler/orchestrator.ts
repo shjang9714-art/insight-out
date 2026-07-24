@@ -25,6 +25,7 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
 import { fetchNaverNews } from './adapters/naver-news'
+import { fetchGdeltNews } from './adapters/gdelt-news'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -953,7 +954,8 @@ async function crawlKeywordSearch(
         [500, 1000, 2000]
       )
       const naverItems = await fetchNaverNews(seed, since, { maxItems: 200 })
-      const searchItems = [...rawItems, ...naverItems]
+      const gdeltItems = await fetchGdeltNews(seed, since)
+      const searchItems = [...rawItems, ...naverItems, ...gdeltItems]
       counts.fetched += searchItems.length
 
       for (const item of searchItems) {
