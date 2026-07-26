@@ -131,11 +131,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '통계분석',
     items: [
-      { href: '/admin/analytics/content', label: '콘텐츠 분석', description: '콘텐츠 수·조회·북마크·클릭, 유형/기업/키워드별 성과. (준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
+      { href: '/admin/analytics/content', label: '콘텐츠 분석', description: '콘텐츠 수집 추이·카테고리·상태·소스·북마크 성과.', icon: BarChart3 },
       { href: '/admin/source-quality', label: '수집 분석', description: '소스별 수집량·성공률·본문추출률·중복률·오류율. (현행 소스 품질 → 확장 예정 S9)', icon: Gauge },
       { href: '/admin/analytics/publish', label: '발행 분석', description: '발행량·검수 소요·발행 성공률·뉴스레터/브리핑 성과. (준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
       { href: '/admin/analytics/users', label: '사용자 분석', description: 'DAU/WAU/MAU·조직별 활성·기능 이용률·검색/북마크. (준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
-      { href: '/admin/analytics/ai-cost', label: 'AI 사용량·비용', description: 'LLM·번역·TTS·이미지 생성 비용, 모델/유형별 비용, 월 예산. (준비중 — S9)', icon: Cpu, disabled: true, badge: '준비중' },
+      { href: '/admin/analytics/ai-cost', label: 'AI 사용량·비용', description: 'LLM·번역·TTS 월별 사용량과 한도 대비 소진율.', icon: Cpu },
       { href: '/admin/crawl-logs', label: '로그 분석', description: '기술 로그 검색·오류 추세·연관 실행 이력. (현행 크롤 로그 → 확장 예정 S9)', icon: ListChecks },
     ],
   },
