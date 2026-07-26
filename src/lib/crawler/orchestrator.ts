@@ -26,6 +26,7 @@ import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
 import { fetchNaverNews } from './adapters/naver-news'
 import { fetchGdeltNews } from './adapters/gdelt-news'
+import { hasGdeltCredentials, queryGdeltMonth } from './gdelt-bigquery'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -228,6 +229,7 @@ export interface CrawlSummary {
 
 export interface RunCrawlOptions extends CrawlScheduleOptions {
   sourceIds?: string[]
+  gdeltBackfill?: { from: string; to: string }
 }
 
 /**
@@ -1448,6 +1450,21 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     scoped,
     { backfillDays, force: options.force }
   )
+
+  // GDELT BigQuery 소급 경로: 기존 아이템 처리 파이프라인을 그대로 재사용한다.
+  if (options.gdeltBackfill) {
+    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], error: undefined }
+    const terms = [...new Set([...keywords.map(k => k.name), ...searchSeeds, ...groups.flatMap(g => g.include_patterns ?? [])])]
+    const discovered = await queryGdeltMonth({ ...options.gdeltBackfill, keywordTerms: terms })
+    const counts = zeroRejectedBy()
+    const itemCounts = { fetched: discovered.length, inserted: 0, duplicate: 0, rejected: 0, held: 0, rejectedBy: counts }
+    for (const item of discovered) {
+      const result = await processCrawlItem(admin, { original_url: item.url, title: `GDELT 수집 기사 ${item.domain}`, body: `GDELT 원문 링크 ${item.url}`, published_at: item.date }, { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }, keywords, groups, translationBudget, classifyBudget, itemCounts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength)
+      if (result.errorMessage) console.warn('[GDELT 백필] 아이템 처리 실패:', result.errorMessage)
+    }
+    await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
+    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }] }
+  }
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   // youtube_channel → crawlYoutube, 그 외(news_site 등) → crawlOne

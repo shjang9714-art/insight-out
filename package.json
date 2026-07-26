@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@extractus/article-extractor": "^8.1.0",
+    "@google-cloud/bigquery": "^8.1.0",
     "@getbrevo/brevo": "^5.0.4",
     "@napi-rs/canvas": "^0.1.100",
     "@supabase/ssr": "^0.10.3",
