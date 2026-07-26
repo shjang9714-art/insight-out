@@ -535,6 +535,10 @@ async function buildRelatedPast(
 // →시장반응 흐름으로 재구성한다. 인사이트 생성이 끝난 rows(이미 3C·근거기사 확정됨)를 그대로
 // 재료로 쓴다. rank(1=가장 중요) 로 (week_of, rank) 복합키에 저장.
 const MAX_WEEKLY_FLOWS = 3
+/** flow의 단계(stage) 수가 이 값 미만이면 "흐름"이 아니라 단발성 사건이므로 후보에서 제외한다.
+ * "단계 수"는 화면에 렌더되는 단위와 동일하게 flow 배열 길이(WeeklyFlowStep[].length)로 센다
+ * (WeeklyFlowHighlight.tsx의 flow.map()이 항목당 1개 번호 단계로 그대로 렌더). */
+const MIN_FLOW_STAGES = 2
 
 function categoryTierRank(category: string | null): number {
   if (!category) return 3
@@ -666,17 +670,20 @@ export interface WeeklyFlowGenEntry {
   flow: WeeklyFlowStep[]
 }
 
-/** 그 주 상위 max(기본 3)개 이슈 각각의 흐름을 rank(1=가장 중요) 순으로 생성. LLM 실패로
- * 개별 이슈가 빠지면 그 rank만 건너뛰고 나머지는 계속 진행(부분 실패 허용). */
+/** 그 주 상위 max(기본 3)개 이슈 각각의 흐름을 rank(1=가장 중요) 순으로 생성. LLM 실패나
+ * 단계 수 미달(MIN_FLOW_STAGES 미만)이면 그 이슈만 건너뛰고 나머지는 계속 진행(부분 실패
+ * 허용) — 빠진 자리를 다른 후보로 억지로 채우지 않고 그만큼 적은 개수로 남긴다. rank는
+ * 채택된 항목끼리 1부터 다시 매겨 빈틈이 생기지 않게 한다. */
 export async function generateWeeklyFlows(
   rows: Record<string, unknown>[],
   max: number = MAX_WEEKLY_FLOWS
 ): Promise<WeeklyFlowGenEntry[]> {
   const winners = pickFlowWinners(rows, max)
   const entries: WeeklyFlowGenEntry[] = []
-  for (let i = 0; i < winners.length; i++) {
-    const result = await generateWeeklyFlow(winners[i])
-    if (result) entries.push({ rank: i + 1, headline: result.headline, flow: result.flow })
+  for (const winner of winners) {
+    const result = await generateWeeklyFlow(winner)
+    if (!result || result.flow.length < MIN_FLOW_STAGES) continue
+    entries.push({ rank: entries.length + 1, headline: result.headline, flow: result.flow })
   }
   return entries
 }
