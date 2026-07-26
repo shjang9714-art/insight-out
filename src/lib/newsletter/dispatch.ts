@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { sendBrevoEmail } from '@/lib/email/brevo'
+import { sendBrevoEmail, normalizeBrevoError } from '@/lib/email/brevo'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
 import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
 
@@ -75,6 +75,14 @@ export async function runNewsletterDispatch({
   if (!subscribers || subscribers.length === 0) {
     return { ok: true, skipped: 'no_recipients' }
   }
+
+  // 추적용: 발송 대상 도메인 분포(개인정보 보호를 위해 전체 이메일 대신 도메인만 로그)
+  const domainCounts = subscribers.reduce<Record<string, number>>((acc, s) => {
+    const domain = s.newsletter_email?.split('@')[1]?.toLowerCase() ?? 'unknown'
+    acc[domain] = (acc[domain] ?? 0) + 1
+    return acc
+  }, {})
+  console.log('[newsletter-dispatch] 발송 대상 %d명 | 도메인 분포=%o', subscribers.length, domainCounts)
 
   // 3. 카드 선정(주식·증권 필터 적용) + 카드별 인사이트 배치 생성(1콜) + 티저 3종 조회.
   // 발송 시점(수신자별 반복 루프) 안에서는 LLM을 절대 호출하지 않는다 — 여기서 한 번만 생성해
@@ -157,12 +165,20 @@ export async function runNewsletterDispatch({
       })
       sent++
     } catch (err) {
+      const norm = normalizeBrevoError(err)
+      const errorDetail = norm.message ?? (err instanceof Error ? err.message : '발송 실패')
+      console.error(
+        '[newsletter-dispatch] 발송 실패 | domain=%s | name=%s | message=%s',
+        sub.newsletter_email?.split('@')[1] ?? 'unknown',
+        norm.name,
+        errorDetail
+      )
       await supabase.from('newsletter_recipients').insert({
         issue_id: issue.id,
         user_id: sub.user_id,
         email: sub.newsletter_email!,
         status: 'failed',
-        error: err instanceof Error ? err.message : '발송 실패',
+        error: errorDetail,
       })
       failed++
     }
