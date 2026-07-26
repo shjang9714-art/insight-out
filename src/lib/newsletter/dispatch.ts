@@ -85,13 +85,13 @@ export async function runNewsletterDispatch({
     baseUrl,
   })
 
-  if (prepared.cards.length === 0) {
+  if (prepared.newsGroups.every((g) => g.cards.length === 0)) {
     return { ok: true, skipped: 'no_contents' }
   }
 
-  // 4. issue 생성 — 카드 인사이트·티저 데이터는 payload 에 그대로 저장(감사 추적 + 재사용 가능).
+  // 4. issue 생성 — 카드 인사이트·티저·5분류 그룹 데이터는 payload 에 그대로 저장(감사 추적 + 재사용 가능).
   const subject = (settings.subject_tpl ?? 'Insight Out 뉴스레터 · {date}').replace('{date}', todayKST)
-  const contentIds = prepared.cards.map((c) => c.id)
+  const contentIds = prepared.newsGroups.flatMap((g) => g.cards.map((c) => c.id))
 
   const { count: sentIssueCount } = await supabase
     .from('newsletter_issues')
@@ -128,14 +128,18 @@ export async function runNewsletterDispatch({
       dateLabel: todayKST,
       issueNo,
       greetingName: subUser?.name || null,
-      cards: prepared.cards.map((c) => ({
-        title: c.title,
-        category: c.category,
-        sourceName: c.sourceName,
-        summaryKo: c.summaryKo,
-        detailUrl: c.detailUrl,
-        originalUrl: c.originalUrl,
-        insight: c.insight,
+      newsGroups: prepared.newsGroups.map((g) => ({
+        key: g.key,
+        label: g.label,
+        cards: g.cards.map((c) => ({
+          title: c.title,
+          category: c.category,
+          sourceName: c.sourceName,
+          summaryKo: c.summaryKo,
+          detailUrl: c.detailUrl,
+          originalUrl: c.originalUrl,
+          insight: c.insight,
+        })),
       })),
       dailyInsight: prepared.dailyInsight
         ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }

@@ -116,14 +116,18 @@ export async function getPreviewHtml() {
     dateLabel: today,
     issueNo: (sentIssueCount ?? 0) + 1,
     greetingName: null,
-    cards: prepared.cards.map((c) => ({
-      title: c.title,
-      category: c.category,
-      sourceName: c.sourceName,
-      summaryKo: c.summaryKo,
-      detailUrl: c.detailUrl,
-      originalUrl: c.originalUrl,
-      insight: c.insight,
+    newsGroups: prepared.newsGroups.map((g) => ({
+      key: g.key,
+      label: g.label,
+      cards: g.cards.map((c) => ({
+        title: c.title,
+        category: c.category,
+        sourceName: c.sourceName,
+        summaryKo: c.summaryKo,
+        detailUrl: c.detailUrl,
+        originalUrl: c.originalUrl,
+        insight: c.insight,
+      })),
     })),
     dailyInsight: prepared.dailyInsight
       ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
