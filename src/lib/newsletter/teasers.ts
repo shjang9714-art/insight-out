@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export interface DailyInsightTeaser {
   id: string
@@ -24,16 +25,36 @@ export interface CompanyTrendLine {
 
 const KNOWLEDGE_REPORT_CATEGORIES = ['지식보고서', '리포트', '가트너', 'KRG'] as const
 
-/** 2-1. 오늘의 핵심 인사이트 티저 — 가장 최근 발행 1건. 없으면 null(섹션 생략). */
+/**
+ * 2-1. 주간 핵심 인사이트 티저 — 신규 생성 없이 웹(/dashboard/daily-insights/[id])에 이미
+ * 발행된 시사점을 그대로 재사용한다. 최신 week_of 중 display_order 최솟값(=탭·홈 첫 칸 고정건,
+ * 386571e 와 동일 규칙)을 그 회차의 대표 인사이트로 선택. 없으면 null(섹션 생략).
+ */
 export async function getDailyInsightTeaser(
   supabase: SupabaseClient,
   baseUrl: string
 ): Promise<DailyInsightTeaser | null> {
+  const { data: latest, error: latestErr } = await supabase
+    .from('daily_insights')
+    .select('week_of')
+    .eq('status', 'published')
+    .order('week_of', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestErr) {
+    console.error('[뉴스레터/티저] 핵심 인사이트 최신 주차 조회 실패:', latestErr.message)
+    return null
+  }
+  if (!latest?.week_of) return null
+
   const { data, error } = await supabase
     .from('daily_insights')
     .select('id, headline, summary_ko')
     .eq('status', 'published')
-    .order('day_of', { ascending: false })
+    .eq('week_of', latest.week_of)
+    .order('display_order', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
@@ -45,8 +66,8 @@ export async function getDailyInsightTeaser(
 
   return {
     id: data.id,
-    headline: data.headline,
-    summaryKo: data.summary_ko,
+    headline: stripLlmArtifacts(data.headline),
+    summaryKo: stripLlmArtifacts(data.summary_ko),
     detailUrl: `${baseUrl}/dashboard/daily-insights/${data.id}`,
   }
 }
