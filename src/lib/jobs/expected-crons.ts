@@ -35,6 +35,7 @@ const CRON_META: Record<string, CronMeta> = {
   // 3일 주기(지시서 C) — 여유 두어 78시간(3.25일)
   'cron:event-timeline-refresh': { label: '사건 타임라인 갱신', maxAgeHours: 78 },
   'cron:ops-brief':            { label: '일일 운영 브리핑',    maxAgeHours: 30 },
+  'cron:ops-weekly':           { label: '주간 운영 리포트',    maxAgeHours: 200 },
 }
 
 function cronKeyFromPath(path: string): string {
