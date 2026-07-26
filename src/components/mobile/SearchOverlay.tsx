@@ -29,7 +29,7 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<SearchFilterKey | ''>('')
   const previousPathname = useRef(pathname)
-  const { results, isLoading, error } = useUnifiedSearch(q, filter)
+  const { sections, isLoading, error } = useUnifiedSearch(q, filter)
 
   useEffect(() => {
     if (pathname !== previousPathname.current) {
@@ -79,14 +79,14 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
 
             {q && isLoading && <SearchSkeleton />}
             {q && error && <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
-            {q && !isLoading && results !== null && results.length === 0 && !error && (
+            {q && !isLoading && sections !== null && sections.length === 0 && !error && (
               <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
                 <span className="text-4xl">🔍</span>
                 <p className="text-sm font-medium text-foreground"><span className="text-brand-600">&ldquo;{q}&rdquo;</span>에 대한 검색 결과가 없습니다</p>
                 <p className="text-xs text-muted-foreground">다른 키워드로 다시 검색해보세요</p>
               </div>
             )}
-            {q && !isLoading && results !== null && results.length > 0 && <SearchResultsList results={results} />}
+            {q && !isLoading && sections !== null && sections.length > 0 && <SearchResultsList sections={sections} />}
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

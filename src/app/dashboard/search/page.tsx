@@ -9,8 +9,6 @@ import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 import SearchResultsList from '@/components/search/SearchResultsList'
 import { useUnifiedSearch } from '@/lib/search/use-unified-search'
 
-const MAX_RESULTS = 60
-
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -35,7 +33,8 @@ function SearchContent() {
   const rawFilter = searchParams.get('filter')
   const filter: SearchFilterKey | '' = isSearchFilterKey(rawFilter) ? rawFilter : ''
 
-  const { results, isLoading, error } = useUnifiedSearch(q, filter)
+  const { sections, isLoading, error } = useUnifiedSearch(q, filter)
+  const totalCount = sections?.reduce((sum, s) => sum + s.items.length, 0) ?? 0
 
   return (
     <div className="px-4 py-6 sm:px-6">
@@ -61,9 +60,9 @@ function SearchContent() {
           <h1 className="text-lg font-bold text-foreground">
             {q ? `"${q}" 검색 결과` : '콘텐츠 검색'}
           </h1>
-          {!isLoading && results !== null && (
+          {!isLoading && sections !== null && (
             <p className="text-xs text-muted-foreground">
-              총 {results.length}건{results.length === MAX_RESULTS && ' (최대 60건 표시)'}
+              총 {totalCount}건
             </p>
           )}
         </div>
@@ -98,7 +97,7 @@ function SearchContent() {
       )}
 
       {/* 결과 없음 */}
-      {q && !isLoading && results !== null && results.length === 0 && !error && (
+      {q && !isLoading && sections !== null && sections.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-24 text-center">
           <span className="text-4xl">🔍</span>
           <p className="text-sm font-medium text-foreground">
@@ -108,8 +107,8 @@ function SearchContent() {
         </div>
       )}
 
-      {/* 결과 목록 */}
-      {q && !isLoading && results !== null && results.length > 0 && <SearchResultsList results={results} />}
+      {/* 결과 목록 — 종류별 섹션 */}
+      {q && !isLoading && sections !== null && sections.length > 0 && <SearchResultsList sections={sections} />}
     </div>
   )
 }

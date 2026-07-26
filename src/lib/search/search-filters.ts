@@ -38,3 +38,13 @@ export function searchFilterLabel(key: SearchFilterKey): string {
 export function searchFilterDef(key: SearchFilterKey): SearchFilterDef {
   return SEARCH_FILTER_DEFS.find((d) => d.key === key)!
 }
+
+/** 검색 결과 섹션 표시 순서(고정) — 뉴스는 물량이 가장 많아 맨 아래 */
+export const SEARCH_SECTION_ORDER: SearchFilterKey[] = [
+  'insight', 'issue', 'company', 'keyword', 'report', 'web-insight', 'youtube', 'news',
+]
+
+/** '전체' 검색 시 섹션별 표시 상한 — 뉴스는 물량이 많으니 넉넉히, 나머지는 특정 종류가 화면을 뒤덮지 않게 */
+export const SEARCH_SECTION_DISPLAY_CAP: Record<SearchFilterKey, number> = {
+  insight: 12, issue: 12, company: 12, keyword: 12, report: 12, 'web-insight': 12, youtube: 12, news: 24,
+}
