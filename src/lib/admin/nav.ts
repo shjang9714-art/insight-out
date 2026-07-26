@@ -56,6 +56,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '운영센터',
     items: [
       { href: '/admin', label: '운영 대시보드', description: '전체 운영 현황, 사용자 수, 콘텐츠 상태, AI/발행 상태를 요약합니다.', icon: LayoutDashboard },
+      { href: '/admin/ops-issues', label: '운영 이슈', description: '자동 탐지된 운영 이슈(수집·크론·사용량·보강) 확인·상태 관리.', icon: AlertTriangle },
       { href: '/admin/errors', label: '작업·오류 센터', description: '수집·본문추출·AI생성·번역/TTS·발행 실패를 모아 재실행합니다. (준비중 — S9)', icon: AlertTriangle, disabled: true, badge: '준비중' },
       { href: '/admin/job-runs', label: '작업 이력', description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.', icon: History },
       { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
