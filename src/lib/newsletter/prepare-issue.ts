@@ -1,6 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { filterOutStockContent } from '@/lib/newsletter/content-filter'
+import { filterOutStockContent, filterOutYoutubeContent } from '@/lib/newsletter/content-filter'
 import { generateCardInsights } from '@/lib/newsletter/card-insights'
 import {
   getDailyInsightTeaser,
@@ -36,12 +36,17 @@ interface RawContentRow {
   summary_ko: string | null
   original_url: string | null
   matched_groups: string[] | null
-  sources: { name: string } | { name: string }[] | null
+  sources: { name: string; type: string | null } | { name: string; type: string | null }[] | null
 }
 
 function extractSourceName(src: RawContentRow['sources']): string | null {
   if (Array.isArray(src)) return src[0]?.name ?? null
   return src?.name ?? null
+}
+
+function extractSourceType(src: RawContentRow['sources']): string | null {
+  if (Array.isArray(src)) return src[0]?.type ?? null
+  return src?.type ?? null
 }
 
 /**
@@ -63,7 +68,7 @@ export async function prepareNewsletterIssue(
 
   const { data: candidates, error } = await supabase
     .from('contents')
-    .select('id, title, category, summary_ko, original_url, matched_groups, sources(name)')
+    .select('id, title, category, summary_ko, original_url, matched_groups, sources(name, type)')
     .eq('status', 'published')
     .order('is_editor_pick', { ascending: false })
     .order('view_count', { ascending: false })
@@ -76,8 +81,20 @@ export async function prepareNewsletterIssue(
   }
 
   const rows = (candidates ?? []) as unknown as RawContentRow[]
+  const { kept: keptAfterYoutube } = filterOutYoutubeContent(
+    rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      category: r.category,
+      originalUrl: r.original_url,
+      sourceType: extractSourceType(r.sources),
+    }))
+  )
+  const notYoutubeIds = new Set(keptAfterYoutube.map((k) => k.id))
   const { kept } = filterOutStockContent(
-    rows.map((r) => ({ id: r.id, title: r.title, category: r.category, summary_ko: r.summary_ko }))
+    rows
+      .filter((r) => notYoutubeIds.has(r.id))
+      .map((r) => ({ id: r.id, title: r.title, category: r.category, summary_ko: r.summary_ko }))
   )
   const keptIds = new Set(kept.map((k) => k.id))
   const selected = rows.filter((r) => keptIds.has(r.id)).slice(0, cardCount)

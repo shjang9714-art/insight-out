@@ -70,3 +70,55 @@ export function filterOutStockContent<T extends FilterableContent>(contents: T[]
 
   return { kept, excluded }
 }
+
+/**
+ * 뉴스레터 "오늘의 주요 뉴스" 유튜브 콘텐츠 전면 제외 필터.
+ *
+ * 뉴스레터 카드는 뉴스 기사만 노출한다 — 유튜브 콘텐츠는 아래 세 기준 중
+ * 하나라도 해당하면 제외한다(소스 시드 데이터가 카테고리/소스타입/URL 중
+ * 어느 쪽으로 들어오든 걸러지도록 이중 방어):
+ * - `category` 가 '유튜브'
+ * - 콘텐츠의 `sources.type` 이 'youtube_channel'
+ * - `original_url` 도메인이 youtube.com 또는 youtu.be
+ */
+const YOUTUBE_URL_PATTERN = /(?:^https?:\/\/)?(?:[\w-]+\.)*(?:youtube\.com|youtu\.be)\//i
+
+export interface YoutubeFilterableContent {
+  id: string
+  title: string
+  category: string | null
+  originalUrl?: string | null
+  sourceType?: string | null
+}
+
+/** 단일 콘텐츠가 유튜브 계열인지 판정. 매칭되면 제외 사유 문자열, 아니면 null. */
+export function detectYoutubeExclusionReason(content: YoutubeFilterableContent): string | null {
+  if (content.category === '유튜브') {
+    return '카테고리:유튜브'
+  }
+  if (content.sourceType === 'youtube_channel') {
+    return '소스타입:youtube_channel'
+  }
+  if (content.originalUrl && YOUTUBE_URL_PATTERN.test(content.originalUrl)) {
+    return `URL:${content.originalUrl}`
+  }
+  return null
+}
+
+/** 콘텐츠 배열에서 유튜브 콘텐츠를 제외하고, 제외 목록은 사유와 함께 console.log로 남긴다. */
+export function filterOutYoutubeContent<T extends YoutubeFilterableContent>(contents: T[]): FilterResult<T> {
+  const kept: T[] = []
+  const excluded: { content: T; reason: string }[] = []
+
+  for (const content of contents) {
+    const reason = detectYoutubeExclusionReason(content)
+    if (reason) {
+      excluded.push({ content, reason })
+      console.log(`[뉴스레터/유튜브필터] 제외: "${content.title}" (${reason})`)
+    } else {
+      kept.push(content)
+    }
+  }
+
+  return { kept, excluded }
+}
