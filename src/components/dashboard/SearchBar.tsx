@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -22,13 +23,31 @@ export default function SearchBar({ onClose, onSubmit }: Props) {
   // null = 명시 선택 없음 → currentFilter(URL 맥락) 사용
   const [filterOverride, setFilterOverride] = useState<SearchFilterKey | '' | null>(null)
   const [filterOpen, setFilterOpen]         = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const filterRef    = useRef<HTMLDivElement>(null)
   const filterBtnRef = useRef<HTMLButtonElement>(null)
 
   // 명시 선택 > URL 맥락 우선순위
   const filterSelection = filterOverride !== null ? filterOverride : currentFilter
 
-  // 바깥 클릭 시 메뉴 닫기
+  // 드롭다운은 검색 알약(overflow-hidden 래퍼) 밖 body 에 portal 로 띄운다 —
+  // 안에서 absolute 로 두면 알약의 overflow-hidden 에 잘려 항목이 렌더는 되어도 안 보임(라이브 재현 확인).
+  useLayoutEffect(() => {
+    if (!filterOpen || !filterBtnRef.current) { setMenuPos(null); return }
+    const updatePos = () => {
+      const rect = filterBtnRef.current!.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    updatePos()
+    window.addEventListener('resize', updatePos)
+    window.addEventListener('scroll', updatePos, true)
+    return () => {
+      window.removeEventListener('resize', updatePos)
+      window.removeEventListener('scroll', updatePos, true)
+    }
+  }, [filterOpen])
+
+  // 바깥 클릭 시 메뉴 닫기 (portal 로 body 에 떠 있으므로 filterRef 도 함께 확인)
   useEffect(() => {
     if (!filterOpen) return
     const handler = (e: MouseEvent) => {
@@ -101,11 +120,12 @@ export default function SearchBar({ onClose, onSubmit }: Props) {
             <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', filterOpen && 'rotate-180')} />
           </button>
 
-          {/* 카테고리 드롭다운 */}
-          {filterOpen && (
+          {/* 카테고리 드롭다운 — body portal (검색 알약의 overflow-hidden 클리핑 회피) */}
+          {filterOpen && menuPos && typeof document !== 'undefined' && createPortal(
             <div
               ref={filterRef}
-              className="absolute left-0 top-full z-40 mt-1 w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+              style={{ top: menuPos.top, left: menuPos.left }}
+              className="fixed z-50 w-36 max-h-80 overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-card shadow-lg"
             >
               {/* 전체 */}
               <button
@@ -131,7 +151,8 @@ export default function SearchBar({ onClose, onSubmit }: Props) {
                   {def.label}
                 </button>
               ))}
-            </div>
+            </div>,
+            document.body
           )}
         </div>
 

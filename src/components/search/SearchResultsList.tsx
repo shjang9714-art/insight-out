@@ -32,6 +32,16 @@ export default function SearchResultsList({ results }: { results: UnifiedResult[
           const def = SEARCH_FILTER_DEFS.find(d => d.key === 'issue')!
           return <SearchResultCard key={item.key} href={`/dashboard/issues/${issue.id}`} title={issue.title} excerpt={issue.summary} publishedAt={issue.created_at} typeBadge={{ label: def.label, className: def.badgeClass }} />
         }
+        if (item.source === 'entities' && item.entity) {
+          const entity = item.entity
+          const def = SEARCH_FILTER_DEFS.find(d => d.key === 'company')!
+          return <SearchResultCard key={item.key} href={`/dashboard/entities/${entity.id}`} title={entity.canonical_name} excerpt={entity.description} publishedAt={null} typeBadge={{ label: def.label, className: def.badgeClass }} />
+        }
+        if (item.source === 'keywords' && item.keyword) {
+          const keyword = item.keyword
+          const def = SEARCH_FILTER_DEFS.find(d => d.key === 'keyword')!
+          return <SearchResultCard key={item.key} href={`/dashboard/keywords/${encodeURIComponent(keyword.name)}`} title={keyword.name} excerpt={null} publishedAt={null} typeBadge={{ label: def.label, className: def.badgeClass }} />
+        }
         return null
       })}
     </div>
