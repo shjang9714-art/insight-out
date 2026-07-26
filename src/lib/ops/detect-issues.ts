@@ -36,7 +36,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const seen = new Set(signals.map(s => s.fingerprint)); let resolved = 0
   for (const signal of signals) {
     const prior = (existing ?? []).find(row => row.fingerprint === signal.fingerprint)
-    const update = { ...signal, occurrence_count: signal.count, last_seen_at: new Date().toISOString(), resolved_at: null, ...(prior?.status === 'resolved' || !prior ? { status: 'open' } : {}) }
+    const update = { ...signal, occurrence_count: signal.count, last_seen_at: new Date().toISOString(), ...(prior?.status === 'resolved' || !prior ? { status: 'open', resolved_at: null, alerted_at: null } : {}) }
     const { error } = await admin.from('ops_issues').upsert(update, { onConflict: 'fingerprint' })
     if (error) console.error('[운영이슈] upsert 실패:', error.message)
   }

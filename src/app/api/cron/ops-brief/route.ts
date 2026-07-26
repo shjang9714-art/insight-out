@@ -4,6 +4,7 @@ import { sendBrevoEmail } from '@/lib/email/brevo'
 import { gatherDailyBrief, buildDailyBriefHtml } from '@/lib/ops/daily-brief'
 import { runJob } from '@/lib/jobs/run-job'
 import { detectOpsIssues } from '@/lib/ops/detect-issues'
+import { getOpsRecipients } from '@/lib/ops/recipients'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,13 +19,7 @@ export async function GET(request: NextRequest) {
     const result = await runJob(admin, { key: 'cron:ops-brief', trigger: 'cron' }, async () => {
       await detectOpsIssues(admin)
       const brief = await gatherDailyBrief(admin)
-      const override = (process.env.OPS_BRIEF_RECIPIENTS ?? '').split(',').map(v => v.trim()).filter(Boolean)
-      let recipients = override
-      if (!recipients.length) {
-        const { data, error } = await admin.from('users').select('email').eq('role', 'admin').not('email', 'is', null)
-        if (error) throw error
-        recipients = (data ?? []).map(row => row.email).filter(Boolean)
-      }
+      const recipients = await getOpsRecipients(admin)
       if (!recipients.length) return { ok: true, skipped: true, reason: '수신 관리자 없음', alerts: brief.alerts.length }
       const critical = brief.alerts.filter(a => a.severity === 'critical').length
       const warning = brief.alerts.filter(a => a.severity === 'warning').length
