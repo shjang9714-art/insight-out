@@ -1,6 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { filterOutStockContent } from '@/lib/newsletter/content-filter'
+import { filterOutStockContent, filterOutYoutubeContent } from '@/lib/newsletter/content-filter'
 import { generateCardInsights } from '@/lib/newsletter/card-insights'
 import {
   getDailyInsightTeaser,
@@ -54,7 +54,7 @@ interface RawContentRow {
   original_url: string | null
   matched_groups: string[] | null
   matched_keywords: string[] | null
-  sources: { name: string } | { name: string }[] | null
+  sources: { name: string; type: string | null } | { name: string; type: string | null }[] | null
 }
 
 function extractSourceName(src: RawContentRow['sources']): string | null {
@@ -62,11 +62,16 @@ function extractSourceName(src: RawContentRow['sources']): string | null {
   return src?.name ?? null
 }
 
-const CONTENT_SELECT = 'id, title, category, summary_ko, original_url, matched_groups, matched_keywords, sources(name)'
+function extractSourceType(src: RawContentRow['sources']): string | null {
+  if (Array.isArray(src)) return src[0]?.type ?? null
+  return src?.type ?? null
+}
+
+const CONTENT_SELECT = 'id, title, category, summary_ko, original_url, matched_groups, matched_keywords, sources(name, type)'
 
 /** 카테고리(§2)당 최대 노출 건수. */
 const MAX_CARDS_PER_GROUP = 2
-/** 버킷별 전용 조회 시 후보 여유분(주식 필터로 일부 걸러질 것을 감안). */
+/** 버킷별 전용 조회 시 후보 여유분(유튜브·주식 필터로 일부 걸러질 것을 감안). */
 const PER_BUCKET_FETCH_LIMIT = 15
 /** ⑤ 시장·B2B동향(잔여) 판정용 일반 후보 풀 크기. */
 const RESIDUAL_POOL_LIMIT = 40
@@ -101,15 +106,31 @@ async function queryTopContents(supabase: SupabaseClient, overlap: OverlapFilter
   return (data ?? []) as unknown as RawContentRow[]
 }
 
-function stockFilter(rows: RawContentRow[]): RawContentRow[] {
+/**
+ * 유튜브 배제(#105) → 주식·증권 배제, 순서 고정. 같은 선정 파이프라인의 두 필터라
+ * 항상 이 순서로 함께 적용한다(유튜브를 먼저 걷어낸 뒤 남은 기사만 주식 필터 대상).
+ */
+function excludeNonNews(rows: RawContentRow[]): RawContentRow[] {
+  const { kept: keptAfterYoutube } = filterOutYoutubeContent(
+    rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      category: r.category,
+      originalUrl: r.original_url,
+      sourceType: extractSourceType(r.sources),
+    }))
+  )
+  const notYoutubeIds = new Set(keptAfterYoutube.map((k) => k.id))
+  const afterYoutube = rows.filter((r) => notYoutubeIds.has(r.id))
+
   const { kept } = filterOutStockContent(
-    rows.map((r) => ({ id: r.id, title: r.title, category: r.category, summary_ko: r.summary_ko }))
+    afterYoutube.map((r) => ({ id: r.id, title: r.title, category: r.category, summary_ko: r.summary_ko }))
   )
   const keptIds = new Set(kept.map((k) => k.id))
-  return rows.filter((r) => keptIds.has(r.id))
+  return afterYoutube.filter((r) => keptIds.has(r.id))
 }
 
-/** 버킷 ①~④ 후보를 각각의 DB 필터로 직접 조회(주식 필터·상한 적용)한다. */
+/** 버킷 ①~④ 후보를 각각의 DB 필터로 직접 조회(유튜브·주식 필터·상한 적용)한다. */
 async function fetchGroupBuckets(
   supabase: SupabaseClient,
   names: CompetitorNameSets
@@ -140,17 +161,17 @@ async function fetchGroupBuckets(
 
   return {
     buckets: {
-      competitor: dedupeAgainstUsed(stockFilter(competitorRows)),
-      ai_bigtech: dedupeAgainstUsed(stockFilter(aiRows)),
-      aidc_infra: dedupeAgainstUsed(stockFilter(aidcMerged)),
-      policy: dedupeAgainstUsed(stockFilter(policyRows)),
+      competitor: dedupeAgainstUsed(excludeNonNews(competitorRows)),
+      ai_bigtech: dedupeAgainstUsed(excludeNonNews(aiRows)),
+      aidc_infra: dedupeAgainstUsed(excludeNonNews(aidcMerged)),
+      policy: dedupeAgainstUsed(excludeNonNews(policyRows)),
     },
     usedIds,
   }
 }
 
 /**
- * 카드 선정(주식 필터 적용 → 5카테고리 분류, §2) → 카드별 인사이트 배치 생성(1콜) →
+ * 카드 선정(유튜브 배제 → 주식 필터 적용 → 5카테고리 분류, §2) → 카드별 인사이트 배치 생성(1콜) →
  * 티저 3종 조회를 한 번에 처리한다. cron/manual 발송과 관리자 미리보기가 공유하는 단일 지점.
  *
  * generateInsights=false 로 호출하면 LLM 호출 없이 카드/티저만 반환한다(가벼운 미리보기용).
@@ -163,7 +184,7 @@ export async function prepareNewsletterIssue(
   const { buckets, usedIds } = await fetchGroupBuckets(supabase, competitorNames)
 
   // ⑤ 시장·B2B동향 — 넓은 일반 후보 풀에서 ①~④ 어디에도 속하지 않는(=진짜 잔여) 기사만 채운다.
-  const residualPool = stockFilter(await queryTopContents(supabase, null, RESIDUAL_POOL_LIMIT))
+  const residualPool = excludeNonNews(await queryTopContents(supabase, null, RESIDUAL_POOL_LIMIT))
   const marketRows = pickResidualMarketCandidates(
     residualPool.map((r) => ({ ...r, matchedGroups: r.matched_groups ?? [], matchedKeywords: r.matched_keywords ?? [] })),
     competitorNames,

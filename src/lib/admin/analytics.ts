@@ -108,7 +108,7 @@ export interface AiCostAnalytics {
   ttsByMonth: { period: string; chars: number }[]
 }
 
-function recentMonths(count: number): string[] {
+export function recentMonths(count: number): string[] {
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000) // KST 보정
   const months: string[] = []
   for (let i = count - 1; i >= 0; i--) {
@@ -168,4 +168,112 @@ export async function gatherAiCostAnalytics(admin: SupabaseClient, months: numbe
   const ttsByMonth = periods.map(period => ({ period, chars: ttsMap.get(period) ?? 0 }))
 
   return { months: periods, llmByMonth, currentUsage, translationByMonth, ttsByMonth }
+}
+
+// ── 발행 분석 ────────────────────────────────────────────────────────────────
+
+export interface PublishAnalytics {
+  months: string[]
+  byMonth: { period: string; strategyReports: number; briefings: number; newsletters: number; competitorWeekly: number }[]
+  successRate: {
+    strategy: { completed: number; failed: number }
+    briefings: { ok: number; failed: number }
+  }
+  leadTime: { strategyAvgHours: number | null; briefingAvgHours: number | null }
+  newsletter: { period: string; issues: number; recipients: number }[]
+}
+
+const LEAD_TIME_SAMPLE_LIMIT = 2000
+
+function periodOf(iso: string): string {
+  const kst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000)
+  return `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function avgHours(pairs: { start: string; end: string }[]): number | null {
+  if (!pairs.length) return null
+  const totalHours = pairs.reduce((sum, p) => sum + (new Date(p.end).getTime() - new Date(p.start).getTime()) / (60 * 60 * 1000), 0)
+  return Math.round((totalHours / pairs.length) * 10) / 10
+}
+
+export async function gatherPublishAnalytics(admin: SupabaseClient, months: number): Promise<PublishAnalytics> {
+  const periods = recentMonths(months)
+  const windowStart = new Date(`${periods[0]}-01T00:00:00.000Z`).toISOString()
+
+  const [strategyRes, briefingRes, newsletterRes, competitorRes, strategyLeadRes, briefingLeadRes] = await Promise.all([
+    admin.from('ai_reports').select('status, published_at, created_at').gte('created_at', windowStart),
+    admin.from('briefings').select('status, generated_at, published_at, error_reason').gte('generated_at', windowStart),
+    admin.from('newsletter_issues').select('sent_on, recipient_cnt, status').gte('sent_on', windowStart),
+    admin.from('competitor_weekly_reports').select('week_start, status, generated_at').gte('week_start', windowStart),
+    admin.from('ai_reports').select('created_at, published_at').not('published_at', 'is', null).gte('created_at', windowStart).limit(LEAD_TIME_SAMPLE_LIMIT),
+    admin.from('briefings').select('generated_at, published_at').not('published_at', 'is', null).not('generated_at', 'is', null).gte('generated_at', windowStart).limit(LEAD_TIME_SAMPLE_LIMIT),
+  ])
+
+  const byMonthMap = new Map<string, { strategyReports: number; briefings: number; newsletters: number; competitorWeekly: number }>()
+  for (const period of periods) byMonthMap.set(period, { strategyReports: 0, briefings: 0, newsletters: 0, competitorWeekly: 0 })
+
+  type StrategyRow = { status: string; published_at: string | null; created_at: string }
+  const strategyRows = (strategyRes.error ? [] : strategyRes.data ?? []) as StrategyRow[]
+  for (const row of strategyRows) {
+    if (!row.published_at) continue
+    const bucket = byMonthMap.get(periodOf(row.published_at))
+    if (bucket) bucket.strategyReports++
+  }
+  const strategyCompleted = strategyRows.filter(r => r.status === 'completed').length
+  const strategyFailed = strategyRows.filter(r => r.status === 'failed').length
+
+  type BriefingRow = { status: string; generated_at: string | null; published_at: string | null; error_reason: string | null }
+  const briefingRows = (briefingRes.error ? [] : briefingRes.data ?? []) as BriefingRow[]
+  for (const row of briefingRows) {
+    const label = row.published_at ?? row.generated_at
+    if (!label) continue
+    const bucket = byMonthMap.get(periodOf(label))
+    if (bucket) bucket.briefings++
+  }
+  const briefingOk = briefingRows.filter(r => r.status === 'published').length
+  const briefingFailed = briefingRows.filter(r => r.status === 'failed').length
+
+  type NewsletterRow = { sent_on: string; recipient_cnt: number; status: string }
+  const newsletterRows = (newsletterRes.error ? [] : newsletterRes.data ?? []) as NewsletterRow[]
+  const newsletterMap = new Map<string, { issues: number; recipients: number }>()
+  for (const period of periods) newsletterMap.set(period, { issues: 0, recipients: 0 })
+  for (const row of newsletterRows) {
+    if (row.status !== 'sent') continue
+    const period = periodOf(row.sent_on)
+    const bucket = byMonthMap.get(period)
+    if (bucket) bucket.newsletters++
+    const nBucket = newsletterMap.get(period)
+    if (nBucket) {
+      nBucket.issues++
+      nBucket.recipients += row.recipient_cnt ?? 0
+    }
+  }
+
+  type CompetitorRow = { week_start: string; status: string; generated_at: string }
+  const competitorRows = (competitorRes.error ? [] : competitorRes.data ?? []) as CompetitorRow[]
+  for (const row of competitorRows) {
+    if (row.status !== 'published') continue
+    const bucket = byMonthMap.get(periodOf(row.generated_at ?? row.week_start))
+    if (bucket) bucket.competitorWeekly++
+  }
+
+  const byMonth = periods.map(period => ({ period, ...byMonthMap.get(period)! }))
+  const newsletter = periods.map(period => ({ period, ...newsletterMap.get(period)! }))
+
+  const strategyLeadRows = (strategyLeadRes.error ? [] : strategyLeadRes.data ?? []) as { created_at: string; published_at: string }[]
+  const briefingLeadRows = (briefingLeadRes.error ? [] : briefingLeadRes.data ?? []) as { generated_at: string; published_at: string }[]
+
+  return {
+    months: periods,
+    byMonth,
+    successRate: {
+      strategy: { completed: strategyCompleted, failed: strategyFailed },
+      briefings: { ok: briefingOk, failed: briefingFailed },
+    },
+    leadTime: {
+      strategyAvgHours: avgHours(strategyLeadRows.map(r => ({ start: r.created_at, end: r.published_at }))),
+      briefingAvgHours: avgHours(briefingLeadRows.map(r => ({ start: r.generated_at, end: r.published_at }))),
+    },
+    newsletter,
+  }
 }
