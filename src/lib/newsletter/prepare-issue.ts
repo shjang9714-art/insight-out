@@ -2,13 +2,12 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { filterOutStockContent, filterOutYoutubeContent } from '@/lib/newsletter/content-filter'
 import { generateCardInsights } from '@/lib/newsletter/card-insights'
+import { coverUrlFor } from '@/lib/contents/topic-cover'
 import {
   getDailyInsightTeaser,
   getKnowledgeReportTeasers,
-  getCompanyTrendLines,
   type DailyInsightTeaser,
   type KnowledgeReportTeaser,
-  type CompanyTrendLine,
 } from '@/lib/newsletter/teasers'
 import {
   NEWS_GROUP_DEFS,
@@ -30,6 +29,7 @@ export interface PreparedCard {
   originalUrl: string | null
   detailUrl: string
   insight: string | null
+  thumbnailUrl: string | null
 }
 
 export interface PreparedNewsGroup {
@@ -43,7 +43,6 @@ export interface PreparedNewsletterIssue {
   newsGroups: PreparedNewsGroup[]
   dailyInsight: DailyInsightTeaser | null
   knowledgeReports: KnowledgeReportTeaser[]
-  companyTrends: CompanyTrendLine[]
 }
 
 interface RawContentRow {
@@ -52,6 +51,7 @@ interface RawContentRow {
   category: string
   summary_ko: string | null
   original_url: string | null
+  thumbnail_url: string | null
   matched_groups: string[] | null
   matched_keywords: string[] | null
   sources: { name: string; type: string | null } | { name: string; type: string | null }[] | null
@@ -67,7 +67,8 @@ function extractSourceType(src: RawContentRow['sources']): string | null {
   return src?.type ?? null
 }
 
-const CONTENT_SELECT = 'id, title, category, summary_ko, original_url, matched_groups, matched_keywords, sources(name, type)'
+const CONTENT_SELECT =
+  'id, title, category, summary_ko, original_url, thumbnail_url, matched_groups, matched_keywords, sources(name, type)'
 
 /** 카테고리(§2)당 최대 노출 건수. */
 const MAX_CARDS_PER_GROUP = 2
@@ -208,6 +209,7 @@ export async function prepareNewsletterIssue(
     originalUrl: r.original_url,
     detailUrl: `${baseUrl}/dashboard/contents/${r.id}`,
     insight: insights.get(r.id) ?? null,
+    thumbnailUrl: coverUrlFor(r),
   })
 
   const newsGroups: PreparedNewsGroup[] = NEWS_GROUP_DEFS.map((def) => ({
@@ -218,11 +220,10 @@ export async function prepareNewsletterIssue(
 
   const relatedGroups = Array.from(new Set(selected.flatMap((r) => r.matched_groups ?? [])))
 
-  const [dailyInsight, knowledgeReports, companyTrends] = await Promise.all([
+  const [dailyInsight, knowledgeReports] = await Promise.all([
     getDailyInsightTeaser(supabase, baseUrl),
     getKnowledgeReportTeasers(supabase, baseUrl, relatedGroups),
-    getCompanyTrendLines(supabase),
   ])
 
-  return { newsGroups, dailyInsight, knowledgeReports, companyTrends }
+  return { newsGroups, dailyInsight, knowledgeReports }
 }

@@ -1,4 +1,5 @@
 import type { NewsGroupKey } from '@/lib/newsletter/news-groups'
+import type { ImplicationLenses } from '@/lib/daily-insights/types'
 
 export interface NewsletterCard {
   title: string
@@ -8,6 +9,7 @@ export interface NewsletterCard {
   detailUrl: string
   originalUrl: string | null
   insight: string | null
+  thumbnailUrl: string | null
 }
 
 export interface NewsletterNewsGroup {
@@ -20,6 +22,7 @@ export interface NewsletterDailyInsight {
   headline: string
   summaryKo: string
   detailUrl: string
+  implicationLenses: ImplicationLenses | null
 }
 
 export interface NewsletterKnowledgeReport {
@@ -27,12 +30,7 @@ export interface NewsletterKnowledgeReport {
   title: string
   teaser: string
   detailUrl: string
-}
-
-export interface NewsletterCompanyTrend {
-  company: string
-  trend: string
-  isLgu: boolean
+  thumbnailUrl: string | null
 }
 
 export interface NewsletterEmailData {
@@ -42,7 +40,6 @@ export interface NewsletterEmailData {
   newsGroups: NewsletterNewsGroup[]
   dailyInsight: NewsletterDailyInsight | null
   knowledgeReports: NewsletterKnowledgeReport[]
-  companyTrends: NewsletterCompanyTrend[]
   unsubscribeUrl: string
 }
 
@@ -51,6 +48,49 @@ function escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+/** 웹(EvidenceDrilldown.tsx LENS_META)과 라벨·아이콘·색 톤을 맞춘 메일 호환(이모지+인라인 스타일) 버전. */
+const LENS_META: Record<keyof ImplicationLenses, { label: string; emoji: string; bg: string; text: string }> = {
+  opportunity: { label: '기회', emoji: '🚀', bg: '#ecfdf5', text: '#047857' },
+  risk: { label: '리스크', emoji: '⚠️', bg: '#fffbeb', text: '#b45309' },
+  action: { label: '실행 제안', emoji: '✅', bg: '#f0f9ff', text: '#0369a1' },
+  editorial: { label: '종합 관점', emoji: '✍️', bg: '#f9fafb', text: '#111827' },
+}
+
+function buildImplicationLensCard(key: keyof ImplicationLenses, text: string): string {
+  const meta = LENS_META[key]
+  return `
+        <td width="50%" valign="top" style="padding:0 6px 12px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${meta.bg}; border-radius:8px;">
+            <tr>
+              <td style="padding:12px 14px;">
+                <p style="margin:0 0 4px; font-size:11px; font-weight:700; letter-spacing:0.04em; color:${meta.text};">${meta.emoji} ${meta.label}</p>
+                <p style="margin:0; font-size:13px; line-height:1.6; color:${meta.text};">${escapeHtml(text)}</p>
+              </td>
+            </tr>
+          </table>
+        </td>`
+}
+
+function buildImplicationLensesSection(lenses: ImplicationLenses | null): string {
+  if (!lenses) return ''
+  const keys = (Object.keys(LENS_META) as (keyof ImplicationLenses)[]).filter((k) => lenses[k])
+  if (keys.length === 0) return ''
+
+  const rows: string[] = []
+  for (let i = 0; i < keys.length; i += 2) {
+    const pair = keys.slice(i, i + 2)
+    const cells = pair.map((k) => buildImplicationLensCard(k, lenses[k]!)).join('')
+    const filler = pair.length === 1 ? '<td width="50%"></td>' : ''
+    rows.push(`<tr>${cells}${filler}</tr>`)
+  }
+
+  return `
+            <p style="margin:16px 0 8px; font-size:11px; font-weight:700; letter-spacing:0.1em; color:#E6007E;">✍️ 자사 관점 시사점</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              ${rows.join('')}
+            </table>`
 }
 
 function buildDailyInsightSection(data: NewsletterEmailData['dailyInsight']): string {
@@ -64,7 +104,8 @@ function buildDailyInsightSection(data: NewsletterEmailData['dailyInsight']): st
             <p style="margin:0 0 10px; font-size:11px; font-weight:700; letter-spacing:0.12em; color:#E6007E;">🧭 주간 핵심 인사이트</p>
             <p style="margin:0 0 10px; font-size:19px; font-weight:800; line-height:1.4; color:#111827;">${escapeHtml(data.headline)}</p>
             <p style="margin:0 0 16px; font-size:14px; line-height:1.7; color:#4b5563;">💡 ${escapeHtml(data.summaryKo)}</p>
-            <a href="${data.detailUrl}" style="display:inline-block; font-size:13px; font-weight:700; color:#ffffff; background:#E6007E; padding:10px 18px; border-radius:8px; text-decoration:none;">인사이트 전문 보기 →</a>
+            ${buildImplicationLensesSection(data.implicationLenses)}
+            <a href="${data.detailUrl}" style="display:inline-block; margin-top:16px; font-size:13px; font-weight:700; color:#ffffff; background:#E6007E; padding:10px 18px; border-radius:8px; text-decoration:none;">인사이트 전문 보기 →</a>
           </td>
         </tr>
       </table>
@@ -73,6 +114,22 @@ function buildDailyInsightSection(data: NewsletterEmailData['dailyInsight']): st
 }
 
 function buildNewsCardItem(card: NewsletterCard, i: number, isLast: boolean): string {
+  const textCell = `
+          <td valign="top" style="padding:0 0 18px;">
+            <p style="margin:0 0 5px; font-size:11px; color:#9ca3af;"><span style="color:#E6007E; font-weight:700;">${escapeHtml(card.category)}</span>${card.sourceName ? ` · ${escapeHtml(card.sourceName)}` : ''}</p>
+            <p style="margin:0 0 6px; font-size:15px; font-weight:700; line-height:1.45; color:#111827;">${escapeHtml(card.title)}</p>
+            ${card.summaryKo ? `<p style="margin:0 0 8px; font-size:13px; line-height:1.65; color:#6b7280;">${escapeHtml(card.summaryKo)}</p>` : ''}
+            ${card.insight ? `<p style="margin:0 0 8px; font-size:12.5px; line-height:1.6; color:#4b5563; border-top:1px dashed #eef0f3; padding-top:8px;">💡 <span style="color:#E6007E; font-weight:700;">인사이트 ·</span> ${escapeHtml(card.insight)}</p>` : ''}
+            <a href="${card.detailUrl}" style="font-size:12px; font-weight:700; color:#E6007E; text-decoration:none;">자세히 보기 →</a>
+          </td>`
+
+  const thumbnailCell = card.thumbnailUrl
+    ? `
+          <td width="104" valign="top" style="padding:0 14px 18px 0;">
+            <img src="${card.thumbnailUrl}" width="96" height="96" alt="" style="display:block; width:96px; height:96px; object-fit:cover; border-radius:8px; background:#f1f2f4;">
+          </td>`
+    : ''
+
   return `
   <tr>
     <td style="padding:14px 0 0;">
@@ -80,14 +137,7 @@ function buildNewsCardItem(card: NewsletterCard, i: number, isLast: boolean): st
         <tr>
           <td width="34" valign="top" style="padding:0 0 18px;">
             <span style="display:inline-block; width:24px; height:24px; line-height:24px; text-align:center; font-size:12px; font-weight:700; color:#E6007E; background:#fce7f0; border-radius:6px;">${i + 1}</span>
-          </td>
-          <td valign="top" style="padding:0 0 18px;">
-            <p style="margin:0 0 5px; font-size:11px; color:#9ca3af;"><span style="color:#E6007E; font-weight:700;">${escapeHtml(card.category)}</span>${card.sourceName ? ` · ${escapeHtml(card.sourceName)}` : ''}</p>
-            <p style="margin:0 0 6px; font-size:15px; font-weight:700; line-height:1.45; color:#111827;">${escapeHtml(card.title)}</p>
-            ${card.summaryKo ? `<p style="margin:0 0 8px; font-size:13px; line-height:1.65; color:#6b7280;">${escapeHtml(card.summaryKo)}</p>` : ''}
-            ${card.insight ? `<p style="margin:0 0 8px; font-size:12.5px; line-height:1.6; color:#4b5563; border-top:1px dashed #eef0f3; padding-top:8px;">💡 <span style="color:#E6007E; font-weight:700;">인사이트 ·</span> ${escapeHtml(card.insight)}</p>` : ''}
-            <a href="${card.detailUrl}" style="font-size:12px; font-weight:700; color:#E6007E; text-decoration:none;">자세히 보기 →</a>
-          </td>
+          </td>${thumbnailCell}${textCell}
         </tr>
       </table>
     </td>
@@ -132,19 +182,27 @@ function buildKnowledgeReportsSection(reports: NewsletterKnowledgeReport[]): str
   if (reports.length === 0) return ''
 
   const cards = reports
-    .map(
-      (r, i) => `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb; border:1px solid #eef0f3; border-radius:10px; ${i < reports.length - 1 ? 'margin-bottom:10px;' : ''}">
-        <tr>
-          <td style="padding:16px 18px;">
+    .map((r, i) => {
+      const textCell = `
+          <td valign="top" style="padding:16px 18px;">
             <p style="margin:0 0 4px; font-size:10px; font-weight:700; letter-spacing:0.08em; color:#8b5cf6;">${escapeHtml(r.category)}</p>
             <p style="margin:0 0 4px; font-size:14.5px; font-weight:700; color:#111827; line-height:1.4;">${escapeHtml(r.title)}</p>
             ${r.teaser ? `<p style="margin:0 0 10px; font-size:12.5px; color:#6b7280; line-height:1.6;">${escapeHtml(r.teaser)}</p>` : ''}
             <a href="${r.detailUrl}" style="font-size:12px; font-weight:700; color:#E6007E; text-decoration:none;">보고서 열기 →</a>
-          </td>
-        </tr>
+          </td>`
+
+      const thumbnailCell = r.thumbnailUrl
+        ? `
+          <td width="120" valign="top" style="padding:16px 0 16px 16px;">
+            <img src="${r.thumbnailUrl}" width="104" height="104" alt="" style="display:block; width:104px; height:104px; object-fit:cover; border-radius:8px; background:#eef0f3;">
+          </td>`
+        : ''
+
+      return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb; border:1px solid #eef0f3; border-radius:10px; ${i < reports.length - 1 ? 'margin-bottom:10px;' : ''}">
+        <tr>${thumbnailCell}${textCell}</tr>
       </table>`
-    )
+    })
     .join('')
 
   return `
@@ -155,30 +213,6 @@ function buildKnowledgeReportsSection(reports: NewsletterKnowledgeReport[]): str
   </tr>
   <tr>
     <td style="padding:14px 40px 0;">${cards}
-    </td>
-  </tr>`
-}
-
-function buildCompanyTrendsSection(trends: NewsletterCompanyTrend[]): string {
-  if (trends.length === 0) return ''
-
-  const rows = trends
-    .map(
-      (t, i) => `
-        <tr><td style="padding:7px 0; ${i < trends.length - 1 ? 'border-bottom:1px solid #f5f6f7;' : ''} font-size:13px; color:#374151; line-height:1.6;"><strong style="color:${t.isLgu ? '#E6007E' : '#111827'};">${escapeHtml(t.company)}</strong> · ${escapeHtml(t.trend)}</td></tr>`
-    )
-    .join('')
-
-  return `
-  <tr>
-    <td style="padding:30px 40px 6px;">
-      <p style="margin:0; font-size:13px; font-weight:800; letter-spacing:0.06em; color:#111827; border-left:4px solid #E6007E; padding-left:10px;">🏢 기업 동향 브리핑</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:12px 40px 4px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}
-      </table>
     </td>
   </tr>`
 }
@@ -220,7 +254,7 @@ export function buildNewsletterHtml(data: NewsletterEmailData): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="io-bg" style="background-color:#eceef1;">
 <tr><td align="center" style="padding:16px 12px 40px;">
 
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" class="io-card" style="width:600px; max-width:600px; background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 1px 3px rgba(16,24,40,0.08);">
+<table role="presentation" width="720" cellpadding="0" cellspacing="0" class="io-card" style="width:720px; max-width:720px; background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 1px 3px rgba(16,24,40,0.08);">
 
   <tr>
     <td style="padding:32px 40px 24px; border-bottom:3px solid #E6007E;">
@@ -244,7 +278,6 @@ export function buildNewsletterHtml(data: NewsletterEmailData): string {
 ${buildDailyInsightSection(data.dailyInsight)}
 ${buildNewsCardsSection(data.newsGroups)}
 ${buildKnowledgeReportsSection(data.knowledgeReports)}
-${buildCompanyTrendsSection(data.companyTrends)}
 
   <tr>
     <td style="padding:28px 40px 32px;">

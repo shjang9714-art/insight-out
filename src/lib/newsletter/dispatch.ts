@@ -147,13 +147,18 @@ export async function runNewsletterDispatch({
           detailUrl: c.detailUrl,
           originalUrl: c.originalUrl,
           insight: c.insight,
+          thumbnailUrl: c.thumbnailUrl,
         })),
       })),
       dailyInsight: prepared.dailyInsight
-        ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
+        ? {
+            headline: prepared.dailyInsight.headline,
+            summaryKo: prepared.dailyInsight.summaryKo,
+            detailUrl: prepared.dailyInsight.detailUrl,
+            implicationLenses: prepared.dailyInsight.implicationLenses,
+          }
         : null,
       knowledgeReports: prepared.knowledgeReports,
-      companyTrends: prepared.companyTrends,
       unsubscribeUrl,
     })
 
