@@ -33,6 +33,7 @@ export function AdminSidebar() {
   const [folded, setFolded] = useState<Set<string>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null)
+  const resizeHandleRef = useRef<HTMLDivElement>(null)
 
   // 하이드레이션 안전 — 초기 렌더는 기본값, mount 후 localStorage 반영
   useEffect(() => {
@@ -76,6 +77,7 @@ export function AdminSidebar() {
       setWidth(next)
     }
     function handleMouseUp() {
+      resizeHandleRef.current?.blur()
       setIsDragging(false)
       dragState.current = null
       document.body.style.userSelect = ''
@@ -426,13 +428,17 @@ export function AdminSidebar() {
       {/* 리사이즈 핸들 */}
       {!collapsed && (
         <div
+          ref={resizeHandleRef}
           role="separator"
           aria-orientation="vertical"
           aria-label="사이드바 폭 조절"
           tabIndex={0}
           onMouseDown={handleHandleMouseDown}
           onKeyDown={handleHandleKeyDown}
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-brand-600/40 focus:bg-brand-600/40 focus:outline-none"
+          className={cn(
+            'absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-brand-600/40 focus-visible:bg-brand-600/40 focus:outline-none',
+            isDragging && 'bg-brand-600/40'
+          )}
         />
       )}
     </aside>
