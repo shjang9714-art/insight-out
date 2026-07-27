@@ -76,6 +76,8 @@ export interface SearchSection {
 
 // 소스별 조회 상한 — 기존과 동일(무회귀), 단일 카테고리 필터 선택 시 화면 표시 상한도 동일하게 사용
 const FETCH_LIMIT = 60
+// 다중 단어 검색 시 토큰 상한 — 과도한 .or() 체이닝 방지
+const MAX_QUERY_TOKENS = 5
 // 엔티티/키워드 ↔ 콘텐츠 연결 조회 시 안전판(다건 연결된 항목이 과도한 로우를 끌어오지 않게) — 최신순 정렬 후 자르므로
 // linkedCount 는 이 상한 내에서의 "적어도" 값이 될 수 있음(카드엔 참고 신호로만 사용, 정밀 집계 목적 아님)
 const LINK_FETCH_CAP = 500
@@ -85,16 +87,51 @@ function sortDesc(items: UnifiedResult[]): UnifiedResult[] {
   return [...items].sort((a, b) => b.sortDate.localeCompare(a.sortDate))
 }
 
+/**
+ * 검색어를 공백 기준 토큰으로 쪼갠다. 다중 단어(예: "엔비디아 네이버")를 하나의 ilike 패턴
+ * `%엔비디아 네이버%` 로 통째로 매칭하면 그 문자열이 그대로 붙어 등장하는 기사만 걸려 0건이
+ * 되는 과거 버그가 있었다 — 반드시 토큰 단위로 AND 매칭해야 한다.
+ * 회사 별칭 정규화(normalizeCompany)도 토큰 단위로 적용해야 다중 단어에서도 동작한다.
+ */
+function tokenizeQuery(q: string): string[] {
+  return q.split(/\s+/).filter(Boolean).slice(0, MAX_QUERY_TOKENS)
+}
+
+function buildIlikePatterns(q: string): string[] {
+  return tokenizeQuery(q).map((token) => {
+    const searchTerm = normalizeCompany(token) ?? token
+    const escaped = searchTerm.replace(/[%_]/g, '\\$&')
+    return `%${escaped}%`
+  })
+}
+
+/** 각 토큰이 columns 중 하나에라도 등장해야 하는 (OR across columns) AND (across tokens) 필터를 체이닝한다. */
+function applyTokenFilters<T extends { or: (filter: string) => T }>(
+  query: T,
+  columns: string[],
+  ilikePats: string[],
+): T {
+  let result = query
+  for (const pat of ilikePats) {
+    const orFilter = columns.map((col) => `${col}.ilike.${pat}`).join(',')
+    result = result.or(orFilter)
+  }
+  return result
+}
+
 async function fetchContentCategory(
   supabase: SupabaseClient,
-  ilikePat: string,
+  ilikePats: string[],
   categories: ContentCategory[] | undefined,
   cap: number,
 ): Promise<UnifiedResult[]> {
-  const orFilter = [`title.ilike.${ilikePat}`, `summary_ko.ilike.${ilikePat}`, `body_original.ilike.${ilikePat}`].join(',')
-  let query = supabase.from('contents').select(
-    'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
-  ).or(orFilter).eq('status', 'published')
+  let query = applyTokenFilters(
+    supabase.from('contents').select(
+      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
+    ),
+    ['title', 'summary_ko', 'body_original'],
+    ilikePats,
+  ).eq('status', 'published')
   if (categories) query = query.in('category', categories)
   const { data, error: err } = await query.order('published_at', { ascending: false, nullsFirst: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] contents 조회 오류:', err); return [] }
@@ -103,18 +140,26 @@ async function fetchContentCategory(
     .slice(0, cap)
 }
 
-async function fetchInsights(supabase: SupabaseClient, ilikePat: string, cap: number): Promise<UnifiedResult[]> {
-  const orFilter = ['headline', 'summary_ko', 'market_trend', 'competitor_trend', 'implication'].map(field => `${field}.ilike.${ilikePat}`).join(',')
-  const { data, error: err } = await supabase.from('daily_insights').select('id, headline, summary_ko, day_of').or(orFilter).eq('status', 'published').order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
+async function fetchInsights(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+  const query = applyTokenFilters(
+    supabase.from('daily_insights').select('id, headline, summary_ko, day_of'),
+    ['headline', 'summary_ko', 'market_trend', 'competitor_trend', 'implication'],
+    ilikePats,
+  ).eq('status', 'published')
+  const { data, error: err } = await query.order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] daily_insights 조회 오류:', err); return [] }
   return ((data ?? []) as DailyInsightRow[])
     .map(row => ({ key: `insight-${row.id}`, source: 'daily_insights' as const, sortDate: new Date(row.day_of).toISOString(), insight: row }))
     .slice(0, cap)
 }
 
-async function fetchIssues(supabase: SupabaseClient, ilikePat: string, cap: number): Promise<UnifiedResult[]> {
-  const orFilter = [`title.ilike.${ilikePat}`, `summary.ilike.${ilikePat}`].join(',')
-  const { data, error: err } = await supabase.from('issues').select('id, title, summary, created_at').or(orFilter).eq('status', 'published').order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
+async function fetchIssues(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+  const query = applyTokenFilters(
+    supabase.from('issues').select('id, title, summary, created_at'),
+    ['title', 'summary'],
+    ilikePats,
+  ).eq('status', 'published')
+  const { data, error: err } = await query.order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] issues 조회 오류:', err); return [] }
   return ((data ?? []) as IssueRow[])
     .map(row => ({ key: `issue-${row.id}`, source: 'issues' as const, sortDate: row.created_at, issue: row }))
@@ -135,12 +180,12 @@ function aggregateLinks(rows: { linkId: string; publishedAt: string | null }[]):
   return stats
 }
 
-async function fetchEntities(supabase: SupabaseClient, ilikePat: string, cap: number): Promise<UnifiedResult[]> {
-  const { data: matched, error: err } = await supabase
-    .from('entities')
-    .select('id, canonical_name, description')
-    .or(`canonical_name.ilike.${ilikePat},description.ilike.${ilikePat}`)
-    .limit(FETCH_LIMIT)
+async function fetchEntities(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+  const { data: matched, error: err } = await applyTokenFilters(
+    supabase.from('entities').select('id, canonical_name, description'),
+    ['canonical_name', 'description'],
+    ilikePats,
+  ).limit(FETCH_LIMIT)
   if (err) { console.error('[search] entities 조회 오류:', err); return [] }
   const ids = (matched ?? []).map((e) => e.id as string)
   if (ids.length === 0) return []
@@ -171,12 +216,12 @@ async function fetchEntities(supabase: SupabaseClient, ilikePat: string, cap: nu
   return sortDesc(items).slice(0, cap)
 }
 
-async function fetchKeywords(supabase: SupabaseClient, ilikePat: string, cap: number): Promise<UnifiedResult[]> {
-  const { data: matched, error: err } = await supabase
-    .from('keywords')
-    .select('id, name')
-    .ilike('name', ilikePat)
-    .limit(FETCH_LIMIT)
+async function fetchKeywords(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+  const { data: matched, error: err } = await applyTokenFilters(
+    supabase.from('keywords').select('id, name'),
+    ['name'],
+    ilikePats,
+  ).limit(FETCH_LIMIT)
   if (err) { console.error('[search] keywords 조회 오류:', err); return [] }
   const ids = (matched ?? []).map((k) => k.id as string)
   if (ids.length === 0) return []
@@ -210,15 +255,15 @@ async function fetchKeywords(supabase: SupabaseClient, ilikePat: string, cap: nu
 async function fetchSection(
   supabase: SupabaseClient,
   key: SearchFilterKey,
-  ilikePat: string,
+  ilikePats: string[],
   cap: number,
 ): Promise<UnifiedResult[]> {
   const def = searchFilterDef(key)
-  if (def.source === 'content') return fetchContentCategory(supabase, ilikePat, def.categories, cap)
-  if (def.source === 'daily_insights') return fetchInsights(supabase, ilikePat, cap)
-  if (def.source === 'issues') return fetchIssues(supabase, ilikePat, cap)
-  if (def.source === 'entities') return fetchEntities(supabase, ilikePat, cap)
-  return fetchKeywords(supabase, ilikePat, cap)
+  if (def.source === 'content') return fetchContentCategory(supabase, ilikePats, def.categories, cap)
+  if (def.source === 'daily_insights') return fetchInsights(supabase, ilikePats, cap)
+  if (def.source === 'issues') return fetchIssues(supabase, ilikePats, cap)
+  if (def.source === 'entities') return fetchEntities(supabase, ilikePats, cap)
+  return fetchKeywords(supabase, ilikePats, cap)
 }
 
 export function useUnifiedSearch(
@@ -240,9 +285,7 @@ export function useUnifiedSearch(
 
     const fetchResults = async () => {
       const supabase = createClient()
-      const searchTerm = normalizeCompany(q) ?? q
-      const escapedQ = searchTerm.replace(/[%_]/g, '\\$&')
-      const ilikePat = `%${escapedQ}%`
+      const ilikePats = buildIlikePatterns(q)
 
       // 특정 카테고리 선택 시: 그 종류 하나만 조회, 표시 상한도 60(무회귀 — 기존 단독 필터와 동일)
       const keysToFetch = filter ? [filter] : SEARCH_SECTION_ORDER
@@ -251,7 +294,7 @@ export function useUnifiedSearch(
       const fetched = await Promise.all(
         keysToFetch.map(async (key): Promise<SearchSection> => ({
           key,
-          items: await fetchSection(supabase, key, ilikePat, capFor(key)),
+          items: await fetchSection(supabase, key, ilikePats, capFor(key)),
         }))
       )
 
