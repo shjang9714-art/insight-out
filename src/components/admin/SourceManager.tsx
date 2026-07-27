@@ -142,7 +142,11 @@ function feedErrorMessage(result: FeedValidationResponse): string {
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
-export default function SourceManager() {
+interface SourceManagerProps {
+  initialSelectedType?: SourceType | 'all'
+}
+
+export default function SourceManager({ initialSelectedType = 'all' }: SourceManagerProps) {
   const supabase = createClient()
 
   const [sources,   setSources]   = useState<SourceRow[]>([])
@@ -161,7 +165,7 @@ export default function SourceManager() {
   const [isValidatingFeed, setIsValidatingFeed] = useState(false)
 
   // 유형 필터 상태 (§A) — 단일 탭
-  const [selectedType, setSelectedType] = useState<SourceType | 'all'>('all')
+  const [selectedType, setSelectedType] = useState<SourceType | 'all'>(initialSelectedType)
 
   // ── 목록 로드 ─────────────────────────────────────────────────────────────
 

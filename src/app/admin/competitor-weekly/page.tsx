@@ -1,15 +1,17 @@
 import type { Metadata } from 'next'
-import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import CompetitorWeeklyHub from '@/components/admin/CompetitorWeeklyHub'
-import type { CompetitorWeeklyRow } from '@/components/admin/CompetitorWeeklyManager'
+import CompetitorWeeklyManager, {
+  type CompetitorWeeklyRow,
+} from '@/components/admin/CompetitorWeeklyManager'
+import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '경쟁사 주간 브리핑 | 어드민 | Insight Out',
-  description: '경쟁사 동향을 사업영역별로 종합한 주간 브리핑을 생성·확인합니다.',
+  description: '경쟁사 동향을 사업영역별로 종합한 주간 브리핑 발행 목록을 관리합니다.',
 }
 
 export default async function CompetitorWeeklyAdminPage() {
@@ -33,10 +35,19 @@ export default async function CompetitorWeeklyAdminPage() {
     .limit(10)
 
   const reports = (error ? [] : (data as CompetitorWeeklyRow[] | null)) ?? []
+  const reportsKey = reports.map((report) => `${report.id}:${report.generated_at}`).join('|')
 
   return (
-    <Suspense fallback={null}>
-      <CompetitorWeeklyHub initialReports={reports} schemaMissing={error?.code === '42P01'} />
-    </Suspense>
+    <div className="space-y-6">
+      <AdminPageHeader />
+      {error?.code === '42P01' ? (
+        <AdminEmptyState
+          message="주간 브리핑 테이블이 아직 준비되지 않았습니다 (SQL 미적용)."
+          className="rounded-lg p-8"
+        />
+      ) : (
+        <CompetitorWeeklyManager key={reportsKey} initialReports={reports} />
+      )}
+    </div>
   )
 }

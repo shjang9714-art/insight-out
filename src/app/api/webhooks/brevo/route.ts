@@ -42,9 +42,11 @@ export async function POST(request: NextRequest) {
         .eq('message_id', messageId)
         .in('status', ['sent', 'delivered'])
     } else if (type === 'hard_bounce' || type === 'soft_bounce' || type === 'blocked' || type === 'invalid_email') {
+      const reason = (ev.reason as string | undefined) ?? type
+      console.warn('[brevo-webhook] 반송/차단 | messageId=%s | type=%s | reason=%s', messageId, type, reason)
       await db
         .from('newsletter_recipients')
-        .update({ status: 'bounced', error: '이메일 반송' })
+        .update({ status: 'bounced', error: `이메일 반송(${type}): ${reason}` })
         .eq('message_id', messageId)
     } else if (type === 'spam') {
       console.warn('[brevo-webhook] 수신 거부(spam complaint) | messageId=%s', messageId)

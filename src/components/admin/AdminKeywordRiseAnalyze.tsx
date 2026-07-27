@@ -5,6 +5,7 @@ import { Check, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { copyText } from '@/lib/clipboard'
 
 interface VerifyItem {
   slot: string
@@ -48,20 +49,28 @@ export default function AdminKeywordRiseAnalyze() {
       // 프롬프트는 자동복사 성공 여부와 무관하게 항상 확보한다(권한 차단 시 수동복사 폴백용).
       setCopiedPrompt(prompt)
       setFactCount(data.factCount ?? 0)
-      try {
-        if (!navigator.clipboard) throw new Error('클립보드 API 를 사용할 수 없습니다.')
-        await navigator.clipboard.writeText(prompt)
-        setClipboardBlocked(false)
+      const ok = await copyText(prompt)
+      setClipboardBlocked(!ok)
+      if (ok) {
         setIsCopied(true)
         window.setTimeout(() => setIsCopied(false), 3000)
-      } catch {
-        setClipboardBlocked(true)
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '분석 컨텍스트 복사에 실패했습니다.')
+      setError(caught instanceof Error ? caught.message : '분석 컨텍스트를 불러오지 못했습니다.')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  function handleManualCopy() {
+    // 사용자 클릭에 직접 붙은 동기 진입 — await 선행 없이 곧바로 호출해 성공률을 높인다.
+    void copyText(copiedPrompt).then((ok) => {
+      setClipboardBlocked(!ok)
+      if (ok) {
+        setIsCopied(true)
+        window.setTimeout(() => setIsCopied(false), 3000)
+      }
+    })
   }
 
   async function handleImport() {
@@ -139,16 +148,22 @@ export default function AdminKeywordRiseAnalyze() {
         <details open={clipboardBlocked} className="rounded-lg border border-border p-3">
           <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
             {clipboardBlocked
-              ? '자동 복사가 차단됐습니다 — 아래 내용을 직접 복사하세요'
+              ? '자동 복사가 차단됐어요 — 아래 상자에서 직접 복사하세요'
               : '분석 컨텍스트 원문 (펼쳐서 다시 보기)'}
           </summary>
-          <textarea
-            readOnly
-            value={copiedPrompt}
-            rows={10}
-            onFocus={(event) => event.currentTarget.select()}
-            className="mt-2 w-full rounded-md border border-border bg-background p-2 font-mono text-xs"
-          />
+          <div className="mt-2 flex items-start gap-2">
+            <textarea
+              readOnly
+              value={copiedPrompt}
+              rows={10}
+              onFocus={(event) => event.currentTarget.select()}
+              className="w-full rounded-md border border-border bg-background p-2 font-mono text-xs"
+            />
+            <Button type="button" variant="outline" size="sm" onClick={handleManualCopy} className="shrink-0 gap-1.5">
+              {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              복사
+            </Button>
+          </div>
         </details>
       )}
 

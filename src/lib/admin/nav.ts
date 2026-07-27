@@ -56,6 +56,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '운영센터',
     items: [
       { href: '/admin', label: '운영 대시보드', description: '전체 운영 현황, 사용자 수, 콘텐츠 상태, AI/발행 상태를 요약합니다.', icon: LayoutDashboard },
+      { href: '/admin/ops-issues', label: '운영 이슈', description: '자동 탐지된 운영 이슈(수집·크론·사용량·보강) 확인·상태 관리.', icon: AlertTriangle },
       { href: '/admin/errors', label: '작업·오류 센터', description: '수집·본문추출·AI생성·번역/TTS·발행 실패를 모아 재실행합니다. (준비중 — S9)', icon: AlertTriangle, disabled: true, badge: '준비중' },
       { href: '/admin/job-runs', label: '작업 이력', description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.', icon: History },
       { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
@@ -70,9 +71,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '인사이트',
     items: [
-      { href: '/admin/insights', label: '핵심인사이트', description: 'AI 인사이트 카드·이슈·일일 핵심을 한 화면 탭으로 생성·검수·발행합니다.', icon: Sparkles },
+      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
+      { href: '/admin/issues', label: '이슈 관리', description: '이슈 생성·발행·키워드 매칭·콘텐츠 배정.', icon: TrendingUp },
+      { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
       { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
-      { href: '/admin/relations', label: '관계지도', description: '기업·인물·기관·기술 관계와 근거 콘텐츠 관리. (준비중)', icon: Network, disabled: true, badge: '준비중' },
+      { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
     ],
   },
   {
@@ -80,7 +83,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { href: '/admin/companies', label: '주요기업', description: '주요기업 목록·프로필·기업별 콘텐츠 관리. (준비중 — S8)', icon: Building2, disabled: true, badge: '준비중' },
       { href: '/admin/competitors', label: '경쟁사동향', description: '경쟁사 최근 뉴스 수집·선별·노출. (준비중 — S8)', icon: TrendingUp, disabled: true, badge: '준비중' },
-      { href: '/admin/competitor-weekly', label: '경쟁사 주간리포트', description: '경쟁사 동향을 사업영역별로 종합한 주간 리포트를 생성·확인합니다.', icon: FileText },
+      { href: '/admin/competitor-weekly', label: '경쟁사 주간 브리핑', description: '사업영역별 주간 브리핑 발행 목록.', icon: FileText },
+      { href: '/admin/competitor-weekly/generate', label: '주간 브리핑 생성', description: '사실 추출 → 분석 2단계로 새 브리핑을 만듭니다.', icon: Sparkles },
       { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재. 주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
       { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화. (도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
     ],
@@ -92,7 +96,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/contents?category=웹인사이트', label: '웹인사이트', description: '전문기관·기업 블로그 등 고부가 콘텐츠를 관리합니다.', icon: Globe },
       { href: '/admin/contents?category=유튜브', label: '유튜브', description: '채널·영상 콘텐츠와 자막·요약을 관리합니다.', icon: Video },
       { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록. 각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
-      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 수집 소스 등록·관리. 각 콘텐츠 소스 탭으로 이동 예정(S4).', icon: Rss },
+      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
       { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이). 각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
       { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리. 콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
     ],
@@ -127,11 +131,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '통계분석',
     items: [
-      { href: '/admin/analytics/content', label: '콘텐츠 분석', description: '콘텐츠 수·조회·북마크·클릭, 유형/기업/키워드별 성과. (준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
+      { href: '/admin/analytics/content', label: '콘텐츠 분석', description: '콘텐츠 수집 추이·카테고리·상태·소스·북마크 성과.', icon: BarChart3 },
       { href: '/admin/source-quality', label: '수집 분석', description: '소스별 수집량·성공률·본문추출률·중복률·오류율. (현행 소스 품질 → 확장 예정 S9)', icon: Gauge },
-      { href: '/admin/analytics/publish', label: '발행 분석', description: '발행량·검수 소요·발행 성공률·뉴스레터/브리핑 성과. (준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
+      { href: '/admin/analytics/publish', label: '발행 분석', description: '발행량 추이·생성/발행 성공률·검수 소요·뉴스레터 성과.', icon: BarChart3 },
       { href: '/admin/analytics/users', label: '사용자 분석', description: 'DAU/WAU/MAU·조직별 활성·기능 이용률·검색/북마크. (준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
-      { href: '/admin/analytics/ai-cost', label: 'AI 사용량·비용', description: 'LLM·번역·TTS·이미지 생성 비용, 모델/유형별 비용, 월 예산. (준비중 — S9)', icon: Cpu, disabled: true, badge: '준비중' },
+      { href: '/admin/analytics/ai-cost', label: 'AI 사용량·비용', description: 'LLM·번역·TTS 월별 사용량과 한도 대비 소진율.', icon: Cpu },
       { href: '/admin/crawl-logs', label: '로그 분석', description: '기술 로그 검색·오류 추세·연관 실행 이력. (현행 크롤 로그 → 확장 예정 S9)', icon: ListChecks },
     ],
   },

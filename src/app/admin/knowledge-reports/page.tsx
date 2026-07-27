@@ -1,12 +1,11 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import {
   isKnowledgeReportSchemaMissing,
   type KnowledgeReportAdminItem,
 } from '@/lib/knowledge-reports/admin'
-import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import KnowledgeReportManager from '@/components/admin/KnowledgeReportManager'
+import KnowledgeReportHub from '@/components/admin/KnowledgeReportHub'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,17 +26,15 @@ export default async function KnowledgeReportsAdminPage() {
   const schemaReady = !isKnowledgeReportSchemaMissing(error)
   const reports = schemaReady && !error ? (data ?? []) as KnowledgeReportAdminItem[] : []
 
+  const bannerMessage = !schemaReady
+    ? '357-B 지식보고서 카테고리 SQL이 아직 적용되지 않았습니다. SQL 적용 후 업로드할 수 있습니다.'
+    : error
+      ? '지식보고서 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+      : null
+
   return (
-    <div className="space-y-8">
-      <AdminPageHeader />
-      {!schemaReady ? (
-        <AdminErrorBox>
-          357-B 지식보고서 카테고리 SQL이 아직 적용되지 않았습니다. SQL 적용 후 업로드할 수 있습니다.
-        </AdminErrorBox>
-      ) : error ? (
-        <AdminErrorBox>지식보고서 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</AdminErrorBox>
-      ) : null}
-      <KnowledgeReportManager initialReports={reports} schemaReady={schemaReady && !error} />
-    </div>
+    <Suspense fallback={null}>
+      <KnowledgeReportHub initialReports={reports} schemaReady={schemaReady && !error} bannerMessage={bannerMessage} />
+    </Suspense>
   )
 }

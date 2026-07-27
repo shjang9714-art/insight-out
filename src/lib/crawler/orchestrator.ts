@@ -22,8 +22,12 @@ import { SUMMARY_MIN_BODY_LEN } from './summarize'
 import { classifyRelevance } from './classify'
 import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { applyBodySuccessUpdate, markBodyRetryOrGiveUp } from '@/lib/contents/enrich-body'
 import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
+import { fetchNaverNews } from './adapters/naver-news'
+import { fetchGdeltNews } from './adapters/gdelt-news'
+import { hasGdeltCredentials, queryGdeltMonth } from './gdelt-bigquery'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -218,10 +222,15 @@ export interface CrawlSummary {
   rejected: number
   held: number
   details: CrawlSourceDetail[]
+  /** ok=false(전체 실패) 사유 요약 — run-job.ts 의 job_runs.error 에 그대로 기록됨.
+   *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
+   *  경고 흔적을 남긴다. */
+  error?: string
 }
 
 export interface RunCrawlOptions extends CrawlScheduleOptions {
   sourceIds?: string[]
+  gdeltBackfill?: { from: string; to: string }
 }
 
 /**
@@ -430,11 +439,7 @@ async function processCrawlItem(
       counts.rejectedBy.tooShort++
       return {}
     }
-    if (!src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength) {  // 221 — 본문 최소 길이(어드민 설정, 기본 250)
-      counts.rejected++
-      counts.rejectedBy.bodyTooShort++
-      return {}
-    }
+    const bodyShort = !src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength
     if (exclusionMatch?.action === 'reject') {
       counts.rejected++
       counts.rejectedBy.excludeRule++
@@ -515,6 +520,11 @@ async function processCrawlItem(
       reviewReason = reviewReason ?? bodyReason
     }
     if (contentStatus === 'published') reviewReason = null
+    // 짧은 RSS 본문은 관련도 판정 결과와 무관하게 풀본문 보강 전까지 보류한다.
+    if (bodyShort) {
+      contentStatus = 'pending'
+      reviewReason = 'body_short'
+    }
 
     const translatedContent =
       item.language === 'en' && item.body
@@ -934,10 +944,11 @@ async function crawlKeywordSearch(
   exclusionHits: Map<string, number> = new Map(),
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
   deadline?: number
-): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean }> {
+): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean; firstError?: string }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let hadError = false
   let truncated = false
+  let firstError: string | undefined
   const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
   const adapter = getAdapter('news_site')!
   const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }
@@ -960,24 +971,29 @@ async function crawlKeywordSearch(
         3,
         [500, 1000, 2000]
       )
-      counts.fetched += rawItems.length
+      const naverItems = await fetchNaverNews(seed, since, { maxItems: 200 })
+      const gdeltItems = await fetchGdeltNews(seed, since)
+      const searchItems = [...rawItems, ...naverItems, ...gdeltItems]
+      counts.fetched += searchItems.length
 
-      for (const item of rawItems) {
+      for (const item of searchItems) {
         const result = await processCrawlItem(
           admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
-        if (result.partial) hadError = true
+        if (result.partial) {
+          hadError = true
+          if (!firstError) firstError = `seed "${seed}": ${result.errorMessage ?? '아이템 처리 실패'}`
+        }
       }
     } catch (err) {
-      console.error(
-        `[크롤러] 키워드 검색 오류 (seed: "${seed}"):`,
-        err instanceof Error ? err.message : String(err)
-      )
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[크롤러] 키워드 검색 오류 (seed: "${seed}"):`, message)
       hadError = true
+      if (!firstError) firstError = `seed "${seed}": ${message}`
     }
   }
 
-  return { counts, hadError, truncated }
+  return { counts, hadError, truncated, firstError }
 }
 
 /** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
@@ -1036,10 +1052,11 @@ async function crawlCompanySearch(
   minBodyLength: number,
   budgetMs: number,
   overallDeadline?: number
-): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number }> {
+): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number; firstError?: string }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   let hadError = false
   let processedSeeds = 0
+  let firstError: string | undefined
   // 이 phase 자체 예산(budgetMs)과 크롤 전체 소프트 데드라인 중 먼저 오는 쪽을 따른다.
   const deadline = overallDeadline !== undefined
     ? Math.min(Date.now() + budgetMs, overallDeadline)
@@ -1069,18 +1086,20 @@ async function crawlCompanySearch(
         const result = await processCrawlItem(
           admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
-        if (result.partial) hadError = true
+        if (result.partial) {
+          hadError = true
+          if (!firstError) firstError = `seed "${seed}": ${result.errorMessage ?? '아이템 처리 실패'}`
+        }
       }
     } catch (err) {
-      console.error(
-        `[크롤러] 회사 seed 검색 오류 (seed: "${seed}"):`,
-        err instanceof Error ? err.message : String(err)
-      )
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[크롤러] 회사 seed 검색 오류 (seed: "${seed}"):`, message)
       hadError = true
+      if (!firstError) firstError = `seed "${seed}": ${message}`
     }
   }
 
-  return { counts, hadError, processedSeeds }
+  return { counts, hadError, processedSeeds, firstError }
 }
 
 /** keyword_groups DB 행 — 게이트·태깅·시그널용 */
@@ -1099,6 +1118,9 @@ interface EnrichRow {
   body_original: string | null
   status: string | null
   review_reason: string | null
+  source_id: string | null
+  matched_groups: string[] | null
+  body_retry_count: number | null
 }
 
 // 본문이 개선됐을 때만 재판정 대상으로 삼는 review_reason — low_relevance/llm_irrelevant/
@@ -1149,17 +1171,19 @@ export async function mergeByCanonical(admin: SupabaseClient, rowId: string, can
  * - body_fetched_at IS NULL + original_url 있음 + 이번 런 이후 수집분만 대상.
  * - 추출 성공 시 body_original 갱신. 요약(summary_ko)은 여기서 만들지 않음 —
  *   /api/cron/summary-backfill 이 이 결과(개선된 본문)를 그대로 읽어 채운다.
- * - 실패·타임아웃이어도 body_fetched_at = now 마킹(재시도 방지) + 크롤 결과 보존.
+ * - 실패·타임아웃은 441 재시도 정책(markBodyRetryOrGiveUp)으로 처리 — 상한(4회) 전까지는
+ *   백오프 재시도, 상한 도달 시에만 body_fetched_at 영구 마킹. 크롤 결과는 그대로 보존.
  */
 async function enrichRecentContents(
   admin: SupabaseClient,
   runStartedAt: string,
-  deadline?: number
+  deadline?: number,
+  keywordGroupCount = 0
 ): Promise<void> {
   try {
     const { data: rows, error } = await admin
       .from('contents')
-      .select('id, original_url, body_original, status, review_reason')
+      .select('id, original_url, body_original, status, review_reason, source_id, matched_groups, body_retry_count')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
       .gte('collected_at', runStartedAt)
@@ -1171,6 +1195,15 @@ async function enrichRecentContents(
       return
     }
     if (!rows?.length) return
+
+    const sourceIds = [...new Set((rows as EnrichRow[]).map(row => row.source_id).filter((id): id is string => Boolean(id)))]
+    const sourceMap = new Map<string, { trust_tier: number; type: string }>()
+    if (sourceIds.length) {
+      const { data: sources, error: sourceError } = await admin
+        .from('sources').select('id, trust_tier, type').in('id', sourceIds)
+      if (sourceError) console.warn('[보강] 소스 관련도 정보 조회 실패:', sourceError.message)
+      for (const source of sources ?? []) sourceMap.set(source.id, source)
+    }
 
     console.log(`[보강] 풀본문 추출 대상: ${rows.length}건`)
 
@@ -1227,20 +1260,26 @@ async function enrichRecentContents(
             BODY_REVIEW_REASONS.has(row.review_reason) &&
             assessBodyQuality(extracted, { minLen: SUMMARY_MIN_BODY_LEN }) === null
           ) {
-            update.status = 'published'
-            update.review_reason = null
+            const source = row.source_id ? sourceMap.get(row.source_id) : undefined
+            const relevancePass =
+              (row.matched_groups?.length ?? 0) > 0 ||
+              keywordGroupCount === 0 ||
+              (source?.trust_tier ?? 0) >= 2 ||
+              source?.type === 'web_insight'
+            if (relevancePass) {
+              update.status = 'published'
+              update.review_reason = null
+            } else {
+              update.status = 'pending'
+              update.review_reason = 'low_relevance'
+            }
           }
 
-          await admin
-            .from('contents')
-            .update(update)
-            .eq('id', row.id)
+          await applyBodySuccessUpdate(admin, row.id, update)
         } else {
-          // 추출 실패 또는 스니펫이 더 길면 재시도 방지용 마킹
-          await admin
-            .from('contents')
-            .update({ body_fetched_at: new Date().toISOString() })
-            .eq('id', row.id)
+          // 441 — 추출 실패 또는 스니펫이 더 길면: 재시도 상한 전까지는 백오프 재시도,
+          // 상한 도달 시에만 영구 마킹(enrich-body.ts와 동일 정책 공유).
+          await markBodyRetryOrGiveUp(admin, row.id, row.body_retry_count ?? 0)
         }
       } catch (e) {
         console.error('[보강] 아이템 enrichment 오류 (id:', row.id, '):', e)
@@ -1425,6 +1464,21 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     { backfillDays, force: options.force }
   )
 
+  // GDELT BigQuery 소급 경로: 기존 아이템 처리 파이프라인을 그대로 재사용한다.
+  if (options.gdeltBackfill) {
+    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], error: undefined }
+    const terms = [...new Set([...keywords.map(k => k.name), ...searchSeeds, ...groups.flatMap(g => g.include_patterns ?? [])])]
+    const discovered = await queryGdeltMonth({ ...options.gdeltBackfill, keywordTerms: terms })
+    const counts = zeroRejectedBy()
+    const itemCounts = { fetched: discovered.length, inserted: 0, duplicate: 0, rejected: 0, held: 0, rejectedBy: counts }
+    for (const item of discovered) {
+      const result = await processCrawlItem(admin, { original_url: item.url, title: `GDELT 수집 기사 ${item.domain}`, body: `GDELT 원문 링크 ${item.url}`, published_at: item.date }, { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }, keywords, groups, translationBudget, classifyBudget, itemCounts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength)
+      if (result.errorMessage) console.warn('[GDELT 백필] 아이템 처리 실패:', result.errorMessage)
+    }
+    await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
+    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }] }
+  }
+
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   // youtube_channel → crawlYoutube, 그 외(news_site 등) → crawlOne
   // 각 소스에 softDeadline 전달 — 이전엔 이 구간이 무제한이라(회사/키워드 seed 검색과 달리
@@ -1518,6 +1572,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       inserted:  kwResult.counts.inserted,
       duplicate: kwResult.counts.duplicate,
       rejected:  kwResult.counts.rejected,
+      error:     kwResult.firstError,
     })
     if (!kwResult.hadError) successCount++
   }
@@ -1540,6 +1595,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       inserted:  companyResult.counts.inserted,
       duplicate: companyResult.counts.duplicate,
       rejected:  companyResult.counts.rejected,
+      error:     companyResult.firstError,
     })
     if (!companyResult.hadError) successCount++
     console.log(`[크롤러] 회사 seed 수집 완료: ${companyResult.processedSeeds}/${companySeeds.length}개 시드 처리`)
@@ -1558,10 +1614,36 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   }
 
   // enrichment tail — 신규 적재분 풀본문 추출 (실패해도 크롤 결과 보존)
-  await enrichRecentContents(admin, runStartedAt, softDeadline)
+  await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
+
+  // 실패 사유를 job_runs 에 구체적으로 남기기 위한 집계.
+  // status !== 'success' 이면서 error 가 있는 항목(소스/키워드 검색/회사 seed 검색 전부 포함)만 뽑아
+  // "어느 소스가 왜" 실패했는지 한 문장으로 요약한다. 각 사유는 200자로 잘라 error 컬럼 폭주 방지.
+  const problemDetails = details.filter(d => d.status !== 'success' && d.error)
+  const errorSummary = problemDetails.length > 0
+    ? `${problemDetails.length}/${details.length}개 소스 이슈: ` +
+      problemDetails
+        .map(d => `${d.source}[${d.status}](${(d.error ?? '').slice(0, 200)})`)
+        .join('; ')
+        .slice(0, 1800)
+    : undefined
+
+  // "소스 1개만 실패해도 전체 failed" 는 과했음(07-22 사고 조사).
+  // 시도한 것(개별 소스 + 키워드/회사 seed 검색)이 하나라도 성공했으면 부분 실패로 보고 전체는
+  // 성공 처리하되, errorSummary 를 남겨 job_runs.meta 로 경고를 추적할 수 있게 한다.
+  // 전부 실패했을 때(성공 0건)만 진짜 전체 실패로 판정한다.
+  const attemptedAnything =
+    dueSources.length > 0 || searchSeeds.length > 0 || companySeeds.length > 0
+  const ok = !attemptedAnything || successCount > 0
+
+  if (!ok) {
+    console.error(`[크롤러] 크롤 전체 실패 — ${errorSummary ?? '성공한 소스 없음(사유 미상)'}`)
+  } else if (problemDetails.length > 0) {
+    console.warn(`[크롤러] 부분 실패 있었으나 전체는 성공 처리 — ${errorSummary}`)
+  }
 
   return {
-    ok: failedCount === 0,
+    ok,
     sources_total: dueSources.length,
     success: successCount,
     failed: failedCount,
@@ -1571,5 +1653,6 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     rejected: totalRejected,
     held: totalHeld,
     details,
+    error: errorSummary,
   }
 }

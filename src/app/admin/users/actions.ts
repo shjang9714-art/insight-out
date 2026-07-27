@@ -5,6 +5,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { revalidatePath } from 'next/cache'
+import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 
 async function requireAdmin() {
   const cookieStore = await cookies()
@@ -38,6 +39,37 @@ function serviceClient() {
   )
 }
 
+export async function updateUserProfileByAdmin(
+  userId: string,
+  patch: { name: string; team: string; team_name: string },
+) {
+  const admin = await requireAdmin()
+  if (!admin) return { ok: false, error: '권한이 없습니다.' }
+
+  const name = patch.name.trim()
+  const teamName = patch.team_name.trim()
+
+  if (!name) return { ok: false, error: '이름은 비울 수 없습니다.' }
+  if (!isOrgGroup(patch.team)) {
+    return { ok: false, error: '그룹 값이 올바르지 않습니다.' }
+  }
+
+  const { error } = await serviceClient()
+    .from('users')
+    .update({
+      name,
+      team: patch.team,
+      team_name: teamName,
+      department: FIXED_DEPARTMENT,
+    })
+    .eq('id', userId)
+
+  if (error) return { ok: false, error: `사용자 정보 저장 실패: ${error.message}` }
+
+  revalidatePath('/admin/users')
+  return { ok: true, error: null }
+}
+
 export async function updateUserRole(userId: string, newRole: UserRole) {
   const admin = await requireAdmin()
   if (!admin) return { error: '권한이 없습니다.' }
@@ -59,7 +91,7 @@ export async function promoteByEmail(email: string) {
 
   const { data: target, error: findErr } = await svc
     .from('users')
-    .select('id, email, name, department, team, position, role, approval_status, created_at')
+    .select('id, email, name, department, team, team_name, position, role, approval_status, created_at')
     .eq('email', email.trim().toLowerCase())
     .single()
 

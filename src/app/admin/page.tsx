@@ -8,6 +8,7 @@ import { type ChartData, type DayTrend } from '@/components/admin/DashboardChart
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
+import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage } from '@/components/admin/AdminOpsSignals'
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
@@ -15,6 +16,7 @@ import AiRefreshButton from '@/components/admin/AiRefreshButton'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminFailedJobsCard, { type FailedJobRow } from '@/components/admin/AdminFailedJobsCard'
+import AdminMailDispatchCard, { type MailRunRow } from '@/components/admin/AdminMailDispatchCard'
 import { AdminCollectionAnalysisDialog } from '@/components/admin/AdminCollectionAnalysisDialog'
 
 export const dynamic = 'force-dynamic'
@@ -92,11 +94,13 @@ export default async function AdminPage() {
     // 신규 — 전체 사용자 수 KPI (278)
     totalUsersRes,
     // 신규 — usage
-    llmUsageRes, llmSettingsRes, transUsageRes, ttsUsageRes,
+    llmUsageRes, llmSettingsRes, llmRoutingRes, transUsageRes, ttsUsageRes,
     // 콘텐츠 건강
     bodyFullRes, bodySnippetRes, bodyNoneRes, sentMissingRes, untaggedRes, brokenLinkRes, deadLinksRes,
     // 신규 — 최근 실패한 작업(289)
     failedJobsRes,
+    // 신규 — 메일 발송 이력(438)
+    mailRunsRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }),
@@ -135,6 +139,7 @@ export default async function AdminPage() {
     // LLM usage
     admin ? admin.from('llm_usage').select('provider, tokens').eq('period', period) : Promise.resolve({ data: [], error: null }),
     admin ? admin.from('llm_settings').select('provider, enabled, monthly_token_limit') : Promise.resolve({ data: [], error: null }),
+    admin ? admin.from('llm_task_routing').select('provider, task_type').eq('is_active', true) : Promise.resolve({ data: [], error: null }),
     // 번역 usage
     admin ? admin.from('translation_usage').select('chars').eq('period', period) : Promise.resolve({ data: [], error: null }),
     // TTS usage
@@ -150,6 +155,14 @@ export default async function AdminPage() {
     // 최근 24시간 내 실패한 작업(job_runs, 289) — 테이블 미적용(42P01) 시 error → 카드 숨김(graceful)
     admin
       ? admin.from('job_runs').select('id, job_key, error, started_at').eq('status', 'failed').gte('started_at', yesterday).order('started_at', { ascending: false }).limit(20)
+      : Promise.resolve({ data: [], error: null }),
+    // 메일 발송 이력(438) — 일일 브리핑·주간 리포트·긴급 알림 최근 실행
+    admin
+      ? admin.from('job_runs')
+          .select('id, job_key, status, started_at, duration_ms, meta')
+          .in('job_key', ['cron:ops-brief', 'cron:ops-weekly', 'cron:ops-alert'])
+          .order('started_at', { ascending: false })
+          .limit(30)
       : Promise.resolve({ data: [], error: null }),
   ])
 
@@ -223,14 +236,25 @@ export default async function AdminPage() {
   const settingsMap = new Map<string, { enabled: boolean; monthly_token_limit: number }>(
     ((llmSettingsRes.data ?? []) as { provider: string; enabled: boolean; monthly_token_limit: number }[]).map(r => [r.provider, r])
   )
+  const providerTaskMap = new Map<string, Set<string>>()
+  for (const row of (llmRoutingRes.data ?? []) as { provider: string; task_type: string }[]) {
+    const tasks = providerTaskMap.get(row.provider) ?? new Set<string>()
+    tasks.add(row.task_type)
+    providerTaskMap.set(row.provider, tasks)
+  }
+  const providerTasks = Object.fromEntries(
+    [...providerTaskMap].map(([provider, tasks]) => [provider, [...tasks]])
+  )
   const llmProviders: LlmProviderUsage[] = LLM_PROVIDERS.map(p => {
     const s = settingsMap.get(p.name)
+    const keyCount = getProviderKeyCount(p)
     return {
       name:        p.name,
       configured:  p.isConfigured(),
       enabled:     s?.enabled ?? true,
+      keyCount,
       tokensUsed:  usageMap.get(p.name) ?? 0,
-      tokenLimit:  s?.monthly_token_limit ?? 1_000_000,
+      tokenLimit:  (s?.monthly_token_limit ?? 1_000_000) * keyCount,
     }
   })
 
@@ -256,6 +280,10 @@ export default async function AdminPage() {
   const jobRunsReady = !failedJobsRes.error
   const failedJobs: FailedJobRow[] = jobRunsReady ? ((failedJobsRes.data ?? []) as FailedJobRow[]) : []
 
+  // ── 메일 발송 이력(438) — 42P01(테이블 미적용) 시 카드 숨김 ─────────────────
+  const mailRunsReady = !mailRunsRes.error
+  const mailRuns: MailRunRow[] = mailRunsReady ? ((mailRunsRes.data ?? []) as MailRunRow[]) : []
+
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
   const chartData: ChartData = {
@@ -278,6 +306,9 @@ export default async function AdminPage() {
       {/* ① 최근 실패한 작업(289) — 크론 10개 계측. 있으면 눈에 띄게, 없으면 조용히 */}
       <AdminFailedJobsCard jobs={failedJobs} ready={jobRunsReady} />
 
+      {/* ①-1 메일 발송 이력(438) — 일일 브리핑·주간 리포트·긴급 알림 최근 실행 */}
+      <AdminMailDispatchCard rows={mailRuns} ready={mailRunsReady} />
+
       {/* ② 오늘 할 일 */}
       <AdminTodoBlock
         pending={pendingRes.count ?? 0}
@@ -289,6 +320,8 @@ export default async function AdminPage() {
       {/* ③ 사용량 및 수집 관리 */}
       <AdminOpsSignals
         llmProviders={llmProviders}
+        period={period}
+        providerTasks={providerTasks}
         translationChars={translationChars}
         ttsChars={ttsChars}
         ttsMonthlyCap={ttsMonthlyCap}

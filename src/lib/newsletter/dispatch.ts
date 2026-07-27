@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
-import { sendBrevoEmail } from '@/lib/email/brevo'
+import { sendBrevoEmail, normalizeBrevoError } from '@/lib/email/brevo'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
+import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
 
 export interface DispatchResult {
   ok: boolean
@@ -67,7 +68,7 @@ export async function runNewsletterDispatch({
   // 2. 수신자 조회
   const { data: subscribers } = await supabase
     .from('newsletter_subscriptions')
-    .select('user_id, newsletter_email, unsubscribe_token')
+    .select('user_id, newsletter_email, unsubscribe_token, users(name)')
     .eq('is_active', true)
     .not('newsletter_email', 'is', null)
 
@@ -75,23 +76,36 @@ export async function runNewsletterDispatch({
     return { ok: true, skipped: 'no_recipients' }
   }
 
-  // 3. 콘텐츠 선정
-  const { data: contents } = await supabase
-    .from('contents')
-    .select('id, title, category, summary_ko, original_url, sources(name)')
-    .eq('status', 'published')
-    .order('is_editor_pick', { ascending: false })
-    .order('view_count', { ascending: false })
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .limit(settings.card_count ?? 5)
+  // 추적용: 발송 대상 도메인 분포(개인정보 보호를 위해 전체 이메일 대신 도메인만 로그)
+  const domainCounts = subscribers.reduce<Record<string, number>>((acc, s) => {
+    const domain = s.newsletter_email?.split('@')[1]?.toLowerCase() ?? 'unknown'
+    acc[domain] = (acc[domain] ?? 0) + 1
+    return acc
+  }, {})
+  console.log('[newsletter-dispatch] 발송 대상 %d명 | 도메인 분포=%o', subscribers.length, domainCounts)
 
-  if (!contents || contents.length === 0) {
+  // 3. 카드 선정(주식·증권 필터 적용) + 카드별 인사이트 배치 생성(1콜) + 티저 3종 조회.
+  // 발송 시점(수신자별 반복 루프) 안에서는 LLM을 절대 호출하지 않는다 — 여기서 한 번만 생성해
+  // issue.payload 에 저장하고, 아래 발송 루프는 저장된 값만 읽는다.
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'
+  const prepared = await prepareNewsletterIssue(supabase, {
+    cardCount: settings.card_count ?? 5,
+    baseUrl,
+  })
+
+  if (prepared.newsGroups.every((g) => g.cards.length === 0)) {
     return { ok: true, skipped: 'no_contents' }
   }
 
-  // 4. issue 생성
+  // 4. issue 생성 — 카드 인사이트·티저·5분류 그룹 데이터는 payload 에 그대로 저장(감사 추적 + 재사용 가능).
   const subject = (settings.subject_tpl ?? 'Insight Out 뉴스레터 · {date}').replace('{date}', todayKST)
-  const contentIds = contents.map((c) => c.id)
+  const contentIds = prepared.newsGroups.flatMap((g) => g.cards.map((c) => c.id))
+
+  const { count: sentIssueCount } = await supabase
+    .from('newsletter_issues')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'sent')
+  const issueNo = (sentIssueCount ?? 0) + 1
 
   const { data: issue, error: issueErr } = await supabase
     .from('newsletter_issues')
@@ -102,6 +116,7 @@ export async function runNewsletterDispatch({
       recipient_cnt: subscribers.length,
       status: 'pending',
       triggered_by: triggeredBy,
+      payload: prepared,
     })
     .select('id')
     .single()
@@ -110,32 +125,37 @@ export async function runNewsletterDispatch({
     return { ok: false, skipped: 'issue_insert_failed' }
   }
 
-  // 5. 이메일 발송
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'
-
-  const cards = contents.map((c) => {
-    const src = c.sources as unknown
-    const sourceName =
-      Array.isArray(src) && src.length > 0
-        ? (src[0] as { name: string }).name
-        : src && typeof (src as { name?: unknown }).name === 'string'
-          ? (src as { name: string }).name
-          : null
-    return {
-      title: c.title,
-      category: c.category,
-      sourceName,
-      summaryKo: c.summary_ko,
-      url: c.original_url ? c.original_url : `${baseUrl}/dashboard/contents/${c.id}`,
-    }
-  })
-
+  // 5. 이메일 발송 — 아래 루프는 위에서 준비된 prepared 값만 읽는다(추가 조회·LLM 호출 없음).
   let sent = 0
   let failed = 0
 
   for (const sub of subscribers) {
     const unsubscribeUrl = `${baseUrl}/api/newsletter/unsubscribe?token=${sub.unsubscribe_token}`
-    const html = buildNewsletterHtml({ dateLabel: todayKST, cards, unsubscribeUrl })
+    const subUser = Array.isArray(sub.users) ? sub.users[0] : sub.users
+    const html = buildNewsletterHtml({
+      dateLabel: todayKST,
+      issueNo,
+      greetingName: subUser?.name || null,
+      newsGroups: prepared.newsGroups.map((g) => ({
+        key: g.key,
+        label: g.label,
+        cards: g.cards.map((c) => ({
+          title: c.title,
+          category: c.category,
+          sourceName: c.sourceName,
+          summaryKo: c.summaryKo,
+          detailUrl: c.detailUrl,
+          originalUrl: c.originalUrl,
+          insight: c.insight,
+        })),
+      })),
+      dailyInsight: prepared.dailyInsight
+        ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
+        : null,
+      knowledgeReports: prepared.knowledgeReports,
+      companyTrends: prepared.companyTrends,
+      unsubscribeUrl,
+    })
 
     try {
       const messageId = await sendBrevoEmail({ to: sub.newsletter_email!, subject, html })
@@ -149,12 +169,20 @@ export async function runNewsletterDispatch({
       })
       sent++
     } catch (err) {
+      const norm = normalizeBrevoError(err)
+      const errorDetail = norm.message ?? (err instanceof Error ? err.message : '발송 실패')
+      console.error(
+        '[newsletter-dispatch] 발송 실패 | domain=%s | name=%s | message=%s',
+        sub.newsletter_email?.split('@')[1] ?? 'unknown',
+        norm.name,
+        errorDetail
+      )
       await supabase.from('newsletter_recipients').insert({
         issue_id: issue.id,
         user_id: sub.user_id,
         email: sub.newsletter_email!,
         status: 'failed',
-        error: err instanceof Error ? err.message : '발송 실패',
+        error: errorDetail,
       })
       failed++
     }

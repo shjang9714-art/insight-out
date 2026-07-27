@@ -6,9 +6,12 @@ import Link from 'next/link'
 import { X } from 'lucide-react'
 import DashboardHeader, { NAV_TABS, isTabActive } from '@/components/dashboard/DashboardHeader'
 import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
+import { MobileBottomNav } from '@/components/dashboard/MobileBottomNav'
+import SearchOverlay from '@/components/mobile/SearchOverlay'
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const pathname = usePathname()
 
   return (
@@ -16,9 +19,12 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <DashboardHeader className="print:hidden" onMenuClick={() => setSidebarOpen(true)} />
 
       {/* 풀폭 본문 */}
-      <main className="mx-auto w-full max-w-6xl print:max-w-none">
+      <main className="mx-auto w-full max-w-6xl pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 print:max-w-none print:pb-0">
         {children}
       </main>
+
+      <MobileBottomNav onSearchClick={() => setSearchOpen(true)} />
+      <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* 모바일 드로어 (md 미만에서만) */}
       {sidebarOpen && (

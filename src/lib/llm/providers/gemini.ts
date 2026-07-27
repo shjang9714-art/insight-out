@@ -19,6 +19,10 @@ const geminiProvider: LlmProvider = {
     return getKeys().length > 0
   },
 
+  getKeyCount() {
+    return getKeys().length
+  },
+
   async complete(system, user, model?: string) {
     const keys = getKeys()
     if (!keys.length) return null

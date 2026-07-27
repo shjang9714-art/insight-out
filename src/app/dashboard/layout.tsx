@@ -34,7 +34,13 @@ async function resolveInitialCategory(pathname: string): Promise<string | null> 
   return (data as { category: string } | null)?.category ?? null
 }
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({
+  children,
+  modal,
+}: {
+  children: React.ReactNode
+  modal: React.ReactNode
+}) {
   const hdrs = await headers()
   const pathname = hdrs.get('x-pathname') ?? ''
   const initialCategory = await resolveInitialCategory(pathname)
@@ -44,6 +50,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Suspense fallback={<div className="min-h-screen bg-background" />}>
         <DashboardShell>{children}</DashboardShell>
       </Suspense>
+      {modal}
     </ActiveCategoryProvider>
   )
 }

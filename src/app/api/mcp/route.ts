@@ -27,8 +27,10 @@ import { createMcpHandler, withMcpAuth } from 'mcp-handler'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import { authenticateToken } from '@/lib/mcp/auth'
 import { registerReadTools } from '@/lib/mcp/tools/read'
+import { registerAnalyticsReadTools } from '@/lib/mcp/tools/read-analytics'
 import { registerOpsTools } from '@/lib/mcp/tools/ops'
 import { registerReportTools } from '@/lib/mcp/tools/reports'
+import { registerArchiveTools } from '@/lib/mcp/tools/archive'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -38,8 +40,10 @@ export const maxDuration = 60
 const mcpHandler = createMcpHandler(
   (server) => {
     registerReadTools(server)
+    registerAnalyticsReadTools(server)
     registerOpsTools(server)
     registerReportTools(server)
+    registerArchiveTools(server)
   },
   {
     serverInfo: { name: 'insight-out', version: '190' },

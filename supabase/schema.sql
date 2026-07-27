@@ -1471,7 +1471,10 @@ CREATE TABLE IF NOT EXISTS "public"."entity_events" (
     "model" "text",
     "generated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "entity_events_sentiment_check" CHECK (("sentiment" = ANY (ARRAY['긍정'::"text", '중립'::"text", '부정'::"text"])))
+    "biz_impact" "text",
+    "biz_impact_reason" "text",
+    CONSTRAINT "entity_events_sentiment_check" CHECK (("sentiment" = ANY (ARRAY['긍정'::"text", '중립'::"text", '부정'::"text"]))),
+    CONSTRAINT "entity_events_biz_impact_check" CHECK (("biz_impact" = ANY (ARRAY['crisis'::"text", 'opportunity'::"text", 'neutral'::"text"])))
 );
 
 
@@ -1903,7 +1906,8 @@ CREATE TABLE IF NOT EXISTS "public"."newsletter_issues" (
     "recipient_cnt" integer DEFAULT 0 NOT NULL,
     "status" "text" DEFAULT 'pending'::"text" NOT NULL,
     "triggered_by" "text" DEFAULT 'cron'::"text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "payload" "jsonb"
 );
 
 
@@ -2244,6 +2248,7 @@ COMMENT ON COLUMN "public"."users"."has_password" IS '340 — auth.users.encrypt
 
 CREATE TABLE IF NOT EXISTS "public"."weekly_flows" (
     "week_of" "date" NOT NULL,
+    "rank" smallint DEFAULT 1 NOT NULL,
     "headline" "text",
     "flow" "jsonb",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -2877,7 +2882,7 @@ ALTER TABLE ONLY "public"."users"
 --
 
 ALTER TABLE ONLY "public"."weekly_flows"
-    ADD CONSTRAINT "weekly_flows_pkey" PRIMARY KEY ("week_of");
+    ADD CONSTRAINT "weekly_flows_pkey" PRIMARY KEY ("week_of", "rank");
 
 
 --
@@ -4621,6 +4626,8 @@ CREATE POLICY "contents: admin 전체 조회" ON "public"."contents" FOR SELECT 
 
 CREATE POLICY "contents: 인증 사용자 조회" ON "public"."contents" FOR SELECT USING ((("auth"."role"() = 'authenticated'::"text") AND ("status" = 'published'::"public"."content_status")));
 
+CREATE POLICY "contents: 익명 공개 조회(뉴스레터)" ON "public"."contents" FOR SELECT TO "anon" USING (("status" = 'published'::"public"."content_status"));
+
 
 --
 -- Name: crawl_logs; Type: ROW SECURITY; Schema: public; Owner: -
@@ -4720,6 +4727,8 @@ CREATE POLICY "daily_insights: admin 전체 조회" ON "public"."daily_insights"
 --
 
 CREATE POLICY "daily_insights: 인증 사용자 published 조회" ON "public"."daily_insights" FOR SELECT USING ((("auth"."role"() = 'authenticated'::"text") AND ("status" = 'published'::"text")));
+
+CREATE POLICY "daily_insights: 익명 공개 조회(뉴스레터)" ON "public"."daily_insights" FOR SELECT TO "anon" USING (("status" = 'published'::"text"));
 
 
 --
@@ -5260,6 +5269,8 @@ CREATE POLICY "sources: admin 관리" ON "public"."sources" USING ("public"."is_
 --
 
 CREATE POLICY "sources: 인증 사용자 조회" ON "public"."sources" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+CREATE POLICY "sources: 익명 공개 조회(뉴스레터)" ON "public"."sources" FOR SELECT TO "anon" USING (true);
 
 
 --

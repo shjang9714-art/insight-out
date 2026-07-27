@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import BriefingManager from '@/components/admin/BriefingManager'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import { Suspense } from 'react'
+import BriefingHub from '@/components/admin/BriefingHub'
 
 export const metadata: Metadata = {
   title: '모닝브리핑 | 어드민 | Insight Out',
@@ -9,9 +9,8 @@ export const metadata: Metadata = {
 
 export default function AdminBriefingsPage() {
   return (
-    <div className="space-y-6">
-      <AdminPageHeader />
-      <BriefingManager />
-    </div>
+    <Suspense fallback={null}>
+      <BriefingHub />
+    </Suspense>
   )
 }

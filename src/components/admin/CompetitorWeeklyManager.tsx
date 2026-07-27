@@ -283,13 +283,14 @@ export default function CompetitorWeeklyManager({ initialReports }: { initialRep
                 </div>
                 <div className="flex flex-col gap-1">
                   <label htmlFor={`cwr-sections-${report.id}`} className="text-xs text-muted-foreground">
-                    사업영역별 본문 (JSON)
+                    사업영역별 본문 — 배열 [ {'{ area_key, ... }'} ] (직접 편집용)
                   </label>
                   <textarea
                     id={`cwr-sections-${report.id}`}
                     value={draftSections}
                     onChange={(event) => setDraftSections(event.target.value)}
                     rows={12}
+                    placeholder='[{"area_key": "aidc", "area_label": "AIDC", "moves": "...", "companies": [...], "impact": "위기", "implication": "...", "citations": [...] }]'
                     className="rounded-lg border border-border bg-background p-2 font-mono text-xs"
                   />
                   {sectionsError && <p className="text-xs text-negative">{sectionsError}</p>}
