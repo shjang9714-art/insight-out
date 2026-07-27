@@ -54,7 +54,8 @@ interface AdminContentRow {
   bookmark_count: number | null
   body_fetched_at: string | null
   body_len: number | null
-  review_reason: string | null
+  review_reason?: string | null
+  matched_groups: string[] | null
   sources: { name: string } | null
   matched_keywords?: string[] | null
   thumbnail_url?: string | null
@@ -91,13 +92,12 @@ const MAX_BODY_BACKFILL_IDS = 50
 
 // 348 — 콘텐츠 검수 테이블을 하나의 그리드로 통합.
 //  · sticky 관리 열 / 열 너비 드래그(200·207) 제거 — 둘 다 고정 px 총합이 컨테이너보다 커져 가로 스크롤을 유발했다.
-//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 792px.
-//  · 1440px 뷰포트 기준 본문 폭 = 1440 - 사이드바 288 - 패딩 64 = 1088px → 제목 296px 확보, 가로 스크롤 0.
-//  · 테이블 min-width = 고정 폭 792 + 제목 최소 240 = 1032px (1200px 미만에선 관리 열 축소로 920px).
+//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 832px.
+//  · 1440px 뷰포트 기준 본문 폭 = 1440 - 사이드바 288 - 패딩 64 = 1088px → 제목 256px 확보, 가로 스크롤 0.
+//  · 테이블 min-width = 고정 폭 832 + 제목 최소 240 = 1072px.
 
-// 관리 버튼 공통 — 높이 32px, 1200px 미만에선 아이콘만
-const ACTION_BTN = 'h-8 gap-1 rounded-md px-2 text-xs'
-const ACTION_BTN_COMPACT = 'max-[1200px]:w-8 max-[1200px]:justify-center max-[1200px]:px-0'
+// 관리 버튼 — 표준 Button sm 크기, 1200px 미만에선 아이콘만
+const ACTION_BTN_COMPACT = 'max-[1200px]:w-7 max-[1200px]:justify-center max-[1200px]:px-0'
 const ACTION_LABEL_COMPACT = 'max-[1200px]:sr-only'
 
 // 검토 사유 칩 — 테이블 셀용 축약 라벨(전체 라벨은 title 속성으로 제공)
@@ -109,6 +109,37 @@ const REVIEW_REASON_SHORT: Record<string, string> = {
   low_relevance:  '관련도 낮음',
   llm_irrelevant: 'AI 무관',
   excluded_rule:  '제외 규칙',
+}
+
+function getReviewReasonDisplay(content: AdminContentRow): { short: string; full: string } {
+  if (content.review_reason) {
+    const full = REVIEW_REASON_LABEL[content.review_reason] ?? '기타 사유'
+    return {
+      short: REVIEW_REASON_SHORT[content.review_reason] ?? full,
+      full,
+    }
+  }
+  if (!content.body_fetched_at) {
+    return { short: '본문 없음', full: '본문 없음' }
+  }
+  if (!content.matched_groups?.length) {
+    return { short: '매칭 없음', full: '매칭 없음' }
+  }
+  return { short: '사유 확인 필요', full: '사유 확인 필요' }
+}
+
+function ReviewReasonBadge({ content }: { content: AdminContentRow }) {
+  if (content.status !== 'pending') return null
+
+  const reason = getReviewReasonDisplay(content)
+  return (
+    <span
+      title={`검토 대기 사유: ${reason.full}`}
+      className="max-w-full truncate rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
+    >
+      {reason.short}
+    </span>
+  )
 }
 
 // 소스 필터 특수값
@@ -150,7 +181,7 @@ const BODY_BACKFILL_NOTICE_CLASS: Record<BodyBackfillNoticeTone, string> = {
 }
 
 const CONTENT_ROW_BASE_SELECT =
-  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, thumbnail_url'
+  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, matched_groups, thumbnail_url'
 
 function contentRowSelect(len: boolean, reason: boolean): string {
   return [
@@ -242,7 +273,7 @@ function RowActions({
           disabled={disabled}
           onClick={() => onStatusChange(content, 'rejected')}
           title="숨김"
-          className={cn(ACTION_BTN, compact)}
+          className={compact}
         >
           <X className="h-3.5 w-3.5" />
           <span className={labelCls}>숨김</span>
@@ -253,17 +284,14 @@ function RowActions({
           disabled={disabled}
           onClick={() => onStatusChange(content, 'published')}
           title="노출"
-          className={cn(
-            ACTION_BTN, compact,
-            'border-positive/40 text-positive hover:border-positive/70 hover:bg-positive-soft hover:text-positive'
-          )}
+          className={compact}
         >
           <Check className="h-3.5 w-3.5" />
           <span className={labelCls}>노출</span>
         </Button>
       )}
 
-      <Button size="sm" variant="outline" asChild className={cn(ACTION_BTN, compact)}>
+      <Button size="sm" variant="outline" asChild className={compact}>
         <Link href={`/admin/contents/${content.id}`} title="보기">
           <Eye className="h-3.5 w-3.5" />
           <span className={labelCls}>보기</span>
@@ -275,22 +303,19 @@ function RowActions({
         disabled={disabled}
         onClick={() => onEdit(content)}
         title="수정"
-        className={cn(ACTION_BTN, compact)}
+        className={compact}
       >
         <Pencil className="h-3.5 w-3.5" />
         <span className={labelCls}>수정</span>
       </Button>
 
       <Button
-        type="button" size="sm" variant="outline"
+        type="button" size="sm" variant="destructive"
         disabled={disabled}
         onClick={() => onDelete(content)}
         title="삭제"
         aria-label={`${content.title} 삭제`}
-        className={cn(
-          ACTION_BTN, compact,
-          'border-destructive/25 text-destructive/80 hover:border-destructive/60 hover:bg-destructive/10 hover:text-destructive'
-        )}
+        className={compact}
       >
         {isWorking
           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1727,16 +1752,16 @@ export default function AdminContentManager() {
         <>
           {/* ── 데스크톱: 단일 테이블 그리드 (348 — sticky 관리 열 제거, 행 배경·hover가 관리까지 이어짐) ── */}
           <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-            <table className="w-full min-w-[1032px] table-fixed border-collapse text-sm">
+            <table className="w-full min-w-[1072px] table-fixed border-collapse text-sm">
               <colgroup>
                 <col className="w-9" />
                 <col />{/* 제목: 잔여 폭 전부 흡수 */}
                 <col className="w-[68px]" />
                 <col className="w-[104px]" />
-                <col className="w-[140px]" />
+                <col className="w-[160px]" />
                 <col className="w-[92px]" />
                 <col className="w-[112px]" />
-                <col className="w-[240px]" />
+                <col className="w-[260px]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
@@ -1806,20 +1831,13 @@ export default function AdminContentManager() {
                         )}
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <div className="flex min-w-0 items-center gap-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                           <StatusBadge
                             tone={CONTENT_STATUS_TONE[content.status]}
                             label={CONTENT_STATUS_LABEL[content.status]}
                             className="shrink-0"
                           />
-                          {content.status === 'pending' && content.review_reason && (
-                            <span
-                              title={`검토 대기 사유: ${REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}`}
-                              className="truncate rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
-                            >
-                              {REVIEW_REASON_SHORT[content.review_reason] ?? content.review_reason}
-                            </span>
-                          )}
+                          <ReviewReasonBadge content={content} />
                         </div>
                       </td>
                       <td className="px-3 py-3 align-top">
@@ -1911,11 +1929,7 @@ export default function AdminContentManager() {
                       </Link>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} />
-                        {content.status === 'pending' && content.review_reason && (
-                          <span className="rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk">
-                            {REVIEW_REASON_SHORT[content.review_reason] ?? content.review_reason}
-                          </span>
-                        )}
+                        <ReviewReasonBadge content={content} />
                         <span className="text-muted-foreground/50">·</span>
                         <span className="text-xs text-muted-foreground">{CONTENT_CATEGORY_LABEL[content.category]}</span>
                         <span className="text-muted-foreground/50">·</span>
