@@ -43,6 +43,28 @@ function sourceName(sources: ContentMeta['sources']): string | null {
   return Array.isArray(sources) ? sources[0]?.name ?? null : sources?.name ?? null
 }
 
+function splitImplicationItems(text: string): string[] {
+  const normalized = text.replace(/\r\n?/g, '\n').trim()
+  if (!normalized) return []
+
+  const superscriptMarkers = normalized.match(/[¹²³⁴⁵⁶⁷⁸⁹]/g) ?? []
+  const hasSuperscriptList =
+    superscriptMarkers.length > 1 && /(?:^|\s)[¹²³⁴⁵⁶⁷⁸⁹]/.test(normalized)
+
+  let withMarkerBreaks = normalized.replace(/\s*(?=[①-⑳])/g, '\n')
+  withMarkerBreaks = (hasSuperscriptList
+    ? withMarkerBreaks.replace(/\s*(?=[¹²³⁴⁵⁶⁷⁸⁹])/g, '\n')
+    : withMarkerBreaks.replace(/(^|\s+)(?=[¹²³⁴⁵⁶⁷⁸⁹]\s*)/g, '$1\n'))
+    .replace(/(^|\s+)(?=\d{1,2}\.\s)/g, '$1\n')
+
+  if (!withMarkerBreaks.includes('\n')) return [normalized]
+
+  return withMarkerBreaks
+    .split(/\n+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
 export const metadata: Metadata = {
   title: '기업 동향 상세 | Insight Out',
   description: '인사이트 카드의 핵심·시사점·근거를 확인합니다.',
@@ -124,6 +146,7 @@ export default async function InsightDetailPage({ params }: PageProps) {
   const cardHeadline = card.card_headline ? stripLlmArtifacts(card.card_headline) : null
   const headline = stripLlmArtifacts(card.headline)
   const implication = card.implication ? stripLlmArtifacts(card.implication) : null
+  const implicationItems = implication ? splitImplicationItems(implication) : []
 
   const backHref = card.scope === 'company' ? '/dashboard/entities?view=watchlist' : '/dashboard/ai-analysis'
 
@@ -163,14 +186,6 @@ export default async function InsightDetailPage({ params }: PageProps) {
           <p className="text-base text-muted-foreground leading-relaxed">{headline}</p>
         )}
       </div>
-
-      {/* 시사점 */}
-      {implication && (
-        <div className="mb-8 space-y-1.5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">시사점</h2>
-          <p className="text-base text-foreground leading-relaxed">{implication}</p>
-        </div>
-      )}
 
       {/* 근거 자료 */}
       {(citations.length > 0 || referenceOnlyIds.length > 0) && (
@@ -231,6 +246,20 @@ export default async function InsightDetailPage({ params }: PageProps) {
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 시사점 */}
+      {implicationItems.length > 0 && (
+        <div className="mb-8 space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">시사점</h2>
+          <div className="space-y-3">
+            {implicationItems.map((item, index) => (
+              <p key={index} className="text-base leading-relaxed text-foreground">
+                {item}
+              </p>
+            ))}
+          </div>
         </div>
       )}
 
