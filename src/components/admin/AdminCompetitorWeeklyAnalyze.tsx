@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { copyText } from '@/lib/clipboard'
 import type { CompetitorWeeklyRow } from '@/components/admin/CompetitorWeeklyManager'
 
 interface DroppedItem { area: string; slot: string; text: string; reason: string }
@@ -35,7 +36,9 @@ export default function AdminCompetitorWeeklyAnalyze({ reports }: AdminCompetito
   const [weekStart, setWeekStart] = useState(reports[0]?.week_start ?? '')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [clipboardBlocked, setClipboardBlocked] = useState(false)
   const [contextInfo, setContextInfo] = useState<{ areaCount: number; eventCount: number } | null>(null)
+  const [contextPrompt, setContextPrompt] = useState('')
   const [analysisText, setAnalysisText] = useState('')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -49,15 +52,33 @@ export default function AdminCompetitorWeeklyAnalyze({ reports }: AdminCompetito
       const res = await fetch(`/api/admin/competitor-weekly/analysis?week=${weekStart}`)
       const data = await res.json() as { prompt?: string; areaCount?: number; eventCount?: number; error?: string }
       if (!res.ok) throw new Error(data.error ?? '컨텍스트를 불러오지 못했습니다.')
-      await navigator.clipboard.writeText(data.prompt ?? '')
+      const prompt = data.prompt ?? ''
+      // 프롬프트는 자동복사 성공 여부와 무관하게 항상 확보한다(fetch로 user activation이 만료돼
+      // 클립보드 쓰기가 거부돼도 아래 상자에서 수동 복사 가능하도록).
+      setContextPrompt(prompt)
       setContextInfo({ areaCount: data.areaCount ?? 0, eventCount: data.eventCount ?? 0 })
-      setCopied(true)
-      setTimeout(() => setCopied(false), 3000)
+      const ok = await copyText(prompt)
+      setClipboardBlocked(!ok)
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 3000)
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '컨텍스트 복사에 실패했습니다.')
+      setError(e instanceof Error ? e.message : '컨텍스트를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleManualCopy = () => {
+    // 사용자 클릭에 직접 붙은 동기 진입 — await 선행 없이 곧바로 호출해 성공률을 높인다.
+    void copyText(contextPrompt).then((ok) => {
+      setClipboardBlocked(!ok)
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 3000)
+      }
+    })
   }
 
   const handleImport = async () => {
@@ -121,6 +142,29 @@ export default function AdminCompetitorWeeklyAnalyze({ reports }: AdminCompetito
             </span>
           )}
         </div>
+
+        {contextPrompt && (
+          <div className="flex flex-col gap-1">
+            {clipboardBlocked && (
+              <p className="text-xs text-muted-foreground">
+                자동 복사가 차단됐어요 — 아래 상자에서 직접 복사하세요.
+              </p>
+            )}
+            <div className="flex items-start gap-2">
+              <textarea
+                readOnly
+                value={contextPrompt}
+                rows={6}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full rounded-md border border-border bg-background p-2 font-mono text-xs"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={handleManualCopy} className="shrink-0 gap-1.5">
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                복사
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-1">
