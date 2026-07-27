@@ -71,18 +71,70 @@ function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// Vercel 함수가 maxDuration(모든 크론 중 최대 300초) 초과로 하드킬되면 try/finally 조차 못 돌고
+// 프로세스가 죽는다 — job_runs 행이 status='running'으로 영영 남는다(2026-07-12부터 7건 실측:
+// cron:body-backfill 2건, cron:signals-backfill 3건, cron:crawl 1건, 그 뒤로도 재발 가능).
+// 하드킬은 JS 레벨에서 감지·복구가 원천적으로 불가능하므로, "다음에 도는 아무 크론"이 매번
+// 스스로 청소하게 한다 — 별도 리퍼 크론/route 없이 자연 치유.
+const STALE_RUN_THRESHOLD_MS = 15 * 60 * 1000 // 15분 (모든 maxDuration보다 충분히 여유)
+
+async function reapStaleRunningJobs(admin: SupabaseClient): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - STALE_RUN_THRESHOLD_MS).toISOString()
+    const { data: staleRuns, error } = await admin
+      .from('job_runs')
+      .select('id, started_at')
+      .eq('status', 'running')
+      .lt('started_at', cutoff)
+
+    if (error) {
+      if (error.code !== '42P01') {
+        console.error('[runJob] stale run 조회 실패:', error.message)
+      }
+      return
+    }
+
+    for (const run of (staleRuns ?? []) as { id: string; started_at: string }[]) {
+      const startedAtMs = new Date(run.started_at).getTime()
+      const { error: updateError } = await admin
+        .from('job_runs')
+        .update({
+          status: 'failed',
+          finished_at: new Date().toISOString(),
+          duration_ms: Date.now() - startedAtMs,
+          error: `stale run reaped — ${STALE_RUN_THRESHOLD_MS / 60_000}분 넘게 running 상태로 남아 하드킬로 추정, 리퍼가 마감 처리함`,
+        })
+        .eq('id', run.id)
+        .eq('status', 'running') // race 방지: 그 사이 다른 프로세스가 이미 마감했으면 건너뜀
+      if (updateError) {
+        console.error(`[runJob] stale run 마감 실패(id: ${run.id}):`, updateError.message)
+      } else {
+        console.warn(`[runJob] stale run 리핑됨(id: ${run.id}, started_at: ${run.started_at})`)
+      }
+    }
+  } catch (e) {
+    console.error('[runJob] stale run reap 오류:', toErrorMessage(e))
+  }
+}
+
 /**
  * 공통 잡 계측 래퍼(289) — job_runs 에 시작/종료를 기록해 크론 실행을 눈에 보이게 만든다.
  *
  * ⚠️ 계측이 잡을 깨뜨리면 안 된다: job_runs insert/update 실패는 로깅만 하고 fn()의
  * 결과·예외를 그대로 전파한다. job_runs 테이블 미적용(42P01)에서도 잡은 정상 동작해야 한다.
  * insert 자체가 실패해 runId 를 못 얻으면 이후 update 는 조용히 건너뛴다.
+ *
+ * fn() 실행 구간은 try/finally 로 감싸 정상 반환·예외 두 경우 모두 반드시 종료 상태를
+ * 기록한다. 단, Vercel 하드킬(maxDuration 초과 시 프로세스 강제종료)은 finally 도 못 돈다 —
+ * 그 케이스는 reapStaleRunningJobs 가 다음 크론 실행 시점에 복구한다.
  */
 export async function runJob<T>(
   admin: SupabaseClient,
   ctx: JobContext,
   fn: () => Promise<T>,
 ): Promise<T> {
+  await reapStaleRunningJobs(admin)
+
   const startedAt = Date.now()
   let runId: string | null = null
 
@@ -110,48 +162,53 @@ export async function runJob<T>(
     console.error(`[runJob] job_runs insert 오류(${ctx.key}):`, toErrorMessage(e))
   }
 
-  let result: T
+  // fn() 실행 구간을 감싸는 마감 로직 — 정상 반환/예외 두 경로 모두 finally 에서 반드시 거친다.
+  // (result 는 try 성공 시에만 쓰이므로 catch 경로에서 굳이 채우지 않고 outcome 으로 분기)
+  let outcome: { threw: true; err: unknown } | { threw: false; result: T } | null = null
+
   try {
-    result = await fn()
-  } catch (err) {
-    if (runId) {
+    try {
+      const result = await fn()
+      outcome = { threw: false, result }
+    } catch (err) {
+      outcome = { threw: true, err }
+    }
+  } finally {
+    if (runId && outcome) {
       try {
-        await admin
-          .from('job_runs')
-          .update({
-            status: 'failed',
-            finished_at: new Date().toISOString(),
-            duration_ms: Date.now() - startedAt,
-            error: toErrorMessage(err),
-          })
-          .eq('id', runId)
+        if (outcome.threw) {
+          await admin
+            .from('job_runs')
+            .update({
+              status: 'failed',
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - startedAt,
+              error: toErrorMessage(outcome.err),
+            })
+            .eq('id', runId)
+        } else {
+          const { result } = outcome
+          const counts = extractCommonCounts(result)
+          // 우선순위: failed(예외 없이 result.failed===true/ok===false 로 알리는 잡) > skipped > succeeded
+          const status = isFailedStatus(result) ? 'failed' : isSkippedStatus(result) ? 'skipped' : 'succeeded'
+          await admin
+            .from('job_runs')
+            .update({
+              status,
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - startedAt,
+              ...counts,
+              ...(status === 'failed' ? { error: extractFailureReason(result) } : {}),
+              meta: (result && typeof result === 'object') ? result : { value: result ?? null },
+            })
+            .eq('id', runId)
+        }
       } catch (e) {
-        console.error(`[runJob] job_runs update(실패) 실패(${ctx.key}):`, toErrorMessage(e))
+        console.error(`[runJob] job_runs update(마감) 실패(${ctx.key}):`, toErrorMessage(e))
       }
     }
-    throw err
   }
 
-  if (runId) {
-    try {
-      const counts = extractCommonCounts(result)
-      // 우선순위: failed(예외 없이 result.failed===true/ok===false 로 알리는 잡) > skipped > succeeded
-      const status = isFailedStatus(result) ? 'failed' : isSkippedStatus(result) ? 'skipped' : 'succeeded'
-      await admin
-        .from('job_runs')
-        .update({
-          status,
-          finished_at: new Date().toISOString(),
-          duration_ms: Date.now() - startedAt,
-          ...counts,
-          ...(status === 'failed' ? { error: extractFailureReason(result) } : {}),
-          meta: (result && typeof result === 'object') ? result : { value: result ?? null },
-        })
-        .eq('id', runId)
-    } catch (e) {
-      console.error(`[runJob] job_runs update(성공) 실패(${ctx.key}):`, toErrorMessage(e))
-    }
-  }
-
-  return result
+  if (outcome!.threw) throw outcome.err
+  return outcome.result
 }

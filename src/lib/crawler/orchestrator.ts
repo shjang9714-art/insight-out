@@ -718,7 +718,8 @@ async function crawlOne(
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
-  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  deadline?: number
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
@@ -750,6 +751,13 @@ async function crawlOne(
     }
 
     for (const item of rawItems) {
+      // 소프트 데드라인(runCrawl 전체) 초과 시 나머지 아이템 skip — maxDuration 하드킬 방지.
+      // backfillDays 로 아이템 수가 크게 늘어날 때(예: 30일치) 특히 중요.
+      if (deadline !== undefined && Date.now() >= deadline) {
+        crawlStatus = 'partial'
+        if (!errorMessage) errorMessage = '소프트 데드라인 초과로 나머지 아이템 건너뜀'
+        break
+      }
       const result = await processCrawlItem(
         admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
       )
@@ -794,7 +802,8 @@ async function crawlYoutube(
   source: Source,
   groups: ScoringGroup[],
   aliasMap: Map<string, string>,
-  transcriptBudget: TranslationBudget
+  transcriptBudget: TranslationBudget,
+  deadline?: number
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
@@ -811,6 +820,12 @@ async function crawlYoutube(
     counts.fetched = items.length
 
     for (const item of items) {
+      // 소프트 데드라인 초과 시 나머지 영상 skip(자막 수집 등 아이템당 비용이 큼) — maxDuration 하드킬 방지.
+      if (deadline !== undefined && Date.now() >= deadline) {
+        crawlStatus = 'partial'
+        if (!errorMessage) errorMessage = '소프트 데드라인 초과로 나머지 영상 건너뜀'
+        break
+      }
       try {
         const row = {
           source_id:        source.id,
@@ -1466,10 +1481,13 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   // youtube_channel → crawlYoutube, 그 외(news_site 등) → crawlOne
+  // 각 소스에 softDeadline 전달 — 이전엔 이 구간이 무제한이라(회사/키워드 seed 검색과 달리
+  // 데드라인 체크가 없었음) backfillDays 로 아이템 수가 늘면 maxDuration 하드킬까지 갈 수
+  // 있었다(job_runs 가 running 에서 멈추는 근본 원인, 2026-07-27 조사).
   const results = await Promise.allSettled(
     dueSources.map(s =>
       s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget)
+        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
         : crawlOne(
             admin,
             s,
@@ -1482,7 +1500,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             issueList,
             exclusionRules,
             exclusionHits,
-            minBodyLength
+            minBodyLength,
+            softDeadline
           )
     )
   )
