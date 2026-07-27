@@ -22,6 +22,7 @@ import { SUMMARY_MIN_BODY_LEN } from './summarize'
 import { classifyRelevance } from './classify'
 import { extract } from '@extractus/article-extractor'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
+import { applyBodySuccessUpdate, markBodyRetryOrGiveUp } from '@/lib/contents/enrich-body'
 import { resolveArticleUrl } from './resolve-url'
 import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
 import { fetchNaverNews } from './adapters/naver-news'
@@ -1104,6 +1105,7 @@ interface EnrichRow {
   review_reason: string | null
   source_id: string | null
   matched_groups: string[] | null
+  body_retry_count: number | null
 }
 
 // 본문이 개선됐을 때만 재판정 대상으로 삼는 review_reason — low_relevance/llm_irrelevant/
@@ -1154,7 +1156,8 @@ export async function mergeByCanonical(admin: SupabaseClient, rowId: string, can
  * - body_fetched_at IS NULL + original_url 있음 + 이번 런 이후 수집분만 대상.
  * - 추출 성공 시 body_original 갱신. 요약(summary_ko)은 여기서 만들지 않음 —
  *   /api/cron/summary-backfill 이 이 결과(개선된 본문)를 그대로 읽어 채운다.
- * - 실패·타임아웃이어도 body_fetched_at = now 마킹(재시도 방지) + 크롤 결과 보존.
+ * - 실패·타임아웃은 441 재시도 정책(markBodyRetryOrGiveUp)으로 처리 — 상한(4회) 전까지는
+ *   백오프 재시도, 상한 도달 시에만 body_fetched_at 영구 마킹. 크롤 결과는 그대로 보존.
  */
 async function enrichRecentContents(
   admin: SupabaseClient,
@@ -1165,7 +1168,7 @@ async function enrichRecentContents(
   try {
     const { data: rows, error } = await admin
       .from('contents')
-      .select('id, original_url, body_original, status, review_reason, source_id, matched_groups')
+      .select('id, original_url, body_original, status, review_reason, source_id, matched_groups, body_retry_count')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
       .gte('collected_at', runStartedAt)
@@ -1257,16 +1260,11 @@ async function enrichRecentContents(
             }
           }
 
-          await admin
-            .from('contents')
-            .update(update)
-            .eq('id', row.id)
+          await applyBodySuccessUpdate(admin, row.id, update)
         } else {
-          // 추출 실패 또는 스니펫이 더 길면 재시도 방지용 마킹
-          await admin
-            .from('contents')
-            .update({ body_fetched_at: new Date().toISOString() })
-            .eq('id', row.id)
+          // 441 — 추출 실패 또는 스니펫이 더 길면: 재시도 상한 전까지는 백오프 재시도,
+          // 상한 도달 시에만 영구 마킹(enrich-body.ts와 동일 정책 공유).
+          await markBodyRetryOrGiveUp(admin, row.id, row.body_retry_count ?? 0)
         }
       } catch (e) {
         console.error('[보강] 아이템 enrichment 오류 (id:', row.id, '):', e)

@@ -9,6 +9,10 @@ import { SUMMARY_MIN_BODY_LEN } from '@/lib/crawler/summarize'
 
 const ENRICH_MIN_BODY_LEN = 400
 
+// 441 — 본문 추출 실패 재시도 정책. 시도 n회차(0-base) 실패 후 다음 재시도까지 지연(분).
+const MAX_BODY_RETRIES = 4
+const RETRY_BACKOFF_MIN = [30, 180, 720, 1440]
+
 // 282 — og:image 품질게이트(자동 수집 경로 전용)
 const COVER_MIN_WIDTH = 200
 const COVER_MIN_HEIGHT = 150
@@ -25,6 +29,57 @@ export interface EnrichBodyRow {
   review_reason?: string | null
   source_id?: string | null
   matched_groups?: string[] | null
+  body_retry_count?: number | null
+}
+
+/**
+ * 본문 개선 성공 시 업데이트 — retry 카운트 리셋 포함, 컬럼 미적용(42703) 시 폴백.
+ */
+export async function applyBodySuccessUpdate(
+  admin: SupabaseClient,
+  id: string,
+  update: Record<string, unknown>,
+): Promise<void> {
+  const withRetryReset = { ...update, body_retry_count: 0, body_next_retry_at: null }
+  const { error } = await admin.from('contents').update(withRetryReset).eq('id', id)
+  if (!error) return
+  if (error.code !== '42703') {
+    console.error('[본문보강] 업데이트 실패 (id:', id, '):', error.message)
+    return
+  }
+  const { error: fallbackError } = await admin.from('contents').update(update).eq('id', id)
+  if (fallbackError) console.error('[본문보강] 업데이트 실패 (id:', id, '):', fallbackError.message)
+}
+
+/**
+ * 본문 추출 실패 시 — 재시도 상한 전이면 카운트+백오프로 다음 재시도 예약,
+ * 상한 도달 시에만 body_fetched_at 으로 영구 종료. retry 컬럼 미적용(42703) 시
+ * 기존 동작(즉시 영구 마킹)으로 graceful 폴백.
+ */
+export async function markBodyRetryOrGiveUp(
+  admin: SupabaseClient,
+  id: string,
+  currentRetryCount: number,
+): Promise<void> {
+  const nextCount = currentRetryCount + 1
+  if (nextCount < MAX_BODY_RETRIES) {
+    const nextRetryAt = new Date(Date.now() + RETRY_BACKOFF_MIN[currentRetryCount] * 60_000).toISOString()
+    const { error } = await admin
+      .from('contents')
+      .update({ body_retry_count: nextCount, body_next_retry_at: nextRetryAt })
+      .eq('id', id)
+    if (!error) return
+    if (error.code !== '42703') {
+      console.error('[본문보강] 재시도 업데이트 실패 (id:', id, '):', error.message)
+      return
+    }
+    // 컬럼 미적용 — 아래로 흘러 기존(영구 마킹) 동작으로 폴백
+  }
+  const { error } = await admin
+    .from('contents')
+    .update({ body_fetched_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) console.error('[본문보강] 영구 마킹 실패 (id:', id, '):', error.message)
 }
 
 interface RelevanceContext {
@@ -149,17 +204,11 @@ export async function enrichOneBody(
         }
       }
 
-      await admin
-        .from('contents')
-        .update(update)
-        .eq('id', row.id)
+      await applyBodySuccessUpdate(admin, row.id, update)
       return 'improved'
     }
 
-    await admin
-      .from('contents')
-      .update({ body_fetched_at: new Date().toISOString() })
-      .eq('id', row.id)
+    await markBodyRetryOrGiveUp(admin, row.id, row.body_retry_count ?? 0)
     return 'marked'
   } catch (e) {
     console.error('[본문보강] 아이템 오류 (id:', row.id, '):', e)
@@ -181,7 +230,7 @@ export async function enrichByIds(
 
   const { data: targets } = await admin
     .from('contents')
-    .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups')
+    .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
     .in('id', limitedIds)
     .not('original_url', 'is', null)
 
@@ -200,19 +249,39 @@ export async function enrichByIds(
   return { processed, improved, skipped, truncated }
 }
 
+// 441 — body_next_retry_at 컬럼 존재 여부. 한 번 42703 확인되면 이후 게이트 쿼리 생략(불필요한 재시도 방지).
+let retryGateSupported: boolean | null = null
+
+function retryGateFilter(): string {
+  return `body_next_retry_at.is.null,body_next_retry_at.lte.${new Date().toISOString()}`
+}
+
 export async function pendingCount(
   admin: SupabaseClient,
   from?: string | null,
   to?: string | null,
 ): Promise<number> {
-  let q = admin
-    .from('contents')
-    .select('id', { count: 'exact', head: true })
-    .is('body_fetched_at', null)
-    .not('original_url', 'is', null)
-  if (from) q = q.gte('collected_at', from)
-  if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
-  const { count } = await q
+  function buildQuery() {
+    let q = admin
+      .from('contents')
+      .select('id', { count: 'exact', head: true })
+      .is('body_fetched_at', null)
+      .not('original_url', 'is', null)
+    if (from) q = q.gte('collected_at', from)
+    if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
+    return q
+  }
+
+  if (retryGateSupported !== false) {
+    const gated = await buildQuery().or(retryGateFilter())
+    if (!gated.error) {
+      retryGateSupported = true
+      return gated.count ?? 0
+    }
+    if (gated.error.code !== '42703') return gated.count ?? 0
+    retryGateSupported = false
+  }
+  const { count } = await buildQuery()
   return count ?? 0
 }
 
@@ -229,27 +298,46 @@ export async function drainBackfill(
   const { count: keywordGroupCount } = await admin
     .from('keyword_groups').select('name', { count: 'exact', head: true }).eq('is_active', true)
 
+  function buildTargetQuery() {
+    let q = admin
+      .from('contents')
+      .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
+      .is('body_fetched_at', null)
+      .not('original_url', 'is', null)
+    if (from) q = q.gte('collected_at', from)
+    if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
+    return q
+  }
+
   while (true) {
     if (deadline !== undefined && Date.now() >= deadline) break
 
-    let targetQ = admin
-      .from('contents')
-      .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups')
-      .is('body_fetched_at', null)
-      .not('original_url', 'is', null)
-    if (from) targetQ = targetQ.gte('collected_at', from)
-    if (to)   targetQ = targetQ.lte('collected_at', to + 'T23:59:59.999Z')
+    let targets: EnrichBodyRow[] | null = null
+    let error: { code?: string } | null = null
 
-    const { data: targets, error } = await targetQ
-      .order('collected_at', { ascending: false })
-      .limit(limit)
+    if (retryGateSupported !== false) {
+      const gated = await buildTargetQuery().or(retryGateFilter()).order('collected_at', { ascending: false }).limit(limit)
+      if (!gated.error) {
+        retryGateSupported = true
+        targets = gated.data as EnrichBodyRow[] | null
+      } else if (gated.error.code !== '42703') {
+        error = gated.error
+      } else {
+        retryGateSupported = false
+      }
+    }
+    if (targets === null && error === null && retryGateSupported === false) {
+      const ungated = await buildTargetQuery().order('collected_at', { ascending: false }).limit(limit)
+      targets = ungated.data as EnrichBodyRow[] | null
+      error = ungated.error
+    }
 
     if (error || !targets?.length) {
       remaining = await pendingCount(admin, from, to)
       break
     }
 
-    const rows = targets as EnrichBodyRow[]
+    const rows = targets
     const relevance = await getRelevanceContext(admin, rows, keywordGroupCount ?? 0)
     for (const row of rows) {
       const result = await enrichOneBody(admin, row, relevance)
