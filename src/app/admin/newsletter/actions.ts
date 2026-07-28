@@ -6,6 +6,7 @@ import { cookies } from 'next/headers'
 import { runNewsletterDispatch } from '@/lib/newsletter/dispatch'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
 import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
+import { toTemplateTopTeaser } from '@/lib/newsletter/top-teaser'
 
 async function requireAdmin() {
   const cookieStore = await cookies()
@@ -129,9 +130,7 @@ export async function getPreviewHtml() {
         insight: c.insight,
       })),
     })),
-    dailyInsight: prepared.dailyInsight
-      ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
-      : null,
+    topTeaser: toTemplateTopTeaser(prepared.topTeaser),
     knowledgeReports: prepared.knowledgeReports,
     companyTrends: prepared.companyTrends,
     unsubscribeUrl: `${baseUrl}/api/newsletter/unsubscribe?token=PREVIEW`,
