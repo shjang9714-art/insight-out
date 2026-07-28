@@ -92,13 +92,11 @@ const MAX_BODY_BACKFILL_IDS = 50
 
 // 348 — 콘텐츠 검수 테이블을 하나의 그리드로 통합.
 //  · sticky 관리 열 / 열 너비 드래그(200·207) 제거 — 둘 다 고정 px 총합이 컨테이너보다 커져 가로 스크롤을 유발했다.
-//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 832px.
-//  · 1440px 뷰포트 기준 본문 폭 = 1440 - 사이드바 288 - 패딩 64 = 1088px → 제목 256px 확보, 가로 스크롤 0.
-//  · 테이블 min-width = 고정 폭 832 + 제목 최소 240 = 1072px.
+//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 820px.
+//  · 관리 열을 아이콘 전용으로 줄이고 수집일·카테고리·소스 열에 폭을 돌려 핵심 메타가 잘리지 않게 한다.
+//  · 테이블 min-width = 고정 폭 820 + 제목 최소 252 = 1072px.
 
-// 관리 액션 — 기본 상태는 표면 없는 ghost, 1200px 미만에선 아이콘만
-const ACTION_BTN_COMPACT = 'max-[1200px]:w-7 max-[1200px]:justify-center max-[1200px]:px-0'
-const ACTION_LABEL_COMPACT = 'max-[1200px]:sr-only'
+// 관리 액션 — 소스 관리와 같은 아이콘 전용 ghost(모바일 카드만 라벨 노출)
 const ACTION_BTN_GHOST = 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
 const ACTION_BTN_DELETE = 'text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20'
 
@@ -261,39 +259,39 @@ function RowActions({
   onStatusChange: (c: AdminContentRow, next: ContentStatus) => void
   onEdit: (c: AdminContentRow) => void
   onDelete: (c: AdminContentRow) => void
-  /** true면 라벨을 항상 노출(모바일 카드). false면 1200px 미만에서 아이콘만. */
+  /** true면 라벨을 노출(모바일 카드). false면 소스 관리처럼 아이콘만. */
   alwaysLabel?: boolean
 }) {
-  const compact = alwaysLabel ? '' : ACTION_BTN_COMPACT
-  const labelCls = alwaysLabel ? '' : ACTION_LABEL_COMPACT
+  const actionSize = alwaysLabel ? 'sm' : 'icon-sm'
+  const labelCls = alwaysLabel ? '' : 'sr-only'
 
   return (
     <div className="flex items-center justify-end gap-0.5">
       {content.status === 'published' ? (
         <Button
-          type="button" size="sm" variant="ghost"
+          type="button" size={actionSize} variant="ghost"
           disabled={disabled}
           onClick={() => onStatusChange(content, 'rejected')}
           title="숨김"
-          className={cn(ACTION_BTN_GHOST, compact)}
+          className={ACTION_BTN_GHOST}
         >
           <X className="h-3.5 w-3.5" />
           <span className={labelCls}>숨김</span>
         </Button>
       ) : (
         <Button
-          type="button" size="sm" variant="ghost"
+          type="button" size={actionSize} variant="ghost"
           disabled={disabled}
           onClick={() => onStatusChange(content, 'published')}
           title="노출"
-          className={cn(ACTION_BTN_GHOST, compact)}
+          className={ACTION_BTN_GHOST}
         >
           <Check className="h-3.5 w-3.5" />
           <span className={labelCls}>노출</span>
         </Button>
       )}
 
-      <Button size="sm" variant="ghost" asChild className={cn(ACTION_BTN_GHOST, compact)}>
+      <Button size={actionSize} variant="ghost" asChild className={ACTION_BTN_GHOST}>
         <Link href={`/admin/contents/${content.id}`} title="보기">
           <Eye className="h-3.5 w-3.5" />
           <span className={labelCls}>보기</span>
@@ -301,32 +299,30 @@ function RowActions({
       </Button>
 
       <Button
-        type="button" size="sm" variant="ghost"
+        type="button" size={actionSize} variant="ghost"
         disabled={disabled}
         onClick={() => onEdit(content)}
         title="수정"
-        className={cn(ACTION_BTN_GHOST, compact)}
+        className={ACTION_BTN_GHOST}
       >
         <Pencil className="h-3.5 w-3.5" />
         <span className={labelCls}>수정</span>
       </Button>
 
-      <div className="ml-0.5 border-l border-border/70 pl-0.5">
-        <Button
-          type="button" size="sm" variant="ghost"
-          disabled={disabled}
-          onClick={() => onDelete(content)}
-          title="삭제"
-          aria-label={`${content.title} 삭제`}
-          className={cn(ACTION_BTN_DELETE, compact)}
-        >
-          {isWorking
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : <Trash2 className="h-3.5 w-3.5" />
-          }
-          <span className={labelCls}>삭제</span>
-        </Button>
-      </div>
+      <Button
+        type="button" size={actionSize} variant="ghost"
+        disabled={disabled}
+        onClick={() => onDelete(content)}
+        title="삭제"
+        aria-label={`${content.title} 삭제`}
+        className={ACTION_BTN_DELETE}
+      >
+        {isWorking
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <Trash2 className="h-3.5 w-3.5" />
+        }
+        <span className={labelCls}>삭제</span>
+      </Button>
     </div>
   )
 }
@@ -1760,12 +1756,12 @@ export default function AdminContentManager() {
               <colgroup>
                 <col className="w-9" />
                 <col />{/* 제목: 잔여 폭 전부 흡수 */}
-                <col className="w-[68px]" />
-                <col className="w-[104px]" />
+                <col className="w-[96px]" />
+                <col className="w-[128px]" />
                 <col className="w-[160px]" />
-                <col className="w-[92px]" />
-                <col className="w-[112px]" />
-                <col className="w-[260px]" />
+                <col className="w-[104px]" />
+                <col className="w-[152px]" />
+                <col className="w-[144px]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
@@ -1809,16 +1805,16 @@ export default function AdminContentManager() {
                         isSelected && 'bg-brand-600/5'
                       )}
                     >
-                      <td className="px-3 py-3 align-top">
+                      <td className="px-3 py-3 align-middle">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleRow(content.id)}
-                          className="mt-0.5 h-4 w-4 rounded border-border accent-[--color-brand-600]"
+                          className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
                           aria-label={`${content.title} 선택`}
                         />
                       </td>
-                      <td className="admin-cell-wrap px-3 py-3 align-top font-medium text-foreground">
+                      <td className="admin-cell-wrap px-3 py-3 align-middle font-medium text-foreground">
                         <Link
                           href={`/admin/contents/${content.id}`}
                           className="line-clamp-2 block hover:text-brand-600 hover:underline"
@@ -1826,15 +1822,15 @@ export default function AdminContentManager() {
                           {content.title}
                         </Link>
                       </td>
-                      <td className="truncate px-3 py-3 align-top text-muted-foreground" title={CONTENT_CATEGORY_LABEL[content.category]}>
+                      <td className="whitespace-nowrap px-3 py-3 align-middle text-muted-foreground">
                         {CONTENT_CATEGORY_LABEL[content.category]}
                       </td>
-                      <td className="truncate px-3 py-3 align-top text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
+                      <td className="truncate px-3 py-3 align-middle text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
                         {content.sources?.name ?? (
                           <span className="text-muted-foreground/60">Google News 검색</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 align-top">
+                      <td className="px-3 py-3 align-middle">
                         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                           <StatusBadge
                             tone={CONTENT_STATUS_TONE[content.status]}
@@ -1844,7 +1840,7 @@ export default function AdminContentManager() {
                           <ReviewReasonBadge content={content} />
                         </div>
                       </td>
-                      <td className="px-3 py-3 align-top">
+                      <td className="px-3 py-3 align-middle">
                         <div className="flex items-center gap-1">
                           <span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>
                             {bodyText}
@@ -1874,10 +1870,10 @@ export default function AdminContentManager() {
                           </p>
                         )}
                       </td>
-                      <td className="truncate px-3 py-3 align-top text-xs text-muted-foreground tabular-nums" title={formatKst(content.collected_at)}>
+                      <td className="whitespace-nowrap px-3 py-3 align-middle text-xs text-muted-foreground tabular-nums" title={formatKst(content.collected_at)}>
                         {formatKstCompact(content.collected_at)}
                       </td>
-                      <td className="px-3 py-3 align-top">
+                      <td className="px-3 py-3 align-middle text-right">
                         <RowActions
                           content={content}
                           disabled={isRowDisabled}
