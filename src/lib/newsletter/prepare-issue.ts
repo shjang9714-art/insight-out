@@ -2,14 +2,14 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { filterOutStockContent, filterOutYoutubeContent } from '@/lib/newsletter/content-filter'
 import { generateCardInsights } from '@/lib/newsletter/card-insights'
+import { getKstWeekMondayString } from '@/lib/date'
 import {
-  getDailyInsightTeaser,
   getKnowledgeReportTeasers,
   getCompanyTrendLines,
-  type DailyInsightTeaser,
   type KnowledgeReportTeaser,
   type CompanyTrendLine,
 } from '@/lib/newsletter/teasers'
+import { buildTopTeaserPool, getWeeklyExposure, pickTopTeaser, type TopTeaser } from '@/lib/newsletter/top-teaser'
 import {
   NEWS_GROUP_DEFS,
   loadCompetitorNameSets,
@@ -41,7 +41,8 @@ export interface PreparedNewsGroup {
 export interface PreparedNewsletterIssue {
   /** 5분류 그룹 구조(§2) — 템플릿·payload 저장은 이 구조를 기준으로 한다. */
   newsGroups: PreparedNewsGroup[]
-  dailyInsight: DailyInsightTeaser | null
+  /** 최상단 티저 — 그 주(week_of) 흐름/핵심 인사이트 풀에서 로테이션 선택(§규칙1). 풀 소진 시 null. */
+  topTeaser: TopTeaser | null
   knowledgeReports: KnowledgeReportTeaser[]
   companyTrends: CompanyTrendLine[]
 }
@@ -133,7 +134,8 @@ function excludeNonNews(rows: RawContentRow[]): RawContentRow[] {
 /** 버킷 ①~④ 후보를 각각의 DB 필터로 직접 조회(유튜브·주식 필터·상한 적용)한다. */
 async function fetchGroupBuckets(
   supabase: SupabaseClient,
-  names: CompetitorNameSets
+  names: CompetitorNameSets,
+  weeklyExcludeIds: Set<string>
 ): Promise<{ buckets: Record<Exclude<NewsGroupKey, 'market_b2b'>, RawContentRow[]>; usedIds: Set<string> }> {
   const [competitorRows, aiRows, aidcGroupRows, aidcCloudRows, policyRows] = await Promise.all([
     queryTopContents(supabase, { column: 'matched_keywords', values: Array.from(names.telco) }, PER_BUCKET_FETCH_LIMIT),
@@ -143,7 +145,8 @@ async function fetchGroupBuckets(
     queryTopContents(supabase, { column: 'matched_groups', values: POLICY_GROUPS_LIST }, PER_BUCKET_FETCH_LIMIT),
   ])
 
-  const usedIds = new Set<string>()
+  // 그 주 이미 노출된 기사(규칙 2)는 버킷 분류 이전에 걸러, 이번 회차 어느 섹션에도 다시 나오지 않게 한다.
+  const usedIds = new Set<string>(weeklyExcludeIds)
   const dedupeAgainstUsed = (rows: RawContentRow[]): RawContentRow[] => {
     const result = rows.filter((r) => !usedIds.has(r.id)).slice(0, MAX_CARDS_PER_GROUP)
     result.forEach((r) => usedIds.add(r.id))
@@ -178,10 +181,27 @@ async function fetchGroupBuckets(
  */
 export async function prepareNewsletterIssue(
   supabase: SupabaseClient,
-  { baseUrl, generateInsights = true }: { cardCount: number; baseUrl: string; generateInsights?: boolean }
+  {
+    baseUrl,
+    generateInsights = true,
+    now = new Date(),
+  }: { cardCount: number; baseUrl: string; generateInsights?: boolean; now?: Date }
 ): Promise<PreparedNewsletterIssue> {
-  const competitorNames = await loadCompetitorNameSets(supabase)
-  const { buckets, usedIds } = await fetchGroupBuckets(supabase, competitorNames)
+  const weekOf = getKstWeekMondayString(now)
+
+  // 최상단 티저 로테이션(§규칙1) — 그 주 풀 + 이미 소진된 키/노출 기사(§규칙2)를 먼저 계산해
+  // 이후 뉴스 카드·지식보고서 선정에서 그대로 재사용한다.
+  const [competitorNames, topTeaserPool, weeklyExposure] = await Promise.all([
+    loadCompetitorNameSets(supabase),
+    buildTopTeaserPool(supabase, weekOf, baseUrl),
+    getWeeklyExposure(supabase, weekOf),
+  ])
+
+  const topTeaser = pickTopTeaser(topTeaserPool, weeklyExposure.usedTeaserKeys)
+  const weeklyExcludeIds = new Set<string>(weeklyExposure.usedContentIds)
+  if (topTeaser) for (const id of topTeaser.articleIds) weeklyExcludeIds.add(id)
+
+  const { buckets, usedIds } = await fetchGroupBuckets(supabase, competitorNames, weeklyExcludeIds)
 
   // ⑤ 시장·B2B동향 — 넓은 일반 후보 풀에서 ①~④ 어디에도 속하지 않는(=진짜 잔여) 기사만 채운다.
   const residualPool = excludeNonNews(await queryTopContents(supabase, null, RESIDUAL_POOL_LIMIT))
@@ -218,11 +238,11 @@ export async function prepareNewsletterIssue(
 
   const relatedGroups = Array.from(new Set(selected.flatMap((r) => r.matched_groups ?? [])))
 
-  const [dailyInsight, knowledgeReports, companyTrends] = await Promise.all([
-    getDailyInsightTeaser(supabase, baseUrl),
-    getKnowledgeReportTeasers(supabase, baseUrl, relatedGroups),
+  // 뉴스 카드 선정으로 usedIds 가 더 채워졌으니, 지식보고서 배제 집합은 usedIds 최종본을 사용.
+  const [knowledgeReports, companyTrends] = await Promise.all([
+    getKnowledgeReportTeasers(supabase, baseUrl, relatedGroups, usedIds),
     getCompanyTrendLines(supabase),
   ])
 
-  return { newsGroups, dailyInsight, knowledgeReports, companyTrends }
+  return { newsGroups, topTeaser, knowledgeReports, companyTrends }
 }
