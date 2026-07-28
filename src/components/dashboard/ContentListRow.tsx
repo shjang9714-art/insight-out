@@ -92,8 +92,14 @@ export default function ContentListRow({
         </p>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          <span className="truncate">
-            {[sourceName, formatDate(publishedAt)].filter(Boolean).join(' · ')}
+          <span className="flex min-w-0 flex-1 items-center gap-1">
+            {sourceName && (
+              <>
+                <span className="truncate">{sourceName}</span>
+                <span className="shrink-0" aria-hidden>·</span>
+              </>
+            )}
+            <span className="shrink-0 whitespace-nowrap">{formatDate(publishedAt)}</span>
           </span>
           {originalUrl && (
             <a

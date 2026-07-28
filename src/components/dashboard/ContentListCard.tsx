@@ -120,10 +120,16 @@ export default function ContentListCard({
 
         {/* 풋터: 메타 + 액션 */}
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-          <p className="truncate text-[11px] text-muted-foreground">
-            {[sourceName ?? author, dateStr ? `발행 ${dateStr}` : '발행일 미상']
-              .filter(Boolean)
-              .join(' · ')}
+          <p className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-muted-foreground">
+            {(sourceName ?? author) && (
+              <>
+                <span className="truncate">{sourceName ?? author}</span>
+                <span className="shrink-0" aria-hidden>·</span>
+              </>
+            )}
+            <span className="shrink-0 whitespace-nowrap">
+              {dateStr ? `발행 ${dateStr}` : '발행일 미상'}
+            </span>
           </p>
           {originalUrl && (
             <a
