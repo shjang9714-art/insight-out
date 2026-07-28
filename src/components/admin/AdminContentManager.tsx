@@ -96,9 +96,11 @@ const MAX_BODY_BACKFILL_IDS = 50
 //  · 1440px 뷰포트 기준 본문 폭 = 1440 - 사이드바 288 - 패딩 64 = 1088px → 제목 256px 확보, 가로 스크롤 0.
 //  · 테이블 min-width = 고정 폭 832 + 제목 최소 240 = 1072px.
 
-// 관리 버튼 — 표준 Button sm 크기, 1200px 미만에선 아이콘만
+// 관리 액션 — 기본 상태는 표면 없는 ghost, 1200px 미만에선 아이콘만
 const ACTION_BTN_COMPACT = 'max-[1200px]:w-7 max-[1200px]:justify-center max-[1200px]:px-0'
 const ACTION_LABEL_COMPACT = 'max-[1200px]:sr-only'
+const ACTION_BTN_GHOST = 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+const ACTION_BTN_DELETE = 'text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20'
 
 // 검토 사유 칩 — 테이블 셀용 축약 라벨(전체 라벨은 title 속성으로 제공)
 const REVIEW_REASON_SHORT: Record<string, string> = {
@@ -241,7 +243,7 @@ function bodyLength(r: AdminContentRow): number | null {
 }
 
 /**
- * 348 — 관리 버튼 그룹. 테이블 행과 모바일 카드가 동일한 핸들러를 공유한다.
+ * 348 — 관리 액션 그룹. 테이블 행과 모바일 카드가 동일한 핸들러를 공유한다.
  * 순서 고정: 노출|숨김 → 보기 → 수정 → 삭제
  */
 function RowActions({
@@ -266,32 +268,32 @@ function RowActions({
   const labelCls = alwaysLabel ? '' : ACTION_LABEL_COMPACT
 
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-0.5">
       {content.status === 'published' ? (
         <Button
-          type="button" size="sm" variant="outline"
+          type="button" size="sm" variant="ghost"
           disabled={disabled}
           onClick={() => onStatusChange(content, 'rejected')}
           title="숨김"
-          className={compact}
+          className={cn(ACTION_BTN_GHOST, compact)}
         >
           <X className="h-3.5 w-3.5" />
           <span className={labelCls}>숨김</span>
         </Button>
       ) : (
         <Button
-          type="button" size="sm" variant="outline"
+          type="button" size="sm" variant="ghost"
           disabled={disabled}
           onClick={() => onStatusChange(content, 'published')}
           title="노출"
-          className={compact}
+          className={cn(ACTION_BTN_GHOST, compact)}
         >
           <Check className="h-3.5 w-3.5" />
           <span className={labelCls}>노출</span>
         </Button>
       )}
 
-      <Button size="sm" variant="outline" asChild className={compact}>
+      <Button size="sm" variant="ghost" asChild className={cn(ACTION_BTN_GHOST, compact)}>
         <Link href={`/admin/contents/${content.id}`} title="보기">
           <Eye className="h-3.5 w-3.5" />
           <span className={labelCls}>보기</span>
@@ -299,30 +301,32 @@ function RowActions({
       </Button>
 
       <Button
-        type="button" size="sm" variant="outline"
+        type="button" size="sm" variant="ghost"
         disabled={disabled}
         onClick={() => onEdit(content)}
         title="수정"
-        className={compact}
+        className={cn(ACTION_BTN_GHOST, compact)}
       >
         <Pencil className="h-3.5 w-3.5" />
         <span className={labelCls}>수정</span>
       </Button>
 
-      <Button
-        type="button" size="sm" variant="destructive"
-        disabled={disabled}
-        onClick={() => onDelete(content)}
-        title="삭제"
-        aria-label={`${content.title} 삭제`}
-        className={compact}
-      >
-        {isWorking
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          : <Trash2 className="h-3.5 w-3.5" />
-        }
-        <span className={labelCls}>삭제</span>
-      </Button>
+      <div className="ml-0.5 border-l border-border/70 pl-0.5">
+        <Button
+          type="button" size="sm" variant="ghost"
+          disabled={disabled}
+          onClick={() => onDelete(content)}
+          title="삭제"
+          aria-label={`${content.title} 삭제`}
+          className={cn(ACTION_BTN_DELETE, compact)}
+        >
+          {isWorking
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Trash2 className="h-3.5 w-3.5" />
+          }
+          <span className={labelCls}>삭제</span>
+        </Button>
+      </div>
     </div>
   )
 }
