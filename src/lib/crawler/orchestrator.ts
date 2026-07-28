@@ -355,7 +355,7 @@ async function writeCrawlLog(
 /**
  * 아이템 처리에 필요한 소스 컨텍스트 (소스 등록 없는 경우 id=null 허용).
  */
-interface ItemSourceCtx {
+export interface ItemSourceCtx {
   id: string | null
   type: SourceType
   trust_tier: number
@@ -367,6 +367,15 @@ interface ItemSourceCtx {
   isSearchSourced?: boolean
 }
 
+export type CrawlItemOutcome = 'inserted' | 'held' | 'duplicate' | 'rejected' | 'failed'
+
+export interface ProcessCrawlItemResult {
+  outcome: CrawlItemOutcome
+  contentId?: string
+  partial?: true
+  errorMessage?: string
+}
+
 /**
  * 아이템 1건 처리: dedup → 품질/EXCLUDE → near-dup cluster → 게이트/importance
  *   → 번역 → insert → tagContent → counts 갱신.
@@ -376,7 +385,7 @@ interface ItemSourceCtx {
  *
  * @returns partial=true 이면 호출부에서 status='partial' 처리 필요.
  */
-async function processCrawlItem(
+export async function processCrawlItem(
   admin: SupabaseClient,
   item: RawItem,
   src: ItemSourceCtx,
@@ -390,7 +399,7 @@ async function processCrawlItem(
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
-): Promise<{ partial?: true; errorMessage?: string }> {
+): Promise<ProcessCrawlItemResult> {
   try {
     const url = normalizeUrl(item.original_url)
     const tHash = titleHash(item.title)
@@ -399,17 +408,17 @@ async function processCrawlItem(
     // 1단계: 원문 URL 존재 확인 (멱등의 결정적 기준)
     if (await findByUrl(admin, url)) {
       counts.duplicate++
-      return {}
+      return { outcome: 'duplicate' }
     }
     // 2단계: 본문 해시 완전일치 중복 확인
     if (await findByBodyHash(admin, bHash)) {
       counts.duplicate++
-      return {}
+      return { outcome: 'duplicate' }
     }
     // 3단계: 제목 해시 완전일치 중복 확인
     if (await findByTitleHash(admin, tHash)) {
       counts.duplicate++
-      return {}
+      return { outcome: 'duplicate' }
     }
 
     // 품질 필터 단계 1: 광고성·짧은 글·도메인무관 제외 (#13, B1)
@@ -427,23 +436,23 @@ async function processCrawlItem(
     if (isAdLike(qText)) {
       counts.rejected++
       counts.rejectedBy.ad++
-      return {}
+      return { outcome: 'rejected' }
     }
     if (isExcludedByGroups(item.title, groups)) {  // keyword_groups.exclude_patterns 기반
       counts.rejected++
       counts.rejectedBy.excludedGroup++
-      return {}
+      return { outcome: 'rejected' }
     }
     if (effectiveLength(item.title, item.body ?? null) < MIN_EFFECTIVE_LENGTH) {
       counts.rejected++
       counts.rejectedBy.tooShort++
-      return {}
+      return { outcome: 'rejected' }
     }
     const bodyShort = !src.isSearchSourced && bodyLength(item.body ?? null) < minBodyLength
     if (exclusionMatch?.action === 'reject') {
       counts.rejected++
       counts.rejectedBy.excludeRule++
-      return {}
+      return { outcome: 'rejected' }
     }
 
     // published_at 을 ISO 로 정규화 (RFC822 등 비ISO 문자열 → timestamptz 적재 실패 방어)
@@ -580,9 +589,11 @@ async function processCrawlItem(
     if (insertError) {
       if (insertError.code === '23505') {
         counts.duplicate++   // 같은 original_url 이미 존재 → 멱등 스킵
+        return { outcome: 'duplicate' }
       } else {
         console.error(`[크롤러] insert 오류 (${url}):`, insertError.message)
         return {
+          outcome: 'failed',
           partial: true,
           errorMessage: `${insertError.code ?? ''} ${insertError.message}`.trim(),
         }
@@ -694,15 +705,120 @@ async function processCrawlItem(
       }
     }
 
-    return {}
+    const newId = insertedRows?.[0]?.id as string | undefined
+    return {
+      outcome: contentStatus === 'pending' ? 'held' : 'inserted',
+      contentId: newId,
+    }
   } catch (itemErr) {
     // 개별 아이템 오류는 partial 처리 후 계속
     console.error('[크롤러] 아이템 처리 오류:', itemErr)
     return {
+      outcome: 'failed',
       partial: true,
       errorMessage: itemErr instanceof Error ? itemErr.message : String(itemErr),
     }
   }
+}
+
+export interface CandidateProcessInput {
+  item: RawItem
+  source: ItemSourceCtx
+}
+
+/**
+ * Candidate Worker가 발견 후보를 기존 품질·중복·태깅 파이프라인으로 넘기는 진입점입니다.
+ * 실행 단위마다 분류 컨텍스트를 한 번만 읽어 후보 수만큼 설정 조회가 반복되지 않게 합니다.
+ */
+export async function processCandidateItems(
+  admin: SupabaseClient,
+  inputs: CandidateProcessInput[],
+): Promise<ProcessCrawlItemResult[]> {
+  if (inputs.length === 0) return []
+
+  const [keywordsResult, groupsResult, aliasResult, issueResult, exclusionResult, settingsResult] =
+    await Promise.all([
+      admin.from('keywords').select('id, name, service_id'),
+      admin.from('keyword_groups')
+        .select('name, include_patterns, exclude_patterns, weight, signal_hint')
+        .eq('is_active', true),
+      admin.from('entity_aliases').select('alias, entity_id').limit(5000),
+      admin.from('issues').select('id, match_keywords').eq('status', 'published'),
+      admin.from('exclusion_rules')
+        .select('id, rule_type, value, action, is_active')
+        .eq('is_active', true),
+      admin.from('crawl_settings').select('min_body_length').eq('id', true).maybeSingle(),
+    ])
+
+  if (keywordsResult.error) throw new Error(`키워드 조회 실패: ${keywordsResult.error.message}`)
+  if (groupsResult.error) throw new Error(`키워드 그룹 조회 실패: ${groupsResult.error.message}`)
+
+  const keywords = (keywordsResult.data ?? []) as CrawlKeyword[]
+  const groups = ((groupsResult.data ?? []) as KeywordGroupRow[]).map((row) => ({
+    name: row.name,
+    include_patterns: row.include_patterns,
+    exclude_patterns: row.exclude_patterns,
+    weight: row.weight,
+    signal_hint: row.signal_hint ?? null,
+  }))
+
+  const aliasMap = new Map<string, string>()
+  if (!aliasResult.error) {
+    for (const row of (aliasResult.data ?? []) as { alias: string; entity_id: string }[]) {
+      aliasMap.set(row.alias.toLowerCase(), row.entity_id)
+    }
+  }
+
+  const issueList = issueResult.error
+    ? []
+    : ((issueResult.data ?? []) as { id: string; match_keywords: string[] }[])
+        .map((row) => ({ id: row.id, match_keywords: row.match_keywords }))
+  const exclusionRules = exclusionResult.error
+    ? []
+    : (exclusionResult.data ?? []) as ExclusionRule[]
+  const minBodyLength = settingsResult.error
+    ? DEFAULT_MIN_BODY_LENGTH
+    : settingsResult.data?.min_body_length ?? DEFAULT_MIN_BODY_LENGTH
+
+  const translationBudget: TranslationBudget = { remaining: MAX_TRANSLATIONS_PER_CRAWL }
+  const classifyBudget: TranslationBudget = { remaining: MAX_LLM_CLASSIFY_PER_CRAWL }
+  const exclusionHits = new Map<string, number>()
+  const results: ProcessCrawlItemResult[] = []
+
+  for (const input of inputs) {
+    const counts: CrawlCounts = {
+      fetched: 1,
+      inserted: 0,
+      duplicate: 0,
+      held: 0,
+      rejected: 0,
+      rejectedBy: zeroRejectedBy(),
+    }
+    results.push(await processCrawlItem(
+      admin,
+      input.item,
+      input.source,
+      keywords,
+      groups,
+      translationBudget,
+      classifyBudget,
+      counts,
+      aliasMap,
+      issueList,
+      exclusionRules,
+      exclusionHits,
+      minBodyLength,
+    ))
+  }
+
+  if (exclusionHits.size > 0) {
+    const { error } = await admin.rpc('increment_exclusion_hits', {
+      hits: Object.fromEntries(exclusionHits),
+    })
+    if (error) console.warn('[기사 후보] 제외 규칙 집계 실패:', error.message)
+  }
+
+  return results
 }
 
 /** 소스 1개 크롤링 실행 */

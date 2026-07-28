@@ -4,13 +4,25 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 interface GdeltArticle { url?: string; title?: string; seendate?: string }
 interface GdeltResponse { articles?: GdeltArticle[] }
 
+export interface GdeltNewsFetchResult {
+  items: RawItem[]
+  status: 'success' | 'disabled' | 'failed'
+  error?: string
+}
+
 function gdeltDate(value: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${value.getUTCFullYear()}${p(value.getUTCMonth() + 1)}${p(value.getUTCDate())}${p(value.getUTCHours())}${p(value.getUTCMinutes())}${p(value.getUTCSeconds())}`
 }
 
-export async function fetchGdeltNews(query: string, since: string, opts: { maxRecords?: number } = {}): Promise<RawItem[]> {
-  if (process.env.GDELT_ENABLED === 'false') return []
+export async function fetchGdeltNewsDetailed(
+  query: string,
+  since: string,
+  opts: { maxRecords?: number } = {},
+): Promise<GdeltNewsFetchResult> {
+  if (process.env.GDELT_ENABLED === 'false') {
+    return { items: [], status: 'disabled', error: 'GDELT 수집이 비활성화되어 있습니다.' }
+  }
   const now = new Date()
   const threeMonthsAgo = new Date(now); threeMonthsAgo.setUTCMonth(threeMonthsAgo.getUTCMonth() - 3)
   const requestedSince = new Date(since)
@@ -33,9 +45,19 @@ export async function fetchGdeltNews(query: string, since: string, opts: { maxRe
       if (!title) continue
       items.push({ original_url: article.url, title, published_at: date.toISOString(), language: 'ko' })
     }
-    return items
+    return { items, status: 'success' }
   } catch (error) {
-    console.error(`[GDELT 뉴스] 검색 실패(query=${query}):`, error instanceof Error ? error.message : String(error))
-    return []
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[GDELT 뉴스] 검색 실패(query=${query}):`, message)
+    return { items: [], status: 'failed', error: message }
   }
+}
+
+export async function fetchGdeltNews(
+  query: string,
+  since: string,
+  opts: { maxRecords?: number } = {},
+): Promise<RawItem[]> {
+  const result = await fetchGdeltNewsDetailed(query, since, opts)
+  return result.items
 }

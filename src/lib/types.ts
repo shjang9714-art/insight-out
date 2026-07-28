@@ -125,7 +125,13 @@ export interface Source {
   crawl_interval_minutes?: number | null
   collection_method: CollectionMethod
   trust_tier: number
+  adapter_key: string
+  parser_version: string
+  priority: number
   last_crawled_at?: string | null
+  last_success_at?: string | null
+  last_article_at?: string | null
+  consecutive_zero_runs?: number
   order: number
   created_at: string
   updated_at: string
