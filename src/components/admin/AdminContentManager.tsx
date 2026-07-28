@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
@@ -13,6 +13,12 @@ import { CONTENT_STATUS_TONE, CONTENT_STATUS_LABEL, REVIEW_REASON_LABEL } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -99,6 +105,27 @@ const MAX_BODY_BACKFILL_IDS = 50
 // 관리 액션 — 소스 관리와 같은 아이콘 전용 ghost(모바일 카드만 라벨 노출)
 const ACTION_BTN_GHOST = 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
 const ACTION_BTN_DELETE = 'text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20'
+
+function ActionTooltip({
+  label,
+  enabled,
+  children,
+}: {
+  label: string
+  enabled: boolean
+  children: ReactElement
+}) {
+  if (!enabled) return children
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={6}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 // 검토 사유 칩 — 테이블 셀용 축약 라벨(전체 라벨은 title 속성으로 제공)
 const REVIEW_REASON_SHORT: Record<string, string> = {
@@ -266,64 +293,75 @@ function RowActions({
   const labelCls = alwaysLabel ? '' : 'sr-only'
 
   return (
-    <div className="flex items-center justify-end gap-0.5">
-      {content.status === 'published' ? (
-        <Button
-          type="button" size={actionSize} variant="ghost"
-          disabled={disabled}
-          onClick={() => onStatusChange(content, 'rejected')}
-          title="숨김"
-          className={ACTION_BTN_GHOST}
-        >
-          <X className="h-3.5 w-3.5" />
-          <span className={labelCls}>숨김</span>
-        </Button>
-      ) : (
-        <Button
-          type="button" size={actionSize} variant="ghost"
-          disabled={disabled}
-          onClick={() => onStatusChange(content, 'published')}
-          title="노출"
-          className={ACTION_BTN_GHOST}
-        >
-          <Check className="h-3.5 w-3.5" />
-          <span className={labelCls}>노출</span>
-        </Button>
-      )}
+    <TooltipProvider delayDuration={200}>
+      <div className="flex items-center justify-end gap-0.5">
+        {content.status === 'published' ? (
+          <ActionTooltip label="숨김" enabled={!alwaysLabel}>
+            <Button
+              type="button" size={actionSize} variant="ghost"
+              disabled={disabled}
+              onClick={() => onStatusChange(content, 'rejected')}
+              aria-label="숨김"
+              className={ACTION_BTN_GHOST}
+            >
+              <X className="h-3.5 w-3.5" />
+              <span className={labelCls}>숨김</span>
+            </Button>
+          </ActionTooltip>
+        ) : (
+          <ActionTooltip label="노출" enabled={!alwaysLabel}>
+            <Button
+              type="button" size={actionSize} variant="ghost"
+              disabled={disabled}
+              onClick={() => onStatusChange(content, 'published')}
+              aria-label="노출"
+              className={ACTION_BTN_GHOST}
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span className={labelCls}>노출</span>
+            </Button>
+          </ActionTooltip>
+        )}
 
-      <Button size={actionSize} variant="ghost" asChild className={ACTION_BTN_GHOST}>
-        <Link href={`/admin/contents/${content.id}`} title="보기">
-          <Eye className="h-3.5 w-3.5" />
-          <span className={labelCls}>보기</span>
-        </Link>
-      </Button>
+        <ActionTooltip label="보기" enabled={!alwaysLabel}>
+          <Button size={actionSize} variant="ghost" asChild className={ACTION_BTN_GHOST}>
+            <Link href={`/admin/contents/${content.id}`} aria-label="보기">
+              <Eye className="h-3.5 w-3.5" />
+              <span className={labelCls}>보기</span>
+            </Link>
+          </Button>
+        </ActionTooltip>
 
-      <Button
-        type="button" size={actionSize} variant="ghost"
-        disabled={disabled}
-        onClick={() => onEdit(content)}
-        title="수정"
-        className={ACTION_BTN_GHOST}
-      >
-        <Pencil className="h-3.5 w-3.5" />
-        <span className={labelCls}>수정</span>
-      </Button>
+        <ActionTooltip label="수정" enabled={!alwaysLabel}>
+          <Button
+            type="button" size={actionSize} variant="ghost"
+            disabled={disabled}
+            onClick={() => onEdit(content)}
+            aria-label="수정"
+            className={ACTION_BTN_GHOST}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className={labelCls}>수정</span>
+          </Button>
+        </ActionTooltip>
 
-      <Button
-        type="button" size={actionSize} variant="ghost"
-        disabled={disabled}
-        onClick={() => onDelete(content)}
-        title="삭제"
-        aria-label={`${content.title} 삭제`}
-        className={ACTION_BTN_DELETE}
-      >
-        {isWorking
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          : <Trash2 className="h-3.5 w-3.5" />
-        }
-        <span className={labelCls}>삭제</span>
-      </Button>
-    </div>
+        <ActionTooltip label="삭제" enabled={!alwaysLabel}>
+          <Button
+            type="button" size={actionSize} variant="ghost"
+            disabled={disabled}
+            onClick={() => onDelete(content)}
+            aria-label={`${content.title} 삭제`}
+            className={ACTION_BTN_DELETE}
+          >
+            {isWorking
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Trash2 className="h-3.5 w-3.5" />
+            }
+            <span className={labelCls}>삭제</span>
+          </Button>
+        </ActionTooltip>
+      </div>
+    </TooltipProvider>
   )
 }
 
