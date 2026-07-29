@@ -36,6 +36,12 @@ interface ProviderCounts {
   keyword_phase_skipped: boolean
 }
 
+interface DecodeStats {
+  attempted: number
+  succeeded: number
+  failed: number
+}
+
 function parseProviderCounts(meta: unknown): ProviderCounts | null {
   if (!meta || typeof meta !== 'object') return null
   const providers = (meta as Record<string, unknown>).providers
@@ -58,6 +64,27 @@ function parseProviderCounts(meta: unknown): ProviderCounts | null {
     keyword_gdelt: value.keyword_gdelt,
     company_google: value.company_google,
     keyword_phase_skipped: value.keyword_phase_skipped,
+  }
+}
+
+function parseDecodeStats(meta: unknown): DecodeStats | null {
+  if (!meta || typeof meta !== 'object') return null
+  const decodeStats = (meta as Record<string, unknown>).decodeStats
+  if (!decodeStats || typeof decodeStats !== 'object') return null
+  const value = decodeStats as Record<string, unknown>
+
+  if (
+    typeof value.attempted !== 'number' ||
+    typeof value.succeeded !== 'number' ||
+    typeof value.failed !== 'number'
+  ) {
+    return null
+  }
+
+  return {
+    attempted: value.attempted,
+    succeeded: value.succeeded,
+    failed: value.failed,
   }
 }
 
@@ -132,6 +159,33 @@ export default async function CrawlLogsPage() {
     console.error('[/admin/crawl-logs] 최신 크롤 공급자 집계 조회 오류:', providerError)
   }
 
+  // 449-A — 최신 본문 백필의 Google News 원문 URL 해소 성능. 구버전 meta나
+  // job_runs 조회 실패에서는 기존 화면을 유지하고 이 소절만 숨긴다.
+  let latestDecodeStats: DecodeStats | null = null
+  let latestDecodeRunAt: string | null = null
+  try {
+    const admin = createAdminClient()
+    const decodeRun = await admin
+      .from('job_runs')
+      .select('started_at, meta')
+      .eq('job_key', 'cron:body-backfill')
+      .in('status', ['succeeded', 'failed'])
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (decodeRun.error) {
+      if (decodeRun.error.code !== '42P01') {
+        console.error('[/admin/crawl-logs] 최신 본문 디코드 집계 조회 실패:', decodeRun.error.message)
+      }
+    } else if (decodeRun.data) {
+      latestDecodeStats = parseDecodeStats(decodeRun.data.meta)
+      latestDecodeRunAt = decodeRun.data.started_at
+    }
+  } catch (decodeError) {
+    console.error('[/admin/crawl-logs] 최신 본문 디코드 집계 조회 오류:', decodeError)
+  }
+
   // ── 요약 집계 (최근 24h, 없으면 전체) ──────────────────────────────────────
   // ISO 문자열 비교로 24h 필터 (Date.now() purity 규칙 회피)
   const cutoffDate = new Date()
@@ -158,6 +212,9 @@ export default async function CrawlLogsPage() {
     { label: '신규 적재(합)', value: `${totalInserted.toLocaleString()}건` },
     { label: '제외(합)',      value: rejectedKnown ? `${totalRejected.toLocaleString()}건` : '—' },
   ]
+  const decodeFailureRate = latestDecodeStats && latestDecodeStats.attempted > 0
+    ? Math.round((latestDecodeStats.failed / latestDecodeStats.attempted) * 100)
+    : 0
 
   return (
     <>
@@ -208,6 +265,43 @@ export default async function CrawlLogsPage() {
                 <p>GDELT 0건: GDELT 활성 설정 또는 해당 시드의 검색 결과를 확인해주세요.</p>
               )}
             </div>
+          )}
+        </section>
+      )}
+
+      {latestDecodeStats && (
+        <section className="mb-6 rounded-xl border border-border bg-card p-4" aria-labelledby="decode-summary-title">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="decode-summary-title" className="text-sm font-semibold text-foreground">
+              구글뉴스 원문 해소
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              cron:body-backfill · {formatKST(latestDecodeRunAt)}
+            </p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[
+              { label: '성공', value: `${latestDecodeStats.succeeded.toLocaleString()}건`, warn: false },
+              { label: '실패', value: `${latestDecodeStats.failed.toLocaleString()}건`, warn: decodeFailureRate >= 50 },
+              { label: '실패율', value: `${decodeFailureRate}%`, warn: decodeFailureRate >= 50 },
+            ].map((stat) => (
+              <span
+                key={stat.label}
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
+                  stat.warn
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
+                    : 'border-border bg-muted/50 text-muted-foreground'
+                )}
+              >
+                {stat.label} {stat.value}
+              </span>
+            ))}
+          </div>
+          {decodeFailureRate >= 50 && latestDecodeStats.attempted > 0 && (
+            <p className="mt-3 text-xs text-amber-600">
+              원문 해소 실패율이 50% 이상입니다. 구글뉴스 디코드 응답 형식과 네트워크 상태를 확인해주세요.
+            </p>
           )}
         </section>
       )}

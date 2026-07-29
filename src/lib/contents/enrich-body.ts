@@ -2,7 +2,7 @@ import 'server-only'
 import { extract } from '@extractus/article-extractor'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
-import { resolveArticleUrl } from '@/lib/crawler/resolve-url'
+import { resolveArticleUrlDetailed } from '@/lib/crawler/resolve-url'
 import { copyExternalImageToCover } from '@/lib/contents/cover-from-image'
 import { assessBodyQuality } from '@/lib/crawler/quality'
 import { SUMMARY_MIN_BODY_LEN } from '@/lib/crawler/summarize'
@@ -100,6 +100,13 @@ export interface DrainResult {
   improved: number
   skipped: number
   remaining: number
+  decodeStats?: DecodeStats
+}
+
+export interface DecodeStats {
+  attempted: number
+  succeeded: number
+  failed: number
 }
 
 export interface EnrichByIdsResult {
@@ -141,9 +148,16 @@ export async function enrichOneBody(
   admin: SupabaseClient,
   row: EnrichBodyRow,
   relevance?: RelevanceContext,
+  stats?: DecodeStats,
 ): Promise<'improved' | 'marked' | 'error'> {
   try {
-    const resolved = await resolveArticleUrl(row.original_url)
+    const resolution = await resolveArticleUrlDetailed(row.original_url)
+    if (stats && resolution.isGoogleNews) {
+      stats.attempted++
+      if (resolution.resolved) stats.succeeded++
+      else stats.failed++
+    }
+    const resolved = resolution.url
 
     let extracted: string | null = null
     let ogImage: string | null = null
@@ -295,6 +309,7 @@ export async function drainBackfill(
   { limit = 30, from, to, deadline }: DrainOptions = {},
 ): Promise<DrainResult> {
   let processed = 0, improved = 0, skipped = 0, remaining = 0
+  const decodeStats: DecodeStats = { attempted: 0, succeeded: 0, failed: 0 }
   const { count: keywordGroupCount } = await admin
     .from('keyword_groups').select('name', { count: 'exact', head: true }).eq('is_active', true)
 
@@ -340,7 +355,7 @@ export async function drainBackfill(
     const rows = targets
     const relevance = await getRelevanceContext(admin, rows, keywordGroupCount ?? 0)
     for (const row of rows) {
-      const result = await enrichOneBody(admin, row, relevance)
+      const result = await enrichOneBody(admin, row, relevance, decodeStats)
       if (result === 'improved') improved++
       else skipped++
     }
@@ -351,5 +366,5 @@ export async function drainBackfill(
     if (deadline === undefined) break
   }
 
-  return { processed, improved, skipped, remaining }
+  return { processed, improved, skipped, remaining, decodeStats }
 }
