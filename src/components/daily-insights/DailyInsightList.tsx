@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { ArrowUpRight, ExternalLink, FileText } from 'lucide-react'
 import CategoryDotChip from '@/components/daily-insights/CategoryDotChip'
-import type { DailyInsightRow } from '@/lib/daily-insights/types'
+import { LENS_META } from '@/components/daily-insights/EvidenceDrilldown'
+import type { DailyInsightRow, ImplicationLenses } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { cn } from '@/lib/utils'
 import AiMark from '@/components/ui/AiMark'
@@ -11,10 +12,10 @@ interface DailyInsightListProps {
   isLatestWeek: boolean
 }
 
-const TREND_SECTIONS: { key: 'market_trend' | 'competitor_trend' | 'implication'; label: string; emoji: string }[] = [
-  { key: 'market_trend', label: '시장·산업 동향', emoji: '📈' },
+// 시장·산업 동향 박스는 목록 카드에서 제거(implication_lenses 4카드로 대체, §6).
+// 자사 시사점(implication)도 아래 별도 블록으로 대체 — implication_lenses 유무에 따라 4갈래 또는 폴백.
+const TREND_SECTIONS: { key: 'competitor_trend'; label: string; emoji: string }[] = [
   { key: 'competitor_trend', label: '경쟁사 동향', emoji: '🏢' },
-  { key: 'implication', label: '자사 관점 시사점', emoji: '💡' },
 ]
 
 const SOURCE_PREVIEW_COUNT = 3
@@ -58,25 +59,49 @@ function InsightCard({ item, isLatestWeek }: { item: DailyInsightRow; isLatestWe
       {sections.length > 0 && (
         <div className="grid grid-cols-1 gap-2.5 border-t border-border/60 pt-3 md:grid-cols-3">
           {sections.map((s) => (
-            <div
-              key={s.key}
-              className={cn(
-                'rounded-lg px-3 py-2',
-                s.key === 'implication' ? 'bg-brand-600/10' : 'bg-muted/40'
-              )}
-            >
-              <p
-                className={cn(
-                  'text-[11px] font-semibold uppercase tracking-wide',
-                  s.key === 'implication' ? 'text-brand-700 dark:text-brand-300' : 'text-muted-foreground'
-                )}
-              >
+            <div key={s.key} className="rounded-lg bg-muted/40 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 {s.emoji} {s.label}
               </p>
               <p className="mt-1 text-[13px] leading-relaxed text-foreground">{stripLlmArtifacts(item[s.key] ?? '')}</p>
             </div>
           ))}
         </div>
+      )}
+
+      {/* 자사 시사점 — implication_lenses 4갈래(있을 때) 또는 implication 폴백 */}
+      {item.implication_lenses ? (
+        <div className="border-t border-border/60 pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+            💡 자사 관점 시사점
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {(Object.keys(LENS_META) as (keyof ImplicationLenses)[]).map((key) => {
+              const text = item.implication_lenses?.[key]
+              if (!text) return null
+              const meta = LENS_META[key]
+              const Icon = meta.icon
+              return (
+                <div key={key} className={cn('rounded-lg p-3', meta.cls)}>
+                  <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide">
+                    <Icon className="h-3.5 w-3.5" />
+                    {meta.label}
+                  </p>
+                  <p className="text-[13px] leading-relaxed">{stripLlmArtifacts(text)}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        item.implication && (
+          <div className="rounded-lg bg-brand-600/10 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+              💡 자사 관점 시사점
+            </p>
+            <p className="mt-1 text-[13px] leading-relaxed text-foreground">{stripLlmArtifacts(item.implication)}</p>
+          </div>
+        )
       )}
 
       {(previewSources.length > 0 || pastArticles.length > 0) && (

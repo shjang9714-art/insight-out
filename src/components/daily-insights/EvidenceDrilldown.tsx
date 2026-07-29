@@ -19,7 +19,7 @@ interface EvidenceDrilldownProps {
 
 const SOURCES_WINDOW_LABEL = '· 지난 7일 이내 발행'
 
-const LENS_META = {
+export const LENS_META = {
   opportunity: { label: '기회', icon: Rocket, cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' },
   risk: { label: '리스크', icon: ShieldAlert, cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
   action: { label: '실행 제안', icon: ListChecks, cls: 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300' },
