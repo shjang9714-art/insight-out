@@ -9,10 +9,27 @@ import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
 import { MobileBottomNav } from '@/components/dashboard/MobileBottomNav'
 import SearchOverlay from '@/components/mobile/SearchOverlay'
 
+// layout.tsx · DashboardHeader.tsx의 CONTENT_DETAIL_PATTERN과 반드시 동일해야 한다.
+const CONTENT_DETAIL_PATTERN = /^\/dashboard\/contents\/[^/]+$/
+
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const pathname = usePathname()
+  // 콘텐츠 상세 전체 페이지(새 탭 진입 등, 인터셉트 모달과 무관)는 헤더/L1·L2 탭·
+  // 하단 내비·플로팅 브리핑까지 전부 숨기고 기사만 보이는 화면으로 렌더한다.
+  // 인터셉트 모달(@modal/(.)contents/[id])은 이 컴포넌트를 거치지 않는 별도 슬롯이라 영향 없음.
+  const isContentDetail = CONTENT_DETAIL_PATTERN.test(pathname)
+
+  if (isContentDetail) {
+    return (
+      <div className="min-h-screen bg-background">
+        <main className="mx-auto w-full max-w-6xl print:max-w-none">
+          {children}
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
