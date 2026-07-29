@@ -31,10 +31,9 @@ import {
   BarChart3,
   Building2,
   Landmark,
-  Globe,
-  Video,
   FolderTree,
   UserCheck,
+  FlaskConical,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -63,19 +62,26 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
-    group: '홈',
+    group: '발행·노출',
     items: [
       { href: '/admin/homepage-sections', label: '홈 화면 구성', description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.', icon: LayoutTemplate },
+      { href: '/admin/newsletter', label: '뉴스레터', description: '뉴스레터 발행·설정·수신자·구독자·발송 이력을 통합 관리합니다.', icon: Mail },
     ],
   },
   {
     group: '인사이트',
     items: [
-      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
       { href: '/admin/issues', label: '이슈 관리', description: '이슈 생성·발행·키워드 매칭·콘텐츠 배정.', icon: TrendingUp },
       { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
-      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
+    ],
+  },
+  {
+    group: '실험실',
+    items: [
+      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
       { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
+      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
+      { href: '/dashboard/lab', label: '사용자 실험실', description: '사용자 화면의 실험 기능과 프로토타입을 확인합니다.', icon: FlaskConical },
     ],
   },
   {
@@ -92,9 +98,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '콘텐츠',
     items: [
-      { href: '/admin/contents?category=뉴스', label: '뉴스', description: '뉴스 콘텐츠 수집·검수·발행을 관리합니다.', icon: Newspaper },
-      { href: '/admin/contents?category=웹인사이트', label: '웹인사이트', description: '전문기관·기업 블로그 등 고부가 콘텐츠를 관리합니다.', icon: Globe },
-      { href: '/admin/contents?category=유튜브', label: '유튜브', description: '채널·영상 콘텐츠와 자막·요약을 관리합니다.', icon: Video },
+      { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
       { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록. 각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
       { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
       { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이). 각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
@@ -105,17 +109,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '리포트',
     items: [
       { href: '/admin/reports', label: 'AI 리포트', description: '전략보고서 생성·재생성·표지·HITL 발행. 프롬프트·AI보강 결합 예정(S7).', icon: FileText },
-      { href: '/admin/contents?category=외부리포트', label: '외부리포트', description: '외부 PDF·PPT·문서 리포트를 등록·발행합니다.', icon: FileArchive },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
       { href: '/admin/prompts', label: '프롬프트 콘솔', description: 'AI 생성기 프롬프트 편집·저장. AI 리포트>프롬프트 탭으로 통합 예정(S7).', icon: Sparkles },
       { href: '/admin/ai-jobs', label: 'AI 콘텐츠 보강', description: '논조·위기기회·요약·신호분류 등 LLM 작업 실행. 콘텐츠/리포트 탭으로 통합 예정(S7).', icon: Cpu },
-    ],
-  },
-  {
-    group: '발행·구독',
-    items: [
-      { href: '/admin/newsletter', label: '뉴스레터', description: '뉴스레터 발행·설정·수신자·구독자·발송 이력을 통합 관리합니다.', icon: Mail },
     ],
   },
   {
