@@ -15,7 +15,7 @@ import { fetchTrendingSnapshot } from '@/lib/issues/trending-snapshot'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '오늘의 급상승 전체 순위 | Insight Out',
+  title: '오늘의 급상승 뉴스 전체 순위 | Insight Out',
   description: '오늘 가장 빠르게 발행량이 늘고 있는 사건을 순위로 확인하세요.',
 }
 
@@ -134,7 +134,7 @@ async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string
   if (all.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-        {isToday ? '최근 급상승 이슈가 없습니다.' : '이 날짜는 기록이 없습니다.'}
+        {isToday ? '최근 급상승 뉴스가 없습니다.' : '이 날짜는 기록이 없습니다.'}
       </div>
     )
   }
@@ -172,7 +172,7 @@ export default async function TrendingPage({ searchParams }: { searchParams: Sea
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <TrendingUp className="h-5 w-5 text-orange-500" />
-        <h1 className="text-xl font-bold text-foreground">오늘의 급상승 전체 순위</h1>
+        <h1 className="text-xl font-bold text-foreground">오늘의 급상승 뉴스 전체 순위</h1>
         <span className="text-sm text-muted-foreground">{headerDateLabel}</span>
         <div className="ml-auto">
           <TrendingHistoryPicker selectedDate={selectedDate} todayKst={todayKst} />
