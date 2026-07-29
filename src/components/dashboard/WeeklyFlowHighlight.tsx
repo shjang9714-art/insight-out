@@ -1,4 +1,5 @@
 import { Milestone } from 'lucide-react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { WeeklyFlowRow, WeeklyFlowStep } from '@/lib/daily-insights/types'
 import { formatWeekLabel } from '@/lib/daily-insights/weeks'
@@ -32,7 +33,20 @@ function FlowStepBody({ step }: { step: WeeklyFlowStep }) {
         {step.phase}
         {dateLabel && <span className="font-mono normal-case tracking-normal text-muted-foreground">{dateLabel}</span>}
       </p>
-      {article?.url ? (
+      {article?.content_id ? (
+        // 다른 뉴스 링크(ContentRow/ContentListRow 등)와 동일하게 내부 콘텐츠 상세를 새 탭으로 연다.
+        <Link
+          href={`/dashboard/contents/${article.content_id}`}
+          prefetch={false}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={article.title}
+          aria-label={article.title}
+          className="mt-0.5 block text-sm leading-relaxed text-foreground underline decoration-transparent underline-offset-2 transition-colors hover:cursor-pointer hover:text-brand-700 hover:decoration-brand-700"
+        >
+          {stripLlmArtifacts(step.text)}
+        </Link>
+      ) : article?.url ? (
         <a
           href={article.url}
           target="_blank"
