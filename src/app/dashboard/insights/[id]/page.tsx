@@ -205,6 +205,8 @@ export default async function InsightDetailPage({ params }: PageProps) {
                         <Link
                           href={`/dashboard/contents/${c.content_id}`}
                           prefetch={false}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="block text-sm text-brand-600 hover:underline"
                         >
                           {meta.title}
@@ -233,6 +235,8 @@ export default async function InsightDetailPage({ params }: PageProps) {
                       <Link
                         href={`/dashboard/contents/${cid}`}
                         prefetch={false}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="block text-sm text-brand-600 hover:underline truncate"
                       >
                         {meta.title}

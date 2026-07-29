@@ -25,6 +25,7 @@ interface ReportStyleCardProps {
   dateLabel: string
   publisher?: string | null
   ctaLabel?: string
+  openInNewTab?: boolean
 }
 
 export default function ReportStyleCard({
@@ -43,11 +44,13 @@ export default function ReportStyleCard({
   dateLabel,
   publisher,
   ctaLabel = '리포트 열기',
+  openInNewTab = false,
 }: ReportStyleCardProps) {
+  const newTabProps = openInNewTab ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {}
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-brand-200 hover:shadow-[0_4px_20px_-6px_rgb(0_0_0/0.15)]">
       {/* 표지 — 제목 없이 유형 색 + 아이콘 + 워드마크 */}
-      <Link href={href} prefetch={false} className="relative block aspect-[21/9] overflow-hidden bg-muted">
+      <Link href={href} prefetch={false} {...newTabProps} className="relative block aspect-[21/9] overflow-hidden bg-muted">
         {coverImageUrl ? (
           // next/image remotePatterns 미설정 → unoptimized(211 ContentCard 패턴)
           // eslint-disable-next-line @next/next/no-img-element
@@ -79,7 +82,7 @@ export default function ReportStyleCard({
           {showAiMark && <AiMark size="sm" />}
         </span>
 
-        <Link href={href} prefetch={false} className="mb-2">
+        <Link href={href} prefetch={false} {...newTabProps} className="mb-2">
           <h3 className="line-clamp-2 text-[17px] font-bold leading-[1.4] tracking-tight text-foreground transition-colors group-hover:text-brand-600">
             {title}
           </h3>
@@ -111,7 +114,7 @@ export default function ReportStyleCard({
             {dateLabel}
             {publisher && <> · {publisher}</>}
           </span>
-          <Link href={href} prefetch={false} className="inline-flex shrink-0 items-center gap-0.5 font-medium text-foreground/70 transition-colors group-hover:text-brand-600">
+          <Link href={href} prefetch={false} {...newTabProps} className="inline-flex shrink-0 items-center gap-0.5 font-medium text-foreground/70 transition-colors group-hover:text-brand-600">
             {ctaLabel}
             <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
           </Link>

@@ -160,6 +160,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
                 <Link
                   href={`/dashboard/contents/${firstCitation.content_id}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
                 >
                   {contentMap[firstCitation.content_id].title}
@@ -175,6 +177,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
           <Link
             href={`/dashboard/contents/${card.source_content_ids[0]}`}
             prefetch={false}
+            target="_blank"
+            rel="noopener noreferrer"
             className="block text-[11px] text-brand-600 hover:underline truncate"
           >
             {contentMap[card.source_content_ids[0]].title}
@@ -213,6 +217,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
                       <Link
                         href={`/dashboard/contents/${c.content_id}`}
                         prefetch={false}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
                       >
                         {meta.title}
@@ -233,6 +239,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
                   key={id}
                   href={`/dashboard/contents/${id}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="block text-[11px] text-brand-600 hover:underline truncate"
                 >
                   {meta.title}
