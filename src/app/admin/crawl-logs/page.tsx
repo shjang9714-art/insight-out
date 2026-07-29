@@ -3,6 +3,8 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import CrawlLogsTable, { type CrawlLogRow } from '@/components/admin/CrawlLogsTable'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +26,39 @@ function formatKST(d: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+interface ProviderCounts {
+  keyword_google: number
+  keyword_naver: number
+  keyword_gdelt: number
+  company_google: number
+  keyword_phase_skipped: boolean
+}
+
+function parseProviderCounts(meta: unknown): ProviderCounts | null {
+  if (!meta || typeof meta !== 'object') return null
+  const providers = (meta as Record<string, unknown>).providers
+  if (!providers || typeof providers !== 'object') return null
+  const value = providers as Record<string, unknown>
+
+  if (
+    typeof value.keyword_google !== 'number' ||
+    typeof value.keyword_naver !== 'number' ||
+    typeof value.keyword_gdelt !== 'number' ||
+    typeof value.company_google !== 'number' ||
+    typeof value.keyword_phase_skipped !== 'boolean'
+  ) {
+    return null
+  }
+
+  return {
+    keyword_google: value.keyword_google,
+    keyword_naver: value.keyword_naver,
+    keyword_gdelt: value.keyword_gdelt,
+    company_google: value.company_google,
+    keyword_phase_skipped: value.keyword_phase_skipped,
+  }
 }
 
 // ─── 페이지 ───────────────────────────────────────────────────────────────────
@@ -70,6 +105,33 @@ export default async function CrawlLogsPage() {
 
   const logs = (data ?? []) as unknown as CrawlLogRow[]
 
+  // job_runs는 service_role 전용이다. 아직 테이블/진단 필드가 없거나 조회가 실패하면
+  // 기존 크롤 로그 화면은 그대로 유지하고 공급자 진단만 숨긴다.
+  let latestProviders: ProviderCounts | null = null
+  let latestProviderRunAt: string | null = null
+  try {
+    const admin = createAdminClient()
+    const providerRun = await admin
+      .from('job_runs')
+      .select('started_at, meta')
+      .eq('job_key', 'cron:crawl')
+      .in('status', ['succeeded', 'failed'])
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (providerRun.error) {
+      if (providerRun.error.code !== '42P01') {
+        console.error('[/admin/crawl-logs] 최신 크롤 공급자 집계 조회 실패:', providerRun.error.message)
+      }
+    } else if (providerRun.data) {
+      latestProviders = parseProviderCounts(providerRun.data.meta)
+      latestProviderRunAt = providerRun.data.started_at
+    }
+  } catch (providerError) {
+    console.error('[/admin/crawl-logs] 최신 크롤 공급자 집계 조회 오류:', providerError)
+  }
+
   // ── 요약 집계 (최근 24h, 없으면 전체) ──────────────────────────────────────
   // ISO 문자열 비교로 24h 필터 (Date.now() purity 규칙 회피)
   const cutoffDate = new Date()
@@ -101,6 +163,54 @@ export default async function CrawlLogsPage() {
     <>
       {/* 헤더 */}
       <AdminPageHeader />
+
+      {latestProviders && (
+        <section className="mb-6 rounded-xl border border-border bg-card p-4" aria-labelledby="provider-summary-title">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="provider-summary-title" className="text-sm font-semibold text-foreground">
+              최신 자동 수집 공급자
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              cron:crawl · {formatKST(latestProviderRunAt)}
+            </p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[
+              { label: 'Google 키워드', value: latestProviders.keyword_google, warn: false },
+              { label: '네이버', value: latestProviders.keyword_naver, warn: latestProviders.keyword_naver === 0 },
+              { label: 'GDELT', value: latestProviders.keyword_gdelt, warn: latestProviders.keyword_gdelt === 0 },
+              { label: 'Google 회사', value: latestProviders.company_google, warn: false },
+            ].map((provider) => (
+              <span
+                key={provider.label}
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
+                  provider.warn
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
+                    : 'border-border bg-muted/50 text-muted-foreground'
+                )}
+              >
+                {provider.label} {provider.value.toLocaleString()}건
+              </span>
+            ))}
+          </div>
+          {(latestProviders.keyword_phase_skipped ||
+            latestProviders.keyword_naver === 0 ||
+            latestProviders.keyword_gdelt === 0) && (
+            <div className="mt-3 space-y-1 text-xs text-amber-600">
+              {latestProviders.keyword_phase_skipped && (
+                <p>키워드 검색 단계가 건너뛰어졌습니다. 검색 시드 설정과 개별 소스 실행 여부를 확인해주세요.</p>
+              )}
+              {latestProviders.keyword_naver === 0 && (
+                <p>네이버 0건: API 키 설정 또는 해당 시드의 검색 결과를 확인해주세요.</p>
+              )}
+              {latestProviders.keyword_gdelt === 0 && (
+                <p>GDELT 0건: GDELT 활성 설정 또는 해당 시드의 검색 결과를 확인해주세요.</p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 요약 카드 */}
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

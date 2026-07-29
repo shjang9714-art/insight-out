@@ -5,9 +5,12 @@ interface NaverItem { title?: string; originallink?: string; link?: string; desc
 interface NaverResponse { items?: NaverItem[] }
 
 export async function fetchNaverNews(query: string, since: string, opts: { maxItems?: number } = {}): Promise<RawItem[]> {
-  const clientId = process.env.NAVER_CLIENT_ID
-  const clientSecret = process.env.NAVER_CLIENT_SECRET
-  if (!clientId || !clientSecret) return []
+  const clientId = process.env.NAVER_CLIENT_ID ?? process.env.NAVER_SEARCH_CLIENT_ID
+  const clientSecret = process.env.NAVER_CLIENT_SECRET ?? process.env.NAVER_SEARCH_CLIENT_SECRET
+  if (!clientId || !clientSecret) {
+    console.warn('[네이버 뉴스] API 키가 설정되지 않아 검색 수집을 건너뜁니다. NAVER_CLIENT_ID/SECRET 또는 NAVER_SEARCH_CLIENT_ID/SECRET을 확인해주세요.')
+    return []
+  }
   const maxItems = Math.min(opts.maxItems ?? 200, 300)
   const items: RawItem[] = []
   try {
