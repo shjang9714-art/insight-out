@@ -3,6 +3,7 @@ import { extract } from '@extractus/article-extractor'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { resolveArticleUrlDetailed } from '@/lib/crawler/resolve-url'
+import { findRealUrlByTitle } from '@/lib/crawler/title-research'
 import { copyExternalImageToCover } from '@/lib/contents/cover-from-image'
 import { assessBodyQuality } from '@/lib/crawler/quality'
 import { SUMMARY_MIN_BODY_LEN } from '@/lib/crawler/summarize'
@@ -22,6 +23,7 @@ const BODY_REVIEW_REASONS = new Set(['body_short', 'body_missing', 'body_truncat
 
 export interface EnrichBodyRow {
   id: string
+  title: string
   original_url: string
   body_original: string | null
   thumbnail_url?: string | null
@@ -107,6 +109,7 @@ export interface DecodeStats {
   attempted: number
   succeeded: number
   failed: number
+  recovered: number
 }
 
 export interface EnrichByIdsResult {
@@ -157,7 +160,14 @@ export async function enrichOneBody(
       if (resolution.resolved) stats.succeeded++
       else stats.failed++
     }
-    const resolved = resolution.url
+    let resolved = resolution.url
+    if (resolution.isGoogleNews && !resolution.resolved && row.title) {
+      const recoveredUrl = await findRealUrlByTitle(row.title)
+      if (recoveredUrl) {
+        resolved = recoveredUrl
+        if (stats) stats.recovered++
+      }
+    }
 
     let extracted: string | null = null
     let ogImage: string | null = null
@@ -244,7 +254,7 @@ export async function enrichByIds(
 
   const { data: targets } = await admin
     .from('contents')
-    .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
+    .select('id, title, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
     .in('id', limitedIds)
     .not('original_url', 'is', null)
 
@@ -309,14 +319,14 @@ export async function drainBackfill(
   { limit = 30, from, to, deadline }: DrainOptions = {},
 ): Promise<DrainResult> {
   let processed = 0, improved = 0, skipped = 0, remaining = 0
-  const decodeStats: DecodeStats = { attempted: 0, succeeded: 0, failed: 0 }
+  const decodeStats: DecodeStats = { attempted: 0, succeeded: 0, failed: 0, recovered: 0 }
   const { count: keywordGroupCount } = await admin
     .from('keyword_groups').select('name', { count: 'exact', head: true }).eq('is_active', true)
 
   function buildTargetQuery() {
     let q = admin
       .from('contents')
-      .select('id, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
+      .select('id, title, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
     if (from) q = q.gte('collected_at', from)

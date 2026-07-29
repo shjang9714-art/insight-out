@@ -40,6 +40,7 @@ interface DecodeStats {
   attempted: number
   succeeded: number
   failed: number
+  recovered: number
 }
 
 function parseProviderCounts(meta: unknown): ProviderCounts | null {
@@ -85,6 +86,7 @@ function parseDecodeStats(meta: unknown): DecodeStats | null {
     attempted: value.attempted,
     succeeded: value.succeeded,
     failed: value.failed,
+    recovered: typeof value.recovered === 'number' ? value.recovered : 0,
   }
 }
 
@@ -212,8 +214,11 @@ export default async function CrawlLogsPage() {
     { label: '신규 적재(합)', value: `${totalInserted.toLocaleString()}건` },
     { label: '제외(합)',      value: rejectedKnown ? `${totalRejected.toLocaleString()}건` : '—' },
   ]
+  const effectiveDecodeFailures = latestDecodeStats
+    ? Math.max(0, latestDecodeStats.failed - latestDecodeStats.recovered)
+    : 0
   const decodeFailureRate = latestDecodeStats && latestDecodeStats.attempted > 0
-    ? Math.round((latestDecodeStats.failed / latestDecodeStats.attempted) * 100)
+    ? Math.round((effectiveDecodeFailures / latestDecodeStats.attempted) * 100)
     : 0
 
   return (
@@ -283,7 +288,8 @@ export default async function CrawlLogsPage() {
             {[
               { label: '성공', value: `${latestDecodeStats.succeeded.toLocaleString()}건`, warn: false },
               { label: '실패', value: `${latestDecodeStats.failed.toLocaleString()}건`, warn: decodeFailureRate >= 50 },
-              { label: '실패율', value: `${decodeFailureRate}%`, warn: decodeFailureRate >= 50 },
+              { label: '제목검색 복구', value: `${latestDecodeStats.recovered.toLocaleString()}건`, warn: false },
+              { label: '실질 실패율', value: `${decodeFailureRate}%`, warn: decodeFailureRate >= 50 },
             ].map((stat) => (
               <span
                 key={stat.label}
