@@ -19,7 +19,11 @@ import { cn } from '@/lib/utils'
 import { Ban, CheckCircle2, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
 import type { SourceType } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
-import type { CrawlJob, CrawlProgress } from '@/lib/crawler/progress'
+import {
+  CRAWL_JOB_STORAGE_KEY,
+  type CrawlJob,
+  type CrawlProgress,
+} from '@/lib/crawler/progress'
 import type { RejectedBy } from '@/lib/crawler/types'
 import { zeroRejectedBy } from '@/lib/crawler/types'
 import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
@@ -27,8 +31,6 @@ import type { SourceQualityStat, SourceQualityResponse } from '@/app/api/admin/s
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { REVIEW_REASON_LABEL, type Tone } from '@/lib/admin/status-style'
-
-const CRAWL_JOB_STORAGE_KEY = 'insight-out:admin-crawl-job'
 
 const QUALITY_DAYS_OPTIONS = [7, 14, 30] as const
 type QualityDays = typeof QUALITY_DAYS_OPTIONS[number]

@@ -29,6 +29,7 @@ import {
 import type { SourceType, CollectionMethod } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
+import AdminManualCrawl from '@/components/admin/AdminManualCrawl'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -668,13 +669,14 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       )}
 
       {/* ── 목록 헤더 ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스${selectedType !== 'all' ? ` (${filteredSources.length}개 표시)` : ''}`}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!showForm && (
             <>
+              <AdminManualCrawl onComplete={loadSources} />
               <Button
                 size="sm"
                 variant="outline"
