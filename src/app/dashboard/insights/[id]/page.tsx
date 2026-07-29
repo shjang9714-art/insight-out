@@ -22,6 +22,7 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ week?: string }>
 }
 
 interface ContentMeta {
@@ -70,8 +71,10 @@ export const metadata: Metadata = {
   description: '인사이트 카드의 핵심·시사점·근거를 확인합니다.',
 }
 
-export default async function InsightDetailPage({ params }: PageProps) {
+export default async function InsightDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
+  const query = await searchParams
+  const selectedWeek = typeof query.week === 'string' && query.week ? query.week : undefined
 
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -148,7 +151,9 @@ export default async function InsightDetailPage({ params }: PageProps) {
   const implication = card.implication ? stripLlmArtifacts(card.implication) : null
   const implicationItems = implication ? splitImplicationItems(implication) : []
 
-  const backHref = card.scope === 'company' ? '/dashboard/entities?view=watchlist' : '/dashboard/ai-analysis'
+  const backHref = card.scope === 'company'
+    ? `/dashboard/entities?view=watchlist${selectedWeek ? `&week=${encodeURIComponent(selectedWeek)}` : ''}`
+    : '/dashboard/ai-analysis'
 
   return (
     <PageContainer variant="reading">

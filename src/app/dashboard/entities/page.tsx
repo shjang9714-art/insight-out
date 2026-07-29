@@ -10,6 +10,7 @@ import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { getMajorCompaniesData } from '@/lib/entities/major-companies'
 import MajorCompanyGroups from '@/components/entities/MajorCompanyGroups'
+import MajorCompanyWeeklyTimeline from '@/components/entities/MajorCompanyWeeklyTimeline'
 import {
   getPublishedCompetitorWeeklyReports,
   getCompetitorWeeklyTimeline,
@@ -34,7 +35,7 @@ export const metadata: Metadata = {
   description: '관심기업·경쟁사 동향 및 엔티티 관계 탐색 — 기업·기술·이슈를 한눈에 확인합니다.',
 }
 
-type SearchParams = Promise<{ view?: string; entity?: string; docType?: string }>
+type SearchParams = Promise<{ view?: string; entity?: string; docType?: string; week?: string }>
 
 const VALID_VIEWS = ['watchlist', 'competitor', 'trend', 'documents'] as const
 
@@ -81,17 +82,28 @@ function EntityPanelSkeleton() {
   )
 }
 
-async function WatchlistView() {
+async function WatchlistView({ weekStart }: { weekStart?: string }) {
   const supabase = await createSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   // ─── 주요 기업 탭 ─────────────────────────────────────────────────────────
   // 255: curated_groups/curated_companies(253) 기반 계층(7그룹 → 대표 3~5 → 전체보기).
-  const { groups: majorGroups, curatedApplied } = await getMajorCompaniesData(supabase, { userId: user?.id })
+  const {
+    groups: majorGroups,
+    curatedApplied,
+    availableWeeks,
+    selectedWeek,
+  } = await getMajorCompaniesData(supabase, { userId: user?.id, weekStart })
   const MAJOR_REP_COUNT = 5
 
   return (
-    <div>
+    <div className="space-y-8">
       {user && <WatchlistTabHeader />}
+      <MajorCompanyWeeklyTimeline
+        weeks={availableWeeks}
+        activeWeekStart={selectedWeek}
+        hrefBase="/dashboard/entities"
+        persistentParams={{ view: 'watchlist' }}
+      />
       {!curatedApplied ? (
         <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
           <p className="text-sm font-medium text-foreground">주요 기업 데이터 준비 중입니다</p>
@@ -99,14 +111,19 @@ async function WatchlistView() {
         </div>
       ) : majorGroups.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
-          <p className="text-sm font-medium text-foreground">주요 기업 동향이 아직 없습니다</p>
-          <p className="text-xs text-muted-foreground">AI 생성·승인 후 이곳에 표시됩니다.</p>
+          <p className="text-sm font-medium text-foreground">
+            {selectedWeek ? '선택한 주의 주요 기업 동향이 없습니다' : '주요 기업 동향이 아직 없습니다'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {selectedWeek ? '다른 주를 선택하거나 해당 주 카드를 재생성해 주세요.' : 'AI 생성·승인 후 이곳에 표시됩니다.'}
+          </p>
         </div>
       ) : (
         <MajorCompanyGroups
           groups={majorGroups}
           repCount={MAJOR_REP_COUNT}
           seeAllHrefBase="/dashboard/entities/major"
+          weekStart={selectedWeek ?? undefined}
         />
       )}
     </div>
@@ -240,6 +257,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
   const raw = typeof params.view === 'string' ? params.view : ''
   const view: ViewId = (VALID_VIEWS.includes(raw as ViewId) ? raw : 'watchlist') as ViewId
   const entityFilter = typeof params.entity === 'string' && params.entity ? params.entity : undefined
+  const weekFilter = typeof params.week === 'string' && params.week ? params.week : undefined
   const docTypeFilter = typeof params.docType === 'string' && (COMPANY_DOC_TYPES as string[]).includes(params.docType)
     ? (params.docType as CompanyDocumentType)
     : undefined
@@ -249,7 +267,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
       {/* 주요 기업 탭 */}
       {view === 'watchlist' && (
         <Suspense fallback={<EntityPanelSkeleton />}>
-          <WatchlistView />
+          <WatchlistView weekStart={weekFilter} />
         </Suspense>
       )}
 

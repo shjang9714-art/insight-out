@@ -45,7 +45,7 @@ async function verifyAdmin() {
 
 /**
  * POST /api/admin/insights
- * body: { days?: number; maxThemes?: number }
+ * body: { days?: number; maxThemes?: number; weekStart?: string }
  * AI 인사이트 카드 생성 트리거
  */
 export async function POST(request: NextRequest) {
@@ -56,12 +56,14 @@ export async function POST(request: NextRequest) {
     let days: number | undefined
     let maxThemes: number | undefined
     let maxCompanies: number | undefined
+    let weekStart: string | undefined
     let scope: 'industry' | 'company' = 'industry'
     try {
       const body = await request.json() as Record<string, unknown>
       if (typeof body.days === 'number' && body.days > 0) days = body.days
       if (typeof body.maxThemes === 'number' && body.maxThemes > 0) maxThemes = body.maxThemes
       if (typeof body.maxCompanies === 'number' && body.maxCompanies > 0) maxCompanies = body.maxCompanies
+      if (typeof body.weekStart === 'string' && body.weekStart) weekStart = body.weekStart
       if (body.scope === 'company') scope = 'company'
     } catch { /* body 없음 — 기본값 사용 */ }
 
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     if (scope === 'company') {
       const deadline = Date.now() + 270_000
-      const result = await generateCompanyInsightCards(admin, { days, maxCompanies, deadline })
+      const result = await generateCompanyInsightCards(admin, { days, maxCompanies, deadline, weekStart })
       return NextResponse.json({ created: result.created, topics: result.companies })
     }
 
