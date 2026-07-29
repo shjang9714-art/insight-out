@@ -16,6 +16,7 @@ import {
   RELEVANCE_LABEL,
   RELEVANCE_CLS,
 } from '@/lib/insight/card-meta'
+import { buildCompanyMatchOr, getCompanyNewsSinceIso } from '@/lib/insight/company-match'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +35,17 @@ interface ContentMeta {
   matched_keywords: string[] | null
 }
 
+interface CompanyNewsItem {
+  id: string
+  title: string
+  published_at: string | null
+  collected_at: string
+  sources: ContentMeta['sources']
+}
+
+const COMPANY_NEWS_WINDOW_DAYS = 30
+const COMPANY_NEWS_LIMIT = 10
+
 function formatPeriod(start: string, end: string): string {
   const fmt = (d: Date) =>
     `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
@@ -42,6 +54,15 @@ function formatPeriod(start: string, end: string): string {
 
 function sourceName(sources: ContentMeta['sources']): string | null {
   return Array.isArray(sources) ? sources[0]?.name ?? null : sources?.name ?? null
+}
+
+function formatNewsDate(date: string): string {
+  return new Date(date).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  })
 }
 
 function splitImplicationItems(text: string): string[] {
@@ -115,6 +136,50 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
       .in('id', allIds)
     for (const row of (contents ?? []) as unknown as ContentMeta[]) {
       contentMap[row.id] = row
+    }
+  }
+
+  let companyNews: CompanyNewsItem[] = []
+  if (card.scope === 'company') {
+    try {
+      const { data: companyRow, error: companyError } = await supabase
+        .from('curated_companies')
+        .select('aliases')
+        .eq('name', card.topic)
+        .maybeSingle()
+
+      if (companyError) {
+        console.warn('[기업 최근 뉴스] 회사 별칭 조회 실패:', companyError.message)
+      }
+
+      const aliases = !companyError && Array.isArray(companyRow?.aliases)
+        ? companyRow.aliases.filter((alias): alias is string => typeof alias === 'string')
+        : []
+      const since = getCompanyNewsSinceIso(COMPANY_NEWS_WINDOW_DAYS)
+      let newsQuery = supabase
+        .from('contents')
+        .select('id, title, published_at, collected_at, sources(name)')
+        .eq('status', 'published')
+        .gte('collected_at', since)
+        .or(buildCompanyMatchOr(card.topic, aliases))
+        .order('collected_at', { ascending: false })
+        .limit(COMPANY_NEWS_LIMIT)
+
+      if (allIds.length > 0) {
+        newsQuery = newsQuery.not('id', 'in', `(${allIds.join(',')})`)
+      }
+
+      const { data: newsRows, error: newsError } = await newsQuery
+      if (newsError) {
+        console.warn('[기업 최근 뉴스] 콘텐츠 조회 실패:', newsError.message)
+      } else {
+        companyNews = (newsRows ?? []) as unknown as CompanyNewsItem[]
+      }
+    } catch (error) {
+      console.warn(
+        '[기업 최근 뉴스] 섹션 조회 중 오류:',
+        error instanceof Error ? error.message : String(error)
+      )
     }
   }
 
@@ -251,6 +316,38 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 회사 카드 전용 최근 뉴스 — 기존 근거 자료와 중복되는 콘텐츠는 조회에서 제외한다. */}
+      {companyNews.length > 0 && (
+        <div className="mb-8 space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+            이 회사 최근 뉴스
+          </h2>
+          <ul className="overflow-hidden rounded-lg border border-border bg-card divide-y divide-border">
+            {companyNews.map((news) => {
+              const newsSource = sourceName(news.sources)
+              const newsDate = formatNewsDate(news.published_at ?? news.collected_at)
+
+              return (
+                <li key={news.id}>
+                  <Link
+                    href={`/dashboard/contents/${news.id}`}
+                    prefetch={false}
+                    className="group block px-4 py-3 transition-colors hover:bg-muted/50"
+                  >
+                    <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
+                      {news.title}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {[newsSource, newsDate].filter(Boolean).join(' · ')}
+                    </p>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
 

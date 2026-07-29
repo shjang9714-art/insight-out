@@ -2,6 +2,7 @@ import 'server-only'
 
 import { llmComplete } from '@/lib/llm'
 import { insightAutoPublish, insightCompanyAutoPublish } from '@/lib/insight/auto-publish'
+import { buildCompanyMatchOr } from '@/lib/insight/company-match'
 import { getLastCompletedWeekKst } from '@/lib/competitor-weekly/generate'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -405,11 +406,7 @@ export async function generateCompanyInsightCards(
     }
     try {
       // 254 — name + aliases[] 다중 매칭(표기 차이 누락 방지)
-      const terms = [company, ...aliases]
-      const orClause = terms
-        .map((t) => t.replace(/[%_\\]/g, '\\$&'))
-        .flatMap((escaped) => [`title.ilike.%${escaped}%`, `summary_ko.ilike.%${escaped}%`])
-        .join(',')
+      const orClause = buildCompanyMatchOr(company, aliases)
 
       const { data: rawArticles } = await adminClient
         .from('contents')
