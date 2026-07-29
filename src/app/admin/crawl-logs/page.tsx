@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import CrawlLogsTable, { type CrawlLogRow } from '@/components/admin/CrawlLogsTable'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import { parseProviderCounts, type ProviderCounts } from '@/lib/admin/crawl-providers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cn } from '@/lib/utils'
 
@@ -28,44 +29,11 @@ function formatKST(d: string | null): string {
   })
 }
 
-interface ProviderCounts {
-  keyword_google: number
-  keyword_naver: number
-  keyword_gdelt: number
-  company_google: number
-  keyword_phase_skipped: boolean
-}
-
 interface DecodeStats {
   attempted: number
   succeeded: number
   failed: number
   recovered: number
-}
-
-function parseProviderCounts(meta: unknown): ProviderCounts | null {
-  if (!meta || typeof meta !== 'object') return null
-  const providers = (meta as Record<string, unknown>).providers
-  if (!providers || typeof providers !== 'object') return null
-  const value = providers as Record<string, unknown>
-
-  if (
-    typeof value.keyword_google !== 'number' ||
-    typeof value.keyword_naver !== 'number' ||
-    typeof value.keyword_gdelt !== 'number' ||
-    typeof value.company_google !== 'number' ||
-    typeof value.keyword_phase_skipped !== 'boolean'
-  ) {
-    return null
-  }
-
-  return {
-    keyword_google: value.keyword_google,
-    keyword_naver: value.keyword_naver,
-    keyword_gdelt: value.keyword_gdelt,
-    company_google: value.company_google,
-    keyword_phase_skipped: value.keyword_phase_skipped,
-  }
 }
 
 function parseDecodeStats(meta: unknown): DecodeStats | null {
