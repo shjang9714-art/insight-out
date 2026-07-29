@@ -6,7 +6,6 @@ import {
   Sun,
   Rss,
   ListChecks,
-  Languages,
   Tags,
   Network,
   Cpu,
@@ -19,7 +18,6 @@ import {
   Settings,
   Wrench,
   TrendingUp,
-  ShieldAlert,
   Filter,
   Gauge,
   LayoutTemplate,
@@ -148,11 +146,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '시스템 설정',
     items: [
-      { href: '/admin/llm', label: 'AI 모델·프로바이더', description: '전역 AI 자원(제공자·모델·라우팅·단가·한도)을 등록·관리합니다.', icon: Cpu },
-      { href: '/admin/translation', label: '외부 API·연동', description: '번역·TTS·검색·메일·스토리지 등 외부 연동. 외부 API·연동으로 확장 예정(S6).', icon: Languages },
-      { href: '/admin/mcp', label: 'MCP 토큰', description: '팀원이 각자의 Claude에서 기록할 수 있도록 토큰을 발급·폐기합니다.', icon: KeyRound },
-      { href: '/admin/settings', label: '공통 환경설정', description: '어드민 화면 테마·서비스 기본값·알림·발행 정책·보안. 확장 예정(S6).', icon: Settings },
-      { href: '/admin/maintenance', label: '시스템 유지보수', description: '되돌릴 수 없는 수집 데이터 삭제·초기화·백업 작업을 관리합니다.', icon: ShieldAlert },
+      { href: '/admin/settings', label: '시스템 설정', description: '공통 환경·AI 모델·외부 API·MCP 토큰·시스템 유지보수를 통합 관리합니다.', icon: Settings },
     ],
   },
 ]
