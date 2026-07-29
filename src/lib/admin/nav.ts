@@ -60,10 +60,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
-    group: '발행·노출',
+    group: '콘텐츠',
     items: [
-      { href: '/admin/homepage-sections', label: '홈 화면 구성', description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.', icon: LayoutTemplate },
-      { href: '/admin/newsletter', label: '뉴스레터', description: '뉴스레터 발행·설정·수신자·구독자·발송 이력을 통합 관리합니다.', icon: Mail },
+      { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
+      { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록. 각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
+      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
+      { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이). 각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
+      { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리. 콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
     ],
   },
   {
@@ -71,15 +74,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { href: '/admin/issues', label: '이슈 관리', description: '이슈 생성·발행·키워드 매칭·콘텐츠 배정.', icon: TrendingUp },
       { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
-    ],
-  },
-  {
-    group: '실험실',
-    items: [
-      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
-      { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
-      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
-      { href: '/dashboard/lab', label: '사용자 실험실', description: '사용자 화면의 실험 기능과 프로토타입을 확인합니다.', icon: FlaskConical },
     ],
   },
   {
@@ -94,21 +88,18 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
   {
-    group: '콘텐츠',
-    items: [
-      { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
-      { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록. 각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
-      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
-      { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이). 각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
-      { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리. 콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
-    ],
-  },
-  {
     group: '리포트',
     items: [
       { href: '/admin/reports', label: 'AI 리포트', description: '전략보고서 생성·발행, 프롬프트 편집, AI 콘텐츠 보강을 통합 관리합니다.', icon: FileText },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
+    ],
+  },
+  {
+    group: '발행·노출',
+    items: [
+      { href: '/admin/homepage-sections', label: '홈 화면 구성', description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.', icon: LayoutTemplate },
+      { href: '/admin/newsletter', label: '뉴스레터', description: '뉴스레터 발행·설정·수신자·구독자·발송 이력을 통합 관리합니다.', icon: Mail },
     ],
   },
   {
@@ -145,6 +136,15 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '시스템 설정',
     items: [
       { href: '/admin/settings', label: '시스템 설정', description: '공통 환경·AI 모델·외부 API·MCP 토큰·시스템 유지보수를 통합 관리합니다.', icon: Settings },
+    ],
+  },
+  {
+    group: '실험실',
+    items: [
+      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
+      { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
+      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
+      { href: '/dashboard/lab', label: '사용자 실험실', description: '사용자 화면의 실험 기능과 프로토타입을 확인합니다.', icon: FlaskConical },
     ],
   },
 ]
