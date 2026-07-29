@@ -478,6 +478,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
                           key={cid}
                           href={`/dashboard/contents/${cid}`}
                           prefetch={false}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="inline-block rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 transition-colors hover:border-blue-400 max-w-[240px] truncate"
                         >
                           {art.title}
@@ -519,6 +521,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
                             <Link
                               href={`/dashboard/contents/${a.id}`}
                               prefetch={false}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="block text-[11px] text-muted-foreground leading-snug line-clamp-2 hover:text-brand-600 transition-colors"
                             >
                               {a.title}
@@ -723,6 +727,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
                             <Link
                               href={`/dashboard/contents/${article.id}`}
                               prefetch={false}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="text-sm font-medium text-foreground leading-snug hover:text-brand-600 transition-colors"
                             >
                               {article.title}

@@ -187,6 +187,8 @@ function AnalysisSection({ section }: { section: CompetitorWeeklySection }) {
                   <Link
                     href={`/dashboard/contents/${e.content_id}`}
                     prefetch={false}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="transition-colors hover:text-brand-600"
                   >
                     {e.source_name || e.event}
@@ -240,6 +242,8 @@ function UtilizedDocuments({ documents }: { documents: UtilizedCompanyDocument[]
             <Link
               href={`/dashboard/contents/${doc.contentId}`}
               prefetch={false}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-foreground transition-colors hover:text-brand-600"
             >
               {doc.title}

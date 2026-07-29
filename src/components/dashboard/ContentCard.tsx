@@ -194,5 +194,15 @@ export default function ContentCard({
     )
   }
 
-  return <Link href={resolvedHref} prefetch={false} className={cardClass}>{inner}</Link>
+  return (
+    <Link
+      href={resolvedHref}
+      prefetch={false}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cardClass}
+    >
+      {inner}
+    </Link>
+  )
 }

@@ -14,6 +14,7 @@ export default function CompanyDocumentCard({ doc }: { doc: CompanyDocumentListI
   return (
     <ReportStyleCard
       href={`/dashboard/contents/${doc.contentId}`}
+      openInNewTab
       title={doc.title}
       summary={doc.summaryKo}
       coverImageUrl={doc.thumbnailUrl}
