@@ -106,11 +106,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '리포트',
     items: [
-      { href: '/admin/reports', label: 'AI 리포트', description: '전략보고서 생성·재생성·표지·HITL 발행. 프롬프트·AI보강 결합 예정(S7).', icon: FileText },
+      { href: '/admin/reports', label: 'AI 리포트', description: '전략보고서 생성·발행, 프롬프트 편집, AI 콘텐츠 보강을 통합 관리합니다.', icon: FileText },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
-      { href: '/admin/prompts', label: '프롬프트 콘솔', description: 'AI 생성기 프롬프트 편집·저장. AI 리포트>프롬프트 탭으로 통합 예정(S7).', icon: Sparkles },
-      { href: '/admin/ai-jobs', label: 'AI 콘텐츠 보강', description: '논조·위기기회·요약·신호분류 등 LLM 작업 실행. 콘텐츠/리포트 탭으로 통합 예정(S7).', icon: Cpu },
     ],
   },
   {
