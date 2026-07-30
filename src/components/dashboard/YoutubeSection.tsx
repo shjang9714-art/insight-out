@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import ContentCard from '@/components/dashboard/ContentCard'
-import { coverUrlFor } from '@/lib/contents/topic-cover'
+import { coverUrlsForList } from '@/lib/contents/topic-cover'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,8 @@ export default async function YoutubeSection() {
   // 영상 없으면 섹션 숨김
   if (videos.length === 0) return null
 
+  const videoCoverUrls = coverUrlsForList(videos.map((video) => ({ ...video, category: '유튜브' })))
+
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       {/* 섹션 헤더 */}
@@ -70,7 +72,7 @@ export default async function YoutubeSection() {
 
       {/* 카드 그리드 */}
       <div className="grid grid-cols-3 gap-4">
-        {videos.map((video) => (
+        {videos.map((video, index) => (
           <ContentCard
             key={video.id}
             id={video.id}
@@ -79,7 +81,7 @@ export default async function YoutubeSection() {
             category="유튜브"
             sourceName={video.sources?.name ?? null}
             publishedAt={video.published_at}
-            thumbnailUrl={coverUrlFor({ ...video, category: '유튜브' })}
+            thumbnailUrl={videoCoverUrls[index]}
             externalHref={video.original_url}
             keywords={video.matched_keywords ?? []}
           />
