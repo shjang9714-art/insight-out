@@ -7,6 +7,7 @@ import { Search } from 'lucide-react'
 import { isSearchFilterKey, type SearchFilterKey } from '@/lib/search/search-filters'
 import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 import SearchResultsList from '@/components/search/SearchResultsList'
+import AiSearchAnswer from '@/components/search/AiSearchAnswer'
 import { useUnifiedSearch } from '@/lib/search/use-unified-search'
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
@@ -108,7 +109,12 @@ function SearchContent() {
       )}
 
       {/* 결과 목록 — 종류별 섹션 */}
-      {q && !isLoading && sections !== null && sections.length > 0 && <SearchResultsList sections={sections} />}
+      {q && !isLoading && sections !== null && sections.length > 0 && (
+        <>
+          <AiSearchAnswer key={q} question={q} />
+          <SearchResultsList sections={sections} />
+        </>
+      )}
     </div>
   )
 }
