@@ -994,7 +994,8 @@ CREATE TABLE IF NOT EXISTS "public"."archive_items" (
     "note" "text",
     "order" integer DEFAULT 0 NOT NULL,
     "added_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "archive_items_one_item" CHECK ((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) = 1))
+    "ai_report_id" "uuid",
+    CONSTRAINT "archive_items_one_item" CHECK (((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) + (("ai_report_id" IS NOT NULL))::integer) = 1))
 );
 
 
@@ -1022,7 +1023,8 @@ CREATE TABLE IF NOT EXISTS "public"."bookmarks" (
     "content_id" "uuid",
     "youtube_video_id" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "bookmarks_one_item" CHECK ((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) = 1))
+    "ai_report_id" "uuid",
+    CONSTRAINT "bookmarks_one_item" CHECK (((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) + (("ai_report_id" IS NOT NULL))::integer) = 1))
 );
 
 
@@ -2943,6 +2945,13 @@ CREATE UNIQUE INDEX "archive_items_youtube_key" ON "public"."archive_items" USIN
 
 
 --
+-- Name: archive_items_archive_report_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "archive_items_archive_report_key" ON "public"."archive_items" USING "btree" ("archive_id", "ai_report_id") WHERE ("ai_report_id" IS NOT NULL);
+
+
+--
 -- Name: archives_user_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2961,6 +2970,13 @@ CREATE UNIQUE INDEX "bookmarks_user_content_key" ON "public"."bookmarks" USING "
 --
 
 CREATE UNIQUE INDEX "bookmarks_user_youtube_key" ON "public"."bookmarks" USING "btree" ("user_id", "youtube_video_id") WHERE ("youtube_video_id" IS NOT NULL);
+
+
+--
+-- Name: bookmarks_user_report_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "bookmarks_user_report_key" ON "public"."bookmarks" USING "btree" ("user_id", "ai_report_id") WHERE ("ai_report_id" IS NOT NULL);
 
 
 --
@@ -3885,6 +3901,14 @@ ALTER TABLE ONLY "public"."archive_items"
 
 
 --
+-- Name: archive_items archive_items_ai_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."archive_items"
+    ADD CONSTRAINT "archive_items_ai_report_id_fkey" FOREIGN KEY ("ai_report_id") REFERENCES "public"."ai_reports"("id") ON DELETE CASCADE;
+
+
+--
 -- Name: archives archives_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3906,6 +3930,14 @@ ALTER TABLE ONLY "public"."bookmarks"
 
 ALTER TABLE ONLY "public"."bookmarks"
     ADD CONSTRAINT "bookmarks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+--
+-- Name: bookmarks bookmarks_ai_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."bookmarks"
+    ADD CONSTRAINT "bookmarks_ai_report_id_fkey" FOREIGN KEY ("ai_report_id") REFERENCES "public"."ai_reports"("id") ON DELETE CASCADE;
 
 
 --

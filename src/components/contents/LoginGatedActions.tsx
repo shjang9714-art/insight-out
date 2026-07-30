@@ -5,7 +5,8 @@ import ArchiveButton from '@/components/archive/ArchiveButton'
 
 interface LoginGatedActionsProps {
   isLoggedIn: boolean
-  contentId: string
+  contentId?: string
+  reportId?: string
 }
 
 /**
@@ -13,7 +14,7 @@ interface LoginGatedActionsProps {
  * 로그인 사용자 전용 기능이라 anon 방문자에겐 실패하는 fetch 대신
  * 로그인 유도 링크로 대체한다.
  */
-export default function LoginGatedActions({ isLoggedIn, contentId }: LoginGatedActionsProps) {
+export default function LoginGatedActions({ isLoggedIn, contentId, reportId }: LoginGatedActionsProps) {
   if (!isLoggedIn) {
     return (
       <Link
@@ -28,8 +29,8 @@ export default function LoginGatedActions({ isLoggedIn, contentId }: LoginGatedA
 
   return (
     <>
-      <BookmarkButton contentId={contentId} />
-      <ArchiveButton contentId={contentId} />
+      <BookmarkButton contentId={contentId} reportId={reportId} />
+      <ArchiveButton contentId={contentId} reportId={reportId} />
     </>
   )
 }

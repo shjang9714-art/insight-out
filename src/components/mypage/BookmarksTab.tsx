@@ -32,8 +32,9 @@ export default function BookmarksTab({ bookmarks, loading, error, onRemove }: Pr
           {bookmarks.map((bookmark) => {
             const content = bookmark.contents
             const video = bookmark.youtube_videos
+            const report = bookmark.ai_reports
             const youtubeUrl = video ? `https://www.youtube.com/watch?v=${video.video_id}` : null
-            const date = content?.published_at ?? video?.published_at ?? bookmark.created_at
+            const date = content?.published_at ?? video?.published_at ?? report?.published_at ?? bookmark.created_at
 
             return (
               <div key={bookmark.id} className="flex items-start justify-between gap-3 px-4 py-3">
@@ -48,6 +49,14 @@ export default function BookmarksTab({ bookmarks, loading, error, onRemove }: Pr
                     >
                       {content.title}
                     </Link>
+                  ) : report ? (
+                    <Link
+                      href={`/dashboard/reports/${report.id}`}
+                      prefetch={false}
+                      className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
+                    >
+                      {report.title}
+                    </Link>
                   ) : video && youtubeUrl ? (
                     <a
                       href={youtubeUrl}
@@ -61,7 +70,7 @@ export default function BookmarksTab({ bookmarks, loading, error, onRemove }: Pr
                     <span className="text-sm text-muted-foreground">(삭제된 항목)</span>
                   )}
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {content?.category ?? video?.channel_name ?? '북마크'} · {new Date(date).toLocaleDateString('ko-KR')}
+                    {content?.category ?? (report ? `AI 리포트 · ${report.type}` : video?.channel_name) ?? '북마크'} · {new Date(date).toLocaleDateString('ko-KR')}
                   </p>
                 </div>
                 <button

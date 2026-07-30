@@ -8,6 +8,21 @@ import { cn } from '@/lib/utils'
 interface BookmarkButtonProps {
   contentId?: string
   youtubeVideoId?: string
+  reportId?: string
+}
+
+type BookmarkColumn = 'content_id' | 'ai_report_id' | 'youtube_video_id'
+type BookmarkTarget = { column: BookmarkColumn; id: string }
+
+function resolveTarget(
+  contentId?: string,
+  reportId?: string,
+  youtubeVideoId?: string
+): BookmarkTarget | null {
+  if (contentId) return { column: 'content_id', id: contentId }
+  if (reportId) return { column: 'ai_report_id', id: reportId }
+  if (youtubeVideoId) return { column: 'youtube_video_id', id: youtubeVideoId }
+  return null
 }
 
 function isDuplicateError(error: { code?: string; message?: string }) {
@@ -17,16 +32,19 @@ function isDuplicateError(error: { code?: string; message?: string }) {
 export default function BookmarkButton({
   contentId,
   youtubeVideoId,
+  reportId,
 }: BookmarkButtonProps) {
   const [isBookmarked, setIsBookmarked] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const hasTarget = Boolean(contentId || youtubeVideoId)
+  const target = resolveTarget(contentId, reportId, youtubeVideoId)
+  const targetColumn = target?.column ?? null
+  const targetId = target?.id ?? null
 
   useEffect(() => {
-    if (!hasTarget) return
+    if (!targetColumn || !targetId) return
 
     let cancelled = false
 
@@ -35,12 +53,24 @@ export default function BookmarkButton({
       setLoading(true)
       setError(null)
 
-      let query = supabase.from('bookmarks').select('id').limit(1)
-      query = contentId
-        ? query.eq('content_id', contentId)
-        : query.eq('youtube_video_id', youtubeVideoId!)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-      const { data, error: fetchError } = await query
+      if (!user) {
+        if (!cancelled) {
+          setIsBookmarked(false)
+          setLoading(false)
+        }
+        return
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from('bookmarks')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq(targetColumn, targetId)
+        .limit(1)
 
       if (cancelled) return
       if (fetchError) {
@@ -56,9 +86,9 @@ export default function BookmarkButton({
     return () => {
       cancelled = true
     }
-  }, [contentId, youtubeVideoId, hasTarget])
+  }, [targetColumn, targetId])
 
-  if (!hasTarget) return null
+  if (!target) return null
 
   const handleToggle = async () => {
     if (saving) return
@@ -71,26 +101,27 @@ export default function BookmarkButton({
     setIsBookmarked(nextState)
 
     try {
-      if (nextState) {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) throw new Error('로그인이 필요합니다.')
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('로그인이 필요합니다.')
 
+      if (nextState) {
         const { error: insertError } = await supabase.from('bookmarks').insert({
           user_id: user.id,
-          content_id: contentId ?? null,
-          youtube_video_id: contentId ? null : (youtubeVideoId ?? null),
+          [target.column]: target.id,
         })
 
         if (insertError && !isDuplicateError(insertError)) {
           throw insertError
         }
       } else {
-        let query = supabase.from('bookmarks').delete()
-        query = contentId
-          ? query.eq('content_id', contentId)
-          : query.eq('youtube_video_id', youtubeVideoId!)
+        const { error: deleteError } = await supabase
+          .from('bookmarks')
+          .delete()
+          .eq('user_id', user.id)
+          .eq(target.column, target.id)
 
-        const { error: deleteError } = await query
         if (deleteError) throw deleteError
       }
     } catch (toggleError) {

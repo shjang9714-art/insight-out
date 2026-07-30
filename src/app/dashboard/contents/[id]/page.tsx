@@ -518,9 +518,6 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
           />
 
           <div className="flex items-center gap-2">
-            {/* 북마크·아카이빙 — 비로그인 방문자에겐 로그인 유도 링크로 대체 */}
-            <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
-
             {/* COUNCIL로 현재 맥락 토론 진입(362) — 로그인 전용 */}
             {isLoggedIn && (
               <CouncilDiscussButton

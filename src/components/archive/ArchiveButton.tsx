@@ -17,10 +17,19 @@ import {
 import type { Archive } from '@/lib/types'
 
 interface ArchiveButtonProps {
-  contentId: string
+  contentId?: string
+  reportId?: string
 }
 
-export default function ArchiveButton({ contentId }: ArchiveButtonProps) {
+type ArchiveTarget = { column: 'content_id' | 'ai_report_id'; id: string }
+
+function resolveTarget(contentId?: string, reportId?: string): ArchiveTarget | null {
+  if (contentId) return { column: 'content_id', id: contentId }
+  if (reportId) return { column: 'ai_report_id', id: reportId }
+  return null
+}
+
+export default function ArchiveButton({ contentId, reportId }: ArchiveButtonProps) {
   const [open, setOpen]         = useState(false)
   const [archives, setArchives] = useState<Archive[]>([])
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
@@ -30,10 +39,11 @@ export default function ArchiveButton({ contentId }: ArchiveButtonProps) {
   const [loaded, setLoaded]     = useState(false)
 
   const supabase = createClient()
+  const target = resolveTarget(contentId, reportId)
 
   // 패널 열릴 때 처음 한 번만 lazy load
   useEffect(() => {
-    if (!open || loaded) return
+    if (!open || loaded || !target) return
 
     const fetchData = async () => {
       setLoading(true)
@@ -45,7 +55,7 @@ export default function ArchiveButton({ contentId }: ArchiveButtonProps) {
         supabase
           .from('archive_items')
           .select('archive_id')
-          .eq('content_id', contentId),
+          .eq(target.column, target.id),
       ])
       setArchives((myArchives ?? []) as Archive[])
       setSavedIds(new Set((existingItems ?? []).map((r) => r.archive_id)))
@@ -53,14 +63,17 @@ export default function ArchiveButton({ contentId }: ArchiveButtonProps) {
       setLoading(false)
     }
     fetchData()
-  }, [open, loaded, contentId])
+  }, [open, loaded, target?.column, target?.id])
+
+  if (!target) return null
 
   async function handleAdd(archiveId: string) {
+    if (!target) return
     setLoading(true)
     setError(null)
     const { error: insertErr } = await supabase
       .from('archive_items')
-      .insert({ archive_id: archiveId, content_id: contentId, order: 0 })
+      .insert({ archive_id: archiveId, [target.column]: target.id, order: 0 })
     if (insertErr) {
       setError('저장에 실패했습니다. 잠시 후 다시 시도해주세요.')
     } else {

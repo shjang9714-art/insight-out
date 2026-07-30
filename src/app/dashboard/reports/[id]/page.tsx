@@ -9,6 +9,7 @@ import type { AiReportType } from '@/lib/types'
 import ReportMarkdown from '@/components/reports/ReportMarkdown'
 import PrintButton from '@/components/reports/PrintButton'
 import BackLink from '@/components/BackLink'
+import LoginGatedActions from '@/components/contents/LoginGatedActions'
 import PageContainer from '@/components/PageContainer'
 import { getReport } from '@/lib/reports/query'
 import { sanitizeReportHtml } from '@/lib/reports/sanitize-html'
@@ -65,6 +66,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
   // 275 — 서비스는 발행된(published_at not null) 보고서만 열람 가능(어드민 미리보기는 276)
   if (!report || !report.published_at) notFound()
 
+  const { data: { user } } = await supabase.auth.getUser()
+  const isLoggedIn = Boolean(user)
+
   // ─── 근거 출처 ──────────────────────────────────────────────────────────────
   const { data: sourcesData } = await supabase
     .from('ai_report_sources')
@@ -110,7 +114,10 @@ export default async function ReportDetailPage({ params }: PageProps) {
           fallbackHref="/dashboard/reports"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         />
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          <LoginGatedActions isLoggedIn={isLoggedIn} reportId={report.id} />
+          <PrintButton />
+        </div>
       </div>
 
       {/* 349: 표지(유형·발행 메타 → 제목 → 리드)와 본문을 하나의 지면으로 합친다.

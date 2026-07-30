@@ -119,14 +119,15 @@ export default function MyPage() {
         supabase
           .from('bookmarks')
           .select(`
-            id, content_id, youtube_video_id, created_at,
+            id, content_id, youtube_video_id, ai_report_id, created_at,
             contents(id, title, category, original_url, published_at),
-            youtube_videos(id, video_id, title, channel_name, published_at)
+            youtube_videos(id, video_id, title, channel_name, published_at),
+            ai_reports(id, title, type, published_at)
           `)
           .order('created_at', { ascending: false }),
         supabase
           .from('archives')
-          .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
+          .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, ai_report_id, added_at, contents(id, title, category, original_url), ai_reports(id, title, type, published_at))`)
           .order('created_at', { ascending: false }),
         fetchWatchlistForUser(user.id),
       ])
@@ -286,10 +287,16 @@ export default function MyPage() {
     }
   }
 
-  async function handleRemoveItem(archiveId: string, contentId: string | null, youtubeId: string | null) {
+  async function handleRemoveItem(
+    archiveId: string,
+    contentId: string | null,
+    youtubeId: string | null,
+    reportId: string | null = null
+  ) {
     setArchiveError(null)
     let query = supabase.from('archive_items').delete().eq('archive_id', archiveId)
     if (contentId) query = query.eq('content_id', contentId)
+    else if (reportId) query = query.eq('ai_report_id', reportId)
     else if (youtubeId) query = query.eq('youtube_video_id', youtubeId)
 
     const { error } = await query
@@ -302,7 +309,11 @@ export default function MyPage() {
             ? {
                 ...archive,
                 items: archive.items.filter((item) =>
-                  contentId ? item.content_id !== contentId : item.youtube_video_id !== youtubeId
+                  contentId
+                    ? item.content_id !== contentId
+                    : reportId
+                      ? item.ai_report_id !== reportId
+                      : item.youtube_video_id !== youtubeId
                 ),
               }
             : archive
