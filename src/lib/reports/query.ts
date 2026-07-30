@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AiReportType, AiReportStatus } from '@/lib/types'
 import { tagsOf2 } from '@/lib/contents/excerpt'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 
 export interface PublishedReportCard {
   id: string
@@ -102,6 +103,7 @@ export async function getPublishedReports(supabase: SupabaseClient): Promise<Pub
     return reports.map((report) => ({
       ...report,
       summary: report.summary ? stripLlmArtifacts(report.summary) : null,
+      cover_image_url: resolveStorageUrl(report.cover_image_url),
       keywords: keywordsByReport.get(report.id) ?? [],
     }))
   } catch (e) {
@@ -139,6 +141,7 @@ export async function getReport(supabase: SupabaseClient, id: string): Promise<R
     const keywordsByReport = await getReportKeywordsById(supabase, [id])
     return {
       ...(data as Omit<ReportDetail, 'keywords'>),
+      cover_image_url: resolveStorageUrl(data.cover_image_url),
       keywords: keywordsByReport.get(id) ?? [],
     }
   }

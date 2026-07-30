@@ -4,21 +4,14 @@ import { useState, useRef, useEffect, startTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
-
-// ─── 타입 ─────────────────────────────────────────────────────────────────────
-
-interface Briefing {
-  id: string
-  briefing_date: string
-  title: string | null
-  script: string | null
-  audio_url: string | null
-  audio_duration_seconds: number | null
-}
+import {
+  getLatestPublishedBriefing,
+  type BriefingPlayerRow,
+} from '@/lib/briefing/audio-url'
 
 interface MorningBriefingPlayerProps {
   /** 아카이브 등 외부에서 briefing 주입 가능. 미전달 시 최신 공개분 자체 조회. */
-  briefing?: Briefing | null
+  briefing?: BriefingPlayerRow | null
 }
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -35,7 +28,7 @@ const WHEEL_CIRC = 2 * Math.PI * WHEEL_R  // ≈ 226.2
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function MorningBriefingPlayer({ briefing: briefingProp }: MorningBriefingPlayerProps) {
-  const [briefing, setBriefing]     = useState<Briefing | null>(briefingProp ?? null)
+  const [briefing, setBriefing]     = useState<BriefingPlayerRow | null>(briefingProp ?? null)
   const [loading, setLoading]       = useState(briefingProp === undefined)
   const [playing, setPlaying]       = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -53,15 +46,9 @@ export default function MorningBriefingPlayer({ briefing: briefingProp }: Mornin
       return
     }
     startTransition(() => setLoading(true))
-    createClient()
-      .from('briefings')
-      .select('id, briefing_date, title, script, audio_url, audio_duration_seconds')
-      .in('status', ['published', 'archived'])
-      .order('briefing_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        setBriefing(data as Briefing | null)
+    getLatestPublishedBriefing(createClient())
+      .then((data) => {
+        setBriefing(data)
         setLoading(false)
       })
   }, [briefingProp])
