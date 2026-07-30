@@ -30,7 +30,7 @@ export default function EmailArchiveWidget() {
 
       const { data } = await supabase
         .from('archives')
-        .select('id, name, archive_items(id)')
+        .select('id, name, archive_items(added_at)')
         .order('created_at', { ascending: false })
 
       const rows = (data ?? []).map((a: { id: string; name: string; archive_items: unknown[] }) => ({
