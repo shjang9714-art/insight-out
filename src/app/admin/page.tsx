@@ -19,6 +19,8 @@ import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminFailedJobsCard, { type FailedJobRow } from '@/components/admin/AdminFailedJobsCard'
 import AdminMailDispatchCard, { type MailRunRow } from '@/components/admin/AdminMailDispatchCard'
 import { AdminCollectionAnalysisDialog } from '@/components/admin/AdminCollectionAnalysisDialog'
+import SearchProvidersPanel from '@/components/admin/SearchProvidersPanel'
+import { parseProviderCounts, type ProviderCounts } from '@/lib/admin/crawl-providers'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,6 +86,37 @@ export default async function AdminPage() {
   let admin: ReturnType<typeof createAdminClient> | null = null
   try { admin = createAdminClient() } catch { /* env 미설정 시 무시 */ }
 
+  // 검색 수집원 현황(472) — /admin/sources 와 동일 조회 형태, 실패해도 대시보드 나머지는 정상 렌더
+  async function fetchSearchProviderRun() {
+    if (!admin) return { data: null, error: null }
+    try {
+      return await admin
+        .from('job_runs')
+        .select('started_at, meta')
+        .eq('job_key', 'cron:crawl')
+        .in('status', ['succeeded', 'failed'])
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    } catch (error) {
+      console.error('[/admin] 검색 수집원 집계 조회 실패:', error)
+      return { data: null, error }
+    }
+  }
+
+  async function fetchSearchSeeds() {
+    if (!admin) return { data: null, error: null }
+    try {
+      return await admin
+        .from('keyword_groups')
+        .select('search_seeds')
+        .eq('is_active', true)
+    } catch (error) {
+      console.error('[/admin] 검색 시드 조회 실패:', error)
+      return { data: null, error }
+    }
+  }
+
   const [
     totalRes, todayRes, pendingRes, publishedRes, rejectedRes,
     activeSourcesRes, totalSourcesRes, bookmarkedRes, researchRes,
@@ -102,6 +135,8 @@ export default async function AdminPage() {
     failedJobsRes,
     // 신규 — 메일 발송 이력(438)
     mailRunsRes,
+    // 신규 — 검색 수집원 현황(472)
+    searchProviderRunRes, searchSeedsRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }),
@@ -165,6 +200,9 @@ export default async function AdminPage() {
           .order('started_at', { ascending: false })
           .limit(30)
       : Promise.resolve({ data: [], error: null }),
+    // 검색 수집원 현황(472) — 최신 크롤 실행의 공급자별 유입 + 활성 검색 시드
+    fetchSearchProviderRun(),
+    fetchSearchSeeds(),
   ])
 
   // ── 카테고리 집계 ──────────────────────────────────────────────────────────
@@ -285,6 +323,26 @@ export default async function AdminPage() {
   const mailRunsReady = !mailRunsRes.error
   const mailRuns: MailRunRow[] = mailRunsReady ? ((mailRunsRes.data ?? []) as MailRunRow[]) : []
 
+  // ── 검색 수집원 현황(472) ─────────────────────────────────────────────────
+  const naverKeySet =
+    !!(process.env.NAVER_CLIENT_ID ?? process.env.NAVER_SEARCH_CLIENT_ID) &&
+    !!(process.env.NAVER_CLIENT_SECRET ?? process.env.NAVER_SEARCH_CLIENT_SECRET)
+  const gdeltEnabled = process.env.GDELT_ENABLED !== 'false'
+
+  let searchProviders: ProviderCounts | null = null
+  let searchProvidersLastCrawledAt: string | null = null
+  if (!searchProviderRunRes.error && searchProviderRunRes.data) {
+    searchProviders = parseProviderCounts(searchProviderRunRes.data.meta)
+    searchProvidersLastCrawledAt = searchProviderRunRes.data.started_at
+  }
+
+  type SearchSeedRow = { search_seeds: string[] | null }
+  const searchSeedCount = searchSeedsRes.error
+    ? null
+    : new Set(
+        ((searchSeedsRes.data ?? []) as SearchSeedRow[]).flatMap((row) => row.search_seeds ?? [])
+      ).size
+
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
   const chartData: ChartData = {
@@ -316,6 +374,15 @@ export default async function AdminPage() {
         todayFailed={todayFailed}
         sourcesToCheck={sourcesToCheck}
         pendingUsers={pendingUsers}
+      />
+
+      {/* ②-1 검색 수집원 현황(472) — 네이버·GDELT·Google 유입과 시드 수 */}
+      <SearchProvidersPanel
+        providers={searchProviders}
+        keySet={naverKeySet}
+        gdeltEnabled={gdeltEnabled}
+        seedCount={searchSeedCount}
+        lastCrawledAt={searchProvidersLastCrawledAt}
       />
 
       {/* ③ 사용량 및 수집 관리 */}
