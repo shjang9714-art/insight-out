@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -14,10 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { X, Loader2, CheckCircle, Send } from 'lucide-react'
+import { Loader2, CheckCircle, Send } from 'lucide-react'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import CoverImageField from '@/components/admin/CoverImageField'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import KeywordTagInput from '@/components/admin/KeywordTagInput'
 import { uploadCover } from '@/lib/contents/upload-cover'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -79,7 +79,6 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
   const [sources, setSources]       = useState<Source[]>([])
   const [form, setForm]             = useState<FormState>({ ...FORM_INIT, ...initialForm })
   const [keywords, setKeywords]     = useState<string[]>([])
-  const [kwInput, setKwInput]       = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError]           = useState<string | null>(null)
   const [success, setSuccess]       = useState(false)
@@ -99,23 +98,6 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
         setForm(prev => ({ ...prev, sourceId: '' }))
       })
   }, [supabase, form.category])
-
-  // ── 키워드 ─────────────────────────────────────────────────────────────────
-
-  const commitKeyword = () => {
-    const kw = kwInput.trim()
-    if (kw && !keywords.includes(kw)) setKeywords(prev => [...prev, kw])
-    setKwInput('')
-  }
-
-  const handleKwKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      commitKeyword()
-    } else if (e.key === 'Backspace' && kwInput === '' && keywords.length > 0) {
-      setKeywords(prev => prev.slice(0, -1))
-    }
-  }
 
   // ── 제출 ───────────────────────────────────────────────────────────────────
 
@@ -377,37 +359,13 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
           <CardTitle className="text-sm font-semibold text-foreground">키워드 태그</CardTitle>
         </CardHeader>
         <CardContent>
-          <div
-            onClick={() => document.getElementById('kw-input-paste')?.focus()}
-            className="flex min-h-[44px] cursor-text flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring"
-          >
-            {keywords.map(kw => (
-              <Badge key={kw} variant="secondary" className="gap-1 pr-1 text-xs">
-                {kw}
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setKeywords(prev => prev.filter(k => k !== kw)) }}
-                  className="rounded-full p-0.5 hover:bg-accent"
-                  aria-label={`${kw} 삭제`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-            <input
-              id="kw-input-paste"
-              type="text"
-              value={kwInput}
-              onChange={(e) => setKwInput(e.target.value)}
-              onKeyDown={handleKwKeyDown}
-              onBlur={commitKeyword}
-              placeholder={keywords.length === 0 ? 'Enter로 키워드 추가 (예: 클라우드, AI, 보안)' : ''}
-              className="min-w-[160px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Enter 또는 포커스 이탈 시 추가 · Backspace로 마지막 태그 삭제
-          </p>
+          <KeywordTagInput
+            value={keywords}
+            onChange={setKeywords}
+            title={form.title}
+            snippet={form.bodyText}
+            inputId="kw-input-paste"
+          />
         </CardContent>
       </Card>
 
