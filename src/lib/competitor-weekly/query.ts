@@ -88,6 +88,18 @@ export function hasAnalysis(section: CompetitorWeeklySection): boolean {
   return (section.status_points?.length ?? 0) > 0 || (section.intents?.length ?? 0) > 0
 }
 
+export type AnalysisState = 'none' | 'partial' | 'done'
+
+/** 리포트 전체의 패스② 분석 실행 상태 */
+export function analysisState(sections: CompetitorWeeklySection[]): AnalysisState {
+  if (sections.length === 0) return 'none'
+
+  const analyzedSectionCount = sections.filter(hasAnalysis).length
+  if (analyzedSectionCount === 0) return 'none'
+  if (analyzedSectionCount === sections.length) return 'done'
+  return 'partial'
+}
+
 export interface CompetitorWeeklyReportRow {
   id: string
   week_start: string

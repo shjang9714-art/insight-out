@@ -17,7 +17,10 @@ import {
 } from '@/components/ui/dialog'
 import { COMPETITOR_WEEKLY_STATUS_TONE } from '@/lib/admin/status-style'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
-import type { CompetitorWeeklySection } from '@/lib/competitor-weekly/query'
+import {
+  analysisState,
+  type CompetitorWeeklySection,
+} from '@/lib/competitor-weekly/query'
 
 type CwrStatus = 'draft' | 'published' | 'archived'
 
@@ -193,6 +196,7 @@ export default function CompetitorWeeklyManager({ initialReports }: { initialRep
         const rowError = rowErrors[report.id]
         const isEditing = editingId === report.id
         const summaryPreview = report.summary ? stripLlmArtifacts(report.summary) : null
+        const reportAnalysisState = analysisState(report.sections)
 
         return (
           <div key={report.id} className="rounded-xl border border-border bg-card p-4">
@@ -203,6 +207,12 @@ export default function CompetitorWeeklyManager({ initialReports }: { initialRep
                     {report.week_start} ~ {report.week_end}
                   </span>
                   <StatusBadge tone={COMPETITOR_WEEKLY_STATUS_TONE[report.status]} label={STATUS_LABELS[report.status]} />
+                  {reportAnalysisState !== 'done' && (
+                    <StatusBadge
+                      tone="risk"
+                      label={reportAnalysisState === 'none' ? '분석 전(사실만)' : '분석 일부'}
+                    />
+                  )}
                   {report.overall_impact && (
                     <span className={cn('text-xs rounded px-1.5 py-0.5 font-medium', IMPACT_STYLE[report.overall_impact])}>
                       {report.overall_impact}
