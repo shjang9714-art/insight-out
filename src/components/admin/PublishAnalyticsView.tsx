@@ -30,7 +30,7 @@ const SOURCE_COLORS: Record<string, string> = {
   competitorWeekly: '#9b5de5',
 }
 const SOURCE_LABEL: Record<string, string> = {
-  strategyReports: '전략보고서',
+  strategyReports: 'AI 리포트',
   briefings: '모닝브리핑',
   newsletters: '뉴스레터',
   competitorWeekly: '경쟁사 주간',
@@ -142,7 +142,7 @@ export default function PublishAnalyticsView({ data, months }: { data: PublishAn
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SuccessDonut title="전략보고서 생성 성공률" completed={successRate.strategy.completed} failed={successRate.strategy.failed} />
+        <SuccessDonut title="AI 리포트 생성 성공률" completed={successRate.strategy.completed} failed={successRate.strategy.failed} />
         <SuccessDonut title="모닝브리핑 생성 성공률" completed={successRate.briefings.ok} failed={successRate.briefings.failed} />
       </div>
 
@@ -153,7 +153,7 @@ export default function PublishAnalyticsView({ data, months }: { data: PublishAn
         <CardContent>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <StatCard
-              label="전략보고서"
+              label="AI 리포트"
               value={leadTime.strategyAvgHours === null ? '데이터 없음' : `${leadTime.strategyAvgHours.toLocaleString()}시간`}
             />
             <StatCard

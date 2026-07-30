@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '발행 분석 | 어드민 | Insight Out',
-  description: '전략보고서·모닝브리핑·뉴스레터·경쟁사 주간 발행량·성공률·검수 리드타임을 확인합니다.',
+  description: 'AI 리포트·모닝브리핑·뉴스레터·경쟁사 주간 발행량·성공률·검수 리드타임을 확인합니다.',
 }
 
 function parseMonths(value: string | string[] | undefined): number {

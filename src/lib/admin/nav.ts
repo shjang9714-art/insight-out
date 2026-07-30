@@ -90,7 +90,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '리포트',
     items: [
-      { href: '/admin/reports', label: 'AI 리포트', description: '전략보고서 생성·발행, 프롬프트 편집, AI 콘텐츠 보강을 통합 관리합니다.', icon: FileText },
+      { href: '/admin/reports', label: 'AI 리포트', description: 'AI 리포트 생성·발행, 프롬프트 편집, AI 콘텐츠 보강을 통합 관리합니다.', icon: FileText },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
     ],
