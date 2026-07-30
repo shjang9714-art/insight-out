@@ -5,8 +5,11 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
+import CompetitorNewsTabs from '@/components/entities/CompetitorNewsTabs'
+import CompetitorAreaAxisView from '@/components/entities/CompetitorAreaAxisView'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
+import { getLatestPublishedCompetitorWeeklyReport } from '@/lib/competitor-weekly/query'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,10 +35,14 @@ export default async function CompetitorNewsPage() {
     }
   )
 
-  const { competitorCount, groups, overallImpactDist } = await getCompetitorNewsData(supabase, {
-    articleQueryLimit: 300,
-    articlesPerCompany: 8,
-  })
+  const [{ competitorCount, groups, overallImpactDist }, weeklyReport] = await Promise.all([
+    getCompetitorNewsData(supabase, {
+      articleQueryLimit: 300,
+      articlesPerCompany: 8,
+    }),
+    // 467 — 사업영역별 축. 신규 조회 없음: 기존 조회 함수 재사용
+    getLatestPublishedCompetitorWeeklyReport(supabase),
+  ])
 
   return (
     <PageContainer>
@@ -62,17 +69,22 @@ export default async function CompetitorNewsPage() {
         )}
       </div>
 
-      {competitorCount === 0 ? (
-        <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
-        </div>
-      ) : groups.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          최근 14일 경쟁사 관련 기사가 없습니다.
-        </div>
-      ) : (
-        <CompetitorNewsGroups groups={groups} articlesPerCard={8} />
-      )}
+      <CompetitorNewsTabs
+        companyView={
+          competitorCount === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
+            </div>
+          ) : groups.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              최근 14일 경쟁사 관련 기사가 없습니다.
+            </div>
+          ) : (
+            <CompetitorNewsGroups groups={groups} articlesPerCard={8} />
+          )
+        }
+        areaView={weeklyReport ? <CompetitorAreaAxisView report={weeklyReport} /> : null}
+      />
     </PageContainer>
   )
 }
