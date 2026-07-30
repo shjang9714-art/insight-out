@@ -15,6 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { Ban, CheckCircle2, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
 import type { SourceType } from '@/lib/types'
@@ -98,6 +104,11 @@ interface SourceLite {
   rss_url: string | null
   is_active: boolean
   last_crawled_at: string | null
+}
+
+interface SourceCrawlState {
+  status: 'running' | 'completed' | 'failed'
+  message: string | null
 }
 
 function formatKst(iso: string | null): string {
@@ -252,7 +263,7 @@ export default function SourceQualityManager() {
   const [crawlProgress, setCrawlProgress] = useState<CrawlProgress | null>(null)
 
   // 소스별 개별 수집 추적 (병렬 허용)
-  const [crawlingIds, setCrawlingIds] = useState<Set<string>>(new Set())
+  const [sourceCrawlStates, setSourceCrawlStates] = useState<Record<string, SourceCrawlState>>({})
   const crawlStartedRef = useRef<Record<string, number>>({})
 
   useEffect(() => {
@@ -339,47 +350,101 @@ export default function SourceQualityManager() {
     }
   }, [crawlJob, crawlProgress?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 소스별 완료 감지 폴링 — crawlingIds 에 항목이 있을 때만 가동
+  // 소스별 완료 감지 폴링 — 전체 수집과 동일하게 중복 요청을 막고 완료 시 정지한다.
   useEffect(() => {
-    if (crawlingIds.size === 0) return
+    const runningIds = Object.entries(sourceCrawlStates)
+      .filter(([, state]) => state.status === 'running')
+      .map(([sourceId]) => sourceId)
+    if (runningIds.length === 0) return
+
+    let cancelled = false
+    let isPolling = false
 
     const checkCompletion = async () => {
+      if (isPolling) return
+      isPolling = true
+
       try {
         const res = await fetch('/api/admin/source-status')
-        if (!res.ok) return
-        const statusMap = await res.json() as Record<string, { lastFinishedAt: string | null }>
+        const data: unknown = await res.json()
+        if (!res.ok) {
+          const message = (
+            data
+            && typeof data === 'object'
+            && 'error' in data
+            && typeof data.error === 'string'
+          )
+            ? data.error
+            : '소스 수집 상태를 확인하지 못했습니다.'
+          throw new Error(message)
+        }
+        if (cancelled) return
+
+        const statusMap = data as Record<string, SourceStatusInfo>
 
         const now = new Date().getTime()
-        const toRemove: string[] = []
+        const updates: Record<string, SourceCrawlState> = {}
 
-        for (const sid of crawlingIds) {
+        for (const sid of runningIds) {
           const startedAt = crawlStartedRef.current[sid] ?? 0
           const info = statusMap[sid]
           const finishedMs = info?.lastFinishedAt ? new Date(info.lastFinishedAt).getTime() : 0
 
           if (finishedMs > startedAt) {
-            toRemove.push(sid)
+            const failed = info.lastStatus === 'failed'
+            updates[sid] = {
+              status: failed ? 'failed' : 'completed',
+              message: failed
+                ? info.lastError ?? '이 소스 수집에 실패했습니다.'
+                : null,
+            }
           } else if (now - startedAt > 120_000) {
-            toRemove.push(sid)
+            updates[sid] = {
+              status: 'failed',
+              message: '수집 완료 여부를 확인하지 못했습니다. 크롤링 현황을 확인해주세요.',
+            }
           }
         }
 
-        if (toRemove.length > 0) {
-          setCrawlingIds(prev => {
-            const n = new Set(prev)
-            toRemove.forEach(id => n.delete(id))
-            return n
-          })
+        if (Object.keys(updates).length > 0) {
+          setSourceCrawlStates((prev) => ({ ...prev, ...updates }))
+          await loadSources()
           await loadSourceStatus()
         }
-      } catch {
-        // 폴링 실패는 무시 — 120초 타임아웃으로 잠금 해제
+      } catch (pollError) {
+        if (cancelled) return
+
+        const now = new Date().getTime()
+        const timedOutIds = runningIds.filter(
+          (sourceId) => now - (crawlStartedRef.current[sourceId] ?? 0) > 120_000
+        )
+        if (timedOutIds.length > 0) {
+          const message = pollError instanceof Error
+            ? pollError.message
+            : '소스 수집 상태를 확인하지 못했습니다.'
+          setSourceCrawlStates((prev) => {
+            const next = { ...prev }
+            for (const sourceId of timedOutIds) {
+              next[sourceId] = { status: 'failed', message }
+            }
+            return next
+          })
+        }
+      } finally {
+        isPolling = false
       }
     }
 
-    const intervalId = window.setInterval(() => void checkCompletion(), 4000)
-    return () => window.clearInterval(intervalId)
-  }, [crawlingIds]) // loadSourceStatus 는 컴포넌트 생명주기에 고정
+    void checkCompletion()
+    const intervalId = window.setInterval(() => {
+      void checkCompletion()
+    }, 4_000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [sourceCrawlStates]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCrawlNow = async () => {
     const rangeLabel = crawlDays === 0 ? '오늘 발행분을' : `최근 ${crawlDays}일치를`
@@ -407,20 +472,42 @@ export default function SourceQualityManager() {
     }
   }
 
-  const handleCrawlSource = async (sourceId: string) => {
-    crawlStartedRef.current[sourceId] = new Date().getTime()
-    setCrawlingIds(prev => new Set(prev).add(sourceId))
-    setError(null)
+  const handleCrawlSource = async (source: SourceLite) => {
+    if (!source.is_active) return
+
+    crawlStartedRef.current[source.id] = new Date().getTime()
+    setSourceCrawlStates((prev) => ({
+      ...prev,
+      [source.id]: { status: 'running', message: null },
+    }))
     try {
       const res = await fetch('/api/admin/crawl-now', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId, backfillDays: crawlDays }),
+        body: JSON.stringify({ sourceId: source.id }),
       })
-      if (!res.ok) throw new Error((await res.json())?.error ?? '수집 시작 실패')
-    } catch (e) {
-      setCrawlingIds(prev => { const n = new Set(prev); n.delete(sourceId); return n })
-      setError(e instanceof Error ? e.message : '수집 시작에 실패했습니다.')
+      const data: unknown = await res.json()
+      if (!res.ok) {
+        const message = (
+          data
+          && typeof data === 'object'
+          && 'error' in data
+          && typeof data.error === 'string'
+        )
+          ? data.error
+          : '수집 시작에 실패했습니다.'
+        throw new Error(message)
+      }
+    } catch (startError) {
+      setSourceCrawlStates((prev) => ({
+        ...prev,
+        [source.id]: {
+          status: 'failed',
+          message: startError instanceof Error
+            ? startError.message
+            : '수집 시작에 실패했습니다.',
+        },
+      }))
     }
   }
 
@@ -595,6 +682,8 @@ export default function SourceQualityManager() {
             <tbody className="divide-y divide-border">
               {displayRows.map(({ src, status: s, quality: q, tier }) => {
                 const isLowQuality = Boolean(q && q.total > 0 && qualityTone(q.pendingRate) !== 'positive')
+                const sourceCrawlState = sourceCrawlStates[src.id]
+                const isCrawling = sourceCrawlState?.status === 'running'
                 return (
                 <tr key={src.id} className="hover:bg-accent/50 transition-colors">
                   <td className="max-w-[220px] truncate px-4 py-3 font-medium text-foreground" title={src.name}>{src.name}</td>
@@ -681,30 +770,63 @@ export default function SourceQualityManager() {
                     {formatKst(src.last_crawled_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => handleCrawlSource(src.id)}
-                        disabled={crawlingIds.has(src.id)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                        title={crawlingIds.has(src.id) ? '수집 중...' : '이 소스만 수집'}
-                      >
-                        {crawlingIds.has(src.id)
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <RefreshCw className="h-3.5 w-3.5" />
-                        }
-                      </button>
-                      {isLowQuality && (
-                        <button
-                          onClick={() => void handleExcludeDomain(src)}
-                          disabled={excludingId === src.id}
-                          className="rounded p-1.5 text-risk transition-colors hover:bg-risk-soft disabled:cursor-not-allowed disabled:opacity-40"
-                          title="이 소스 도메인을 제외 규칙(검토 대기)에 추가"
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center justify-end gap-0.5">
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex" tabIndex={src.is_active ? undefined : 0}>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleCrawlSource(src)}
+                                  disabled={!src.is_active || isCrawling}
+                                  className="inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                                  aria-label={`${src.name} 소스만 수집`}
+                                >
+                                  {isCrawling
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <RefreshCw className="h-3.5 w-3.5" />
+                                  }
+                                  {isCrawling ? '수집 중' : '수집'}
+                                </button>
+                              </span>
+                            </TooltipTrigger>
+                            {!src.is_active && (
+                              <TooltipContent side="top">
+                                비활성 소스는 수집할 수 없습니다.
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
+                        {isLowQuality && (
+                          <button
+                            type="button"
+                            onClick={() => void handleExcludeDomain(src)}
+                            disabled={excludingId === src.id}
+                            className="rounded p-1.5 text-risk transition-colors hover:bg-risk-soft disabled:cursor-not-allowed disabled:opacity-40"
+                            title="이 소스 도메인을 제외 규칙(검토 대기)에 추가"
+                          >
+                            {excludingId === src.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Ban className="h-3.5 w-3.5" />
+                            }
+                          </button>
+                        )}
+                      </div>
+                      {sourceCrawlState?.status === 'completed' && (
+                        <p className="inline-flex items-center gap-1 text-[11px] text-positive" role="status">
+                          <CheckCircle2 className="size-3" />
+                          수집 완료
+                        </p>
+                      )}
+                      {sourceCrawlState?.status === 'failed' && (
+                        <p
+                          className="max-w-56 text-right text-[11px] leading-tight text-negative"
+                          role="alert"
+                          title={sourceCrawlState.message ?? undefined}
                         >
-                          {excludingId === src.id
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Ban className="h-3.5 w-3.5" />
-                          }
-                        </button>
+                          {sourceCrawlState.message ?? '수집에 실패했습니다.'}
+                        </p>
                       )}
                     </div>
                   </td>
