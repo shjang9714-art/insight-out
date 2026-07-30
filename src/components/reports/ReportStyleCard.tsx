@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import CoverImage from '@/components/common/CoverImage'
 import AiMark from '@/components/ui/AiMark'
 
 /**
@@ -51,27 +52,24 @@ export default function ReportStyleCard({
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-brand-200 hover:shadow-[0_4px_20px_-6px_rgb(0_0_0/0.15)]">
       {/* 표지 — 제목 없이 유형 색 + 아이콘 + 워드마크 */}
       <Link href={href} prefetch={false} {...newTabProps} className="relative block aspect-[21/9] overflow-hidden bg-muted">
-        {coverImageUrl ? (
-          // next/image remotePatterns 미설정 → unoptimized(211 ContentCard 패턴)
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={coverImageUrl}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-            loading="lazy"
-          />
-        ) : (
-          <div
-            aria-hidden
-            className={`relative flex h-full w-full bg-gradient-to-br ${coverGradientClassName} p-4`}
-          >
-            <Icon className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 text-white/25" strokeWidth={1.15} />
-            <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
-              {showAiMark && <AiMark size="sm" className="text-white/70" />}
-              {wordmark}
-            </span>
-          </div>
-        )}
+        <CoverImage
+          src={coverImageUrl}
+          alt=""
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          loading="lazy"
+          fallback={
+            <div
+              aria-hidden
+              className={`relative flex h-full w-full bg-gradient-to-br ${coverGradientClassName} p-4`}
+            >
+              <Icon className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 text-white/25" strokeWidth={1.15} />
+              <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+                {showAiMark && <AiMark size="sm" className="text-white/70" />}
+                {wordmark}
+              </span>
+            </div>
+          }
+        />
       </Link>
 
       <div className="flex flex-1 flex-col p-5">
