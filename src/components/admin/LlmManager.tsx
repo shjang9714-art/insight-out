@@ -14,6 +14,13 @@ import { Loader2, CheckCircle2, XCircle, FlaskConical } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { CHART_BRAND, CHART_MUTED } from '@/lib/admin/palette'
 
@@ -107,6 +114,9 @@ export default function LlmManager() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [searchProvider, setSearchProvider] = useState('')
+  const [searchModel, setSearchModel] = useState('')
+  const [isSavingSearch, setIsSavingSearch] = useState(false)
 
   async function fetchData() {
     try {
@@ -114,6 +124,11 @@ export default function LlmManager() {
       const json = await res.json() as LlmData & { error?: string }
       if (!res.ok) throw new Error(json.error ?? '조회 실패')
       setData(json)
+      const searchRouting = json.routing.find(
+        row => row.task_type === 'search' && row.priority === 1
+      )
+      setSearchProvider(searchRouting?.provider ?? '')
+      setSearchModel(searchRouting?.model_id ?? '')
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오기 실패')
@@ -167,6 +182,48 @@ export default function LlmManager() {
     }
   }
 
+  const saveSearchRouting = async (isActive: boolean) => {
+    if (!searchProvider || !searchModel) {
+      setError('검색 AI 답변에 사용할 provider와 모델을 선택해주세요.')
+      return
+    }
+
+    setIsSavingSearch(true)
+    try {
+      const res = await fetch('/api/admin/llm', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_type: 'search',
+          priority: 1,
+          provider: searchProvider,
+          model_id: searchModel,
+          is_active: isActive,
+        }),
+      })
+      const json = await res.json() as { error?: string; routing?: RoutingRow }
+      if (!res.ok || !json.routing) {
+        throw new Error(json.error ?? '검색 AI 답변 설정 저장에 실패했습니다.')
+      }
+      const savedRouting = json.routing
+
+      setData(prev => prev ? {
+        ...prev,
+        routing: [
+          ...prev.routing.filter(
+            row => !(row.task_type === 'search' && row.priority === 1)
+          ),
+          savedRouting,
+        ],
+      } : prev)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '검색 AI 답변 설정 저장에 실패했습니다.')
+    } finally {
+      setIsSavingSearch(false)
+    }
+  }
+
   // ── 로딩 / 에러 ──────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -205,6 +262,20 @@ export default function LlmManager() {
     if (!routingByTask[row.task_type]) routingByTask[row.task_type] = []
     routingByTask[row.task_type].push(row)
   }
+  const searchRouting = data.routing.find(
+    row => row.task_type === 'search' && row.priority === 1
+  )
+  const searchProviderInfo = data.providers.find(
+    provider => provider.name === searchProvider
+  )
+  const searchUsagePct = searchProviderInfo && searchProviderInfo.effectiveTokenLimit > 0
+    ? Math.round(
+      searchProviderInfo.tokens_used / searchProviderInfo.effectiveTokenLimit * 100
+    )
+    : 0
+  const searchModels = data.models.filter(
+    model => model.provider === searchProvider && model.is_active
+  )
 
   return (
     <div className="space-y-8">
@@ -290,7 +361,122 @@ export default function LlmManager() {
         </div>
       </section>
 
-      {/* ② 사용량 통계 막대 차트 */}
+      {/* ② 검색 AI 답변 설정 */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">검색 AI 답변</h2>
+        <div className="rounded-xl border border-border bg-card p-5 space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-foreground">검색 전용 LLM 라우팅</p>
+                {searchRouting?.is_active ? (
+                  <StatusBadge tone="positive" label="켜짐" />
+                ) : searchRouting ? (
+                  <StatusBadge tone="neutral" label="꺼짐" />
+                ) : (
+                  <StatusBadge tone="neutral" label="미설정(검색 AI 답변 꺼짐)" />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                다른 작업이 쓰지 않는 provider를 지정하세요. 검색은 호출이 잦아 예산을 함께 쓰면 다른 작업이 막힙니다.
+              </p>
+            </div>
+            <button
+              onClick={() => void saveSearchRouting(!searchRouting?.is_active)}
+              disabled={isSavingSearch || !searchProvider || !searchModel}
+              className={cn(
+                'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                searchRouting?.is_active ? 'bg-brand-600' : 'bg-muted-foreground/30',
+                (isSavingSearch || !searchProvider || !searchModel)
+                  && 'cursor-not-allowed opacity-50'
+              )}
+              aria-label={searchRouting?.is_active ? '검색 AI 답변 끄기' : '검색 AI 답변 켜기'}
+            >
+              <span className={cn(
+                'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                searchRouting?.is_active ? 'translate-x-4' : 'translate-x-0.5'
+              )} />
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-foreground" htmlFor="search-provider">
+                Provider
+              </label>
+              <Select
+                value={searchProvider}
+                onValueChange={provider => {
+                  setSearchProvider(provider)
+                  setSearchModel('')
+                }}
+                disabled={isSavingSearch}
+              >
+                <SelectTrigger id="search-provider">
+                  <SelectValue placeholder="Provider를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {data.providers.map(provider => (
+                    <SelectItem key={provider.name} value={provider.name}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-foreground" htmlFor="search-model">
+                모델
+              </label>
+              <Select
+                value={searchModel}
+                onValueChange={setSearchModel}
+                disabled={isSavingSearch || !searchProvider}
+              >
+                <SelectTrigger id="search-model">
+                  <SelectValue placeholder={
+                    searchProvider ? '모델을 선택하세요' : 'Provider를 먼저 선택하세요'
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  {searchModels.map(model => (
+                    <SelectItem key={model.model_id} value={model.model_id}>
+                      {model.label ?? model.model_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {searchProviderInfo && (
+            <div className="rounded-lg bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+              {searchProviderInfo.keyCount > 0 ? (
+                <p>
+                  이번 달 사용률 {searchUsagePct}% ·{' '}
+                  {searchProviderInfo.tokens_used.toLocaleString()} /{' '}
+                  {searchProviderInfo.effectiveTokenLimit.toLocaleString()} 토큰
+                </p>
+              ) : (
+                <p>키 미설정 · 이번 달 사용률 0%</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              onClick={() => void saveSearchRouting(searchRouting?.is_active ?? false)}
+              disabled={isSavingSearch || !searchProvider || !searchModel}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSavingSearch ? '저장 중...' : 'Provider·모델 저장'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ③ 사용량 통계 막대 차트 */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">
           이번 달 사용량 ({data.period})
@@ -318,7 +504,7 @@ export default function LlmManager() {
         </div>
       </section>
 
-      {/* ③ 용도별 라우팅 표 */}
+      {/* ④ 용도별 라우팅 표 */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">용도별 라우팅</h2>
         {Object.keys(routingByTask).length === 0 ? (
@@ -353,7 +539,7 @@ export default function LlmManager() {
         )}
       </section>
 
-      {/* ④ 연동 테스트 */}
+      {/* ⑤ 연동 테스트 */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">연동 테스트</h2>
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
