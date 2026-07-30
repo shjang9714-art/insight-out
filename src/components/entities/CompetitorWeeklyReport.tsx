@@ -290,14 +290,19 @@ export default function CompetitorWeeklyReport({ report, utilizedDocuments = [] 
           </span>
         </div>
 
-        {reportAnalysisState === 'done' && summary && (
+        {reportAnalysisState !== 'none' && summary && (
           <h1 className="mt-2.5 text-[24px] font-bold leading-[1.35] tracking-tight text-foreground">
             {cleanNarrative(summary)}
           </h1>
         )}
-        {reportAnalysisState !== 'done' && (
+        {reportAnalysisState === 'none' && (
           <p className="mt-2.5 text-sm text-muted-foreground">
             분석 전 — 사실 나열만 표시됩니다
+          </p>
+        )}
+        {reportAnalysisState === 'partial' && (
+          <p className="mt-2.5 text-sm text-muted-foreground">
+            일부 영역만 분석됨
           </p>
         )}
 
