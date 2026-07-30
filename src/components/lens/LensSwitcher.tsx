@@ -14,18 +14,14 @@ export default function LensSwitcher() {
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
 
-  const hasMine  = ctx.serviceIds.length > 0
   const hasWatch = ctx.watchlist.length > 0
 
   const chips: { key: LensKey; disabled: boolean }[] = [
-    { key: 'mine',  disabled: !hasMine  },
     { key: 'watch', disabled: !hasWatch },
     { key: 'all',   disabled: false     },
   ]
 
-  const bothDisabled = !hasMine && !hasWatch
-  const showMineHint  = !hasMine && !bothDisabled
-  const showWatchHint = !hasWatch && !bothDisabled
+  const showWatchHint = !hasWatch
 
   return (
     <div className="space-y-1.5">
@@ -67,22 +63,6 @@ export default function LensSwitcher() {
       </div>
 
       {/* 미설정 안내 */}
-      {bothDisabled && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">
-            마이페이지
-          </Link>
-          에서 담당 서비스·관심 기업을 설정하면 맞춤 보기를 사용할 수 있어요.
-        </p>
-      )}
-      {showMineHint && (
-        <p className="text-[11px] text-muted-foreground">
-          담당 서비스를 설정하면 내 담당만 모아볼 수 있어요.{' '}
-          <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">
-            마이페이지 →
-          </Link>
-        </p>
-      )}
       {showWatchHint && (
         <p className="text-[11px] text-muted-foreground">
           관심 기업을 등록하면 해당 소식만 모아볼 수 있어요.{' '}

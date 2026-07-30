@@ -48,7 +48,7 @@ export default function SuggestedQuestions({ className, onSelect }: Props) {
     fetchTopThemes().then(topThemes => {
       setQuestions(buildSuggestedQuestions(ctx, topThemes))
     })
-  }, [ctx.watchlist.join(','), ctx.serviceNames.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ctx.watchlist.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (questions.length === 0) return null
 

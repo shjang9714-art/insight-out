@@ -80,10 +80,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
     const score   = lensScore(activeLens, ctx, target)
     const matched = activeLens !== 'all' && matchesLens(activeLens, ctx, target)
     // 범위(activeLens) 무관하게 항상 계산되는 개인 관련도 — "내 관련도" 정렬 전용
-    const relevanceScore = Math.max(
-      lensScore('mine', ctx, target),
-      lensScore('watch', ctx, target),
-    )
+    const relevanceScore = lensScore('watch', ctx, target)
     return { card, score, matched, relevanceScore }
   })
 
@@ -118,9 +115,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
   })
 
   // 빈 결과 사유 판단
-  const isMisconfigured =
-    (activeLens === 'mine'  && ctx.serviceIds.length === 0) ||
-    (activeLens === 'watch' && ctx.watchlist.length === 0)
+  const isMisconfigured = activeLens === 'watch' && ctx.watchlist.length === 0
 
   return (
     <div>
@@ -182,7 +177,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
           ) : isMisconfigured ? (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+                관심 기업을 설정하면 여기에 모아 보여드려요.
               </p>
               <Link
                 href="/dashboard/mypage"
@@ -194,7 +189,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                설정하신 담당/관심 기업 관련 이슈가 아직 없어요.
+                설정하신 관심 기업 관련 이슈가 아직 없어요.
               </p>
               <button
                 type="button"
@@ -213,9 +208,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
           {sorted.map(({ card, matched }) => {
             const total14Days = card.recentCount + card.prevCount
             const sentimentTotal = card.sentimentPos + card.sentimentNeg
-            const lensLabel =
-              activeLens === 'mine'  ? '내 업무' :
-              activeLens === 'watch' ? '내 관심사' : null
+            const lensLabel = activeLens === 'watch' ? '내 관심사' : null
 
             return (
               <Link

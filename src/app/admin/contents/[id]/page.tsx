@@ -39,7 +39,6 @@ interface AdminContentDetail {
   published_at: string | null
   collected_at: string
   sources: { name: string } | null
-  content_services: { services: { name: string } | null }[]
   content_keywords: { keywords: { name: string } | null }[]
 }
 
@@ -49,7 +48,6 @@ const SELECT_COLS = `
   body_fetched_at, body_len, file_path, original_url, author,
   published_at, collected_at,
   sources(name),
-  content_services(services(name)),
   content_keywords(keywords(name))
 `
 
@@ -59,7 +57,6 @@ const SELECT_COLS_FALLBACK = `
   body_fetched_at, file_path, original_url, author,
   published_at, collected_at,
   sources(name),
-  content_services(services(name)),
   content_keywords(keywords(name))
 `
 
@@ -129,9 +126,6 @@ export default async function AdminContentDetailPage({ params }: PageProps) {
     isPdf = content.file_path!.toLowerCase().endsWith('.pdf')
   }
 
-  const serviceNames = content.content_services
-    .map((cs) => cs.services?.name)
-    .filter(Boolean) as string[]
   const keywordNames = content.content_keywords
     .map((ck) => ck.keywords?.name)
     .filter(Boolean) as string[]
@@ -167,7 +161,6 @@ export default async function AdminContentDetailPage({ params }: PageProps) {
             author={content.author}
             dateLabel={dateStr ? `발행 ${dateStr}` : '발행일 미상'}
             originalLanguage={content.original_language}
-            serviceNames={serviceNames}
             keywordNames={keywordNames}
           >
             {isReport ? (

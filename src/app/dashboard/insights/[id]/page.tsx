@@ -183,27 +183,19 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
     }
   }
 
-  // 내 관련도 — 로그인 사용자의 워치리스트(회사)·담당서비스(산업) 문자열 매칭(간이, lens.ts와 동일 방식)
+  // 내 관련도 — 로그인 사용자의 워치리스트(회사) 문자열 매칭(간이, lens.ts와 동일 방식)
   const { data: { user } } = await supabase.auth.getUser()
   let relevanceMatched = false
   let hasPersonalization = false
   if (user) {
-    const [{ data: watchlistRows }, { data: serviceRows }] = await Promise.all([
-      supabase.from('user_watchlist').select('company').eq('user_id', user.id),
-      supabase.from('user_services').select('services(name)').eq('user_id', user.id),
-    ])
+    const { data: watchlistRows } = await supabase
+      .from('user_watchlist')
+      .select('company')
+      .eq('user_id', user.id)
     const watchlist = ((watchlistRows ?? []) as { company: string }[]).map(w => w.company.toLowerCase())
-    const serviceNames = ((serviceRows ?? []) as unknown as { services: { name: string } | { name: string }[] | null }[])
-      .flatMap(r => {
-        const s = r.services
-        if (!s) return []
-        return Array.isArray(s) ? s.map(x => x.name.toLowerCase()) : [s.name.toLowerCase()]
-      })
-    hasPersonalization = watchlist.length > 0 || serviceNames.length > 0
+    hasPersonalization = watchlist.length > 0
     const topicLower = card.topic.toLowerCase()
-    relevanceMatched =
-      watchlist.some(w => topicLower.includes(w) || w.includes(topicLower)) ||
-      serviceNames.some(s => topicLower.includes(s) || s.includes(topicLower))
+    relevanceMatched = watchlist.some(w => topicLower.includes(w) || w.includes(topicLower))
   }
 
   const importance = computeImportance(card)

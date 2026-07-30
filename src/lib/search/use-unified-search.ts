@@ -26,7 +26,6 @@ export interface ContentSearchRow {
   author: string | null
   sources: { name: string } | null
   content_keywords: { keywords: { name: string } | null }[]
-  content_services: { services: { name: string } | null }[]
 }
 
 export interface DailyInsightRow {
@@ -127,7 +126,7 @@ async function fetchContentCategory(
 ): Promise<UnifiedResult[]> {
   let query = applyTokenFilters(
     supabase.from('contents').select(
-      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name)), content_services(services(name))'
+      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name))'
     ),
     ['title', 'summary_ko', 'body_original'],
     ilikePats,

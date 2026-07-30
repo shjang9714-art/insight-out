@@ -23,7 +23,6 @@ interface Props {
   author: string | null
   dateLabel: string | null
   originalLanguage?: string | null
-  serviceNames?: string[]
   keywordNames?: string[]
   /** 카테고리 뱃지 옆에 노출하는 해시태그(엔티티 등) — 클릭 시 topics 모아보기로 이동 */
   hashtags?: { label: string; href: string }[]
@@ -35,7 +34,7 @@ interface Props {
 
 /**
  * 기사 본문 블록(제목·소스/발행일/저자·태그·본문)의 공용 렌더.
- * 본문(children)은 호출부가 결정 — 서비스는 ArticleBodyLoader/리포트 미리보기,
+ * 본문(children)은 호출부가 결정 — 사용자 화면은 ArticleBodyLoader/리포트 미리보기,
  * 어드민은 이미 조회된 본문 텍스트를 그대로 전달.
  */
 export default function ContentArticleView({
@@ -45,7 +44,6 @@ export default function ContentArticleView({
   author,
   dateLabel,
   originalLanguage,
-  serviceNames = [],
   keywordNames = [],
   hashtags = [],
   lguImpact,
@@ -93,16 +91,8 @@ export default function ContentArticleView({
         {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
       </div>
 
-      {(serviceNames.length > 0 || keywordNames.length > 0) && (
+      {keywordNames.length > 0 && (
         <div className="mb-5 flex flex-wrap gap-1.5">
-          {serviceNames.map((name) => (
-            <span
-              key={name}
-              className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-            >
-              {name}
-            </span>
-          ))}
           {keywordNames.map((name) => (
             <span
               key={name}

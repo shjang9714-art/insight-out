@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { Upload, X, FileText, Loader2, CheckCircle } from 'lucide-react'
-import type { Service } from '@/lib/types'
 import { renderPdfCover } from '@/lib/contents/pdf-cover'
 import { uploadCover } from '@/lib/contents/upload-cover'
 import CoverImageField from '@/components/admin/CoverImageField'
@@ -93,12 +92,10 @@ export default function ReportUploadForm() {
   const [supabase] = useState(createClient)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [services, setServices]   = useState<Service[]>([])
   const [sources, setSources]     = useState<Source[]>([])
   const [file, setFile]           = useState<File | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [form, setForm]           = useState<FormState>(FORM_INIT)
-  const [serviceIds, setServiceIds] = useState<Set<string>>(new Set())
   const [keywords, setKeywords]   = useState<string[]>([])
   const [kwInput, setKwInput]     = useState('')
   const [isUploading, setIsUploading] = useState(false)
@@ -125,15 +122,11 @@ export default function ReportUploadForm() {
   // DB 메타데이터 로드
   useEffect(() => {
     const load = async () => {
-      const [{ data: svcData }, { data: srcData }] = await Promise.all([
-        supabase.from('services').select('id, name, icon, order').order('order'),
-        supabase
-          .from('sources')
-          .select('id, name')
-          .eq('type', 'report_publisher')
-          .order('name'),
-      ])
-      if (svcData) setServices(svcData as Service[])
+      const { data: srcData } = await supabase
+        .from('sources')
+        .select('id, name')
+        .eq('type', 'report_publisher')
+        .order('name')
       if (srcData) setSources(srcData as Source[])
     }
     load()
@@ -167,20 +160,6 @@ export default function ReportUploadForm() {
     setIsDragOver(false)
     const f = e.dataTransfer.files?.[0]
     if (f) acceptFile(f)
-  }
-
-  // ── 서비스 태그 ────────────────────────────────────────────────────────────
-
-  const toggleService = (id: string) => {
-    setServiceIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
   }
 
   // ── 키워드 ─────────────────────────────────────────────────────────────────
@@ -267,14 +246,7 @@ export default function ReportUploadForm() {
       if (contentErr) throw new Error(`콘텐츠 저장 실패: ${contentErr.message}`)
       const contentId = contentRow.id
 
-      // ③ content_services 삽입
-      if (serviceIds.size > 0) {
-        const rows = [...serviceIds].map(sid => ({ content_id: contentId, service_id: sid }))
-        const { error: svcErr } = await supabase.from('content_services').insert(rows)
-        if (svcErr) throw new Error(`서비스 태그 저장 실패: ${svcErr.message}`)
-      }
-
-      // ④ 키워드: 대소문자 무시 조회 → 없으면 생성 → content_keywords 연결
+      // ③ 키워드: 대소문자 무시 조회 → 없으면 생성 → content_keywords 연결
       if (keywords.length > 0) {
         const kwIds: string[] = []
         for (const kw of keywords) {
@@ -344,7 +316,6 @@ export default function ReportUploadForm() {
       setSuccess(true)
       clearFile()
       setForm(FORM_INIT)
-      setServiceIds(new Set())
       setKeywords([])
       setCoverFile(null)
 
@@ -612,40 +583,6 @@ export default function ReportUploadForm() {
             value={coverFile}
             onChange={setCoverFile}
           />
-        </CardContent>
-      </Card>
-
-      {/* ───────── 담당 서비스 ───────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-foreground">담당 서비스 태그</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {services.length === 0 ? (
-            <p className="text-sm text-muted-foreground">서비스 목록을 불러오는 중...</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {services.map(svc => {
-                const selected = serviceIds.has(svc.id)
-                return (
-                  <button
-                    key={svc.id}
-                    type="button"
-                    onClick={() => toggleService(svc.id)}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
-                      selected
-                        ? 'border-brand-600 bg-brand-600 text-white'
-                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
-                    )}
-                  >
-                    {svc.icon && <span>{svc.icon}</span>}
-                    <span>{svc.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
         </CardContent>
       </Card>
 
