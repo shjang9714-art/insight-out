@@ -9,8 +9,15 @@ import { retrieveForQuestion, type RagDoc } from './rag-retrieve'
 
 export type { RagDoc }
 
+export interface RagPoint {
+  label: string
+  detail: string
+  evidence: string[]
+}
+
 export interface RagAnswer {
-  answer: string
+  summary: string
+  points: RagPoint[]
   citations: string[]
   sources: RagDoc[]
 }
@@ -33,7 +40,7 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 어시스턴�
 6. JSON만 출력.
 
 출력 스키마:
-{"answer":"답변 텍스트","citations":["content_id_1","content_id_2"]}`
+{"summary":"정의·핵심 1~2문장","points":[{"label":"짧은 소제목","detail":"1~2문장 설명","evidence":["content_id_1"]}],"citations":["content_id_1"]}`
 
 const KEYWORD_SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 어시스턴트다.
 아래 제공된 기사들을 근거로만 해당 주제의 최근 동향을 한국어 3~5문장으로 요약하라.
@@ -47,7 +54,7 @@ const KEYWORD_SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 어시
 6. JSON만 출력.
 
 출력 스키마:
-{"answer":"답변 텍스트","citations":["content_id_1","content_id_2"]}`
+{"summary":"정의·핵심 1~2문장","points":[{"label":"짧은 소제목","detail":"1~2문장 설명","evidence":["content_id_1"]}],"citations":["content_id_1"]}`
 
 function isQuestionLike(question: string): boolean {
   return /[?？！]/.test(question)
@@ -85,15 +92,31 @@ export async function answerQuestion(
   if (!parsed || typeof parsed !== 'object') return { answer: null, reason: 'no_llm' }
 
   const obj = parsed as Record<string, unknown>
-  const answer = typeof obj.answer === 'string' ? obj.answer.trim() : ''
-  if (!answer) return { answer: null, reason: 'no_llm' }
+  const summary = typeof obj.summary === 'string' ? obj.summary.trim() : ''
+  if (!summary) return { answer: null, reason: 'no_llm' }
 
-  // 4. 환각 가드: citations ⊂ retrieved content_id
+  // 4. 환각 가드: citations·points.evidence ⊂ retrieved content_id
   const validIds = new Set(docs.map(d => d.content_id))
   const rawCitations = Array.isArray(obj.citations)
     ? (obj.citations as unknown[]).filter((c): c is string => typeof c === 'string')
     : []
   const citations = rawCitations.filter(id => validIds.has(id))
+
+  const points = Array.isArray(obj.points)
+    ? obj.points.flatMap((point): RagPoint[] => {
+        if (!point || typeof point !== 'object') return []
+        const value = point as Record<string, unknown>
+        const label = typeof value.label === 'string' ? value.label.trim() : ''
+        const detail = typeof value.detail === 'string' ? value.detail.trim() : ''
+        const evidence = Array.isArray(value.evidence)
+          ? value.evidence
+            .filter((id): id is string => typeof id === 'string')
+            .filter(id => validIds.has(id))
+          : []
+        if (!label || !detail || evidence.length === 0) return []
+        return [{ label, detail, evidence }]
+      })
+    : []
 
   // 5. sources: citations에 해당하는 RagDoc만.
   //    citations가 없으면(=근거 기사를 못 찾은 경우) 무관한 기사를 관련기사로
@@ -103,5 +126,5 @@ export async function answerQuestion(
     ? docs.filter(d => citationSet.has(d.content_id))
     : []
 
-  return { answer, citations, sources }
+  return { summary, points, citations, sources }
 }

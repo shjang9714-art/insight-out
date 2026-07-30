@@ -8,12 +8,20 @@ import AiMark from '@/components/ui/AiMark'
 interface RagSource {
   content_id: string
   title: string
+  summary_ko: string | null
   published_at: string | null
   source: string | null
 }
 
+interface RagPoint {
+  label: string
+  detail: string
+  evidence: string[]
+}
+
 interface RagAnswer {
-  answer: string
+  summary: string
+  points: RagPoint[]
   sources: RagSource[]
 }
 
@@ -23,6 +31,7 @@ function isRagSource(value: unknown): value is RagSource {
   return (
     typeof source.content_id === 'string'
     && typeof source.title === 'string'
+    && (source.summary_ko === null || typeof source.summary_ko === 'string')
     && (source.published_at === null || typeof source.published_at === 'string')
     && (source.source === null || typeof source.source === 'string')
   )
@@ -31,9 +40,27 @@ function isRagSource(value: unknown): value is RagSource {
 function parseRagAnswer(value: unknown): RagAnswer | null {
   if (!value || typeof value !== 'object') return null
   const result = value as Record<string, unknown>
-  if (typeof result.answer !== 'string' || !Array.isArray(result.sources)) return null
+  if (typeof result.summary !== 'string' || !Array.isArray(result.sources)) return null
+
+  const points = Array.isArray(result.points)
+    ? result.points.flatMap((point): RagPoint[] => {
+        if (!point || typeof point !== 'object') return []
+        const item = point as Record<string, unknown>
+        if (
+          typeof item.label !== 'string'
+          || typeof item.detail !== 'string'
+          || !Array.isArray(item.evidence)
+        ) return []
+        const evidence = item.evidence.filter((id): id is string => typeof id === 'string')
+        return evidence.length > 0
+          ? [{ label: item.label, detail: item.detail, evidence }]
+          : []
+      })
+    : []
+
   return {
-    answer: result.answer,
+    summary: result.summary,
+    points,
     sources: result.sources.filter(isRagSource),
   }
 }
@@ -99,6 +126,29 @@ function LoadingAnswer() {
   )
 }
 
+function EvidenceChips({ evidence }: { evidence: string[] }) {
+  const visible = evidence.slice(0, 2)
+  const remaining = evidence.length - visible.length
+
+  return (
+    <span className="ml-2 inline-flex items-center gap-1 align-middle">
+      {visible.map((contentId, index) => (
+        <Link
+          key={contentId}
+          href={`/dashboard/contents/${contentId}`}
+          prefetch={false}
+          className="rounded-md border border-brand-200 bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 hover:bg-brand-100"
+        >
+          근거 {index + 1}
+        </Link>
+      ))}
+      {remaining > 0 && (
+        <span className="text-[10px] font-medium text-muted-foreground">+{remaining}</span>
+      )}
+    </span>
+  )
+}
+
 function AnswerCard({ answer }: { answer: RagAnswer }) {
   return (
     <>
@@ -109,7 +159,25 @@ function AnswerCard({ answer }: { answer: RagAnswer }) {
           <span className="text-sm font-semibold text-foreground">AI 답변</span>
           <span className="text-xs text-muted-foreground">수집된 기사들을 근거로 정리했어요.</span>
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{answer.answer}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{answer.summary}</p>
+
+        {answer.points.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <h3 className="mb-2 text-sm font-semibold text-foreground">주요 내용</h3>
+            <ul className="space-y-2.5 text-sm leading-relaxed text-foreground">
+              {answer.points.map(point => (
+                <li key={`${point.label}-${point.detail}`} className="flex items-start gap-2">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-600" />
+                  <p>
+                    <strong className="font-semibold">{point.label}</strong>
+                    <span>: {point.detail}</span>
+                    <EvidenceChips evidence={point.evidence} />
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {answer.sources.length > 0 && (
@@ -132,6 +200,11 @@ function AnswerCard({ answer }: { answer: RagAnswer }) {
                     <p className="text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
                       {source.title}
                     </p>
+                    {source.summary_ko && (
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                        {source.summary_ko}
+                      </p>
+                    )}
                     {(source.source || source.published_at) && (
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {[source.source, source.published_at?.slice(0, 10).replace(/-/g, '.')]
