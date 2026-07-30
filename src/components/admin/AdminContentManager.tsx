@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
@@ -294,7 +294,7 @@ function bodyLength(r: AdminContentRow): number | null {
 
 /**
  * 348 — 관리 액션 그룹. 테이블 행과 모바일 카드가 동일한 핸들러를 공유한다.
- * 순서 고정: 노출|숨김 → 보기 → 수정 → 삭제
+ * 순서 고정: 노출|숨김 → 수정 → 삭제
  */
 function RowActions({
   content,
@@ -347,15 +347,6 @@ function RowActions({
             </Button>
           </ActionTooltip>
         )}
-
-        <ActionTooltip label="보기" enabled={!alwaysLabel}>
-          <Button size={actionSize} variant="ghost" asChild className={ACTION_BTN_GHOST}>
-            <Link href={`/admin/contents/${content.id}`} aria-label="보기">
-              <Eye className="h-3.5 w-3.5" />
-              <span className={labelCls}>보기</span>
-            </Link>
-          </Button>
-        </ActionTooltip>
 
         <ActionTooltip label="수정" enabled={!alwaysLabel}>
           <Button
