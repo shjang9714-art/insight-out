@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 
@@ -39,19 +38,11 @@ type TypeTab = (typeof TYPE_TABS)[number]
 
 export default function EntityBrowse({ entities, totalByType }: Props) {
   const [activeType, setActiveType] = useState<TypeTab>('전체')
-  const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
-    let list = entities
-    if (activeType !== '전체') {
-      list = list.filter((e) => e.entity_type === activeType)
-    }
-    if (query.trim()) {
-      const q = query.trim().toLowerCase()
-      list = list.filter((e) => e.canonical_name.toLowerCase().includes(q))
-    }
-    return list
-  }, [entities, activeType, query])
+    if (activeType === '전체') return entities
+    return entities.filter((e) => e.entity_type === activeType)
+  }, [entities, activeType])
 
   return (
     <>
@@ -78,18 +69,6 @@ export default function EntityBrowse({ entities, totalByType }: Props) {
             </button>
           )
         })}
-      </div>
-
-      {/* 검색 */}
-      <div className="relative mb-6">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="엔티티 이름 검색…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-4 text-sm placeholder:text-muted-foreground focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
-        />
       </div>
 
       {/* 목록 */}

@@ -5,14 +5,13 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { LayoutGrid, List, Loader2, Search, X } from 'lucide-react'
+import { LayoutGrid, List, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlFor } from '@/lib/contents/topic-cover'
@@ -297,7 +296,6 @@ export default function ContentsBoard({
   const loadingPhase = useLoadingPhase(isLoading)
   // 395 — 직전 category를 들고 있다가 바뀌면 쿼리 전에 목록을 비운다(잔상 방지).
   const prevCategoryRef = useRef(category)
-  const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
   const contentsView = useSyncExternalStore(
     subscribeContentsView,
@@ -327,29 +325,6 @@ export default function ContentsBoard({
     }
     router.replace(`${pathname}?${params.toString()}`)
   }
-
-  // 브라우저 탐색으로 q가 바뀐 경우에만 입력 초안을 새 URL 상태에 맞춘다.
-  if (searchState.source !== searchQuery) {
-    setSearchState({ source: searchQuery, input: searchQuery })
-  }
-  const searchInput = searchState.input
-
-  // 입력 중에는 URL과 목록 쿼리를 갱신하지 않고, 마지막 입력 300ms 뒤 한 번만 반영한다.
-  useEffect(() => {
-    const normalized = searchInput.trim().slice(0, 100)
-    if (normalized === searchQuery) return
-
-    const timer = window.setTimeout(() => {
-      const params = new URLSearchParams(window.location.search)
-      if (normalized) params.set('q', normalized)
-      else params.delete('q')
-      params.delete('page')
-      setPage(1)
-      router.replace(`${pathname}?${params.toString()}`)
-    }, 300)
-
-    return () => window.clearTimeout(timer)
-  }, [searchInput, searchQuery, router, pathname])
 
   // 현재 소스타입의 최근 30일 인기 키워드를 가져온다.
   useEffect(() => {
@@ -511,7 +486,6 @@ export default function ContentsBoard({
   }
 
   const clearSearchFilters = () => {
-    setSearchState((current) => ({ ...current, input: '' }))
     const params = new URLSearchParams(window.location.search)
     params.delete('q')
     params.delete('kw')
@@ -582,30 +556,8 @@ export default function ContentsBoard({
         )}
       </div>
 
-      {/* ─── 검색 + 인기 키워드 ──────────────────────────────────────────────── */}
+      {/* ─── 인기 키워드 ──────────────────────────────────────────────── */}
       <div className="mb-6 space-y-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchState((current) => ({ ...current, input: event.target.value }))}
-            placeholder="제목·요약에서 검색…"
-            aria-label="콘텐츠 제목과 요약 검색"
-            className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-brand-600 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-950"
-          />
-          {searchInput && (
-            <button
-              type="button"
-              onClick={() => setSearchState((current) => ({ ...current, input: '' }))}
-              aria-label="검색어 지우기"
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
         {/* 394 — 항상 렌더 + 최소 높이 예약(칩 한 줄 높이). /api/contents/keywords 응답이 늦게 와도 아래 목록이 밀리지 않는다. */}
         <div className="flex min-h-[34px] flex-wrap items-center gap-2">
           {keywordChips.map(({ name }) => {
