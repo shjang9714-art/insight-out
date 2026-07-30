@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { LLM_PROVIDERS } from '@/lib/llm'
+import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getKstPeriod } from '@/lib/translate'
 
@@ -73,11 +78,15 @@ export async function GET() {
     const providers = LLM_PROVIDERS.map(p => {
       const u = usageMap.get(p.name)
       const s = settingsMap.get(p.name)
+      const keyCount = getProviderKeyCount(p)
+      const monthlyTokenLimit = s?.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT
       return {
         name: p.name,
         configured: p.isConfigured(),
         enabled: s?.enabled ?? true,
-        monthly_token_limit: s?.monthly_token_limit ?? 1_000_000,
+        monthly_token_limit: monthlyTokenLimit,
+        keyCount,
+        effectiveTokenLimit: effectiveTokenLimit(monthlyTokenLimit, keyCount),
         tokens_used: u?.tokens ?? 0,
         calls_used: u?.calls ?? 0,
       }

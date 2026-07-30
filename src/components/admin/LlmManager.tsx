@@ -13,6 +13,7 @@ import {
 import { Loader2, CheckCircle2, XCircle, FlaskConical } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { cn } from '@/lib/utils'
 import { CHART_BRAND, CHART_MUTED } from '@/lib/admin/palette'
 
@@ -23,6 +24,8 @@ interface ProviderInfo {
   configured: boolean
   enabled: boolean
   monthly_token_limit: number
+  keyCount: number
+  effectiveTokenLimit: number
   tokens_used: number
   calls_used: number
 }
@@ -211,9 +214,11 @@ export default function LlmManager() {
         <h2 className="mb-3 text-sm font-semibold text-foreground">Provider 현황</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {data.providers.map(p => {
-            const usagePct = p.monthly_token_limit > 0
-              ? Math.min(100, Math.round(p.tokens_used / p.monthly_token_limit * 100))
+            const usagePct = p.effectiveTokenLimit > 0
+              ? Math.round(p.tokens_used / p.effectiveTokenLimit * 100)
               : 0
+            const isBlocked = p.effectiveTokenLimit > 0
+              && p.tokens_used >= p.effectiveTokenLimit
             return (
               <div
                 key={p.name}
@@ -222,7 +227,14 @@ export default function LlmManager() {
                 {/* 헤더: 이름 + 키 상태 + enabled 토글 */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground capitalize">{p.name}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-sm font-semibold text-foreground capitalize">{p.name}</p>
+                      {!p.enabled ? (
+                        <StatusBadge tone="neutral" label="비활성" />
+                      ) : isBlocked ? (
+                        <StatusBadge tone="negative" label="차단(폴백 전환)" />
+                      ) : null}
+                    </div>
                     {p.configured ? (
                       <span className="inline-flex items-center gap-1 text-[11px] text-positive">
                         <CheckCircle2 className="h-3 w-3" />키 등록됨
@@ -262,11 +274,14 @@ export default function LlmManager() {
                         'h-full rounded-full transition-all',
                         usagePct >= 90 ? 'bg-destructive' : usagePct >= 70 ? 'bg-amber-500' : 'bg-brand-600'
                       )}
-                      style={{ width: `${usagePct}%` }}
+                      style={{ width: `${Math.min(100, usagePct)}%` }}
                     />
                   </div>
                   <p className="text-[10px] text-muted-foreground/70 text-right">
-                    월 한도 {p.monthly_token_limit.toLocaleString()} 중 {usagePct}%
+                    {p.keyCount > 0
+                      ? `월 한도 ${p.monthly_token_limit.toLocaleString()} × ${p.keyCount}키 = ${p.effectiveTokenLimit.toLocaleString()} 중 ${usagePct}%`
+                      : '키 미설정'
+                    }
                   </p>
                 </div>
               </div>

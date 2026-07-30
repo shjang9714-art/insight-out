@@ -9,6 +9,10 @@ import sambanovaProvider from '@/lib/llm/providers/sambanova'
 import mistralProvider from '@/lib/llm/providers/mistral'
 import openrouterProvider from '@/lib/llm/providers/openrouter'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 import { LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
 
 export type { LlmTask }
@@ -163,7 +167,10 @@ export async function llmCompleteDetailed(
     const settings = new Map<string, SettingsEntry>(
       (settingsResult.data ?? []).map(r => [
         String(r.provider),
-        { enabled: Boolean(r.enabled), limit: Number(r.monthly_token_limit ?? 1_000_000) },
+        {
+          enabled: Boolean(r.enabled),
+          limit: Number(r.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT),
+        },
       ])
     )
 
@@ -176,7 +183,7 @@ export async function llmCompleteDetailed(
 
         const s = settings.get(route.provider)
         if (s?.enabled === false) continue
-        const tokenLimit = (s?.limit ?? 1_000_000) * getProviderKeyCount(provider)
+        const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
         if ((usage.get(route.provider) ?? 0) >= tokenLimit) continue
 
         console.log(`[LLM] task=${task} provider=${route.provider} model=${route.model_id}`)
@@ -200,7 +207,7 @@ export async function llmCompleteDetailed(
       const s = settings.get(provider.name)
       if (!provider.isConfigured() || s?.enabled === false) continue
       if (isOnCooldown(provider.name)) continue
-      const tokenLimit = (s?.limit ?? 1_000_000) * getProviderKeyCount(provider)
+      const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
       if ((usage.get(provider.name) ?? 0) >= tokenLimit) continue
 
       console.log(`[LLM] fallback provider=${provider.name}`)
