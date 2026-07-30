@@ -37,7 +37,7 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ origin?: string; view?: string }>
+  searchParams: Promise<{ origin?: string; view?: string; category?: string }>
 }
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ContentDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
-  const { origin, view } = await searchParams
+  const { origin, view, category: originCategory } = await searchParams
   const { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase } = await getContentRow(id)
   const { data: { user: authUser } } = await supabase.auth.getUser()
   const isLoggedIn = Boolean(authUser)
@@ -181,6 +181,9 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   const isReport = Boolean(content.file_path)
   const isExternalReport = ['리포트', '가트너', 'KRG'].includes(content.category)
   const isKnowledgeReport = content.category === '지식보고서'
+  const listFallback = isKnowledgeReport
+    ? '/dashboard/reports?view=knowledge'
+    : `/dashboard/contents?category=${encodeURIComponent(originCategory ?? content.category)}`
   const isYoutube = content.category === '유튜브'
   const youtubeVideoId = isYoutube ? extractVideoId(content.original_url) : null
   // 유튜브 자막 스크립트(265) — transcript_ko 있을 때만 노출, 없으면 섹션 생략
@@ -266,7 +269,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
       {/* 뒤로가기 */}
       <div className="mb-6">
         <BackLink
-          fallbackHref={isKnowledgeReport ? '/dashboard/reports?view=knowledge' : '/dashboard/contents'}
+          fallbackHref={listFallback}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
@@ -525,7 +528,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
         {/* 하단 액션 */}
         <div className="mt-10 flex items-center justify-between border-t border-border pt-6">
           <BackLink
-            fallbackHref={isKnowledgeReport ? '/dashboard/reports?view=knowledge' : '/dashboard/contents'}
+            fallbackHref={listFallback}
             className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
           />
 
