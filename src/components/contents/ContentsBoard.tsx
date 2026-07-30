@@ -14,7 +14,7 @@ import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
-import { coverUrlFor } from '@/lib/contents/topic-cover'
+import { coverUrlsForList } from '@/lib/contents/topic-cover'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -176,9 +176,10 @@ function ContentCardGrid({ items, category, sortByCollected }: {
   category: ContentCategory | ''
   sortByCollected: boolean
 }) {
+  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
     <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-      {items.map(({ item, members }) => (
+      {items.map(({ item, members }, index) => (
         category === '유튜브' || category === '뉴스' ? (
           <ContentCard
             key={item.id}
@@ -188,7 +189,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             category={item.category}
             sourceName={item.sources?.name ?? item.author ?? null}
             publishedAt={displayDate(item, sortByCollected)}
-            thumbnailUrl={coverUrlFor(item)}
+            thumbnailUrl={coverUrls[index]}
             externalHref={category === '유튜브' ? item.original_url : null}
             keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
             lguImpact={item.lgu_impact ?? null}
@@ -202,7 +203,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             category={item.category}
             sourceName={item.sources?.name ?? item.author ?? null}
             publishedAt={displayDate(item, sortByCollected)}
-            coverImageUrl={coverUrlFor(item)}
+            coverImageUrl={coverUrls[index]}
             keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
           />
         ) : (
@@ -220,7 +221,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             sourceName={item.sources?.name ?? null}
             tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
             clusterMembers={members.length > 0 ? members : undefined}
-            thumbnailUrl={coverUrlFor(item)}
+            thumbnailUrl={coverUrls[index]}
             lguImpact={item.lgu_impact ?? null}
           />
         )
@@ -233,9 +234,10 @@ function ContentRowList({ items, sortByCollected }: {
   items: ClusteredItem[]
   sortByCollected: boolean
 }) {
+  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
     <div className="space-y-3">
-      {items.map(({ item }) => (
+      {items.map(({ item }, index) => (
         <ContentListRow
           key={item.id}
           id={item.id}
@@ -246,7 +248,7 @@ function ContentRowList({ items, sortByCollected }: {
           originalUrl={item.original_url}
           sourceName={item.sources?.name ?? item.author ?? null}
           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-          thumbnailUrl={coverUrlFor(item)}
+          thumbnailUrl={coverUrls[index]}
           lguImpact={item.lgu_impact ?? null}
         />
       ))}

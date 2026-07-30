@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ContentCard from '@/components/dashboard/ContentCard'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
-import { coverUrlFor } from '@/lib/contents/topic-cover'
+import { coverUrlsForList } from '@/lib/contents/topic-cover'
 import { type ContentCategory } from '@/lib/types'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
 import { hashtagsForCategories } from '@/lib/feed/categories'
@@ -199,20 +199,23 @@ export default function RecommendedFeed({
           <div>
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">요즘 주목할 콘텐츠</h3>
             <FeedCarousel cardWidth={300} cardHeight={364}>
-              {fallbackItems.map((item) => (
-                <ContentCard
-                  key={item.id}
-                  id={item.id}
-                  title={item.title}
-                  summaryKo={toExcerpt(item.summary_ko, item.body_original)}
-                  category={item.category}
-                  sourceName={item.sources?.name ?? null}
-                  publishedAt={item.published_at}
-                  thumbnailUrl={coverUrlFor(item)}
-                  href={item.category === '유튜브' ? null : undefined}
-                  keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-                />
-              ))}
+              {(() => {
+                const fallbackCoverUrls = coverUrlsForList(fallbackItems)
+                return fallbackItems.map((item, index) => (
+                  <ContentCard
+                    key={item.id}
+                    id={item.id}
+                    title={item.title}
+                    summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+                    category={item.category}
+                    sourceName={item.sources?.name ?? null}
+                    publishedAt={item.published_at}
+                    thumbnailUrl={fallbackCoverUrls[index]}
+                    href={item.category === '유튜브' ? null : undefined}
+                    keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                  />
+                ))
+              })()}
             </FeedCarousel>
             <p className="mt-3 text-center text-xs text-muted-foreground">
               관심사를 설정하면 더 잘 맞는 추천을 받을 수 있어요.
@@ -225,20 +228,23 @@ export default function RecommendedFeed({
         )
       ) : (
         <FeedCarousel cardWidth={300} cardHeight={364}>
-          {items.map((item) => (
-            <ContentCard
-              key={item.id}
-              id={item.id}
-              title={item.title}
-              summaryKo={toExcerpt(item.summary_ko, item.body_original)}
-              category={item.category}
-              sourceName={item.sources?.name ?? null}
-              publishedAt={item.published_at}
-              thumbnailUrl={coverUrlFor(item)}
-              href={item.category === '유튜브' ? null : undefined}
-              keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-            />
-          ))}
+          {(() => {
+            const itemsCoverUrls = coverUrlsForList(items)
+            return items.map((item, index) => (
+              <ContentCard
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+                category={item.category}
+                sourceName={item.sources?.name ?? null}
+                publishedAt={item.published_at}
+                thumbnailUrl={itemsCoverUrls[index]}
+                href={item.category === '유튜브' ? null : undefined}
+                keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+              />
+            ))
+          })()}
         </FeedCarousel>
       )}
     </div>
