@@ -35,6 +35,25 @@ const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 어시스턴�
 출력 스키마:
 {"answer":"답변 텍스트","citations":["content_id_1","content_id_2"]}`
 
+const KEYWORD_SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 어시스턴트다.
+아래 제공된 기사들을 근거로만 해당 주제의 최근 동향을 한국어 3~5문장으로 요약하라.
+
+반드시 지켜야 할 규칙:
+1. 추측·외부 지식 사용 금지 — 아래 기사에 없는 내용은 언급하지 말 것.
+2. 근거가 부족하면 "제공된 자료로는 확인되지 않습니다"라고 답하라.
+3. 각 핵심 주장에 근거 content_id를 citations 배열에 명시.
+4. citations는 반드시 입력 기사 목록에 존재하는 content_id만 사용.
+5. 답변은 3~5문장으로 간결하게.
+6. JSON만 출력.
+
+출력 스키마:
+{"answer":"답변 텍스트","citations":["content_id_1","content_id_2"]}`
+
+function isQuestionLike(question: string): boolean {
+  return /[?？！]/.test(question)
+    || /(?:어떻게|어떤|무엇|왜|언제|어디서|어디|무슨)/.test(question)
+}
+
 function buildUserPrompt(question: string, docs: RagDoc[]): string {
   const docLines = docs.map(d =>
     `[${d.content_id}] (${d.published_at?.slice(0, 10) ?? '날짜미상'}) ${d.title}\n${d.snippet}`
@@ -55,7 +74,7 @@ export async function answerQuestion(
   // 2. LLM 호출
   const raw = await llmComplete(
     'search',
-    SYSTEM_PROMPT,
+    isQuestionLike(question) ? SYSTEM_PROMPT : KEYWORD_SYSTEM_PROMPT,
     buildUserPrompt(question, docs),
     { allowFallbackPool: false },
   )

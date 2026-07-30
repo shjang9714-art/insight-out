@@ -83,6 +83,9 @@ function SearchContent() {
         </div>
       )}
 
+      {/* AI 답변 — 활성화된 경우 검색 결과보다 먼저 자동 노출 */}
+      {q && <AiSearchAnswer key={q} question={q} />}
+
       {/* 로딩 */}
       {q && isLoading && (
         <div className="space-y-3">
@@ -110,10 +113,7 @@ function SearchContent() {
 
       {/* 결과 목록 — 종류별 섹션 */}
       {q && !isLoading && sections !== null && sections.length > 0 && (
-        <>
-          <AiSearchAnswer key={q} question={q} />
-          <SearchResultsList sections={sections} />
-        </>
+        <SearchResultsList sections={sections} />
       )}
     </div>
   )
