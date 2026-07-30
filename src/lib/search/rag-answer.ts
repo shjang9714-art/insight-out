@@ -3,7 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { llmComplete } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
-import { retrieveForQuestion, type RagDoc } from './rag-retrieve'
+import { INTERROGATIVES, retrieveForQuestion, type RagDoc } from './rag-retrieve'
 
 // ─── 공개 타입 ────────────────────────────────────────────────────────────────
 
@@ -50,8 +50,8 @@ const KEYWORD_SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 어시
 {"answer":"답변 텍스트","citations":["content_id_1","content_id_2"]}`
 
 function isQuestionLike(question: string): boolean {
-  return /[?？！]/.test(question)
-    || /(?:어떻게|어떤|무엇|왜|언제|어디서|어디|무슨)/.test(question)
+  return /[?？]/.test(question)
+    || INTERROGATIVES.some(word => question.includes(word))
 }
 
 function buildUserPrompt(question: string, docs: RagDoc[]): string {
