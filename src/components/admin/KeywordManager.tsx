@@ -6,13 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
@@ -20,29 +13,20 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
-interface ServiceOption {
-  id: string
-  name: string
-}
-
 interface KeywordRow {
   id: string
   name: string
-  service_id: string | null
   is_competitor: boolean
   created_at: string
-  services: { name: string }[] | null
 }
 
 interface KeywordForm {
   name: string
-  service_id: string   // '' → null (미지정)
   is_competitor: boolean
 }
 
 const FORM_INIT: KeywordForm = {
   name:          '',
-  service_id:    '',
   is_competitor: false,
 }
 
@@ -51,7 +35,6 @@ const FORM_INIT: KeywordForm = {
 export default function KeywordManager() {
   const supabase = createClient()
 
-  const [services,  setServices]  = useState<ServiceOption[]>([])
   const [keywords,  setKeywords]  = useState<KeywordRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error,     setError]     = useState<string | null>(null)
@@ -66,18 +49,10 @@ export default function KeywordManager() {
 
   useEffect(() => {
     const init = async () => {
-      const [{ data: svcData, error: svcErr }, { data: kwData, error: kwErr }] =
-        await Promise.all([
-          supabase.from('services').select('id, name').order('name', { ascending: true }),
-          supabase
-            .from('keywords')
-            .select('id, name, service_id, is_competitor, created_at, services(name)')
-            .order('service_id', { ascending: true, nullsFirst: false })
-            .order('name',       { ascending: true }),
-        ])
-
-      if (svcErr) setError(`서비스 목록 로드 실패: ${svcErr.message}`)
-      else        setServices((svcData ?? []) as ServiceOption[])
+      const { data: kwData, error: kwErr } = await supabase
+        .from('keywords')
+        .select('id, name, is_competitor, created_at')
+        .order('name', { ascending: true })
 
       if (kwErr)  setError(`키워드 목록 로드 실패: ${kwErr.message}`)
       else        setKeywords((kwData ?? []) as KeywordRow[])
@@ -93,9 +68,8 @@ export default function KeywordManager() {
     setIsLoading(true)
     const { data, error: err } = await supabase
       .from('keywords')
-      .select('id, name, service_id, is_competitor, created_at, services(name)')
-      .order('service_id', { ascending: true, nullsFirst: false })
-      .order('name',       { ascending: true })
+      .select('id, name, is_competitor, created_at')
+      .order('name', { ascending: true })
     if (err) {
       setError(`키워드 목록 로드 실패: ${err.message}`)
     } else {
@@ -104,31 +78,10 @@ export default function KeywordManager() {
     setIsLoading(false)
   }
 
-  // ── 서비스별 그룹핑 ───────────────────────────────────────────────────────
-
-  const keywordsByService = (() => {
-    const map = new Map<string, KeywordRow[]>()
-    services.forEach(s => map.set(s.id, []))
-    map.set('', [])
-    keywords.forEach(k => {
-      const key = k.service_id ?? ''
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(k)
-    })
-    map.forEach(list => list.sort((a, b) => a.name.localeCompare(b.name, 'ko')))
-    return map
-  })()
-
-  const serviceCounts = (() => {
-    const counts: Record<string, number> = {}
-    keywordsByService.forEach((list, key) => { counts[key] = list.length })
-    return counts
-  })()
-
   // ── 폼 열기/닫기 ──────────────────────────────────────────────────────────
 
-  function openAdd(defaultServiceId = '') {
-    setForm({ ...FORM_INIT, service_id: defaultServiceId })
+  function openAdd() {
+    setForm(FORM_INIT)
     setEditingId(null)
     setFormError(null)
     setShowForm(true)
@@ -137,7 +90,6 @@ export default function KeywordManager() {
   function openEdit(kw: KeywordRow) {
     setForm({
       name:          kw.name,
-      service_id:    kw.service_id ?? '',
       is_competitor: kw.is_competitor,
     })
     setEditingId(kw.id)
@@ -166,7 +118,6 @@ export default function KeywordManager() {
     try {
       const payload = {
         name:          form.name.trim(),
-        service_id:    form.service_id || null,
         is_competitor: form.is_competitor,
       }
 
@@ -271,35 +222,6 @@ export default function KeywordManager() {
         </AdminErrorBox>
       )}
 
-      {/* ── 서비스별 키워드 수 요약 ── */}
-      {!isLoading && services.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {services.map(s => {
-            const count = serviceCounts[s.id] ?? 0
-            return (
-              count === 0 ? (
-                <StatusBadge
-                  key={s.id}
-                  tone="negative"
-                  label={`${s.name} ${count}개`}
-                  className="border border-negative/30 px-3 py-1"
-                />
-              ) : (
-                <span
-                  key={s.id}
-                  className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
-                >
-                  {s.name} {count}개
-                </span>
-              )
-            )
-          })}
-          <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-            미지정 {serviceCounts[''] ?? 0}개
-          </span>
-        </div>
-      )}
-
       {/* ── 추가/수정 폼 ── */}
       {showForm && (
         <Card>
@@ -316,44 +238,16 @@ export default function KeywordManager() {
                 </AdminErrorBox>
               )}
 
-              {/* 키워드명·서비스 */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="kw-name">
-                    키워드명 <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="kw-name"
-                    value={form.name}
-                    onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
-                    placeholder="예: AI 컨택센터"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="kw-service">
-                    서비스{' '}
-                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                  </Label>
-                  <Select
-                    value={form.service_id || '__none__'}
-                    onValueChange={(v) =>
-                      setForm(p => ({ ...p, service_id: v === '__none__' ? '' : v }))
-                    }
-                  >
-                    <SelectTrigger id="kw-service">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">— 미지정</SelectItem>
-                      {services.map(s => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="kw-name">
+                  키워드명 <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="kw-name"
+                  value={form.name}
+                  onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
+                  placeholder="예: AI 컨택센터"
+                />
               </div>
 
               {/* 경쟁사 여부 */}
@@ -404,7 +298,6 @@ export default function KeywordManager() {
         )}
       </div>
 
-      {/* ── 서비스 대분류별 그룹 섹션 ── */}
       {isLoading ? (
         <AdminTable
           columns={keywordColumns}
@@ -412,7 +305,7 @@ export default function KeywordManager() {
           rowKey={keyword => keyword.id}
           loading
         />
-      ) : keywords.length === 0 && services.length === 0 ? (
+      ) : keywords.length === 0 ? (
         <AdminTable
           columns={keywordColumns}
           rows={[]}
@@ -423,68 +316,12 @@ export default function KeywordManager() {
           }}
         />
       ) : (
-        <div className="space-y-6">
-          {/* 서비스 대분류 섹션 */}
-          {services.map(s => {
-            const svcKeywords = keywordsByService.get(s.id) ?? []
-            return (
-              <div key={s.id} className="space-y-2">
-                <div className="flex items-center justify-between border-b border-border pb-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-foreground">{s.name}</h3>
-                    {svcKeywords.length === 0 ? (
-                      <StatusBadge
-                        tone="negative"
-                        label="키워드 없음 — 추가 필요"
-                        className="border border-negative/30"
-                      />
-                    ) : (
-                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                        {svcKeywords.length}개
-                      </span>
-                    )}
-                  </div>
-                  {!showForm && (
-                    <button
-                      onClick={() => openAdd(s.id)}
-                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    >
-                      <Plus className="h-3 w-3" />
-                      추가
-                    </button>
-                  )}
-                </div>
-
-                {svcKeywords.length > 0 && (
-                  <AdminTable
-                    columns={keywordColumns}
-                    rows={svcKeywords}
-                    rowKey={keyword => keyword.id}
-                    minWidth="min-w-[400px]"
-                  />
-                )}
-              </div>
-            )
-          })}
-
-          {/* 미지정 그룹 (맨 아래) */}
-          {(keywordsByService.get('') ?? []).length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 border-b border-border pb-2">
-                <h3 className="text-sm font-semibold text-muted-foreground">미지정</h3>
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                  {(keywordsByService.get('') ?? []).length}개
-                </span>
-              </div>
-              <AdminTable
-                columns={keywordColumns}
-                rows={keywordsByService.get('') ?? []}
-                rowKey={keyword => keyword.id}
-                minWidth="min-w-[400px]"
-              />
-            </div>
-          )}
-        </div>
+        <AdminTable
+          columns={keywordColumns}
+          rows={keywords}
+          rowKey={keyword => keyword.id}
+          minWidth="min-w-[400px]"
+        />
       )}
     </div>
   )

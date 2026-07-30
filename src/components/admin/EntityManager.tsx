@@ -31,9 +31,9 @@ const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'pol
 const COMPETITOR_GROUP_SUGGESTIONS = ['통신', '클라우드·플랫폼', '빅테크']
 
 const ENTITY_SELECT_WITH_GROUP =
-  'id, canonical_name, entity_type, description, is_competitor, service_id, mention_count, competitor_group'
+  'id, canonical_name, entity_type, description, is_competitor, mention_count, competitor_group'
 const ENTITY_SELECT_NO_GROUP =
-  'id, canonical_name, entity_type, description, is_competitor, service_id, mention_count'
+  'id, canonical_name, entity_type, description, is_competitor, mention_count'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -43,15 +43,9 @@ interface EntityRow {
   entity_type: EntityType
   description: string | null
   is_competitor: boolean
-  service_id: string | null
   mention_count: number
   /** 224 SQL 미적용 시 셀렉트에서 제외되어 undefined일 수 있음 */
   competitor_group?: string | null
-}
-
-interface ServiceRow {
-  id: string
-  name: string
 }
 
 interface AliasRow {
@@ -65,7 +59,6 @@ interface EntityForm {
   entity_type: EntityType
   description: string
   is_competitor: boolean
-  service_id: string
   competitor_group: string
 }
 
@@ -74,7 +67,6 @@ const FORM_INIT: EntityForm = {
   entity_type:      'company',
   description:      '',
   is_competitor:    false,
-  service_id:       '',
   competitor_group: '',
 }
 
@@ -148,7 +140,6 @@ export default function EntityManager() {
 
   // 목록 상태
   const [entities,      setEntities]      = useState<EntityRow[]>([])
-  const [services,      setServices]      = useState<ServiceRow[]>([])
   const [isLoading,     setIsLoading]     = useState(true)
   const [error,         setError]         = useState<string | null>(null)
   const [filterType,    setFilterType]    = useState<EntityType | 'all'>('all')
@@ -222,18 +213,12 @@ export default function EntityManager() {
   useEffect(() => {
     const init = async () => {
       setIsLoading(true)
-      const [entRes, svcRes] = await Promise.all([
-        fetchEntitiesGraceful(),
-        supabase.from('services').select('id, name').order('name'),
-      ])
+      const entRes = await fetchEntitiesGraceful()
       setGroupSupported(entRes.groupSupported)
       if (entRes.error) {
         setError(`엔티티 목록 로드 실패: ${entRes.error.message}`)
       } else {
         setEntities((entRes.data ?? []) as EntityRow[])
-      }
-      if (!svcRes.error) {
-        setServices((svcRes.data ?? []) as ServiceRow[])
       }
       setIsLoading(false)
     }
@@ -295,7 +280,6 @@ export default function EntityManager() {
       entity_type:      entity.entity_type,
       description:      entity.description ?? '',
       is_competitor:    entity.is_competitor,
-      service_id:       entity.service_id ?? '',
       competitor_group: entity.competitor_group ?? '',
     })
     setEditingId(entity.id)
@@ -325,7 +309,6 @@ export default function EntityManager() {
         description:    form.description.trim() || null,
         // 그룹 지정 시 경쟁사 자동 체크(224 §2-4) — 수동 체크 해제도 유지
         is_competitor:  form.is_competitor || Boolean(competitorGroup),
-        service_id:     form.service_id || null,
         // 224 SQL 미적용 시 컬럼 자체가 없어 payload에 넣으면 저장이 실패하므로 제외(graceful)
         ...(groupSupported ? { competitor_group: competitorGroup } : {}),
       }
@@ -876,38 +859,16 @@ export default function EntityManager() {
                   placeholder="이 엔티티에 대한 간단한 설명"
                 />
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="ent-service">
-                    연결 서비스{' '}
-                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                  </Label>
-                  <Select
-                    value={form.service_id || 'none'}
-                    onValueChange={(v) => setForm(p => ({ ...p, service_id: v === 'none' ? '' : v }))}
-                  >
-                    <SelectTrigger id="ent-service">
-                      <SelectValue placeholder="없음" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">없음</SelectItem>
-                      {services.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-end pb-1">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.is_competitor}
-                      onChange={(e) => setForm(p => ({ ...p, is_competitor: e.target.checked }))}
-                      className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                    />
-                    <span className="text-sm text-foreground">경쟁사</span>
-                  </label>
-                </div>
+              <div className="flex items-center">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.is_competitor}
+                    onChange={(e) => setForm(p => ({ ...p, is_competitor: e.target.checked }))}
+                    className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
+                  />
+                  <span className="text-sm text-foreground">경쟁사</span>
+                </label>
               </div>
               {groupSupported && (
                 <div className="flex flex-col gap-1.5">
