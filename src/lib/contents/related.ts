@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -287,7 +288,10 @@ export async function getRelatedYoutube(
       .or(filters)
       .order('published_at', { ascending: false })
       .limit(limit)
-    return (data ?? []) as YoutubeRelatedItem[]
+    return ((data ?? []) as YoutubeRelatedItem[]).map((video) => ({
+      ...video,
+      thumbnail_url: resolveStorageUrl(video.thumbnail_url),
+    }))
   } catch {
     return []
   }

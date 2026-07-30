@@ -6,6 +6,7 @@ import BriefingArchive from '@/components/dashboard/BriefingArchive'
 import PageContainer from '@/components/PageContainer'
 import BackLink from '@/components/BackLink'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { resolveBriefingAudioUrl } from '@/lib/briefing/audio-url'
 
 export const metadata: Metadata = {
   title: '지난 브리핑 | Insight Out',
@@ -64,11 +65,13 @@ async function BriefingsContent({ initialId }: { initialId?: string }) {
     .order('briefing_date', { ascending: false })
     .limit(90)
 
-  const briefings = (data ?? []).map((briefing) => ({
-    ...briefing,
-    title: briefing.title ? stripLlmArtifacts(briefing.title) : briefing.title,
-    script: briefing.script ? stripLlmArtifacts(briefing.script) : briefing.script,
-  }))
+  const briefings = (data ?? []).map((briefing) =>
+    resolveBriefingAudioUrl({
+      ...briefing,
+      title: briefing.title ? stripLlmArtifacts(briefing.title) : briefing.title,
+      script: briefing.script ? stripLlmArtifacts(briefing.script) : briefing.script,
+    })
+  )
 
   return (
     <BriefingArchive briefings={briefings} initialId={initialId} />

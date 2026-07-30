@@ -144,14 +144,17 @@ export function relatednessScore(
 /**
  * 검토 대기 사유 (178 — 본문 품질 게이트 + 기존 관련도 게이트 통합 라벨).
  */
-export type ReviewReason =
-  | 'body_missing'    // 본문 없음/못 불러옴
-  | 'body_short'      // 본문 과소(잘림 의심)
-  | 'extract_failed'  // 풀본문 추출 실패
-  | 'body_truncated'  // 말줄임·더보기 등 잘림 마커
-  | 'low_relevance'   // 관련도 낮음(기존 게이트)
-  | 'llm_irrelevant'  // LLM 재판정 무관
-  | 'excluded_rule'   // 제외 규칙(190) 매칭 — hold 액션
+export const REVIEW_REASONS = [
+  'body_missing',    // 본문 없음/못 불러옴
+  'body_short',      // 본문 과소(잘림 의심)
+  'extract_failed',  // 풀본문 추출 실패
+  'body_truncated',  // 말줄임·더보기 등 잘림 마커
+  'low_relevance',   // 관련도 낮음(기존 게이트)
+  'llm_irrelevant',  // LLM 재판정 무관
+  'excluded_rule',   // 제외 규칙(190) 매칭 — hold 액션
+] as const
+
+export type ReviewReason = (typeof REVIEW_REASONS)[number]
 
 /**
  * 본문 품질 판정. 문제 없으면 null.
@@ -254,4 +257,3 @@ export function matchIssues(title: string, body: string, issues: IssueMatchDef[]
     }))
     .map(issue => issue.id)
 }
-

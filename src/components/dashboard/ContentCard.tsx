@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import CoverImage from '@/components/common/CoverImage'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover, { CATEGORY_COLOR } from '@/components/dashboard/BrandedCover'
 import { extractVideoId } from '@/lib/youtube'
@@ -76,17 +77,19 @@ function Thumbnail({
     : null
   const resolvedUrl = url ?? fallbackYoutubeThumb
 
-  if (resolvedUrl) {
-    return (
-      <div className="relative h-full w-full">
-        {/* next/image remotePatterns 미설정 → unoptimized로 빌드 에러 방지 */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={resolvedUrl}
-          alt={title}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-          loading="lazy"
-        />
+  if (!resolvedUrl) {
+    return <BrandedCover category={category} title={title} sourceName={sourceName} />
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <CoverImage
+        src={resolvedUrl}
+        alt={title}
+        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+        loading="lazy"
+        fallback={<BrandedCover category={category} title={title} sourceName={sourceName} />}
+      >
         {isYoutube && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
@@ -96,11 +99,9 @@ function Thumbnail({
             </div>
           </div>
         )}
-      </div>
-    )
-  }
-
-  return <BrandedCover category={category} title={title} sourceName={sourceName} />
+      </CoverImage>
+    </div>
+  )
 }
 
 // ─── ContentCard ─────────────────────────────────────────────────────────────

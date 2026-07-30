@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
+import { effectiveTokenLimit } from '@/lib/llm/token-limit'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage } from '@/components/admin/AdminOpsSignals'
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
@@ -254,7 +255,7 @@ export default async function AdminPage() {
       enabled:     s?.enabled ?? true,
       keyCount,
       tokensUsed:  usageMap.get(p.name) ?? 0,
-      tokenLimit:  (s?.monthly_token_limit ?? 1_000_000) * keyCount,
+      tokenLimit:  effectiveTokenLimit(s?.monthly_token_limit, keyCount),
     }
   })
 

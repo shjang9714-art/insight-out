@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import { LLM_PROVIDERS } from '@/lib/llm'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 
 export type BriefSeverity = 'critical' | 'warning' | 'notice'
 export interface BriefAlert { severity: BriefSeverity; message: string }
@@ -47,9 +51,9 @@ export async function gatherDailyBrief(admin: SupabaseClient): Promise<DailyBrie
   const sourceCounts = new Map<string, number>(); for (const row of sourceRows.data ?? []) sourceCounts.set(row.source_id, (sourceCounts.get(row.source_id) ?? 0) + 1)
   const sourceTotal = [...sourceCounts.values()].reduce((a, b) => a + b, 0)
   const topSourceShare = sourceTotal ? Math.round(Math.max(...sourceCounts.values()) / sourceTotal * 100) : 0
-  const settingsMap = new Map((settings.data ?? []).map((s) => [s.provider, Number(s.monthly_token_limit ?? 1_000_000)]))
+  const settingsMap = new Map((settings.data ?? []).map((s) => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
   const usageMap = new Map<string, number>(); for (const row of llm.data ?? []) usageMap.set(row.provider, (usageMap.get(row.provider) ?? 0) + Number(row.tokens ?? 0))
-  const usage = [...usageMap].map(([provider, used]) => { const configuredProvider = LLM_PROVIDERS.find(p => p.name === provider); const keyCount = configuredProvider ? getProviderKeyCount(configuredProvider) : 1; const limit = (settingsMap.get(provider) ?? 1_000_000) * keyCount; return { provider, used, limit, percent: pct(used, limit) } })
+  const usage = [...usageMap].map(([provider, used]) => { const configuredProvider = LLM_PROVIDERS.find(p => p.name === provider); const keyCount = configuredProvider ? getProviderKeyCount(configuredProvider) : 1; const limit = effectiveTokenLimit(settingsMap.get(provider), keyCount); return { provider, used, limit, percent: pct(used, limit) } })
   const translationChars = (translation.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0)
   const ttsChars = (tts.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0)
   const translationCap = Number(process.env.TRANSLATION_MONTHLY_CHAR_CAP ?? 1_000_000)

@@ -65,7 +65,6 @@ export async function POST(request: NextRequest) {
     author?: string | null
     publishedAt?: string | null
     sourceId?: string | null
-    serviceIds?: string[]
     keywords?: string[]
   }
 
@@ -75,7 +74,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 })
   }
 
-  const { category, title, bodyText, bodyMarkdown, originalUrl, summary, author, publishedAt, sourceId, serviceIds = [], keywords = [] } = body
+  const { category, title, bodyText, bodyMarkdown, originalUrl, summary, author, publishedAt, sourceId, keywords = [] } = body
 
   if (!title?.trim()) {
     return NextResponse.json({ error: '제목을 입력해주세요.' }, { status: 400 })
@@ -139,16 +138,6 @@ export async function POST(request: NextRequest) {
   }
 
   const contentId = contentRow.id
-
-  // ─── content_services insert ─────────────────────────────────────────────
-
-  if (serviceIds.length > 0) {
-    const rows = serviceIds.map((sid: string) => ({ content_id: contentId, service_id: sid }))
-    const { error: svcErr } = await supabase.from('content_services').insert(rows)
-    if (svcErr) {
-      console.error('[api/admin/paste] content_services insert 실패:', svcErr)
-    }
-  }
 
   // ─── keywords: 조회/생성 → content_keywords ──────────────────────────────
 

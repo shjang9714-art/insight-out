@@ -104,11 +104,10 @@ async function translateEnglishContent(
 interface CrawlKeyword {
   id: string
   name: string
-  service_id: string | null
 }
 
 /**
- * 적재된 콘텐츠에 키워드/서비스 태그를 자동 부여한다 (#24).
+ * 적재된 콘텐츠에 키워드 태그를 자동 부여한다 (#24).
  * - 매칭 0건이면 아무것도 하지 않음(정상 종료).
  * - 태깅 오류는 로그만 — 적재 결과를 막지 않음.
  */
@@ -128,15 +127,6 @@ async function tagContent(
       matched.map(k => ({ content_id: contentId, keyword_id: k.id })),
       { onConflict: 'content_id,keyword_id', ignoreDuplicates: true }
     )
-
-    // content_services (PK: content_id, service_id) — 매칭 키워드의 distinct service_id
-    const serviceIds = [...new Set(matched.map(k => k.service_id).filter((v): v is string => !!v))]
-    if (serviceIds.length) {
-      await admin.from('content_services').upsert(
-        serviceIds.map(sid => ({ content_id: contentId, service_id: sid })),
-        { onConflict: 'content_id,service_id', ignoreDuplicates: true }
-      )
-    }
   } catch (err) {
     console.error('[크롤러] 태깅 오류 (contentId:', contentId, '):', err)
   }
@@ -1333,7 +1323,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     admin = createAdminClient()
     const [sourcesResult, keywordsResult, groupsResult] = await Promise.all([
       admin.from('sources').select('*').eq('is_active', true),
-      admin.from('keywords').select('id, name, service_id'),
+      admin.from('keywords').select('id, name'),
       admin.from('keyword_groups')
         .select('name, include_patterns, exclude_patterns, weight, signal_hint')
         .eq('is_active', true),

@@ -1,4 +1,4 @@
-import type { Department, Service } from '@/lib/types'
+import type { Department } from '@/lib/types'
 import type { LensKey } from '@/lib/lens'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -57,5 +57,3 @@ export interface ArchiveWithItems {
     contents: { id: string; title: string; category: string; original_url: string | null } | null
   }[]
 }
-
-export type ServiceOption = Service

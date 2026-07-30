@@ -9,6 +9,10 @@ import sambanovaProvider from '@/lib/llm/providers/sambanova'
 import mistralProvider from '@/lib/llm/providers/mistral'
 import openrouterProvider from '@/lib/llm/providers/openrouter'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 import { LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
 
 export type { LlmTask }
@@ -110,6 +114,11 @@ export interface LlmCompleteResult {
   errorReason: string | null
 }
 
+export interface LlmCompleteOptions {
+  /** false면 task 라우팅 실패 후 고정 provider 풀을 순회하지 않는다. */
+  allowFallbackPool?: boolean
+}
+
 /**
  * LLM 완성 호출 — task 별 DB 라우팅 → 실패 시 고정 폴백 풀.
  * 실패 원인까지 필요하면 {@link llmCompleteDetailed} 사용.
@@ -119,9 +128,10 @@ export interface LlmCompleteResult {
 export async function llmComplete(
   task: LlmTask,
   system: string,
-  user: string
+  user: string,
+  options?: LlmCompleteOptions
 ): Promise<string | null> {
-  const { text } = await llmCompleteDetailed(task, system, user)
+  const { text } = await llmCompleteDetailed(task, system, user, options)
   return text
 }
 
@@ -131,8 +141,10 @@ export async function llmComplete(
 export async function llmCompleteDetailed(
   task: LlmTask,
   system: string,
-  user: string
+  user: string,
+  options: LlmCompleteOptions = {}
 ): Promise<LlmCompleteResult> {
+  const { allowFallbackPool = true } = options
   let lastErrorReason: string | null = null
 
   try {
@@ -163,7 +175,10 @@ export async function llmCompleteDetailed(
     const settings = new Map<string, SettingsEntry>(
       (settingsResult.data ?? []).map(r => [
         String(r.provider),
-        { enabled: Boolean(r.enabled), limit: Number(r.monthly_token_limit ?? 1_000_000) },
+        {
+          enabled: Boolean(r.enabled),
+          limit: Number(r.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT),
+        },
       ])
     )
 
@@ -176,7 +191,7 @@ export async function llmCompleteDetailed(
 
         const s = settings.get(route.provider)
         if (s?.enabled === false) continue
-        const tokenLimit = (s?.limit ?? 1_000_000) * getProviderKeyCount(provider)
+        const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
         if ((usage.get(route.provider) ?? 0) >= tokenLimit) continue
 
         console.log(`[LLM] task=${task} provider=${route.provider} model=${route.model_id}`)
@@ -192,7 +207,20 @@ export async function llmCompleteDetailed(
         return { text: result.text, errorReason: null }
       }
     } else if (routingResult.error) {
-      console.warn('[LLM] 라우팅 테이블 조회 실패, 고정 폴백 사용:', routingResult.error.message)
+      lastErrorReason = `라우팅 조회 실패: ${routingResult.error.message}`
+      console.warn(
+        allowFallbackPool
+          ? '[LLM] 라우팅 테이블 조회 실패, 고정 폴백 사용:'
+          : '[LLM] 라우팅 테이블 조회 실패, 폴백 비활성:',
+        routingResult.error.message
+      )
+    }
+
+    if (!allowFallbackPool) {
+      return {
+        text: null,
+        errorReason: lastErrorReason ?? '활성 라우팅 없음',
+      }
     }
 
     // ── 2단계: 고정 폴백 풀 (라우팅 전부 실패 / 테이블 없음 시 안전망) ──
@@ -200,7 +228,7 @@ export async function llmCompleteDetailed(
       const s = settings.get(provider.name)
       if (!provider.isConfigured() || s?.enabled === false) continue
       if (isOnCooldown(provider.name)) continue
-      const tokenLimit = (s?.limit ?? 1_000_000) * getProviderKeyCount(provider)
+      const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
       if ((usage.get(provider.name) ?? 0) >= tokenLimit) continue
 
       console.log(`[LLM] fallback provider=${provider.name}`)

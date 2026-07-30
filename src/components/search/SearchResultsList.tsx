@@ -10,14 +10,10 @@ function getKeywords(item: ContentSearchRow): string[] {
   return item.content_keywords.map(ck => ck.keywords?.name).filter((name): name is string => Boolean(name))
 }
 
-function getServices(item: ContentSearchRow): string[] {
-  return item.content_services.map(cs => cs.services?.name).filter((name): name is string => Boolean(name))
-}
-
 function renderItem(item: UnifiedResult) {
   if (item.source === 'content' && item.content) {
     const content = item.content
-    return <ContentRow key={item.key} id={content.id} title={content.title} summaryKo={content.summary_ko} bodyOriginal={content.body_original} category={content.category} publishedAt={content.published_at} originalUrl={content.original_url} filePath={content.file_path} isEditorPick={content.is_editor_pick} author={content.author} sourceName={content.sources?.name ?? null} keywords={tagsOf(getKeywords(content), content.category, getServices(content))} />
+    return <ContentRow key={item.key} id={content.id} title={content.title} summaryKo={content.summary_ko} bodyOriginal={content.body_original} category={content.category} publishedAt={content.published_at} originalUrl={content.original_url} filePath={content.file_path} isEditorPick={content.is_editor_pick} author={content.author} sourceName={content.sources?.name ?? null} keywords={tagsOf(getKeywords(content), content.category)} />
   }
   if (item.source === 'daily_insights' && item.insight) {
     const insight = item.insight

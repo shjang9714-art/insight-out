@@ -15,12 +15,10 @@ import {
 import { cn } from '@/lib/utils'
 import { DEPARTMENT_DISPLAY_LABEL, ORG_GROUPS, isOrgGroup } from '@/lib/org'
 import WatchlistSettingsModal from '@/components/watchlist/WatchlistSettingsModal'
-import ServiceSettingsModal from './ServiceSettingsModal'
 import type {
   NewsletterForm,
   ProfileForm,
   SaveStatus,
-  ServiceOption,
   WatchlistSummaryItem,
 } from './types'
 
@@ -36,11 +34,6 @@ interface Props {
   newsletterStatus: SaveStatus
   newsletterError: string | null
   onNewsletterSave: (e: FormEvent) => void
-  services: ServiceOption[]
-  selectedServiceIds: string[]
-  servicesStatus: SaveStatus
-  servicesError: string | null
-  onServicesSave: (nextIds: string[]) => Promise<boolean>
   watchlistItems: WatchlistSummaryItem[]
   onWatchlistChange: () => void
 }
@@ -81,18 +74,9 @@ export default function SettingsTab({
   newsletterStatus,
   newsletterError,
   onNewsletterSave,
-  services,
-  selectedServiceIds,
-  servicesStatus,
-  servicesError,
-  onServicesSave,
   watchlistItems,
   onWatchlistChange,
 }: Props) {
-  const selectedServiceSet = new Set(selectedServiceIds)
-  const selectedServices = services
-    .filter((service) => selectedServiceSet.has(service.id))
-    .map((service) => service.name)
   const watchlistLabels = watchlistItems.map((item) => item.company)
 
   return (
@@ -190,30 +174,6 @@ export default function SettingsTab({
               />
             </div>
           </div>
-
-          <div className="rounded-lg border border-border p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground">담당 서비스 · {selectedServiceIds.length}개 선택됨</p>
-                <div className="mt-3">
-                  <SummaryChips labels={selectedServices} emptyLabel="아직 선택한 담당 서비스가 없습니다." />
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  📍 콘텐츠 · 홈에서 내 서비스 관련 소식을 우선 보여줍니다.
-                </p>
-                {servicesError && <p className="mt-2 text-xs text-negative">{servicesError}</p>}
-              </div>
-              <ServiceSettingsModal
-                services={services}
-                selectedServiceIds={selectedServiceIds}
-                status={servicesStatus}
-                error={servicesError}
-                onSave={onServicesSave}
-                trigger={<Button type="button" variant="outline" size="sm">서비스 설정</Button>}
-              />
-            </div>
-          </div>
-
         </div>
       </section>
 

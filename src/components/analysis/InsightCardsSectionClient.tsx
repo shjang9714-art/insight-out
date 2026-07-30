@@ -105,12 +105,10 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
   }
 
   // 미설정 여부 판단
-  const hasSetting =
-    activeLens === 'mine'  ? ctx.serviceIds.length > 0 :
-    activeLens === 'watch' ? ctx.watchlist.length > 0  : true
+  const hasSetting = activeLens === 'watch' ? ctx.watchlist.length > 0 : true
 
   // 개인화 설정 여부 (렌즈 무관) — 내 관련도 배지 표시 조건
-  const hasPersonalization = ctx.serviceIds.length > 0 || ctx.watchlist.length > 0
+  const hasPersonalization = ctx.watchlist.length > 0
 
   // 렌즈 필터/정렬 — 두 뷰 공유
   const visibleGroups = sanitizedGroups.map((g, idx) => {
@@ -202,7 +200,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
           ) : !hasSetting ? (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+                관심 기업을 설정하면 여기에 모아 보여드려요.
               </p>
               <Link
                 href="/dashboard/mypage"
@@ -214,7 +212,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                설정하신 담당/관심 기업 관련 인사이트가 아직 없어요.
+                설정하신 관심 기업 관련 인사이트가 아직 없어요.
               </p>
               <button
                 type="button"
@@ -288,15 +286,10 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                 const citations = card.citations as InsightCardCitation[]
                 const evidenceCount = citations.length || card.source_content_ids.length
 
-                // 중요도 / 내 관련도 / 선정 이유 (렌즈 무관, 양쪽 lens 검사)
+                // 중요도 / 내 관련도 / 선정 이유
                 const relevanceTarget: LensTarget = { names: [card.topic, card.headline] }
-                const relevanceMatched =
-                  matchesLens('mine', ctx, relevanceTarget) ||
-                  matchesLens('watch', ctx, relevanceTarget)
-                const relevanceScore = Math.max(
-                  lensScore('mine', ctx, relevanceTarget),
-                  lensScore('watch', ctx, relevanceTarget),
-                )
+                const relevanceMatched = matchesLens('watch', ctx, relevanceTarget)
+                const relevanceScore = lensScore('watch', ctx, relevanceTarget)
                 const importance = computeImportance(card)
                 const relevance  = computeRelevance(relevanceScore, relevanceMatched, hasPersonalization)
                 const selectionReason = buildSelectionReason({

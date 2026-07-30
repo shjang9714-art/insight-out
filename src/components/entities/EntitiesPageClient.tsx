@@ -36,7 +36,6 @@ interface EntityItem {
   is_competitor: boolean
   mention_count: number
   description: string | null
-  service_id?: string | null
 }
 
 interface Props {
@@ -69,9 +68,7 @@ export default function EntitiesPageClient({
   const [activeLens, setActiveLens] = useActiveLens()
 
   // 미설정 여부 판단
-  const hasSetting =
-    activeLens === 'mine'  ? ctx.serviceIds.length > 0 :
-    activeLens === 'watch' ? ctx.watchlist.length > 0  : true
+  const hasSetting = activeLens === 'watch' ? ctx.watchlist.length > 0 : true
 
   // 렌즈 적용된 엔티티 목록 (list 뷰용)
   const lensedEntities = useMemo(() => {
@@ -80,7 +77,6 @@ export default function EntitiesPageClient({
     return allEntities
       .map(e => {
         const target: LensTarget = {
-          serviceIds: e.service_id ? [e.service_id] : undefined,
           names: [e.canonical_name],
           isCompetitor: e.is_competitor,
           entityId: e.id,
@@ -170,7 +166,7 @@ export default function EntitiesPageClient({
           {!hasSetting ? (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+                관심 기업을 설정하면 여기에 모아 보여드려요.
               </p>
               <Link
                 href="/dashboard/mypage"
@@ -182,7 +178,7 @@ export default function EntitiesPageClient({
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                설정하신 담당/관심 기업 관련 엔티티가 아직 없어요.
+                설정하신 관심 기업 관련 엔티티가 아직 없어요.
               </p>
               <button
                 type="button"

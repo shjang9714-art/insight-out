@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { CalendarDays, ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import CoverImage from '@/components/common/CoverImage'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover from '@/components/dashboard/BrandedCover'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
@@ -68,17 +69,13 @@ export default function ContentListCard({
     <div className="flex h-full flex-col">
       {/* 표지 — 썸네일 없으면 BrandedCover 폴백(229) */}
       <div className="aspect-[16/9] overflow-hidden rounded-t-2xl bg-muted">
-        {thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnailUrl}
-            alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-            loading="lazy"
-          />
-        ) : (
-          <BrandedCover category={category} title={title} sourceName={sourceName ?? null} />
-        )}
+        <CoverImage
+          src={thumbnailUrl}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          loading="lazy"
+          fallback={<BrandedCover category={category} title={title} sourceName={sourceName ?? null} />}
+        />
       </div>
       <div className="flex flex-1 flex-col p-5">
         {/* 상단: 카테고리 배지 + 해시태그 + 에디터픽 */}

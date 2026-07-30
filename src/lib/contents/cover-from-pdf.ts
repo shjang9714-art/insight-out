@@ -100,9 +100,19 @@ export async function coverFromPdfFirstPage(
       return { ok: false, reason: 'upload_failed' }
     }
 
-    const { data: pub } = admin.storage.from('report-covers').getPublicUrl(storagePath)
+    const { data: storedObjects, error: verifyErr } = await admin.storage
+      .from('report-covers')
+      .list('', { search: storagePath })
+    if (verifyErr || !storedObjects?.some((object) => object.name === storagePath)) {
+      console.error(
+        '[PDF 커버] storage 객체 확인 실패:',
+        verifyErr?.message ?? `${storagePath} 객체가 조회되지 않았습니다.`,
+      )
+      return { ok: false, reason: 'upload_failed' }
+    }
+
     // 같은 경로 upsert라 URL이 동일 → 캐시버스터 필수(216 규약과 동일)
-    const thumbnailUrl = `${pub.publicUrl}?v=${Date.now()}`
+    const thumbnailUrl = `report-covers/${storagePath}?v=${Date.now()}`
 
     const { error: updateErr } = await admin
       .from('contents')

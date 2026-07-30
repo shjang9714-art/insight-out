@@ -3,6 +3,10 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 
 const CATEGORIES = ['뉴스', '웹인사이트', '유튜브', '리포트', 'AI보고서'] as const
 const STATUSES = ['pending', 'published', 'rejected'] as const
@@ -103,7 +107,7 @@ export async function gatherContentAnalytics(admin: SupabaseClient, windowDays: 
 export interface AiCostAnalytics {
   months: string[]
   llmByMonth: { period: string; provider: string; tokens: number }[]
-  currentUsage: { provider: string; used: number; limit: number; percent: number }[]
+  currentUsage: { provider: string; used: number; limit: number; percent: number; keyCount: number }[]
   translationByMonth: { period: string; chars: number }[]
   ttsByMonth: { period: string; chars: number }[]
 }
@@ -136,7 +140,10 @@ export async function gatherAiCostAnalytics(admin: SupabaseClient, months: numbe
   }))
 
   const settingsMap = new Map<string, number>(
-    ((settingsRows ?? []) as { provider: string; monthly_token_limit: number }[]).map(r => [r.provider, r.monthly_token_limit ?? 1_000_000])
+    ((settingsRows ?? []) as { provider: string; monthly_token_limit: number }[]).map(r => [
+      r.provider,
+      r.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT,
+    ])
   )
   const currentUsageMap = new Map<string, number>()
   for (const row of llmByMonth) {
@@ -145,13 +152,14 @@ export async function gatherAiCostAnalytics(admin: SupabaseClient, months: numbe
   }
   const currentUsage = LLM_PROVIDERS.map(provider => {
     const keyCount = getProviderKeyCount(provider)
-    const limit = (settingsMap.get(provider.name) ?? 1_000_000) * Math.max(keyCount, 1)
+    const limit = effectiveTokenLimit(settingsMap.get(provider.name), keyCount)
     const used = currentUsageMap.get(provider.name) ?? 0
     return {
       provider: provider.name,
       used,
       limit,
       percent: limit > 0 ? Math.round((used / limit) * 1000) / 10 : 0,
+      keyCount,
     }
   })
 

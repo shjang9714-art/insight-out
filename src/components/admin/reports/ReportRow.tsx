@@ -13,6 +13,7 @@ import ReportSourcePicker from '@/components/admin/reports/ReportSourcePicker'
 import { createClient } from '@/lib/supabase/client'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
 import { compressImageToLimit } from '@/lib/images/compress-image'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 import { cn } from '@/lib/utils'
 import type { AiReportType, AiReportStatus } from '@/lib/types'
 
@@ -97,6 +98,7 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
   const [isDeleting, setIsDeleting] = useState(false)
 
   const isPublished = Boolean(report.published_at)
+  const resolvedCoverPreview = resolveStorageUrl(coverPreview)
 
   const loadDetail = async () => {
     setIsLoadingDetail(true)
@@ -173,15 +175,15 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
       const supabase = createClient()
       const ext = compressed.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       // ⚠️ uploadCoverFile()만 사용 — uploadCover()는 contents.thumbnail_url을 갱신하므로 절대 쓰지 않는다.
-      const publicUrl = await uploadCoverFile(supabase, report.id, compressed, ext)
+      const storagePath = await uploadCoverFile(supabase, report.id, compressed, ext)
       const res = await fetch(`/api/admin/reports/${report.id}/cover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cover_image_url: publicUrl }),
+        body: JSON.stringify({ cover_image_url: storagePath }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '표지 저장에 실패했습니다.')
-      setCoverPreview(publicUrl)
+      setCoverPreview(storagePath)
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : '표지 업로드 중 오류가 발생했습니다.')
@@ -370,9 +372,9 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
                 <p className="mb-2 text-xs font-semibold text-foreground">표지</p>
                 <div className="flex items-start gap-4 rounded-lg border border-border p-3">
                   <div className="aspect-[16/9] w-40 shrink-0 overflow-hidden rounded-lg bg-muted">
-                    {coverPreview ? (
+                    {resolvedCoverPreview ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={coverPreview} alt="표지 미리보기" className="h-full w-full object-cover" />
+                      <img src={resolvedCoverPreview} alt="표지 미리보기" className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
                         표지 없음

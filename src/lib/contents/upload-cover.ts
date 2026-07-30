@@ -25,10 +25,9 @@ export async function uploadCoverFile(
     .uploadToSignedUrl(tokenData.storagePath, tokenData.token, file)
   if (uploadErr) throw new Error(uploadErr.message)
 
-  const { data: pub } = supabase.storage.from('report-covers').getPublicUrl(tokenData.storagePath)
   // 같은 경로 upsert라 URL이 동일해 브라우저 캐시로 옛 이미지가 보일 수 있음 → 쿼리로 무효화
   const cacheBuster = new Date().getTime()
-  return `${pub.publicUrl}?v=${cacheBuster}`
+  return `report-covers/${tokenData.storagePath}?v=${cacheBuster}`
 }
 
 /**
@@ -41,13 +40,13 @@ export async function uploadCover(
   file: File | Blob,
   ext = 'jpg'
 ): Promise<string> {
-  const publicUrl = await uploadCoverFile(supabase, contentId, file, ext)
+  const storagePath = await uploadCoverFile(supabase, contentId, file, ext)
 
   const { error: updateErr } = await supabase
     .from('contents')
-    .update({ thumbnail_url: publicUrl })
+    .update({ thumbnail_url: storagePath })
     .eq('id', contentId)
   if (updateErr) throw new Error(updateErr.message)
 
-  return publicUrl
+  return storagePath
 }

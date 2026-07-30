@@ -90,7 +90,7 @@ function getImageDimensions(buf: Buffer): { width: number; height: number } | nu
 
 /**
  * 외부 이미지 URL을 서버에서 받아 report-covers/{contentId}.{ext} 로 업로드하고
- * contents.thumbnail_url 을 갱신한다. 성공 시 publicUrl, 실패 시 null(graceful, throw 없음).
+ * contents.thumbnail_url 을 갱신한다. 성공 시 버킷 상대 path, 실패 시 null(graceful, throw 없음).
  * admin은 service-role 클라이언트여야 한다(216·219 공유).
  * options 로 최소 해상도를 지정하면 품질게이트가 활성화된다(자동 수집 경로 전용 — 282).
  */
@@ -155,8 +155,7 @@ export async function copyExternalImageToCover(
     return null
   }
 
-  const { data: pub } = admin.storage.from('report-covers').getPublicUrl(storagePath)
-  const thumbnailUrl = `${pub.publicUrl}?v=${Date.now()}`
+  const thumbnailUrl = `report-covers/${storagePath}?v=${Date.now()}`
 
   const { error: updateErr } = await admin
     .from('contents')
