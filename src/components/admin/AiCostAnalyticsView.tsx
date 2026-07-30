@@ -86,7 +86,10 @@ export default function AiCostAnalyticsView({ data, months }: { data: AiCostAnal
                   <div className="mb-1 flex items-center justify-between admin-caption">
                     <span className="font-medium text-foreground">{u.provider}</span>
                     <span className="text-muted-foreground">
-                      {u.used.toLocaleString()} / {u.limit.toLocaleString()} ({u.percent}%)
+                      {u.keyCount === 0
+                        ? '키 미설정'
+                        : `${u.used.toLocaleString()} / ${u.limit.toLocaleString()} (${u.percent}%)`
+                      }
                     </span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">

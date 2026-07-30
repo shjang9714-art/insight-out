@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import { LLM_PROVIDERS } from '@/lib/llm'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 
 type Severity = 'critical' | 'warning' | 'notice'
 export interface WeeklyReport {
@@ -49,12 +53,14 @@ export async function gatherWeeklyReport(admin: SupabaseClient): Promise<WeeklyR
   for (const row of sourceRows.data ?? []) if (row.source_id) sourceCounts.set(row.source_id, (sourceCounts.get(row.source_id) ?? 0) + 1)
   const sourceTotal = [...sourceCounts.values()].reduce((sum, value) => sum + value, 0)
   const topSourceShare = sourceTotal ? Math.round(Math.max(...sourceCounts.values()) / sourceTotal * 100) : 0
-  const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? 1_000_000)]))
+  const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
   const usageMap = new Map<string, number>()
   for (const row of llm.data ?? []) usageMap.set(row.provider, (usageMap.get(row.provider) ?? 0) + Number(row.tokens ?? 0))
   const usage = [...usageMap].map(([provider, used]) => {
     const configured = LLM_PROVIDERS.find(p => p.name === provider)
-    const limit = (settingsMap.get(provider) ?? 1_000_000) * (configured ? getProviderKeyCount(configured) : 1)
+    const keyCount = configured ? getProviderKeyCount(configured) : 0
+    const limit = effectiveTokenLimit(settingsMap.get(provider), keyCount)
+    // 키 제거 직후 남은 사용 기록은 무해하므로 한도 0은 경고성 비율로 계산하지 않는다.
     return { provider, used, limit, percent: pct(used, limit) }
   })
   const current = count(total)

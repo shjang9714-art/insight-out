@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import { LLM_PROVIDERS } from '@/lib/llm'
+import {
+  DEFAULT_MONTHLY_TOKEN_LIMIT,
+  effectiveTokenLimit,
+} from '@/lib/llm/token-limit'
 
 interface Signal { fingerprint: string; category: string; severity: 'critical' | 'warning'; title: string; suspected_cause: string; recommended_action: string; impact: string; count: number }
 
@@ -22,10 +26,12 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   for (const [jobKey, count] of jobCounts) signals.push({ fingerprint: `cron:fail:${jobKey}`, category: 'cron', severity: jobKey.includes('crawl') || jobKey.includes('body') ? 'critical' : 'warning', title: '크론 작업 실패', suspected_cause: `${jobKey} 작업 오류가 반복되는 상태`, recommended_action: '잡 실행 로그와 환경변수를 확인하세요.', impact: '자동 운영 작업 지연', count })
   const crawlCounts = new Map<string, number>(); for (const r of crawls.data ?? []) if (r.source_id) crawlCounts.set(r.source_id, (crawlCounts.get(r.source_id) ?? 0) + 1)
   for (const [sourceId, count] of crawlCounts) signals.push({ fingerprint: `crawl:fail:${sourceId}`, category: 'crawl', severity: 'warning', title: '수집 소스 오류 반복', suspected_cause: '해당 소스 응답 또는 파서 지연 추정', recommended_action: '실패 로그를 확인하고 소스를 일시 중지하세요.', impact: '콘텐츠 수집 누락', count })
-  const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? 1_000_000)]))
+  const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
   const usedMap = new Map<string, number>(); for (const r of usage.data ?? []) usedMap.set(r.provider, (usedMap.get(r.provider) ?? 0) + Number(r.tokens ?? 0))
   for (const [provider, used] of usedMap) {
-    const p = LLM_PROVIDERS.find(v => v.name === provider); const limit = (settingsMap.get(provider) ?? 1_000_000) * (p ? getProviderKeyCount(p) : 1); const percent = limit ? used / limit * 100 : 0
+    const p = LLM_PROVIDERS.find(v => v.name === provider); const keyCount = p ? getProviderKeyCount(p) : 0; const limit = effectiveTokenLimit(settingsMap.get(provider), keyCount)
+    // 키 제거 직후 남은 사용 기록은 무해하므로 한도 0은 사용량 신호에서 제외한다.
+    const percent = limit > 0 ? used / limit * 100 : 0
     if (percent >= 80) signals.push({ fingerprint: `usage:limit:${provider}`, category: 'usage', severity: percent >= 95 ? 'critical' : 'warning', title: 'AI 사용량 한도 임박', suspected_cause: `${provider} 월 사용량이 ${Math.round(percent)}%에 도달`, recommended_action: '키 수와 월 한도를 확인하고 사용량을 조정하세요.', impact: 'AI 작업 중단 가능성', count: 1 })
   }
   const caps = [{ key: 'translation', used: (translation.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(process.env.TRANSLATION_MONTHLY_CHAR_CAP ?? 1_000_000) }, { key: 'tts', used: (tts.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 1_000_000) }]
