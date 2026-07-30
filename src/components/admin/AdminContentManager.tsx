@@ -55,6 +55,7 @@ import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
 import { compressImageToLimit } from '@/lib/images/compress-image'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import ContentCard from '@/components/dashboard/ContentCard'
@@ -1134,8 +1135,8 @@ export default function AdminContentManager() {
       }
       const ext = compressed.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       // 216 — storage 업로드만 즉시 수행. contents.thumbnail_url 기록은 저장(handleEditSave) 시점에.
-      const publicUrl = await uploadCoverFile(supabase, edit.id, compressed, ext)
-      setEdit((p) => p && { ...p, thumbnailUrl: publicUrl })
+      const storagePath = await uploadCoverFile(supabase, edit.id, compressed, ext)
+      setEdit((p) => p && { ...p, thumbnailUrl: storagePath })
     } catch (err) {
       setThumbError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다.')
     } finally {
@@ -1555,6 +1556,7 @@ export default function AdminContentManager() {
   const editSourceName = edit?.sourceId
     ? (sources.find((s) => s.id === edit.sourceId)?.name ?? null)
     : null
+  const editThumbnailUrl = resolveStorageUrl(edit?.thumbnailUrl ?? null)
   const editReviewChecks = edit ? buildReviewChecks(edit) : []
   const editReviewWarnings = editReviewChecks.filter((check) => !check.ok)
   const editLeftPanel = edit ? (
@@ -1572,7 +1574,7 @@ export default function AdminContentManager() {
             category={edit.category}
             sourceName={editSourceName}
             publishedAt={edit.publishedAt ? `${edit.publishedAt}T00:00:00+09:00` : null}
-            thumbnailUrl={edit.thumbnailUrl}
+            thumbnailUrl={editThumbnailUrl}
             href={null}
             keywords={normalizeKeywords(edit.keywords)}
           />
@@ -1626,9 +1628,9 @@ export default function AdminContentManager() {
           className="overflow-hidden rounded-xl border border-dashed border-border bg-muted/40"
         >
           <div className="flex aspect-[16/9] items-center justify-center bg-muted">
-            {edit.thumbnailUrl ? (
+            {editThumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={edit.thumbnailUrl} alt="커버 미리보기" className="h-full w-full object-cover" />
+              <img src={editThumbnailUrl} alt="커버 미리보기" className="h-full w-full object-cover" />
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <ImageIcon className="h-8 w-8" />

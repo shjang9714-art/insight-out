@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveBriefingAudioUrl } from '@/lib/briefing/audio-url'
 import { getPublishedReports, getReport } from '@/lib/reports/query'
 import { getPublishedCompetitorWeeklyReports, getCompetitorWeeklyReportByWeek } from '@/lib/competitor-weekly/query'
 import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
@@ -138,7 +139,7 @@ export function registerAnalyticsReadTools(server: McpServer) {
         .select('id, briefing_date, title, script, audio_url, audio_duration_seconds, highlights')
         .in('status', ['published', 'archived']).order('briefing_date', { ascending: false }).limit(limit ?? 20)
       if (error) return dbError(error, 'briefings')
-      return ok(rowsText(data ?? []))
+      return ok(rowsText((data ?? []).map(resolveBriefingAudioUrl)))
     } catch (error) { return dbError(error, 'briefings') }
   })
 
@@ -153,7 +154,7 @@ export function registerAnalyticsReadTools(server: McpServer) {
         .select('id, briefing_date, title, script, audio_url, audio_duration_seconds, highlights')
         .eq('id', id).in('status', ['published', 'archived']).maybeSingle()
       if (error) return dbError(error, 'briefings')
-      return ok(data ? textValue(data) : '발행된 모닝브리핑이 없습니다.')
+      return ok(data ? textValue(resolveBriefingAudioUrl(data)) : '발행된 모닝브리핑이 없습니다.')
     } catch (error) { return dbError(error, 'briefings') }
   })
 

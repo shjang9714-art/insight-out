@@ -2,6 +2,7 @@
 // 폴백 체인: 실제 썸네일 > (og:image) > 생성 풀(이번) > BrandedCover(카드 컴포넌트 내장).
 
 import { TOPIC_COVER_POOL } from './topic-cover-manifest.generated'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 
 // 파일 rawKey(변형접미 제거 후, NFC 정규화) → 매칭 대상 canonical.
 // 매니페스트 생성 시점(scripts/build-topic-cover-manifest.mjs)에 이미 적용되어 TOPIC_COVER_POOL 키가
@@ -124,7 +125,7 @@ interface CoverRow {
 
 /** 카드 thumbnailUrl 로 바로 넘길 값. 실제 썸네일 우선, 없으면 주제 매칭 생성 커버, 그것도 없으면 null(카드가 BrandedCover 렌더). */
 export function coverUrlFor(row: CoverRow): string | null {
-  return row.thumbnail_url ?? pickTopicCover({
+  return resolveStorageUrl(row.thumbnail_url ?? null) ?? pickTopicCover({
     id: row.id,
     matchedGroups: row.matched_groups,
     matchedKeywords: row.matched_keywords,

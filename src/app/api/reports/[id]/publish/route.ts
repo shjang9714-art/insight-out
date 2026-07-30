@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isValidStorageUrlValue } from '@/lib/storage/resolve-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,13 +71,23 @@ export async function POST(
 
     const admin = createAdminClient()
     const isUnpublish = body.action === 'unpublish'
+    const coverImageUrl = body.cover_image_url?.trim()
+    if (
+      body.cover_image_url !== undefined &&
+      (!coverImageUrl || !isValidStorageUrlValue(coverImageUrl, 'report-covers'))
+    ) {
+      return NextResponse.json(
+        { error: '올바른 표지 URL 또는 경로가 아닙니다.' },
+        { status: 400 },
+      )
+    }
 
     const fields: Record<string, unknown> = isUnpublish
       ? { published_at: null }
       : {
           published_at: body.published_at ?? new Date().toISOString(),
           publisher: body.publisher?.trim() || '인사이트 아웃',
-          ...(body.cover_image_url ? { cover_image_url: body.cover_image_url } : {}),
+          ...(coverImageUrl ? { cover_image_url: coverImageUrl } : {}),
         }
 
     const { data, error } = await admin

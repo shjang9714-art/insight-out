@@ -6,17 +6,10 @@ import { Radio, X, Play, Pause, ChevronDown, ChevronUp, SkipBack, FileText } fro
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
-
-// ─── 타입 ─────────────────────────────────────────────────────────────────────
-
-interface Briefing {
-  id: string
-  briefing_date: string
-  title: string | null
-  script: string | null
-  audio_url: string | null
-  audio_duration_seconds: number | null
-}
+import {
+  getLatestPublishedBriefing,
+  type BriefingPlayerRow,
+} from '@/lib/briefing/audio-url'
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -59,7 +52,7 @@ function AudioWaveform({ playing }: { playing: boolean }) {
 
 export default function FloatingBriefingMini() {
   const [open, setOpen]               = useState(false)
-  const [briefing, setBriefing]       = useState<Briefing | null | undefined>(undefined)
+  const [briefing, setBriefing]       = useState<BriefingPlayerRow | null | undefined>(undefined)
   const [playing, setPlaying]         = useState(false)
   const [playbackActive, setPlaybackActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -70,14 +63,8 @@ export default function FloatingBriefingMini() {
 
   // 최신 브리핑 1건 조회 (최초 1회)
   useEffect(() => {
-    createClient()
-      .from('briefings')
-      .select('id, briefing_date, title, script, audio_url, audio_duration_seconds')
-      .in('status', ['published', 'archived'])
-      .order('briefing_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => startTransition(() => setBriefing(data as Briefing | null)))
+    getLatestPublishedBriefing(createClient())
+      .then((data) => startTransition(() => setBriefing(data)))
   }, [])
 
   // 오디오 인스턴스 관리

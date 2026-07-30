@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { resolveBriefingAudioUrl } from '@/lib/briefing/audio-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -25,6 +26,7 @@ interface BriefingHighlight {
 interface BriefingRow {
   title: string | null
   script: string | null
+  audio_url: string | null
   highlights: BriefingHighlight[] | null
 }
 
@@ -47,8 +49,9 @@ function sanitizeHighlights(highlights: unknown): BriefingHighlight[] | null {
 }
 
 function sanitizeBriefing<T extends BriefingRow>(briefing: T): T {
+  const resolvedBriefing = resolveBriefingAudioUrl(briefing)
   return {
-    ...briefing,
+    ...resolvedBriefing,
     title: briefing.title ? stripLlmArtifacts(briefing.title) : briefing.title,
     script: briefing.script ? stripLlmArtifacts(briefing.script) : briefing.script,
     highlights: sanitizeHighlights(briefing.highlights),
