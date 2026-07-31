@@ -37,8 +37,8 @@ export async function gatherWeeklyReport(admin: SupabaseClient): Promise<WeeklyR
     admin.from('contents').select('id', { count: 'exact', head: true }).gte('collected_at', start).eq('status', 'rejected'),
     admin.from('contents').select('id', { count: 'exact', head: true }).gte('collected_at', previous).lt('collected_at', start),
     admin.from('contents').select('id', { count: 'exact', head: true }).is('body_fetched_at', null).not('original_url', 'is', null),
-    admin.from('job_runs').select('id', { count: 'exact', head: true }).gte('started_at', start).neq('status', 'success'),
-    admin.from('contents').select('source_id').gte('collected_at', start).not('source_id', 'is', null).limit(10000),
+    admin.from('job_runs').select('id', { count: 'exact', head: true }).gte('started_at', start).eq('status', 'failed'),
+    admin.rpc('source_quality_stats', { p_days: 7 }),
     admin.from('users').select('id', { count: 'exact', head: true }),
     admin.from('users').select('id', { count: 'exact', head: true }).gte('created_at', start),
     admin.from('users').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending'),
@@ -50,7 +50,7 @@ export async function gatherWeeklyReport(admin: SupabaseClient): Promise<WeeklyR
     admin.from('ops_issues').select('title, severity, occurrence_count, recommended_action', { count: 'exact' }).in('status', ['open', 'acknowledged', 'in_progress']).order('severity').order('last_seen_at', { ascending: false }).limit(5),
   ])
   const sourceCounts = new Map<string, number>()
-  for (const row of sourceRows.data ?? []) if (row.source_id) sourceCounts.set(row.source_id, (sourceCounts.get(row.source_id) ?? 0) + 1)
+  for (const row of sourceRows.data ?? []) if (row.source_id) sourceCounts.set(row.source_id, Number(row.total ?? 0))
   const sourceTotal = [...sourceCounts.values()].reduce((sum, value) => sum + value, 0)
   const topSourceShare = sourceTotal ? Math.round(Math.max(...sourceCounts.values()) / sourceTotal * 100) : 0
   const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
