@@ -50,6 +50,13 @@ export interface CronStatus {
   maxAgeHours: number
 }
 
+export interface SourceCollectionSummary {
+  total: number
+  categories: { category: string; count: number; share: number }[]
+  topSources: { name: string; category: string; count: number; share: number }[]
+  unspecified: { count: number; share: number }
+}
+
 export interface DailyBrief {
   date: string
   period: {
@@ -73,7 +80,7 @@ export interface DailyBrief {
     published: TrendMetric
     rejected: DataPoint<number>
     pending: DataPoint<number>
-    topSource: DataPoint<{ name: string | null; share: number; count: number; total: number }>
+    sourceBreakdown: DataPoint<SourceCollectionSummary>
     activeSources: DataPoint<number>
     reviewReasons: DataPoint<{ reason: string; label: string; count: number }[]>
   }
@@ -101,7 +108,7 @@ export interface DailyBrief {
 
 export interface DailyBriefOptions {
   /** 어드민 프리뷰에서 부분 실패 렌더를 검증할 때만 사용한다. */
-  forceUnavailableSection?: 'usage'
+  forceUnavailableSection?: 'usage' | 'sources'
 }
 
 interface CountResponse {
@@ -343,32 +350,90 @@ async function gatherCronStatuses(
   return { available: true, value: rows.flatMap(row => row.status ? [row.status] : []) }
 }
 
-async function gatherTopSource(
-  admin: SupabaseClient
-): Promise<DataPoint<{ name: string | null; share: number; count: number; total: number }>> {
-  const stats = await safeData<{ source_id: string; total: number }>(
-    '30일 매체별 DB 집계',
-    admin.rpc('source_quality_stats', { p_days: 30 })
-  )
-  if (!stats.available) {
-    return { available: false, value: { name: null, share: 0, count: 0, total: 0 } }
+async function gatherSourceCollection(
+  admin: SupabaseClient,
+  report: KstDay,
+  forceFailure: boolean
+): Promise<DataPoint<SourceCollectionSummary>> {
+  if (forceFailure) {
+    await safeData('소스별 수집 현황 강제 실패', admin.from('__ops_brief_forced_failure').select('id'))
+    return {
+      available: false,
+      value: { total: 0, categories: [], topSources: [], unspecified: { count: 0, share: 0 } },
+    }
   }
-  const total = stats.value.reduce((sum, row) => sum + Number(row.total ?? 0), 0)
-  const top = [...stats.value].sort((a, b) => Number(b.total) - Number(a.total))[0]
-  if (!top || total === 0) {
-    return { available: true, value: { name: null, share: 0, count: 0, total } }
+
+  type SourceRow = {
+    id: string
+    category: string | null
+    source_id: string | null
+    sources: { name: string; type: string | null } | { name: string; type: string | null }[] | null
   }
-  const source = await safeData<{ name: string }>(
-    '최고 비중 매체 이름',
-    admin.from('sources').select('name').eq('id', top.source_id).limit(1)
-  )
+  const rows: SourceRow[] = []
+  const pageSize = 1_000
+  for (let from = 0; ; from += pageSize) {
+    const result = await safeData<SourceRow>(
+      `소스별 수집 현황 ${from + 1}~${from + pageSize}`,
+      admin
+        .from('contents')
+        .select('id, category, source_id, sources(name, type)')
+        .gte('collected_at', report.startIso)
+        .lt('collected_at', report.endIso)
+        .order('id')
+        .range(from, from + pageSize - 1)
+    )
+    if (!result.available) {
+      return {
+        available: false,
+        value: { total: 0, categories: [], topSources: [], unspecified: { count: 0, share: 0 } },
+      }
+    }
+    rows.push(...result.value)
+    if (result.value.length < pageSize) break
+  }
+
+  const total = rows.length
+  const share = (count: number) => total ? Math.round(count / total * 100) : 0
+  const categories = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서'].map(category => {
+    const count = rows.filter(row => row.category === category).length
+    return { category, count, share: share(count) }
+  })
+  const sourceMap = new Map<string, {
+    name: string
+    count: number
+    categories: Map<string, number>
+  }>()
+  for (const row of rows) {
+    if (!row.source_id) continue
+    const relation = Array.isArray(row.sources) ? row.sources[0] : row.sources
+    const current = sourceMap.get(row.source_id) ?? {
+      name: relation?.name ?? '이름 없음',
+      count: 0,
+      categories: new Map<string, number>(),
+    }
+    current.count++
+    const category = row.category ?? relation?.type ?? '기타'
+    current.categories.set(category, (current.categories.get(category) ?? 0) + 1)
+    sourceMap.set(row.source_id, current)
+  }
+  const topSources = [...sourceMap.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5)
+    .map(source => ({
+      name: source.name,
+      category: [...source.categories].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '기타',
+      count: source.count,
+      share: share(source.count),
+    }))
+  const unspecifiedCount = rows.filter(row => !row.source_id).length
+
   return {
-    available: source.available,
+    available: true,
     value: {
-      name: source.value[0]?.name ?? null,
-      share: Math.round(Number(top.total) / total * 100),
-      count: Number(top.total),
       total,
+      categories,
+      topSources,
+      unspecified: { count: unspecifiedCount, share: share(unspecifiedCount) },
     },
   }
 }
@@ -426,7 +491,7 @@ export async function gatherDailyBrief(
     totalUsers,
     pendingUsers,
     inactiveUsers,
-    topSource,
+    sourceBreakdown,
     aiReportsPublished,
     aiReportsFailed,
     briefingRows,
@@ -457,7 +522,7 @@ export async function gatherDailyBrief(
     safeCount('전체 사용자', admin.from('users').select('id', { count: 'exact', head: true })),
     safeCount('승인 대기 사용자', admin.from('users').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')),
     safeCount('7일 미접속 사용자', admin.from('users').select('id', { count: 'exact', head: true }).lt('last_seen_at', new Date(now.getTime() - 7 * DAY_MS).toISOString())),
-    gatherTopSource(admin),
+    gatherSourceCollection(admin, report, options.forceUnavailableSection === 'sources'),
     safeCount('AI 리포트 발행', admin.from('ai_reports').select('id', { count: 'exact', head: true }).gte('published_at', report.startIso).lt('published_at', report.endIso)),
     safeCount('AI 리포트 실패', admin.from('ai_reports').select('id', { count: 'exact', head: true }).gte('created_at', report.startIso).lt('created_at', report.endIso).eq('status', 'failed')),
     safeData<{ status: string; error_reason: string | null }>('모닝브리핑', admin.from('briefings').select('status, error_reason').eq('briefing_date', report.date)),
@@ -561,6 +626,7 @@ export async function gatherDailyBrief(
   addAvailabilityAlert(alerts, aiReports.available && briefings.available && dailyInsights.available && newsletter.available, '발행 현황')
   addAvailabilityAlert(alerts, crons.available, 'cron 상태')
   addAvailabilityAlert(alerts, reviewReasons.available, '검토대기 사유')
+  addAvailabilityAlert(alerts, sourceBreakdown.available, '소스별 수집 현황')
   addAvailabilityAlert(
     alerts,
     llmUsage.available && translation.available && tts.available,
@@ -590,8 +656,9 @@ export async function gatherDailyBrief(
   } else if (collected.available && collected.average7DeltaPct !== null && collected.average7DeltaPct <= -30) {
     alerts.push({ severity: 'warning', message: `기사 수집이 7일 평균보다 ${Math.abs(collected.average7DeltaPct)}% 감소했습니다.` })
   }
-  if (topSource.available && topSource.value.share >= 70) {
-    alerts.push({ severity: 'warning', message: `최고 매체 ${topSource.value.name ?? '이름 없음'} 비중이 ${topSource.value.share}%입니다.` })
+  const topSource = sourceBreakdown.value.topSources[0]
+  if (sourceBreakdown.available && topSource && topSource.share >= 70) {
+    alerts.push({ severity: 'warning', message: `최고 매체 ${topSource.name} 비중이 ${topSource.share}%입니다.` })
   }
   const criticalUsage = [
     ...llmUsage.value.map(item => ({ name: item.provider, percent: item.percent })),
@@ -646,7 +713,7 @@ export async function gatherDailyBrief(
       published,
       rejected,
       pending,
-      topSource,
+      sourceBreakdown,
       activeSources,
       reviewReasons,
     },
@@ -704,11 +771,11 @@ const STATUS_STYLE: Record<DataStatus, { background: string; border: string; col
 
 function card(label: string, value: string, detail: string, status: DataStatus): string {
   const style = STATUS_STYLE[status]
-  return `<td width="100%" valign="top" style="padding:6px">
+  return `<td width="20%" valign="top" class="summary-card" style="width:20%;padding:4px">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:0;background:${style.background};border:1px solid ${style.border};border-radius:10px">
-      <tr><td style="padding:14px 14px 4px;color:${style.color};font-size:12px;font-weight:700">${esc(label)} <span style="font-size:10px">[${style.badge}]</span></td></tr>
-      <tr><td style="padding:0 14px;color:${style.color};font-size:23px;line-height:30px;font-weight:800">${esc(value)}</td></tr>
-      <tr><td style="padding:4px 14px 14px;color:${style.color};font-size:11px;line-height:17px">${esc(detail)}</td></tr>
+      <tr><td height="36" valign="top" style="height:36px;padding:10px 8px 2px;color:${style.color};font-size:11px;line-height:14px;font-weight:700">${esc(label)}</td></tr>
+      <tr><td height="27" valign="top" style="height:27px;padding:0 8px;color:${style.color};font-size:18px;line-height:23px;font-weight:800;white-space:nowrap">${esc(value)}</td></tr>
+      <tr><td height="40" valign="top" style="height:40px;padding:3px 8px 9px;color:${style.color};font-size:10px;line-height:14px">${esc(detail)}</td></tr>
     </table>
   </td>`
 }
@@ -762,13 +829,23 @@ export function buildDailyBriefSubject(brief: DailyBrief): string {
   if (brief.severity === 'normal') {
     const issued = brief.publication.total.available ? `${brief.publication.total.value}건` : '확인 필요'
     const users = brief.users.newUsers.available ? `${brief.users.newUsers.value}명` : '확인 필요'
-    return `${prefix}[인사이트 아웃 운영리포트] ${date} 정상 · 발행 ${issued} · 신규 가입 ${users}`
+    return `[인사이트 아웃 운영리포트] ${date} · 정상 · 발행 ${issued} · 신규 가입 ${users}`
   }
   const important = brief.alerts
     .filter(alert => alert.severity === (brief.severity === 'critical' ? 'critical' : 'warning'))
     .slice(0, 2)
-    .map(alert => alert.message.replace(/ — .*/, ''))
-  return `${prefix}[인사이트 아웃 운영리포트] ${important.join(' · ') || `${date} 확인 필요`}`
+    .map((alert) => {
+      const usageMatch = alert.message.match(/^([a-z0-9_-]+) \d+% — 월 한도/i)
+      if (usageMatch) return `${usageMatch[1]} 한도 초과`
+      const cronMatch = alert.message.match(/^cron (\d+)건 (미실행|주의)/)
+      if (cronMatch) return `cron ${cronMatch[1]}건 ${cronMatch[2]}`
+      return alert.message
+        .replace(/ — .*/, '')
+        .replace(/입니다\.?$/, '')
+        .replace(/발행 실패 (\d+)건$/, '실패 $1건')
+    })
+  const subject = `${prefix}[인사이트 아웃 운영리포트] ${date} · ${important.join(' · ') || '확인 필요'}`
+  return subject.length > 70 ? `${subject.slice(0, 69)}…` : subject
 }
 
 export function buildDailyBriefHtml(brief: DailyBrief): string {
@@ -779,12 +856,6 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
     const style = STATUS_STYLE[status]
     return `<tr><td style="padding:10px 12px;border-bottom:1px solid ${style.border};background:${style.background};color:${style.color};font-size:12px;line-height:18px;font-weight:${status === 'critical' ? '800' : '600'}">[${style.badge}] ${esc(alert.message)}</td></tr>`
   }).join('')
-  const topSourceValue = brief.collection.topSource.available
-    ? `${brief.collection.topSource.value.name ?? '이름 없음'} ${brief.collection.topSource.value.share}%`
-    : '데이터를 불러오지 못했습니다'
-  const topSourceStatus: DataStatus = !brief.collection.topSource.available
-    ? 'unavailable'
-    : brief.collection.topSource.value.share >= 70 ? 'warning' : 'normal'
   const failedJobsStatus: DataStatus = !brief.system.failedJobs.available
     ? 'unavailable'
     : brief.system.failedJobs.value > 0 ? 'critical' : 'normal'
@@ -829,10 +900,43 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
           cron.tone === 'missing' ? 'critical' : 'warning'
         )).join('') || dataRow('전체 cron', 'maxAgeHours 기준 정상')
     : dataRow('cron 상태', '데이터를 불러오지 못했습니다', 'unavailable')
+  const sourceCategoryRows = brief.collection.sourceBreakdown.available
+    ? brief.collection.sourceBreakdown.value.categories.map(item => `<tr>
+        <td width="86" style="padding:7px 8px;color:#374151;font-size:11px">${esc(item.category)}</td>
+        <td style="padding:7px 0">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef0f3">
+            <tr><td style="width:${item.share}%;height:8px;background:#8b1d5a;font-size:0;line-height:0">&nbsp;</td><td style="height:8px;font-size:0;line-height:0">&nbsp;</td></tr>
+          </table>
+        </td>
+        <td width="82" align="right" style="padding:7px 8px;color:#374151;font-size:11px;font-weight:700">${item.count.toLocaleString()}건 · ${item.share}%</td>
+      </tr>`).join('')
+    : dataRow('카테고리별 수집', '데이터를 불러오지 못했습니다', 'unavailable')
+  const sourceTopRows = brief.collection.sourceBreakdown.available
+    ? brief.collection.sourceBreakdown.value.topSources.map((item, index) => `<tr>
+        <td width="28" style="padding:8px 6px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:11px">${index + 1}</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #e5e7eb;color:#202124;font-size:11px;font-weight:700">${esc(item.name)}</td>
+        <td width="72" style="padding:8px 6px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:11px">${esc(item.category)}</td>
+        <td width="84" align="right" style="padding:8px 6px;border-bottom:1px solid #e5e7eb;color:#374151;font-size:11px">${item.count.toLocaleString()}건 · ${item.share}%</td>
+      </tr>`).join('') || dataRow('Top 5', '지정된 소스 없음')
+    : dataRow('소스 Top 5', '데이터를 불러오지 못했습니다', 'unavailable')
+  const unspecifiedSourceRow = brief.collection.sourceBreakdown.available
+    ? dataRow(
+        '소스 미지정',
+        `${brief.collection.sourceBreakdown.value.unspecified.count.toLocaleString()}건 (${brief.collection.sourceBreakdown.value.unspecified.share}%)`,
+        brief.collection.sourceBreakdown.value.unspecified.count > 0 ? 'warning' : 'normal'
+      )
+    : dataRow('소스 미지정', '데이터를 불러오지 못했습니다', 'unavailable')
 
   return `<!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(buildDailyBriefSubject(brief))}</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <style>@media only screen and (max-width:480px){.summary-card{display:block!important;width:100%!important;box-sizing:border-box!important}}</style>
+  <title>${esc(buildDailyBriefSubject(brief))}</title>
+</head>
 <body style="margin:0;padding:0;background:#eef0f3;color:#202124;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef0f3">
     <tr><td align="center" style="padding:20px 8px">
@@ -851,14 +955,13 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
         ${sectionTitle('②', '한눈에 보기')}
         <tr><td style="padding:0 14px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-            <tr>${card('전체 상태', overall.badge, `${brief.alerts.length}개 확인 항목`, brief.severity === 'normal' ? 'normal' : brief.severity)}</tr>
-            <tr>${card('수집', brief.collection.collected.available ? `${brief.collection.collected.value.toLocaleString()}건` : '확인 필요', comparisonText(brief.collection.collected), statusForMetric(brief.collection.collected, true))}</tr>
-            <tr>${card('게시', brief.collection.published.available ? `${brief.collection.published.value.toLocaleString()}건` : '확인 필요', comparisonText(brief.collection.published), statusForMetric(brief.collection.published))}</tr>
-            <tr>${card('검토대기', pointText(brief.collection.pending), '현재 백로그', brief.collection.pending.available ? (brief.collection.pending.value > 100 ? 'warning' : 'normal') : 'unavailable')}</tr>
-            <tr>${card('발행', brief.publication.total.available ? `${brief.publication.total.value.toLocaleString()}건` : '확인 필요', comparisonText(brief.publication.total), publicationStatus)}</tr>
-            <tr>${card('실패 작업', pointText(brief.system.failedJobs), '전일 failed 상태만 집계', failedJobsStatus)}</tr>
-            <tr>${card('신규 가입', brief.users.newUsers.available ? `${brief.users.newUsers.value.toLocaleString()}명` : '확인 필요', comparisonText(brief.users.newUsers), statusForMetric(brief.users.newUsers))}</tr>
-            <tr>${card('최고 매체 비중', topSourceValue, brief.collection.topSource.available ? `${brief.collection.topSource.value.count.toLocaleString()} / ${brief.collection.topSource.value.total.toLocaleString()}건` : 'DB 집계 실패', topSourceStatus)}</tr>
+            <tr>
+              ${card('수집', brief.collection.collected.available ? `${brief.collection.collected.value.toLocaleString()}건` : '확인 필요', comparisonText(brief.collection.collected), statusForMetric(brief.collection.collected, true))}
+              ${card('게시', brief.collection.published.available ? `${brief.collection.published.value.toLocaleString()}건` : '확인 필요', comparisonText(brief.collection.published), statusForMetric(brief.collection.published))}
+              ${card('검토대기', pointText(brief.collection.pending), '현재 백로그', brief.collection.pending.available ? (brief.collection.pending.value > 100 ? 'warning' : 'normal') : 'unavailable')}
+              ${card('발행', brief.publication.total.available ? `${brief.publication.total.value.toLocaleString()}건` : '확인 필요', comparisonText(brief.publication.total), publicationStatus)}
+              ${card('실패작업', pointText(brief.system.failedJobs), '전일 failed만', failedJobsStatus)}
+            </tr>
           </table>
         </td></tr>
 
@@ -871,7 +974,16 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
           ${dataRow('뉴스레터', brief.publication.newsletter.available ? `전체 ${brief.publication.newsletter.value.total} · 성공률 ${brief.publication.newsletter.value.successRate}% · 실패 ${brief.publication.newsletter.value.failed} · 반송 ${brief.publication.newsletter.value.bounced}` : '데이터를 불러오지 못했습니다', brief.publication.newsletter.available ? (brief.publication.newsletter.value.failed + brief.publication.newsletter.value.bounced ? 'critical' : 'normal') : 'unavailable')}
         </table></td></tr>
 
-        ${sectionTitle('④', '수집·콘텐츠 건강')}
+        ${sectionTitle('④', '소스별 수집 현황')}
+        <tr><td style="padding:0 20px">
+          <div style="padding:0 0 7px;color:#374151;font-size:12px;font-weight:700">카테고리별 수집</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">${sourceCategoryRows}</table>
+          <div style="padding:16px 0 7px;color:#374151;font-size:12px;font-weight:700">소스 Top 5</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">${sourceTopRows}${unspecifiedSourceRow}</table>
+          <div style="padding-top:8px;color:#6b7280;font-size:10px;line-height:15px">모든 비중의 분모는 전일 전체 수집 ${brief.collection.sourceBreakdown.available ? `${brief.collection.sourceBreakdown.value.total.toLocaleString()}건` : '데이터 확인 필요'}입니다.</div>
+        </td></tr>
+
+        ${sectionTitle('⑤', '수집·콘텐츠 건강')}
         <tr><td style="padding:0 20px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">
             ${dataRow('수집 실패', pointText(brief.system.crawlFailed), brief.system.crawlFailed.available ? (brief.system.crawlFailed.value ? 'critical' : 'normal') : 'unavailable')}
@@ -883,29 +995,28 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
           <div style="padding:8px 0 0">${trendBars(brief.collection.collected)}</div>
         </td></tr>
 
-        ${sectionTitle('⑤', '사용자')}
+        ${sectionTitle('⑥', '사용자')}
         <tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">
-          ${dataRow('전체 가입', pointText(brief.users.total, '명'), brief.users.total.available ? 'normal' : 'unavailable')}
-          ${dataRow('신규 가입', brief.users.newUsers.available ? `${brief.users.newUsers.value.toLocaleString()}명 · ${comparisonText(brief.users.newUsers)}` : '데이터를 불러오지 못했습니다', brief.users.newUsers.available ? 'normal' : 'unavailable')}
+          ${dataRow('가입 현황', brief.users.total.available && brief.users.newUsers.available ? `누적 ${brief.users.total.value.toLocaleString()}명 · 신규 ${brief.users.newUsers.value.toLocaleString()}명 (${comparisonText(brief.users.newUsers)})` : '데이터를 불러오지 못했습니다', brief.users.total.available && brief.users.newUsers.available ? 'normal' : 'unavailable')}
           ${dataRow('승인 대기', pointText(brief.users.pending, '명'), brief.users.pending.available ? (brief.users.pending.value ? 'warning' : 'normal') : 'unavailable')}
           ${dataRow('7일 미접속', pointText(brief.users.inactive7d, '명'), brief.users.inactive7d.available ? 'normal' : 'unavailable')}
         </table></td></tr>
 
-        ${sectionTitle('⑥', 'AI·외부 사용량')}
+        ${sectionTitle('⑦', 'AI·외부 사용량')}
         <tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">
           ${llmRows}
           ${dataRow('번역', brief.usage.translation.available ? `${brief.usage.translation.value.used.toLocaleString()} / ${brief.usage.translation.value.limit.toLocaleString()}자 (${brief.usage.translation.value.percent}%)${brief.usage.translation.value.percent >= 95 ? ' [긴급]' : ''}` : '데이터를 불러오지 못했습니다', brief.usage.translation.available ? usageStatus(brief.usage.translation.value.percent) : 'unavailable')}
           ${dataRow('TTS', brief.usage.tts.available ? `${brief.usage.tts.value.used.toLocaleString()} / ${brief.usage.tts.value.limit.toLocaleString()}자 (${brief.usage.tts.value.percent}%)${brief.usage.tts.value.percent >= 95 ? ' [긴급]' : ''}` : '데이터를 불러오지 못했습니다', brief.usage.tts.available ? usageStatus(brief.usage.tts.value.percent) : 'unavailable')}
         </table></td></tr>
 
-        ${sectionTitle('⑦', 'cron 상태')}
+        ${sectionTitle('⑧', 'cron 상태')}
         <tr><td style="padding:0 20px">
           <div style="padding:10px 12px;background:#f3f4f6;color:#374151;font-size:12px;font-weight:700">${cronCounts ? `정상 ${cronCounts.ok} / 주의 ${cronCounts.stale} / 미실행 ${cronCounts.missing}` : '데이터를 불러오지 못했습니다'}</div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">${cronRows}</table>
           <div style="padding-top:8px;color:#6b7280;font-size:10px;line-height:15px">Vercel Hobby 실행 시각 오차는 이상으로 판단하지 않으며, 각 작업의 maxAgeHours 초과 여부만 사용합니다.</div>
         </td></tr>
 
-        ${sectionTitle('⑧', '조치 필요 항목')}
+        ${sectionTitle('⑨', '조치 필요 항목')}
         <tr><td style="padding:0 20px 28px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
             <tr><td align="center" style="padding:14px;background:#f3f4f6;border:1px solid #d7dce2;border-radius:8px">

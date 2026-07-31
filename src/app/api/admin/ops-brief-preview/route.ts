@@ -46,8 +46,9 @@ export async function GET(request: NextRequest) {
   if (authError) return authError
 
   try {
-    const forceUnavailableSection = request.nextUrl.searchParams.get('fail') === 'usage'
-      ? 'usage'
+    const fail = request.nextUrl.searchParams.get('fail')
+    const forceUnavailableSection = fail === 'usage' || fail === 'sources'
+      ? fail
       : undefined
     const brief = await gatherDailyBrief(
       createAdminClient(),
