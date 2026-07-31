@@ -189,21 +189,17 @@ export default function LlmManager() {
     setSearchSlots(prev => prev.map((slot, i) => i === priority - 1 ? { ...slot, ...patch } : slot))
   }
 
-  // priority 1은 필수 — 비어 있으면 2·3순위도 라우팅 순회상 도달할 수 없다.
-  const saveSearchSlot = async (priority: number, isActiveOverride?: boolean) => {
+  // 엔진은 priority 1을 요구하지 않고, 존재하는 활성 행을 priority 순서로 순회한다.
+  const saveSearchSlot = async (priority: number) => {
     const slot = searchSlots[priority - 1]
     if (!slot.provider || !slot.model) {
-      setError(
-        priority === 1
-          ? '1순위 provider·모델을 먼저 지정해주세요. 1순위가 비면 2·3순위도 쓸 수 없습니다.'
-          : '검색 AI 답변에 사용할 provider와 모델을 선택해주세요.'
-      )
+      setError('검색 AI 답변에 사용할 provider와 모델을 선택해주세요.')
       return
     }
 
     const priority1Routing = data?.routing.find(r => r.task_type === 'search' && r.priority === 1)
-    // 2·3순위는 별도 on/off 토글이 없다 — 채워서 저장하면 항상 활성(전체 on/off는 1순위 토글이 담당).
-    const isActive = priority === 1 ? (isActiveOverride ?? priority1Routing?.is_active ?? false) : true
+    // 개별 슬롯에는 토글이 없으므로 모든 슬롯이 1순위의 현재 전체 활성 상태를 따른다.
+    const isActive = priority1Routing?.is_active ?? false
 
     setSavingSlot(priority)
     try {
@@ -236,6 +232,42 @@ export default function LlmManager() {
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '검색 AI 답변 설정 저장에 실패했습니다.')
+    } finally {
+      setSavingSlot(null)
+    }
+  }
+
+  const toggleSearchRouting = async () => {
+    const nextIsActive = !data?.routing.some(
+      row => row.task_type === 'search' && row.is_active
+    )
+
+    setSavingSlot(0)
+    try {
+      const res = await fetch('/api/admin/llm', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_type: 'search',
+          set_active: nextIsActive,
+        }),
+      })
+      const json = await res.json() as { error?: string; routing?: RoutingRow[] }
+      if (!res.ok || !json.routing) {
+        throw new Error(json.error ?? '검색 AI 답변 전체 설정 변경에 실패했습니다.')
+      }
+      const updatedRouting = json.routing
+
+      setData(prev => prev ? {
+        ...prev,
+        routing: [
+          ...prev.routing.filter(row => row.task_type !== 'search'),
+          ...updatedRouting,
+        ],
+      } : prev)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '검색 AI 답변 전체 설정 변경에 실패했습니다.')
     } finally {
       setSavingSlot(null)
     }
@@ -315,14 +347,19 @@ export default function LlmManager() {
   const searchRoutingByPriority = [1, 2, 3].map(priority =>
     data!.routing.find(row => row.task_type === 'search' && row.priority === priority)
   )
-  const searchRouting = searchRoutingByPriority[0] // 전체 on/off 토글은 1순위 행의 is_active
-  // 1·2순위가 같은 provider면 그 provider가 쿨다운(429/401)에 걸릴 때 두 슬롯이 동시에 죽는다 — 저장은 막지 않고 경고만.
-  const duplicateProviderWarning = (
-    searchSlots[0].provider
-    && searchSlots[1].provider
-    && searchSlots[0].provider === searchSlots[1].provider
-  )
-    ? `1·2순위가 모두 "${searchSlots[0].provider}"입니다. 이 provider가 한도소진(429/401)에 걸리면 두 슬롯이 동시에 쿨다운에 걸려 폴백이 무의미해집니다.`
+  const isSearchActive = searchRoutingByPriority.some(row => row?.is_active)
+  const configuredSearchSlotCount = searchSlots.filter(
+    slot => slot.provider && slot.model
+  ).length
+  const duplicateProviders = [...new Set(
+    searchSlots
+      .map(slot => slot.provider)
+      .filter((provider, index, providers) =>
+        provider && providers.indexOf(provider) !== index
+      )
+  )]
+  const duplicateProviderWarning = duplicateProviders.length > 0
+    ? `같은 provider(${duplicateProviders.join(', ')})가 여러 순위에 지정되어 있습니다. 429 쿨다운에 함께 걸리면 폴백이 무의미해질 수 있습니다.`
     : null
 
   return (
@@ -417,9 +454,9 @@ export default function LlmManager() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium text-foreground">검색 전용 LLM 라우팅 (1·2·3순위)</p>
-                {searchRouting?.is_active ? (
+                {isSearchActive ? (
                   <StatusBadge tone="positive" label="켜짐" />
-                ) : searchRouting ? (
+                ) : configuredSearchSlotCount > 0 ? (
                   <StatusBadge tone="neutral" label="꺼짐" />
                 ) : (
                   <StatusBadge tone="neutral" label="미설정(검색 AI 답변 꺼짐)" />
@@ -427,23 +464,23 @@ export default function LlmManager() {
               </div>
               <p className="text-xs text-muted-foreground">
                 1순위가 죽거나(모델 사용 불가) 한도소진(429/401)으로 쿨다운에 걸리면 2·3순위로 자동 폴백합니다.
-                1순위는 필수이며, 비어 있으면 2·3순위도 사용되지 않습니다.
+                엔진은 설정된 활성 슬롯을 순위 순서대로 사용합니다.
               </p>
             </div>
             <button
-              onClick={() => void saveSearchSlot(1, !searchRouting?.is_active)}
-              disabled={savingSlot !== null || !searchSlots[0].provider || !searchSlots[0].model}
+              onClick={() => void toggleSearchRouting()}
+              disabled={savingSlot !== null || configuredSearchSlotCount === 0}
               className={cn(
                 'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                searchRouting?.is_active ? 'bg-brand-600' : 'bg-muted-foreground/30',
-                (savingSlot !== null || !searchSlots[0].provider || !searchSlots[0].model)
+                isSearchActive ? 'bg-brand-600' : 'bg-muted-foreground/30',
+                (savingSlot !== null || configuredSearchSlotCount === 0)
                   && 'cursor-not-allowed opacity-50'
               )}
-              aria-label={searchRouting?.is_active ? '검색 AI 답변 끄기' : '검색 AI 답변 켜기'}
+              aria-label={isSearchActive ? '검색 AI 답변 끄기' : '검색 AI 답변 켜기'}
             >
               <span className={cn(
                 'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
-                searchRouting?.is_active ? 'translate-x-4' : 'translate-x-0.5'
+                isSearchActive ? 'translate-x-4' : 'translate-x-0.5'
               )} />
             </button>
           </div>

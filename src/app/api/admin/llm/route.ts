@@ -122,11 +122,31 @@ export async function PATCH(req: Request) {
       priority?: number
       model_id?: string
       is_active?: boolean
+      set_active?: boolean
     }
 
     const admin = createAdminClient()
 
     if (body.task_type !== undefined) {
+      if (
+        body.task_type === 'search'
+        && body.set_active !== undefined
+        && body.priority === undefined
+      ) {
+        const { data, error } = await admin
+          .from('llm_task_routing')
+          .update({ is_active: body.set_active })
+          .eq('task_type', 'search')
+          .select('task_type, priority, provider, model_id, is_active')
+
+        if (error) {
+          console.error('[/api/admin/llm] 검색 라우팅 전체 토글 오류:', error.message)
+          return NextResponse.json({ error: '검색 AI 답변 전체 설정 변경에 실패했습니다.' }, { status: 500 })
+        }
+
+        return NextResponse.json({ ok: true, routing: data ?? [] })
+      }
+
       // 1·2·3순위 슬롯을 허용한다 — 검색은 우선순위 순회로 다중화(482).
       if (
         body.task_type !== 'search'
