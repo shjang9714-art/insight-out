@@ -62,7 +62,7 @@ export async function GET() {
       admin.from('llm_settings').select('provider, enabled, monthly_token_limit'),
       admin
         .from('llm_task_routing')
-        .select('task_type, priority, provider, model_id, is_active')
+        .select('task_type, priority, provider, model_id, is_active, last_error, last_error_at')
         .order('task_type')
         .order('priority'),
       admin.from('llm_models').select('provider, model_id, label, is_active'),
@@ -137,7 +137,7 @@ export async function PATCH(req: Request) {
           .from('llm_task_routing')
           .update({ is_active: body.set_active })
           .eq('task_type', 'search')
-          .select('task_type, priority, provider, model_id, is_active')
+          .select('task_type, priority, provider, model_id, is_active, last_error, last_error_at')
 
         if (error) {
           console.error('[/api/admin/llm] 검색 라우팅 전체 토글 오류:', error.message)
@@ -212,7 +212,7 @@ export async function PATCH(req: Request) {
           model_id: body.model_id,
           is_active: body.is_active,
         }, { onConflict: 'task_type,priority' })
-        .select('task_type, priority, provider, model_id, is_active')
+        .select('task_type, priority, provider, model_id, is_active, last_error, last_error_at')
         .single()
 
       if (error) {

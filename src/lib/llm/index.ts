@@ -130,6 +130,40 @@ async function incrementUsage(
   if (error) console.error(`[LLM] 사용량 기록 실패 provider=${provider}:`, error.message)
 }
 
+async function updateRoutingModelHealth(
+  admin: ReturnType<typeof createAdminClient>,
+  task: LlmTask,
+  priority: number,
+  provider: string,
+  modelId: string,
+  errorMessage: string | null
+) {
+  try {
+    const { error } = await admin
+      .from('llm_task_routing')
+      .update({
+        last_error: errorMessage,
+        last_error_at: errorMessage ? new Date().toISOString() : null,
+      })
+      .eq('task_type', task)
+      .eq('priority', priority)
+      .eq('provider', provider)
+      .eq('model_id', modelId)
+
+    if (error) {
+      console.error(
+        `[LLM] 라우팅 모델 상태 기록 실패 task=${task} priority=${priority}:`,
+        error.message
+      )
+    }
+  } catch (err) {
+    console.error(
+      `[LLM] 라우팅 모델 상태 기록 실패 task=${task} priority=${priority}:`,
+      err instanceof Error ? err.message : String(err)
+    )
+  }
+}
+
 export interface LlmCompleteResult {
   text: string | null
   /** 모든 provider 시도가 실패했을 때 마지막 실패 원인. 성공 시 null */
@@ -176,7 +210,7 @@ export async function llmCompleteDetailed(
     const [routingResult, usageResult, settingsResult] = await Promise.all([
       admin
         .from('llm_task_routing')
-        .select('provider, model_id')
+        .select('priority, provider, model_id')
         .eq('task_type', task)
         .eq('is_active', true)
         .order('priority', { ascending: true }),
@@ -227,6 +261,14 @@ export async function llmCompleteDetailed(
           lastErrorReason = errorReason
           if (permanent) {
             console.error(`[LLM] task=${task} provider=${route.provider} model=${route.model_id} 모델 사용 불가 — 라우팅 행 점검 필요`)
+            await updateRoutingModelHealth(
+              admin,
+              task,
+              route.priority,
+              route.provider,
+              route.model_id,
+              `${route.provider}: 모델 사용 불가(404) — ${route.model_id}`
+            )
           } else {
             console.error(`[LLM] task=${task} provider=${route.provider} 호출 실패:`, errorReason)
           }
@@ -241,6 +283,14 @@ export async function llmCompleteDetailed(
           continue
         }
 
+        await updateRoutingModelHealth(
+          admin,
+          task,
+          route.priority,
+          route.provider,
+          route.model_id,
+          null
+        )
         await incrementUsage(admin, route.provider, period, result.tokens)
         return { text: result.text, errorReason: null }
       }

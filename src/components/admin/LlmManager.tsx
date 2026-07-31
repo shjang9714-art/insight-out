@@ -10,7 +10,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts'
-import { Loader2, CheckCircle2, XCircle, FlaskConical } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, FlaskConical, TriangleAlert } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
@@ -43,6 +43,8 @@ interface RoutingRow {
   provider: string
   model_id: string
   is_active: boolean
+  last_error: string | null
+  last_error_at: string | null
 }
 
 interface LlmData {
@@ -90,7 +92,18 @@ const ROUTING_COLUMNS: AdminTableColumn<RoutingRow>[] = [
     key: 'model',
     header: '모델',
     cell: row => (
-      <span className="font-mono text-[11px] text-muted-foreground">{row.model_id}</span>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[11px] text-muted-foreground">{row.model_id}</span>
+        {row.last_error && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md border border-amber-300/60 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+            title={row.last_error}
+          >
+            <TriangleAlert className="h-3 w-3" />
+            모델 오류
+          </span>
+        )}
+      </div>
     ),
   },
   {
@@ -197,9 +210,10 @@ export default function LlmManager() {
       return
     }
 
-    const priority1Routing = data?.routing.find(r => r.task_type === 'search' && r.priority === 1)
-    // 개별 슬롯에는 토글이 없으므로 모든 슬롯이 1순위의 현재 전체 활성 상태를 따른다.
-    const isActive = priority1Routing?.is_active ?? false
+    // 개별 슬롯에는 토글이 없으므로 현재 검색 라우팅 전체 활성 상태를 따른다.
+    const isActive = data?.routing.some(
+      row => row.task_type === 'search' && row.is_active
+    ) ?? false
 
     setSavingSlot(priority)
     try {
@@ -498,6 +512,7 @@ export default function LlmManager() {
                 model => model.provider === slot.provider && model.is_active
               )
               const slotProviderInfo = data.providers.find(p => p.name === slot.provider)
+              const slotRouting = searchRoutingByPriority[priority - 1]
               const slotUsagePct = slotProviderInfo && slotProviderInfo.effectiveTokenLimit > 0
                 ? Math.round(slotProviderInfo.tokens_used / slotProviderInfo.effectiveTokenLimit * 100)
                 : 0
@@ -574,6 +589,16 @@ export default function LlmManager() {
                         <p>키 미설정 · 이번 달 사용률 0%</p>
                       )}
                     </div>
+                  )}
+
+                  {slotRouting?.last_error && (
+                    <p
+                      className="flex items-start gap-1.5 rounded-lg border border-amber-300/60 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                      title={slotRouting.last_error}
+                    >
+                      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{slotRouting.last_error}</span>
+                    </p>
                   )}
 
                   <div className="flex justify-end gap-2">
@@ -654,7 +679,10 @@ export default function LlmManager() {
                   columns={ROUTING_COLUMNS}
                   rows={rows}
                   rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
-                  rowClassName={row => cn(!row.is_active && 'opacity-50')}
+                  rowClassName={row => cn(
+                    !row.is_active && 'opacity-50',
+                    row.last_error && 'bg-amber-50/50 dark:bg-amber-500/5'
+                  )}
                 />
               </div>
             ))}

@@ -13,7 +13,7 @@ const since24h = () => new Date(Date.now() - 86_400_000).toISOString()
 export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: number; resolved: number }> {
   const since = since24h()
   const signals: Signal[] = []
-  const [jobs, crawls, backlog, usage, settings, translation, tts] = await Promise.all([
+  const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors] = await Promise.all([
     admin.from('job_runs').select('job_key').eq('status', 'failed').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
     admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null),
@@ -21,6 +21,11 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     admin.from('llm_settings').select('provider, monthly_token_limit').eq('enabled', true),
     admin.from('translation_usage').select('chars').eq('period', new Date().toISOString().slice(0, 7)),
     admin.from('tts_usage').select('chars').eq('period', new Date().toISOString().slice(0, 7)),
+    admin
+      .from('llm_task_routing')
+      .select('task_type, priority, provider, model_id')
+      .eq('is_active', true)
+      .gte('last_error_at', since),
   ])
   const jobCounts = new Map<string, number>(); for (const r of jobs.data ?? []) jobCounts.set(r.job_key, (jobCounts.get(r.job_key) ?? 0) + 1)
   for (const [jobKey, count] of jobCounts) signals.push({ fingerprint: `cron:fail:${jobKey}`, category: 'cron', severity: jobKey.includes('crawl') || jobKey.includes('body') ? 'critical' : 'warning', title: '크론 작업 실패', suspected_cause: `${jobKey} 작업 오류가 반복되는 상태`, recommended_action: '잡 실행 로그와 환경변수를 확인하세요.', impact: '자동 운영 작업 지연', count })
@@ -37,6 +42,21 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const caps = [{ key: 'translation', used: (translation.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(process.env.TRANSLATION_MONTHLY_CHAR_CAP ?? 1_000_000) }, { key: 'tts', used: (tts.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 1_000_000) }]
   for (const c of caps) if (c.used / c.cap >= 0.8) signals.push({ fingerprint: `usage:limit:${c.key}`, category: 'usage', severity: c.used / c.cap >= 0.95 ? 'critical' : 'warning', title: `${c.key === 'tts' ? 'TTS' : '번역'} 사용량 한도 임박`, suspected_cause: `월 사용량이 ${Math.round(c.used / c.cap * 100)}%에 도달`, recommended_action: '월 한도와 사용 추세를 확인하세요.', impact: '해당 기능 중단 가능성', count: 1 })
   if ((backlog.count ?? 0) > 100) signals.push({ fingerprint: 'enrichment:backlog', category: 'enrichment', severity: 'warning', title: '본문 보강 지연', suspected_cause: '원문 서버 응답 지연 추정', recommended_action: '실패 로그 확인 또는 해당 소스를 일시 중지하세요.', impact: `대기 콘텐츠 ${backlog.count ?? 0}건`, count: backlog.count ?? 0 })
+  if (routingModelErrors.error) {
+    console.error('[운영이슈] LLM 라우팅 모델 오류 조회 실패:', routingModelErrors.error.message)
+  }
+  for (const route of routingModelErrors.data ?? []) {
+    signals.push({
+      fingerprint: `llm:model_unavailable:${route.task_type}:${route.priority}`,
+      category: 'usage',
+      severity: 'warning',
+      title: 'LLM 라우팅 모델 사용 불가',
+      suspected_cause: `${route.provider}/${route.model_id} 가 404 를 반환 — 모델이 은퇴했거나 유료로 전환됨`,
+      recommended_action: '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 모델을 교체하세요.',
+      impact: `${route.task_type} 작업이 해당 순위를 건너뜀`,
+      count: 1,
+    })
+  }
 
   const { data: existing } = await admin.from('ops_issues').select('fingerprint, status').in('status', ['open', 'resolved', 'acknowledged', 'in_progress', 'ignored'])
   const seen = new Set(signals.map(s => s.fingerprint)); let resolved = 0

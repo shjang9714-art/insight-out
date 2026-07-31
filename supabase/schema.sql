@@ -1802,7 +1802,9 @@ CREATE TABLE IF NOT EXISTS "public"."llm_task_routing" (
     "priority" integer NOT NULL,
     "provider" "text" NOT NULL,
     "model_id" "text" NOT NULL,
-    "is_active" boolean DEFAULT true NOT NULL
+    "is_active" boolean DEFAULT true NOT NULL,
+    "last_error" "text",
+    "last_error_at" timestamp with time zone
 );
 
 
@@ -6361,4 +6363,3 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 --
 
 -- \unrestrict 0g4lUvC1EHN0RUcEujbYZdz2XTLCWNPeUBUjC9BOnwIdb0q99RjrWkwOIa1wRNC
-
