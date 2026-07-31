@@ -13,7 +13,7 @@ import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
   effectiveTokenLimit,
 } from '@/lib/llm/token-limit'
-import { LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
+import { LlmModelUnavailableError, LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
 
 export type { LlmTask }
 
@@ -37,7 +37,9 @@ const PROVIDER_MAP: Record<string, LlmProvider> = {
 }
 
 // 한도소진(429/401) provider 쿨다운 — warm 인스턴스 내 best-effort(콜드스타트 시 리셋, 무해).
-const COOLDOWN_MS = 3 * 60 * 1000 // 3분
+// 429(분당 요청 제한)는 수십 초면 풀리므로 짧게, 401(인증 실패·키 만료)는 스스로 낫지 않으므로 길게 유지.
+const RATE_COOLDOWN_MS = 30 * 1000       // 429
+const AUTH_COOLDOWN_MS = 3 * 60 * 1000   // 401
 const cooldownUntil = new Map<string, number>()
 
 function isOnCooldown(providerName: string): boolean {
@@ -62,6 +64,10 @@ interface ProviderAttempt {
   errorReason: string | null
   /** true 면 429/401 한도소진 — 같은 provider 재시도 없이 즉시 종료됨(호출부가 쿨다운 설정) */
   hardLimit: boolean
+  /** true 면 404/400 모델 영구 사용 불가 — 모델 문제이지 한도 문제가 아니므로 쿨다운을 걸지 않는다 */
+  permanent: boolean
+  /** hardLimit이 true일 때만 의미 있음. 쿨다운 길이 결정에 사용(rate=30초, auth=3분) */
+  cooldownKind?: 'rate' | 'auth'
 }
 
 async function completeWithRetry(
@@ -75,11 +81,27 @@ async function completeWithRetry(
   for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
     try {
       const result = await provider.complete(system, user, model)
-      if (result) return { result, errorReason: null, hardLimit: false }
+      if (result) return { result, errorReason: null, hardLimit: false, permanent: false }
       lastReason = `${provider.name}: 응답 없음`
     } catch (err) {
+      if (err instanceof LlmModelUnavailableError) {
+        // 404/400은 같은 모델을 다시 불러도 결과가 같다 — 재시도하지 않고 즉시 종료.
+        return {
+          result: null,
+          errorReason: `${provider.name}: 모델 사용 불가(404)`,
+          hardLimit: false,
+          permanent: true,
+        }
+      }
       if (err instanceof LlmRateLimitError) {
-        return { result: null, errorReason: `${provider.name}: 한도소진(429/401)`, hardLimit: true }
+        const reasonLabel = err.kind === 'auth' ? '인증실패(401, 키 점검 필요)' : '한도소진(429)'
+        return {
+          result: null,
+          errorReason: `${provider.name}: ${reasonLabel}`,
+          hardLimit: true,
+          permanent: false,
+          cooldownKind: err.kind,
+        }
       }
       lastReason = `${provider.name}: ${err instanceof Error ? err.message : String(err)}`
     }
@@ -90,7 +112,7 @@ async function completeWithRetry(
     }
   }
 
-  return { result: null, errorReason: lastReason, hardLimit: false }
+  return { result: null, errorReason: lastReason, hardLimit: false, permanent: false }
 }
 
 async function incrementUsage(
@@ -187,7 +209,12 @@ export async function llmCompleteDetailed(
       for (const route of routingResult.data!) {
         const provider = PROVIDER_MAP[route.provider]
         if (!provider?.isConfigured()) continue
-        if (isOnCooldown(route.provider)) continue
+        if (isOnCooldown(route.provider)) {
+          // 쿨다운으로 건너뛴 경우도 사유를 남긴다 — 안 남기면 최종 사유가
+          // "활성 라우팅 없음"으로 잘못 보고된다(라우팅은 멀쩡한데 쿨다운 중일 뿐인데도).
+          lastErrorReason = `${route.provider}: 쿨다운 중(429/401)`
+          continue
+        }
 
         const s = settings.get(route.provider)
         if (s?.enabled === false) continue
@@ -195,11 +222,22 @@ export async function llmCompleteDetailed(
         if ((usage.get(route.provider) ?? 0) >= tokenLimit) continue
 
         console.log(`[LLM] task=${task} provider=${route.provider} model=${route.model_id}`)
-        const { result, errorReason, hardLimit } = await completeWithRetry(provider, system, user, route.model_id)
+        const { result, errorReason, hardLimit, permanent, cooldownKind } = await completeWithRetry(provider, system, user, route.model_id)
         if (!result) {
           lastErrorReason = errorReason
-          console.error(`[LLM] task=${task} provider=${route.provider} 호출 실패:`, errorReason)
-          if (hardLimit) cooldownUntil.set(route.provider, Date.now() + COOLDOWN_MS)
+          if (permanent) {
+            console.error(`[LLM] task=${task} provider=${route.provider} model=${route.model_id} 모델 사용 불가 — 라우팅 행 점검 필요`)
+          } else {
+            console.error(`[LLM] task=${task} provider=${route.provider} 호출 실패:`, errorReason)
+          }
+          // permanent(모델 문제)면 쿨다운을 걸지 않는다 — 다음 호출에도 같은 모델이면 계속 실패할 뿐, 시간이 지나도 안 풀린다.
+          if (hardLimit) {
+            const ms = cooldownKind === 'rate' ? RATE_COOLDOWN_MS : AUTH_COOLDOWN_MS
+            cooldownUntil.set(route.provider, Date.now() + ms)
+            if (cooldownKind === 'auth') {
+              console.error(`[LLM] provider=${route.provider} 키 점검 필요 — ${ms / 1000}초 쿨다운`)
+            }
+          }
           continue
         }
 
@@ -227,16 +265,29 @@ export async function llmCompleteDetailed(
     for (const provider of LLM_PROVIDERS) {
       const s = settings.get(provider.name)
       if (!provider.isConfigured() || s?.enabled === false) continue
-      if (isOnCooldown(provider.name)) continue
+      if (isOnCooldown(provider.name)) {
+        lastErrorReason = `${provider.name}: 쿨다운 중(429/401)`
+        continue
+      }
       const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
       if ((usage.get(provider.name) ?? 0) >= tokenLimit) continue
 
       console.log(`[LLM] fallback provider=${provider.name}`)
-      const { result, errorReason, hardLimit } = await completeWithRetry(provider, system, user)
+      const { result, errorReason, hardLimit, permanent, cooldownKind } = await completeWithRetry(provider, system, user)
       if (!result) {
         lastErrorReason = errorReason
-        console.error(`[LLM] fallback provider=${provider.name} 호출 실패:`, errorReason)
-        if (hardLimit) cooldownUntil.set(provider.name, Date.now() + COOLDOWN_MS)
+        if (permanent) {
+          console.error(`[LLM] fallback provider=${provider.name} 모델 사용 불가 — 라우팅 행 점검 필요`)
+        } else {
+          console.error(`[LLM] fallback provider=${provider.name} 호출 실패:`, errorReason)
+        }
+        if (hardLimit) {
+          const ms = cooldownKind === 'rate' ? RATE_COOLDOWN_MS : AUTH_COOLDOWN_MS
+          cooldownUntil.set(provider.name, Date.now() + ms)
+          if (cooldownKind === 'auth') {
+            console.error(`[LLM] provider=${provider.name} 키 점검 필요 — ${ms / 1000}초 쿨다운`)
+          }
+        }
         continue
       }
 

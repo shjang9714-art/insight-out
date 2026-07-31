@@ -1,9 +1,9 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { llmComplete } from '@/lib/llm'
+import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
-import { INTERROGATIVES, retrieveForQuestion, type RagDoc } from './rag-retrieve'
+import { INTERROGATIVES, retrieveForQuestion, tokenizeQuestion, type RagDoc } from './rag-retrieve'
 
 // ─── 공개 타입 ────────────────────────────────────────────────────────────────
 
@@ -24,7 +24,8 @@ export interface RagAnswer {
 
 export type RagResult =
   | RagAnswer
-  | { answer: null; reason: 'no_results' | 'no_llm' }
+  // detail: 내부 실패 원인 — 관리자 응답에만 포함(route.ts에서 role 체크 후 부착/제거).
+  | { answer: null; reason: 'no_results' | 'no_llm'; detail?: string }
 
 // ─── 프롬프트 ─────────────────────────────────────────────────────────────────
 
@@ -75,25 +76,45 @@ export async function answerQuestion(
   question: string,
 ): Promise<RagResult> {
   // 1. 검색
+  const tokens = tokenizeQuestion(question)
   const docs = await retrieveForQuestion(admin, question)
-  if (docs.length === 0) return { answer: null, reason: 'no_results' }
 
-  // 2. LLM 호출
-  const raw = await llmComplete(
+  // 어느 단계에서 끊겼는지 한 줄로 판별 가능하도록 매 반환 지점에서 로그.
+  const logRag = (reason: string, detail: string) => {
+    console.log(`[RAG] q="${question}" tokens=${tokens.length} docs=${docs.length} reason=${reason} detail=${detail}`)
+  }
+
+  if (docs.length === 0) {
+    logRag('no_results', '')
+    return { answer: null, reason: 'no_results' }
+  }
+
+  // 2. LLM 호출 — errorReason까지 받아서 detail로 threading.
+  const { text: raw, errorReason } = await llmCompleteDetailed(
     'search',
     isQuestionLike(question) ? SYSTEM_PROMPT : KEYWORD_SYSTEM_PROMPT,
     buildUserPrompt(question, docs),
     { allowFallbackPool: false },
   )
-  if (!raw) return { answer: null, reason: 'no_llm' }
+  if (!raw) {
+    const detail = errorReason ?? ''
+    logRag('no_llm', detail)
+    return { answer: null, reason: 'no_llm', detail }
+  }
 
   // 3. 파싱
   const parsed = looseJsonParse(raw)
-  if (!parsed || typeof parsed !== 'object') return { answer: null, reason: 'no_llm' }
+  if (!parsed || typeof parsed !== 'object') {
+    logRag('no_llm', 'JSON 파싱 실패')
+    return { answer: null, reason: 'no_llm', detail: 'JSON 파싱 실패' }
+  }
 
   const obj = parsed as Record<string, unknown>
   const summary = typeof obj.summary === 'string' ? obj.summary.trim() : ''
-  if (!summary) return { answer: null, reason: 'no_llm' }
+  if (!summary) {
+    logRag('no_llm', 'summary 없음')
+    return { answer: null, reason: 'no_llm', detail: 'summary 없음' }
+  }
 
   // 4. 환각 가드: citations·points.evidence ⊂ retrieved content_id
   const validIds = new Set(docs.map(d => d.content_id))
@@ -126,5 +147,6 @@ export async function answerQuestion(
     ? docs.filter(d => citationSet.has(d.content_id))
     : []
 
+  logRag('ok', '')
   return { summary, points, citations, sources }
 }

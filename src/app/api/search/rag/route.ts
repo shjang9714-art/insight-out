@@ -33,6 +33,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
   }
 
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+  const isAdmin = profile?.role === 'admin'
+
   // 요청 바디
   let question: string
   try {
@@ -52,6 +59,11 @@ export async function POST(request: NextRequest) {
   try {
     const admin = createAdminClient()
     const result = await answerQuestion(admin, question)
+
+    // detail(내부 실패 원인)은 관리자에게만 노출한다 — 일반 사용자에게 내부 오류 상세를 흘리지 않는다.
+    if ('detail' in result && result.detail !== undefined && !isAdmin) {
+      return NextResponse.json({ answer: result.answer, reason: result.reason })
+    }
     return NextResponse.json(result)
   } catch (err) {
     console.error('[POST /api/search/rag] 오류:', err instanceof Error ? err.message : String(err))

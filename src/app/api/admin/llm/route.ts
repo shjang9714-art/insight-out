@@ -124,19 +124,38 @@ export async function PATCH(req: Request) {
       is_active?: boolean
     }
 
-    if (!body.provider) {
-      return NextResponse.json({ error: 'provider 필드가 필요합니다.' }, { status: 400 })
-    }
-
     const admin = createAdminClient()
 
     if (body.task_type !== undefined) {
+      // 1·2·3순위 슬롯을 허용한다 — 검색은 우선순위 순회로 다중화(482).
       if (
         body.task_type !== 'search'
-        || body.priority !== 1
-        || !body.model_id
+        || ![1, 2, 3].includes(body.priority as number)
         || body.is_active === undefined
       ) {
+        return NextResponse.json(
+          { error: '검색 AI 답변 설정값이 올바르지 않습니다.' },
+          { status: 400 }
+        )
+      }
+
+      // 슬롯 비우기: provider가 빈 값이면 해당 (task_type='search', priority=N) 행을 삭제한다.
+      if (!body.provider) {
+        const { error: deleteError } = await admin
+          .from('llm_task_routing')
+          .delete()
+          .eq('task_type', 'search')
+          .eq('priority', body.priority)
+
+        if (deleteError) {
+          console.error('[/api/admin/llm] 검색 라우팅 삭제 오류:', deleteError.message)
+          return NextResponse.json({ error: '검색 AI 답변 설정 삭제에 실패했습니다.' }, { status: 500 })
+        }
+
+        return NextResponse.json({ ok: true, routing: null })
+      }
+
+      if (!body.model_id) {
         return NextResponse.json(
           { error: '검색 AI 답변 설정값이 올바르지 않습니다.' },
           { status: 400 }
@@ -168,7 +187,7 @@ export async function PATCH(req: Request) {
         .from('llm_task_routing')
         .upsert({
           task_type: 'search',
-          priority: 1,
+          priority: body.priority,
           provider: body.provider,
           model_id: body.model_id,
           is_active: body.is_active,
@@ -182,6 +201,10 @@ export async function PATCH(req: Request) {
       }
 
       return NextResponse.json({ ok: true, routing: data })
+    }
+
+    if (!body.provider) {
+      return NextResponse.json({ error: 'provider 필드가 필요합니다.' }, { status: 400 })
     }
 
     const upsertData: Record<string, unknown> = { provider: body.provider }

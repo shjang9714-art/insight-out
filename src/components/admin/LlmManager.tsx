@@ -114,9 +114,13 @@ export default function LlmManager() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
-  const [searchProvider, setSearchProvider] = useState('')
-  const [searchModel, setSearchModel] = useState('')
-  const [isSavingSearch, setIsSavingSearch] = useState(false)
+  // 검색 라우팅 3슬롯(1·2·3순위) — 1순위가 죽거나 쿨다운에 걸려도 2·3순위로 폴백한다(482).
+  const [searchSlots, setSearchSlots] = useState<{ provider: string; model: string }[]>([
+    { provider: '', model: '' },
+    { provider: '', model: '' },
+    { provider: '', model: '' },
+  ])
+  const [savingSlot, setSavingSlot] = useState<number | null>(null)
 
   async function fetchData() {
     try {
@@ -124,11 +128,10 @@ export default function LlmManager() {
       const json = await res.json() as LlmData & { error?: string }
       if (!res.ok) throw new Error(json.error ?? '조회 실패')
       setData(json)
-      const searchRouting = json.routing.find(
-        row => row.task_type === 'search' && row.priority === 1
-      )
-      setSearchProvider(searchRouting?.provider ?? '')
-      setSearchModel(searchRouting?.model_id ?? '')
+      setSearchSlots([1, 2, 3].map(priority => {
+        const row = json.routing.find(r => r.task_type === 'search' && r.priority === priority)
+        return { provider: row?.provider ?? '', model: row?.model_id ?? '' }
+      }))
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오기 실패')
@@ -182,22 +185,36 @@ export default function LlmManager() {
     }
   }
 
-  const saveSearchRouting = async (isActive: boolean) => {
-    if (!searchProvider || !searchModel) {
-      setError('검색 AI 답변에 사용할 provider와 모델을 선택해주세요.')
+  const updateSearchSlot = (priority: number, patch: Partial<{ provider: string; model: string }>) => {
+    setSearchSlots(prev => prev.map((slot, i) => i === priority - 1 ? { ...slot, ...patch } : slot))
+  }
+
+  // priority 1은 필수 — 비어 있으면 2·3순위도 라우팅 순회상 도달할 수 없다.
+  const saveSearchSlot = async (priority: number, isActiveOverride?: boolean) => {
+    const slot = searchSlots[priority - 1]
+    if (!slot.provider || !slot.model) {
+      setError(
+        priority === 1
+          ? '1순위 provider·모델을 먼저 지정해주세요. 1순위가 비면 2·3순위도 쓸 수 없습니다.'
+          : '검색 AI 답변에 사용할 provider와 모델을 선택해주세요.'
+      )
       return
     }
 
-    setIsSavingSearch(true)
+    const priority1Routing = data?.routing.find(r => r.task_type === 'search' && r.priority === 1)
+    // 2·3순위는 별도 on/off 토글이 없다 — 채워서 저장하면 항상 활성(전체 on/off는 1순위 토글이 담당).
+    const isActive = priority === 1 ? (isActiveOverride ?? priority1Routing?.is_active ?? false) : true
+
+    setSavingSlot(priority)
     try {
       const res = await fetch('/api/admin/llm', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task_type: 'search',
-          priority: 1,
-          provider: searchProvider,
-          model_id: searchModel,
+          priority,
+          provider: slot.provider,
+          model_id: slot.model,
           is_active: isActive,
         }),
       })
@@ -211,7 +228,7 @@ export default function LlmManager() {
         ...prev,
         routing: [
           ...prev.routing.filter(
-            row => !(row.task_type === 'search' && row.priority === 1)
+            row => !(row.task_type === 'search' && row.priority === priority)
           ),
           savedRouting,
         ],
@@ -220,7 +237,40 @@ export default function LlmManager() {
     } catch (e) {
       setError(e instanceof Error ? e.message : '검색 AI 답변 설정 저장에 실패했습니다.')
     } finally {
-      setIsSavingSearch(false)
+      setSavingSlot(null)
+    }
+  }
+
+  const clearSearchSlot = async (priority: number) => {
+    setSavingSlot(priority)
+    try {
+      const res = await fetch('/api/admin/llm', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_type: 'search',
+          priority,
+          provider: '',
+          is_active: false,
+        }),
+      })
+      const json = await res.json() as { error?: string }
+      if (!res.ok) {
+        throw new Error(json.error ?? '검색 AI 답변 설정 삭제에 실패했습니다.')
+      }
+
+      updateSearchSlot(priority, { provider: '', model: '' })
+      setData(prev => prev ? {
+        ...prev,
+        routing: prev.routing.filter(
+          row => !(row.task_type === 'search' && row.priority === priority)
+        ),
+      } : prev)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '검색 AI 답변 설정 삭제에 실패했습니다.')
+    } finally {
+      setSavingSlot(null)
     }
   }
 
@@ -262,20 +312,18 @@ export default function LlmManager() {
     if (!routingByTask[row.task_type]) routingByTask[row.task_type] = []
     routingByTask[row.task_type].push(row)
   }
-  const searchRouting = data.routing.find(
-    row => row.task_type === 'search' && row.priority === 1
+  const searchRoutingByPriority = [1, 2, 3].map(priority =>
+    data!.routing.find(row => row.task_type === 'search' && row.priority === priority)
   )
-  const searchProviderInfo = data.providers.find(
-    provider => provider.name === searchProvider
+  const searchRouting = searchRoutingByPriority[0] // 전체 on/off 토글은 1순위 행의 is_active
+  // 1·2순위가 같은 provider면 그 provider가 쿨다운(429/401)에 걸릴 때 두 슬롯이 동시에 죽는다 — 저장은 막지 않고 경고만.
+  const duplicateProviderWarning = (
+    searchSlots[0].provider
+    && searchSlots[1].provider
+    && searchSlots[0].provider === searchSlots[1].provider
   )
-  const searchUsagePct = searchProviderInfo && searchProviderInfo.effectiveTokenLimit > 0
-    ? Math.round(
-      searchProviderInfo.tokens_used / searchProviderInfo.effectiveTokenLimit * 100
-    )
-    : 0
-  const searchModels = data.models.filter(
-    model => model.provider === searchProvider && model.is_active
-  )
+    ? `1·2순위가 모두 "${searchSlots[0].provider}"입니다. 이 provider가 한도소진(429/401)에 걸리면 두 슬롯이 동시에 쿨다운에 걸려 폴백이 무의미해집니다.`
+    : null
 
   return (
     <div className="space-y-8">
@@ -361,14 +409,14 @@ export default function LlmManager() {
         </div>
       </section>
 
-      {/* ② 검색 AI 답변 설정 */}
+      {/* ② 검색 AI 답변 설정 — 1·2·3순위 3슬롯. 1순위가 죽거나 쿨다운에 걸려도 2·3순위로 폴백한다. */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">검색 AI 답변</h2>
         <div className="rounded-xl border border-border bg-card p-5 space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-foreground">검색 전용 LLM 라우팅</p>
+                <p className="text-sm font-medium text-foreground">검색 전용 LLM 라우팅 (1·2·3순위)</p>
                 {searchRouting?.is_active ? (
                   <StatusBadge tone="positive" label="켜짐" />
                 ) : searchRouting ? (
@@ -378,16 +426,17 @@ export default function LlmManager() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                다른 작업이 쓰지 않는 provider를 지정하세요. 검색은 호출이 잦아 예산을 함께 쓰면 다른 작업이 막힙니다.
+                1순위가 죽거나(모델 사용 불가) 한도소진(429/401)으로 쿨다운에 걸리면 2·3순위로 자동 폴백합니다.
+                1순위는 필수이며, 비어 있으면 2·3순위도 사용되지 않습니다.
               </p>
             </div>
             <button
-              onClick={() => void saveSearchRouting(!searchRouting?.is_active)}
-              disabled={isSavingSearch || !searchProvider || !searchModel}
+              onClick={() => void saveSearchSlot(1, !searchRouting?.is_active)}
+              disabled={savingSlot !== null || !searchSlots[0].provider || !searchSlots[0].model}
               className={cn(
                 'relative h-5 w-9 shrink-0 rounded-full transition-colors',
                 searchRouting?.is_active ? 'bg-brand-600' : 'bg-muted-foreground/30',
-                (isSavingSearch || !searchProvider || !searchModel)
+                (savingSlot !== null || !searchSlots[0].provider || !searchSlots[0].model)
                   && 'cursor-not-allowed opacity-50'
               )}
               aria-label={searchRouting?.is_active ? '검색 AI 답변 끄기' : '검색 AI 답변 켜기'}
@@ -399,79 +448,116 @@ export default function LlmManager() {
             </button>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground" htmlFor="search-provider">
-                Provider
-              </label>
-              <Select
-                value={searchProvider}
-                onValueChange={provider => {
-                  setSearchProvider(provider)
-                  setSearchModel('')
-                }}
-                disabled={isSavingSearch}
-              >
-                <SelectTrigger id="search-provider">
-                  <SelectValue placeholder="Provider를 선택하세요" />
-                </SelectTrigger>
-                <SelectContent>
-                  {data.providers.map(provider => (
-                    <SelectItem key={provider.name} value={provider.name}>
-                      {provider.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground" htmlFor="search-model">
-                모델
-              </label>
-              <Select
-                value={searchModel}
-                onValueChange={setSearchModel}
-                disabled={isSavingSearch || !searchProvider}
-              >
-                <SelectTrigger id="search-model">
-                  <SelectValue placeholder={
-                    searchProvider ? '모델을 선택하세요' : 'Provider를 먼저 선택하세요'
-                  } />
-                </SelectTrigger>
-                <SelectContent>
-                  {searchModels.map(model => (
-                    <SelectItem key={model.model_id} value={model.model_id}>
-                      {model.label ?? model.model_id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {searchProviderInfo && (
-            <div className="rounded-lg bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
-              {searchProviderInfo.keyCount > 0 ? (
-                <p>
-                  이번 달 사용률 {searchUsagePct}% ·{' '}
-                  {searchProviderInfo.tokens_used.toLocaleString()} /{' '}
-                  {searchProviderInfo.effectiveTokenLimit.toLocaleString()} 토큰
-                </p>
-              ) : (
-                <p>키 미설정 · 이번 달 사용률 0%</p>
-              )}
+          {duplicateProviderWarning && (
+            <div className="rounded-lg border border-amber-300/60 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              ⚠️ {duplicateProviderWarning}
             </div>
           )}
 
-          <div className="flex justify-end">
-            <button
-              onClick={() => void saveSearchRouting(searchRouting?.is_active ?? false)}
-              disabled={isSavingSearch || !searchProvider || !searchModel}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSavingSearch ? '저장 중...' : 'Provider·모델 저장'}
-            </button>
+          <div className="space-y-4">
+            {([1, 2, 3] as const).map(priority => {
+              const slot = searchSlots[priority - 1]
+              const slotModels = data.models.filter(
+                model => model.provider === slot.provider && model.is_active
+              )
+              const slotProviderInfo = data.providers.find(p => p.name === slot.provider)
+              const slotUsagePct = slotProviderInfo && slotProviderInfo.effectiveTokenLimit > 0
+                ? Math.round(slotProviderInfo.tokens_used / slotProviderInfo.effectiveTokenLimit * 100)
+                : 0
+              const isSlotBusy = savingSlot === priority
+
+              return (
+                <div key={priority} className="rounded-lg border border-border/70 bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-100 text-[11px] font-semibold text-brand-700">
+                      {priority}
+                    </span>
+                    <p className="text-xs font-medium text-foreground">
+                      {priority}순위{priority === 1 ? ' (필수)' : ' (선택)'}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground" htmlFor={`search-provider-${priority}`}>
+                        Provider
+                      </label>
+                      <Select
+                        value={slot.provider}
+                        onValueChange={provider => updateSearchSlot(priority, { provider, model: '' })}
+                        disabled={isSlotBusy}
+                      >
+                        <SelectTrigger id={`search-provider-${priority}`}>
+                          <SelectValue placeholder="Provider를 선택하세요" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {data.providers.map(provider => (
+                            <SelectItem key={provider.name} value={provider.name}>
+                              {provider.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground" htmlFor={`search-model-${priority}`}>
+                        모델
+                      </label>
+                      <Select
+                        value={slot.model}
+                        onValueChange={model => updateSearchSlot(priority, { model })}
+                        disabled={isSlotBusy || !slot.provider}
+                      >
+                        <SelectTrigger id={`search-model-${priority}`}>
+                          <SelectValue placeholder={
+                            slot.provider ? '모델을 선택하세요' : 'Provider를 먼저 선택하세요'
+                          } />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {slotModels.map(model => (
+                            <SelectItem key={model.model_id} value={model.model_id}>
+                              {model.label ?? model.model_id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {slotProviderInfo && (
+                    <div className="rounded-lg bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
+                      {slotProviderInfo.keyCount > 0 ? (
+                        <p>
+                          이번 달 사용률 {slotUsagePct}% ·{' '}
+                          {slotProviderInfo.tokens_used.toLocaleString()} /{' '}
+                          {slotProviderInfo.effectiveTokenLimit.toLocaleString()} 토큰
+                        </p>
+                      ) : (
+                        <p>키 미설정 · 이번 달 사용률 0%</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => void clearSearchSlot(priority)}
+                      disabled={isSlotBusy || (!slot.provider && !searchRoutingByPriority[priority - 1])}
+                      className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      비우기
+                    </button>
+                    <button
+                      onClick={() => void saveSearchSlot(priority)}
+                      disabled={isSlotBusy || !slot.provider || !slot.model}
+                      className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isSlotBusy ? '저장 중...' : 'Provider·모델 저장'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </section>
