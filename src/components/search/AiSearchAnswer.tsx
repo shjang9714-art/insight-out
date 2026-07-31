@@ -69,8 +69,16 @@ function normalizeQuestion(question: string): string {
   return question.trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
+// 검색 실패 사유 — 화면에 다른 안내를 보여주기 위해 구분한다.
+// 'empty'는 근거 기사를 못 찾은 경우(검색어 문제), 'error'는 그 외 모든 실패(LLM/네트워크/서버 오류).
+type FetchOutcome =
+  | { kind: 'answer'; answer: RagAnswer }
+  | { kind: 'empty' }
+  | { kind: 'error' }
+
 // 모듈 캐시: 컴포넌트가 질의·필터 변경으로 재마운트되어도 같은 질의를 재호출하지 않는다.
-const answerCache = new Map<string, Promise<RagAnswer | null>>()
+// 성공(answer)만 캐싱한다 — 실패는 아래에서 즉시 delete하여 재검색 시 새 fetch가 나가게 한다.
+const answerCache = new Map<string, Promise<FetchOutcome>>()
 
 function fetchStatus(): Promise<boolean> {
   return fetch('/api/search/rag/status', { cache: 'no-store' })
@@ -86,7 +94,7 @@ function fetchStatus(): Promise<boolean> {
     .catch(() => false)
 }
 
-function fetchAnswer(question: string): Promise<RagAnswer | null> {
+function fetchAnswer(question: string): Promise<FetchOutcome> {
   const key = normalizeQuestion(question)
   const cached = answerCache.get(key)
   if (cached) return cached
@@ -97,18 +105,30 @@ function fetchAnswer(question: string): Promise<RagAnswer | null> {
     body: JSON.stringify({ question }),
   })
     .then(async response => {
-      const body = await response.json() as unknown
+      let body: unknown
+      try {
+        body = await response.json()
+      } catch {
+        return { kind: 'error' } as const
+      }
       const reason = (
         typeof body === 'object' && body !== null
           ? (body as Record<string, unknown>).reason
           : undefined
       )
-      if (!response.ok || reason === 'no_results' || reason === 'no_llm') return null
-      return parseRagAnswer(body)
+      if (!response.ok) return { kind: 'error' } as const
+      if (reason === 'no_results') return { kind: 'empty' } as const
+      if (reason === 'no_llm') return { kind: 'error' } as const
+      const answer = parseRagAnswer(body)
+      return answer ? ({ kind: 'answer', answer } as const) : ({ kind: 'error' } as const)
     })
-    .catch(() => null)
+    .catch(() => ({ kind: 'error' }) as const)
 
   answerCache.set(key, request)
+  // 실패(answer 아님)는 캐시에 남기지 않는다 — 그래야 재검색이 새 fetch를 실제로 낸다.
+  void request.then(outcome => {
+    if (outcome.kind !== 'answer') answerCache.delete(key)
+  })
   return request
 }
 
@@ -122,6 +142,16 @@ function LoadingAnswer() {
         <span className="h-2 w-2 animate-bounce rounded-full bg-brand-600 [animation-delay:-0.15s]" />
         <span className="h-2 w-2 animate-bounce rounded-full bg-brand-600" />
       </span>
+    </div>
+  )
+}
+
+// 실패 안내 카드 — 답변 카드와 같은 톤이되 채도를 낮춰, 조용히 사라지지 않고 남아 있는다.
+function ReasonCard({ message }: { message: string }) {
+  return (
+    <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-border bg-muted/30 px-5 py-4 text-sm text-muted-foreground">
+      <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground/70" />
+      <span>{message}</span>
     </div>
   )
 }
@@ -224,7 +254,7 @@ function AnswerCard({ answer }: { answer: RagAnswer }) {
 }
 
 export default function AiSearchAnswer({ question }: { question: string }) {
-  const [state, setState] = useState<'loading' | 'done' | 'none'>('none')
+  const [state, setState] = useState<'loading' | 'done' | 'empty' | 'error'>('loading')
   const [stateQuestion, setStateQuestion] = useState<string | null>(null)
   const normalized = normalizeQuestion(question)
 
@@ -235,16 +265,16 @@ export default function AiSearchAnswer({ question }: { question: string }) {
 
     fetchStatus().then(enabled => {
       if (cancelled) return
-      if (!enabled) {
-        setStateQuestion(normalized)
-        setState('none')
-        return
-      }
+      // 기능 자체가 꺼져 있으면(활성 라우팅 없음) 아무것도 그리지 않는다 — 실패 안내와는 다른 경우.
+      if (!enabled) return
 
       setStateQuestion(normalized)
       setState('loading')
-      fetchAnswer(question).then(answer => {
-        if (!cancelled) setState(answer ? 'done' : 'none')
+      fetchAnswer(question).then(outcome => {
+        if (cancelled) return
+        if (outcome.kind === 'answer') setState('done')
+        else if (outcome.kind === 'empty') setState('empty')
+        else setState('error')
       })
     })
 
@@ -254,18 +284,25 @@ export default function AiSearchAnswer({ question }: { question: string }) {
   if (normalized.length < 2) return null
   if (stateQuestion !== normalized) return null
   if (state === 'loading') return <LoadingAnswer />
-  if (state !== 'done') return null
+  if (state === 'empty') {
+    return <ReasonCard message="검색어와 맞는 기사를 찾지 못해 AI 답변을 만들지 않았어요." />
+  }
+  if (state === 'error') {
+    return <ReasonCard message="AI 답변을 만들지 못했어요. 잠시 후 다시 시도해주세요." />
+  }
 
   const cached = answerCache.get(normalizeQuestion(question))
   return cached ? <AnswerFromCache request={cached} /> : null
 }
 
-function AnswerFromCache({ request }: { request: Promise<RagAnswer | null> }) {
+function AnswerFromCache({ request }: { request: Promise<FetchOutcome> }) {
   const [answer, setAnswer] = useState<RagAnswer | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    request.then(value => { if (!cancelled) setAnswer(value) })
+    request.then(outcome => {
+      if (!cancelled && outcome.kind === 'answer') setAnswer(outcome.answer)
+    })
     return () => { cancelled = true }
   }, [request])
 
