@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
 
   const gate = await verifyAdminRequest()
   if (!gate.ok) return gate.response
+  // 485: 인증 통합으로 데이터 경로가 service_role 로 승격됨(기존 사용자 스코프).
+  //      492 에서 is_admin() 을 능력 기반으로 조일 때 이 경로를 함께 검토할 것.
   const supabase = gate.admin
 
   // ─── 요청 파싱 ───────────────────────────────────────────────────────────

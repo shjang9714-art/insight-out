@@ -219,7 +219,7 @@ export function AdminSidebar() {
       ...group,
       items: group.items.filter((item) => showPlanned || !item.disabled),
     }))
-    .filter((group) => group.items.length > 0 && (showPlanned || group.group !== '사용자 관리'))
+    .filter((group) => group.items.length > 0)
 
   const searchResults = trimmedQuery
     ? allItems.filter(
@@ -369,7 +369,7 @@ export function AdminSidebar() {
                         return (
                           <li key={item.href}>
                             <span
-                              title={item.roadmap ?? (collapsed ? item.label : undefined)}
+                              title={collapsed ? item.label : item.roadmap}
                               aria-label={collapsed ? item.label : undefined}
                               className={cn(
                                 'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 opacity-70 cursor-default text-muted-foreground',
@@ -393,7 +393,7 @@ export function AdminSidebar() {
                           {/* prefetch-ok: 어드민 사이드바 네비 — 개수 고정, 이동 잦음 */}
                           <Link
                             href={item.href}
-                            title={item.roadmap ?? (collapsed ? item.label : undefined)}
+                            title={collapsed ? item.label : item.roadmap}
                             aria-label={collapsed ? item.label : undefined}
                             className={cn(
                               'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
