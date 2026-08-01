@@ -1,36 +1,10 @@
 'use server'
 
-import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { revalidatePath } from 'next/cache'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
-
-async function requireAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cs) { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  return profile?.role === 'admin' ? user : null
-}
+import { requireAdminAction } from '@/lib/admin/require-admin-action'
 
 function serviceClient() {
   return createServiceClient(
@@ -43,8 +17,8 @@ export async function updateUserProfileByAdmin(
   userId: string,
   patch: { name: string; team: string; team_name: string },
 ) {
-  const admin = await requireAdmin()
-  if (!admin) return { ok: false, error: '권한이 없습니다.' }
+  const gate = await requireAdminAction()
+  if (!gate.ok) return { ok: false, error: gate.error }
 
   const name = patch.name.trim()
   const teamName = patch.team_name.trim()
@@ -71,8 +45,8 @@ export async function updateUserProfileByAdmin(
 }
 
 export async function updateUserRole(userId: string, newRole: UserRole) {
-  const admin = await requireAdmin()
-  if (!admin) return { error: '권한이 없습니다.' }
+  const gate = await requireAdminAction()
+  if (!gate.ok) return { error: gate.error }
 
   const { error } = await serviceClient()
     .from('users')
@@ -84,8 +58,8 @@ export async function updateUserRole(userId: string, newRole: UserRole) {
 }
 
 export async function promoteByEmail(email: string) {
-  const admin = await requireAdmin()
-  if (!admin) return { error: '권한이 없습니다.' }
+  const gate = await requireAdminAction()
+  if (!gate.ok) return { error: gate.error }
 
   const svc = serviceClient()
 
@@ -109,15 +83,15 @@ export async function promoteByEmail(email: string) {
 }
 
 export async function approveUser(userId: string) {
-  const admin = await requireAdmin()
-  if (!admin) return { error: '권한이 없습니다.' }
+  const gate = await requireAdminAction()
+  if (!gate.ok) return { error: gate.error }
 
   const { error } = await serviceClient()
     .from('users')
     .update({
       approval_status: 'approved' as ApprovalStatus,
       approved_at: new Date().toISOString(),
-      approved_by: admin.id,
+      approved_by: gate.userId,
     })
     .eq('id', userId)
 
@@ -127,15 +101,15 @@ export async function approveUser(userId: string) {
 }
 
 export async function rejectUser(userId: string) {
-  const admin = await requireAdmin()
-  if (!admin) return { error: '권한이 없습니다.' }
+  const gate = await requireAdminAction()
+  if (!gate.ok) return { error: gate.error }
 
   const { error } = await serviceClient()
     .from('users')
     .update({
       approval_status: 'rejected' as ApprovalStatus,
       approved_at: new Date().toISOString(),
-      approved_by: admin.id,
+      approved_by: gate.userId,
     })
     .eq('id', userId)
 

@@ -1,6 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { summarizeKo } from '@/lib/crawler/summarize'
 import { stripMarkdown } from '@/lib/contents/clean-body'
 
@@ -26,32 +25,9 @@ function cleanHtml(raw: string): string {
 export async function POST(request: NextRequest) {
   // ─── 인증 + 관리자 확인 ──────────────────────────────────────────────────
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cs) { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
+  const supabase = gate.admin
 
   // ─── 요청 파싱 ───────────────────────────────────────────────────────────
 

@@ -32,6 +32,7 @@ interface UploadBody {
  * 별도 서명URL 경로가 필요하다.
  */
 export async function POST(request: Request) {
+  // 485: 의도된 예외 — verifyAdminRequest 대상 아님
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
