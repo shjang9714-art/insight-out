@@ -15,7 +15,7 @@ export function useAdminTable({ defaultSort, pageSize }: { defaultSort: Sort; pa
     key: searchParams.get('sort') || defaultSort.key,
     dir: searchParams.get('dir') === 'asc' ? 'asc' : searchParams.get('dir') === 'desc' ? 'desc' : defaultSort.dir,
   }
-  const scope = `${page}:${sort.key}:${sort.dir}`
+  const scope = searchParams.toString()
   const [selectionState, setSelectionState] = useState<{ scope: string; selected: Set<string> }>(() => ({ scope, selected: new Set() }))
   const selected = selectionState.scope === scope ? selectionState.selected : new Set<string>()
 
@@ -28,13 +28,11 @@ export function useAdminTable({ defaultSort, pageSize }: { defaultSort: Sort; pa
   }
 
   const setPage = (nextPage: number) => {
-    setSelectionState({ scope: `${nextPage}:${sort.key}:${sort.dir}`, selected: new Set() })
     navigate(Math.max(1, nextPage), sort)
   }
 
   const toggleSort = (key: string) => {
     const nextSort: Sort = { key, dir: sort.key === key && sort.dir === 'asc' ? 'desc' : 'asc' }
-    setSelectionState({ scope: `1:${nextSort.key}:${nextSort.dir}`, selected: new Set() })
     navigate(1, nextSort)
   }
 
