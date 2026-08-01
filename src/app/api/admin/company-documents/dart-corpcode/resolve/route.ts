@@ -34,7 +34,7 @@ function isSchemaMissing(error: { code?: string } | null): boolean {
  */
 export async function POST() {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
   const { admin } = auth
 
   const corpCodeResult = await loadDartCorpCodes()

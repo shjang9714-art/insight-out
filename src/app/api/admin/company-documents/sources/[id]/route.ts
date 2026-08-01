@@ -25,8 +25,8 @@ interface UpdateBody {
  * 소스 편집·비활성 토글. 부분 업데이트(전달된 필드만 반영).
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  const auth = await verifyAdminRequest({ capability: 'manage_sources' })
+  if (!auth.ok) return auth.response
   const { id } = await params
 
   let body: UpdateBody
@@ -78,8 +78,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
  * 소스 삭제. 이미 적재된 company_documents는 보존한다(FK 없음, source_id 참조 컬럼 자체가 없음).
  */
 export async function DELETE(_request: NextRequest, { params }: RouteParams) {
-  const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  const auth = await verifyAdminRequest({ capability: 'manage_sources' })
+  if (!auth.ok) return auth.response
   const { id } = await params
 
   const { error } = await auth.admin.from('document_sources').delete().eq('id', id)

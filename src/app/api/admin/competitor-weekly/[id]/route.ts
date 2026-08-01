@@ -36,7 +36,7 @@ function isPgError(err: unknown): err is { code: string; message: string } {
  */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   const { id } = await params
   if (!id) return NextResponse.json({ error: 'id 가 필요합니다.' }, { status: 400 })
@@ -127,7 +127,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 /** DELETE /api/admin/competitor-weekly/[id] — 하드삭제(신규 SQL 없음, confirm 은 프런트에서). */
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   const { id } = await params
   if (!id) return NextResponse.json({ error: 'id 가 필요합니다.' }, { status: 400 })
