@@ -1,5 +1,4 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse, type NextRequest } from 'next/server'
 import {
   BULK_REVIEW_LIMIT,
@@ -9,7 +8,6 @@ import {
 } from '@/lib/admin/bulk-review'
 import { getKstTodayStartIso } from '@/lib/date'
 import { runJob } from '@/lib/jobs/run-job'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,54 +44,14 @@ function applyBulkReviewFilters(query: FilterBuilder, filters: BulkReviewFilters
   return query
 }
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return {
-      denied: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }),
-      userId: null,
-    }
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return {
-      denied: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }),
-      userId: null,
-    }
-  }
-
-  return { denied: null, userId: user.id }
-}
 
 /**
  * POST /api/admin/contents/bulk-review
  * 클라이언트 ID 배열 없이 서버가 현재 필터와 일치하는 pending 콘텐츠만 일괄 반려한다.
  */
 export async function POST(request: NextRequest) {
-  const { denied, userId } = await verifyAdmin()
-  if (denied) return denied
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let rawBody: unknown
   try {
@@ -107,7 +65,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin = gate.admin
   const countBase = admin
     .from('contents')
     .select('id', { count: 'exact', head: true })
@@ -146,7 +104,7 @@ export async function POST(request: NextRequest) {
     {
       key: 'admin:bulk-review',
       trigger: 'admin',
-      startedBy: userId ?? undefined,
+      startedBy: gate.userId,
     },
     async () => {
       const updateBase = admin

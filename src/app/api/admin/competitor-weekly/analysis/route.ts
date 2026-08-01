@@ -1,7 +1,6 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { FRAME_SPEC, LGU_CONTEXT } from '@/lib/competitor-weekly/frame-spec'
 import { verifyAnalysis, isImpactValue, type AnalysisInput, type VerifyReport } from '@/lib/competitor-weekly/verify'
 import type { CompetitorWeeklySection } from '@/lib/competitor-weekly/query'
@@ -16,30 +15,6 @@ export const dynamic = 'force-dynamic'
  * POST : Claude 결과 JSON 가져오기 → 스키마 검증 → 패스③ 근거 검증 → draft 저장
  */
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) {
-          toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-        },
-      },
-    }
-  )
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
-  }
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
-  }
-  return { error: null }
-}
 
 interface ReportRow {
   week_start: string
@@ -48,8 +23,7 @@ interface ReportRow {
   status: string
 }
 
-async function loadReport(weekStart: string): Promise<ReportRow | null> {
-  const admin = createAdminClient()
+async function loadReport(admin: SupabaseClient, weekStart: string): Promise<ReportRow | null> {
   const { data } = await admin
     .from('competitor_weekly_reports')
     .select('week_start, week_end, sections, status')
@@ -61,15 +35,15 @@ async function loadReport(weekStart: string): Promise<ReportRow | null> {
 // ─── GET: 분석 컨텍스트 내보내기 ──────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const { error } = await verifyAdmin()
-  if (error) return error
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const weekStart = request.nextUrl.searchParams.get('week')
   if (!weekStart) {
     return NextResponse.json({ error: 'week 파라미터가 필요합니다.' }, { status: 400 })
   }
 
-  const report = await loadReport(weekStart)
+  const report = await loadReport(gate.admin, weekStart)
   if (!report) {
     return NextResponse.json({ error: '해당 주 리포트가 없습니다. 먼저 사실 추출(생성)을 실행하세요.' }, { status: 404 })
   }
@@ -89,7 +63,7 @@ export async function GET(request: NextRequest) {
 
   const eventCount = areas.reduce((n, a) => n + a.events.length, 0)
 
-  const promptAdmin = createAdminClient()
+  const promptAdmin = gate.admin
   const [frame, lguContext] = await Promise.all([
     loadPrompt(promptAdmin, 'competitor_weekly_frame', FRAME_SPEC),
     loadPrompt(promptAdmin, 'competitor_weekly_lgu_context', LGU_CONTEXT),
@@ -225,8 +199,8 @@ function validateAnalysisPayload(analysis: Record<string, unknown>): string | nu
 }
 
 export async function POST(request: NextRequest) {
-  const { error: authError } = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let body: ImportBody
   try {
@@ -256,7 +230,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `분석 결과 스키마 오류: ${schemaError}` }, { status: 400 })
   }
 
-  const report = await loadReport(weekStart)
+  const report = await loadReport(gate.admin, weekStart)
   if (!report) return NextResponse.json({ error: '해당 주 리포트가 없습니다.' }, { status: 404 })
 
   const areasInput = analysis.areas as AnalysisInput[]
@@ -285,7 +259,7 @@ export async function POST(request: NextRequest) {
     ? (analysis.emerging_topics as unknown[]).filter((t): t is string => typeof t === 'string')
     : []
 
-  const admin = createAdminClient()
+  const admin = gate.admin
   const { error: updateError } = await admin
     .from('competitor_weekly_reports')
     .update({

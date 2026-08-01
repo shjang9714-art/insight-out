@@ -1,47 +1,11 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { generateIndustryInsightCards, generateCompanyInsightCards } from '@/lib/insight/generate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
-  }
-
-  return { error: null }
-}
 
 /**
  * POST /api/admin/insights
@@ -50,8 +14,8 @@ async function verifyAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { error: authError } = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
     let days: number | undefined
     let maxThemes: number | undefined
@@ -67,7 +31,7 @@ export async function POST(request: NextRequest) {
       if (body.scope === 'company') scope = 'company'
     } catch { /* body 없음 — 기본값 사용 */ }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
 
     if (scope === 'company') {
       const deadline = Date.now() + 270_000
@@ -92,10 +56,10 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const { error: authError } = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('insight_cards')
       .select('*')

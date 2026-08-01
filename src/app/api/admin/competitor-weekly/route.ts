@@ -1,7 +1,5 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { generateCompetitorWeeklyReport } from '@/lib/competitor-weekly/generate'
 import { runJob } from '@/lib/jobs/run-job'
 
@@ -9,40 +7,6 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }), userId: null }
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }), userId: null }
-  }
-
-  return { error: null, userId: user.id }
-}
 
 /**
  * POST /api/admin/competitor-weekly
@@ -51,8 +15,8 @@ async function verifyAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { error: authError, userId } = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
     let weekStart: string | undefined
     try {
@@ -60,9 +24,9 @@ export async function POST(request: NextRequest) {
       if (typeof body.weekStart === 'string' && body.weekStart) weekStart = body.weekStart
     } catch { /* body 없음 — 기본값(최근 완결된 주) 사용 */ }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     const deadline = Date.now() + 270_000
-    const result = await runJob(admin, { key: 'admin:competitor-weekly', trigger: 'admin', startedBy: userId ?? undefined }, () =>
+    const result = await runJob(admin, { key: 'admin:competitor-weekly', trigger: 'admin', startedBy: gate.userId }, () =>
       generateCompetitorWeeklyReport(admin, { weekStart, deadline })
     )
     return NextResponse.json(result)

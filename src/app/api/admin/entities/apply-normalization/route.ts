@@ -1,7 +1,7 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { after, NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient as createServerSupabaseClient } from '@/lib/supabase/server'
 import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
 import { createMergeJob, getMergeJob, updateMergeJob } from '@/lib/admin/merge-progress'
 
@@ -9,44 +9,6 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return { supabase: null, accessToken: null, error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return { supabase: null, accessToken: null, error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
-  }
-
-  // Get access token for background job usage
-  const { data: { session } } = await supabase.auth.getSession()
-  const accessToken = session?.access_token ?? null
-
-  return { supabase, accessToken, error: null }
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function applyGroup(bgClient: SupabaseClient<any>, group: NormalizationGroup, jobId: string) {
@@ -113,8 +75,12 @@ async function applyGroup(bgClient: SupabaseClient<any>, group: NormalizationGro
  * 백그라운드로 실행 후 jobId 즉시 반환 (202)
  */
 export async function POST(request: NextRequest) {
-  const { accessToken, error: authError } = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
+
+  const supabase = await createServerSupabaseClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  const accessToken = session?.access_token ?? null
 
   let groups: NormalizationGroup[]
   try {
@@ -171,8 +137,8 @@ export async function POST(request: NextRequest) {
  * 진행 상태 폴링
  */
 export async function GET(request: NextRequest) {
-  const { error: authError } = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const jobId = request.nextUrl.searchParams.get('jobId')
   if (!jobId) {

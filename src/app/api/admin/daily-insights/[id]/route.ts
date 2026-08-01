@@ -1,46 +1,10 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { DAILY_INSIGHT_CATEGORIES } from '@/lib/daily-insights/constants'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
-  }
-
-  return { error: null }
-}
 
 const VALID_STATUSES = ['published', 'rejected'] as const
 type DailyInsightStatus = typeof VALID_STATUSES[number]
@@ -67,8 +31,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error: authError } = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
     const { id } = await params
     const body = (await request.json()) as PatchBody
@@ -110,7 +74,7 @@ export async function PATCH(
       return NextResponse.json({ error: '변경할 필드가 없습니다.' }, { status: 400 })
     }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('daily_insights')
       .update(patch)
