@@ -1,14 +1,16 @@
 import 'server-only'
 
 import { NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { AUTH_MESSAGES } from '@/lib/admin/auth-messages'
 import { hasCapability, type AdminCapability } from '@/lib/admin/capabilities'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { startAudit } from '@/lib/admin/audit'
 
 type Fail = { ok: false; response: NextResponse }
-type Ok = { ok: true; admin: SupabaseClient; userId: string; role: string }
+type Ok = { ok: true; admin: SupabaseClient; userId: string; role: string; auditId: string | null }
 
 export async function verifyAdminRequest(
   opts?: { capability?: AdminCapability },
@@ -44,6 +46,19 @@ export async function verifyAdminRequest(
     }
   }
 
-  // 486: 감사 로그 기록 지점
-  return { ok: true, admin: createAdminClient(), userId: user.id, role }
+  const admin = createAdminClient()
+  const requestHeaders = await headers()
+  const method = requestHeaders.get('x-http-method') ?? undefined
+  const path = requestHeaders.get('x-pathname') ?? undefined
+  const auditId = method === 'GET' || method === 'HEAD'
+    ? null
+    : await startAudit(admin, {
+        actorId: user.id,
+        actorEmail: user.email,
+        action: `${method ?? 'UNKNOWN'} ${path ?? 'unknown'}`,
+        method,
+        path,
+        capability: opts?.capability,
+      })
+  return { ok: true, admin, userId: user.id, role, auditId }
 }

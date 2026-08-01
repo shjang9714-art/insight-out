@@ -937,8 +937,12 @@ export default function AdminContentManager() {
     if (!window.confirm(`"${content.title}" 콘텐츠를 삭제하시겠습니까?`)) return
     setWorkingId(content.id)
     setError(null)
-    const { error: deleteError } = await supabase
-      .from('contents').delete().eq('id', content.id)
+    const response = await fetch('/api/admin/contents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [content.id] }),
+    })
+    const deleteError = response.ok ? null : new Error('콘텐츠 삭제 요청 실패')
 
     if (deleteError) {
       setError(`콘텐츠 삭제에 실패했습니다: ${deleteError.message}`)
@@ -1275,10 +1279,12 @@ export default function AdminContentManager() {
     setIsBulkWorking(true)
     setError(null)
 
-    const { error: bulkError } = await supabase
-      .from('contents')
-      .delete()
-      .in('id', ids)
+    const response = await fetch('/api/admin/contents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    const bulkError = response.ok ? null : new Error('콘텐츠 일괄 삭제 요청 실패')
 
     if (bulkError) {
       setError(`일괄 삭제에 실패했습니다: ${bulkError.message}`)

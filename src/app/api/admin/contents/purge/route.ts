@@ -1,5 +1,6 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
+import { completeAudit } from '@/lib/admin/audit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -33,11 +34,27 @@ export async function POST() {
     if (!gate.ok) return gate.response
 
     const admin = gate.admin
+    const { data: targets } = await admin.from('contents').select('id').not('original_url', 'is', null)
+    const targetIds = (targets ?? []).map((row) => row.id)
+    const [bookmarks, archiveItems] = targetIds.length > 0
+      ? await Promise.all([
+          admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', targetIds),
+          admin.from('archive_items').select('id', { count: 'exact', head: true }).in('content_id', targetIds),
+        ])
+      : [{ count: 0 }, { count: 0 }]
     const { error, count } = await admin
       .from('contents')
       .delete({ count: 'exact' })
       .not('original_url', 'is', null)
 
+    await completeAudit(admin, gate.auditId, {
+      action: 'data.purge',
+      targetType: 'contents',
+      targetCount: count ?? 0,
+      payload: { ids: targetIds.slice(0, 50), bookmarkCascadeCount: bookmarks.count ?? 0, archiveItemCascadeCount: archiveItems.count ?? 0 },
+      outcome: error ? 'failed' : 'ok',
+      error: error?.message,
+    })
     if (error) throw error
     return NextResponse.json({ deleted: count ?? 0 })
   } catch (err) {
