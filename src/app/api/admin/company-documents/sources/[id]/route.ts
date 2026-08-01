@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { COMPANY_DOC_SOURCE_KINDS } from '@/lib/company-docs/constants'
 import type { CompanyDocumentSourceKind } from '@/lib/types'
+import { completeAudit } from '@/lib/admin/audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +83,9 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   if (!auth.ok) return auth.response
   const { id } = await params
 
+  const { data: source } = await auth.admin.from('document_sources').select('name').eq('id', id).single()
   const { error } = await auth.admin.from('document_sources').delete().eq('id', id)
+  await completeAudit(auth.admin, auth.auditId, { action: 'source.delete', targetType: 'sources', targetId: id, payload: { name: source?.name ?? null }, outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) {
     console.error('[company-documents/sources] 삭제 실패:', error)
     return NextResponse.json({ error: '소스 삭제에 실패했습니다.' }, { status: 500 })

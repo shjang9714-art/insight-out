@@ -32,6 +32,7 @@ import {
   FolderTree,
   UserCheck,
   FlaskConical,
+  ShieldCheck,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -59,6 +60,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/errors', label: '작업·오류 센터', description: '수집·본문추출·AI생성·번역/TTS·발행 실패를 모아 재실행합니다.', roadmap: '(준비중 — S9)', icon: AlertTriangle, disabled: true, badge: '준비중' },
       { href: '/admin/job-runs', label: '작업 이력', description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.', icon: History },
       { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
+      { href: '/admin/audit-log', label: '감사 로그', description: '관리자 쓰기 작업과 처리 결과를 확인합니다.', icon: ShieldCheck },
     ],
   },
   {

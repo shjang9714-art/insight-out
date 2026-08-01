@@ -5,6 +5,7 @@ import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { revalidatePath } from 'next/cache'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 import { requireAdminAction } from '@/lib/admin/require-admin-action'
+import { completeAudit } from '@/lib/admin/audit'
 
 function serviceClient() {
   return createServiceClient(
@@ -17,7 +18,7 @@ export async function updateUserProfileByAdmin(
   userId: string,
   patch: { name: string; team: string; team_name: string },
 ) {
-  const gate = await requireAdminAction()
+  const gate = await requireAdminAction({ action: 'user.profile.update' })
   if (!gate.ok) return { ok: false, error: gate.error }
 
   const name = patch.name.trim()
@@ -38,6 +39,7 @@ export async function updateUserProfileByAdmin(
     })
     .eq('id', userId)
 
+  await completeAudit(serviceClient(), gate.auditId, { targetType: 'users', targetId: userId, outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) return { ok: false, error: `사용자 정보 저장 실패: ${error.message}` }
 
   revalidatePath('/admin/users')
@@ -45,20 +47,23 @@ export async function updateUserProfileByAdmin(
 }
 
 export async function updateUserRole(userId: string, newRole: UserRole) {
-  const gate = await requireAdminAction()
+  const gate = await requireAdminAction({ action: 'user.role.update' })
   if (!gate.ok) return { error: gate.error }
 
-  const { error } = await serviceClient()
+  const svc = serviceClient()
+  const { data: previous } = await svc.from('users').select('role').eq('id', userId).single()
+  const { error } = await svc
     .from('users')
     .update({ role: newRole })
     .eq('id', userId)
 
+  await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, payload: { previousRole: previous?.role ?? null, nextRole: newRole }, outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) return { error: `권한 변경 실패: ${error.message}` }
   return { error: null }
 }
 
 export async function promoteByEmail(email: string) {
-  const gate = await requireAdminAction()
+  const gate = await requireAdminAction({ action: 'user.role.update' })
   if (!gate.ok) return { error: gate.error }
 
   const svc = serviceClient()
@@ -77,13 +82,14 @@ export async function promoteByEmail(email: string) {
     .update({ role: 'admin' })
     .eq('id', target.id)
 
+  await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: target.id, payload: { previousRole: target.role, nextRole: 'admin' }, outcome: updateErr ? 'failed' : 'ok', error: updateErr?.message })
   if (updateErr) return { error: `권한 변경 실패: ${updateErr.message}`, user: null }
 
   return { error: null, user: { ...target, role: 'admin' as UserRole } }
 }
 
 export async function approveUser(userId: string) {
-  const gate = await requireAdminAction()
+  const gate = await requireAdminAction({ action: 'user.approval.update' })
   if (!gate.ok) return { error: gate.error }
 
   const { error } = await serviceClient()
@@ -95,13 +101,14 @@ export async function approveUser(userId: string) {
     })
     .eq('id', userId)
 
+  await completeAudit(serviceClient(), gate.auditId, { targetType: 'users', targetId: userId, payload: { nextStatus: 'approved' }, outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) return { error: `승인 처리 실패: ${error.message}` }
   revalidatePath('/admin/users')
   return { error: null }
 }
 
 export async function rejectUser(userId: string) {
-  const gate = await requireAdminAction()
+  const gate = await requireAdminAction({ action: 'user.approval.update' })
   if (!gate.ok) return { error: gate.error }
 
   const { error } = await serviceClient()
@@ -113,6 +120,7 @@ export async function rejectUser(userId: string) {
     })
     .eq('id', userId)
 
+  await completeAudit(serviceClient(), gate.auditId, { targetType: 'users', targetId: userId, payload: { nextStatus: 'rejected' }, outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) return { error: `거절 처리 실패: ${error.message}` }
   revalidatePath('/admin/users')
   return { error: null }

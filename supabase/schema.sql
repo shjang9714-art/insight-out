@@ -6363,3 +6363,27 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 --
 
 -- \unrestrict 0g4lUvC1EHN0RUcEujbYZdz2XTLCWNPeUBUjC9BOnwIdb0q99RjrWkwOIa1wRNC
+-- 486: 관리자 행위 감사 로그
+create table if not exists public.admin_audit_log (
+  id bigint generated always as identity primary key,
+  actor_id uuid references public.users(id) on delete set null,
+  actor_email text,
+  action text not null,
+  method text,
+  path text,
+  capability text,
+  target_type text,
+  target_id text,
+  target_count integer,
+  payload jsonb,
+  outcome text not null default 'started' check (outcome in ('started', 'ok', 'failed')),
+  error text,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+create index if not exists admin_audit_log_created_idx on public.admin_audit_log (created_at desc);
+create index if not exists admin_audit_log_actor_idx on public.admin_audit_log (actor_id, created_at desc);
+create index if not exists admin_audit_log_target_idx on public.admin_audit_log (target_type, target_id);
+alter table public.admin_audit_log enable row level security;
+drop policy if exists "admin_audit_log: admin 조회" on public.admin_audit_log;
+create policy "admin_audit_log: admin 조회" on public.admin_audit_log for select using (public.is_admin());

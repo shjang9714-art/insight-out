@@ -1,5 +1,6 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
+import { completeAudit } from '@/lib/admin/audit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,7 @@ export async function POST() {
       .delete({ count: 'exact' })
       .not('id', 'is', null)
 
+    await completeAudit(admin, gate.auditId, { action: 'data.purge', targetType: 'youtube_videos', targetCount: count ?? 0, outcome: error ? 'failed' : 'ok', error: error?.message })
     if (error) throw error
     return NextResponse.json({ deleted: count ?? 0 })
   } catch (err) {
