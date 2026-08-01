@@ -316,8 +316,8 @@ export default function McpTokenBoard() {
           rows={tokens}
           rowKey={token => token.id}
           minWidth="min-w-[900px]"
-          loading={loading}
-          empty={{ message: '아직 발급된 토큰이 없습니다.' }}
+          state={loading ? 'loading' : tokens.length === 0 ? 'empty' : 'idle'}
+          emptyMessage="아직 발급된 토큰이 없습니다."
           rowClassName={token => token.revoked_at ? 'opacity-50' : ''}
         />
       </section>

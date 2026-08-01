@@ -328,7 +328,7 @@ export default function LlmManager() {
         columns={ROUTING_COLUMNS}
         rows={[]}
         rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
-        loading
+        state="loading"
       />
     )
   }
@@ -660,10 +660,9 @@ export default function LlmManager() {
             columns={ROUTING_COLUMNS}
             rows={[]}
             rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
-            empty={{
-              message: '설정된 라우팅이 없습니다.',
-              hint: '폴백 풀로 동작 중입니다.',
-            }}
+            state="empty"
+            emptyMessage="설정된 라우팅이 없습니다."
+            emptyHint="폴백 풀로 동작 중입니다."
           />
         ) : (
           <div className="space-y-4">
@@ -679,6 +678,7 @@ export default function LlmManager() {
                   columns={ROUTING_COLUMNS}
                   rows={rows}
                   rowKey={row => `${row.task_type}-${row.priority}-${row.provider}-${row.model_id}`}
+                  state="idle"
                   rowClassName={row => cn(
                     !row.is_active && 'opacity-50',
                     row.last_error && 'bg-amber-50/50 dark:bg-amber-500/5'
