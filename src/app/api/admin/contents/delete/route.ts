@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
   const [bookmarks, archiveItems] = await Promise.all([
     gate.admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
-    gate.admin.from('archive_items').select('id', { count: 'exact', head: true }).in('content_id', ids),
+    gate.admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
   ])
   const { error, count } = await gate.admin.from('contents').delete({ count: 'exact' }).in('id', ids)
   await completeAudit(gate.admin, gate.auditId, {
@@ -41,7 +41,11 @@ export async function POST(request: NextRequest) {
     targetType: 'contents',
     targetId: ids.length === 1 ? ids[0] : undefined,
     targetCount: count ?? 0,
-    payload: { ids: ids.slice(0, 50), bookmarkCascadeCount: bookmarks.count ?? 0, archiveItemCascadeCount: archiveItems.count ?? 0 },
+    payload: {
+      ids: ids.slice(0, 50),
+      bookmarkCascadeCount: bookmarks.error ? null : bookmarks.count ?? 0,
+      archiveItemCascadeCount: archiveItems.error ? null : archiveItems.count ?? 0,
+    },
     outcome: error ? 'failed' : 'ok',
     error: error?.message,
   })
