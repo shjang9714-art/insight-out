@@ -1,5 +1,4 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import type { NextRequest } from 'next/server'
 import { buildDailyBriefHtml, gatherDailyBrief } from '@/lib/ops/daily-brief'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -8,42 +7,10 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-async function verifyAdmin(): Promise<Response | null> {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return Response.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  if (!profile || profile.role !== 'admin') {
-    return Response.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-  return null
-}
 
 export async function GET(request: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   try {
     const fail = request.nextUrl.searchParams.get('fail')

@@ -50,7 +50,7 @@ function addCandidate(
 
 export async function GET(request: NextRequest) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   const query = normalizeLabel(request.nextUrl.searchParams.get('q') ?? '')
   const queryKey = normalizeKey(query)
@@ -112,7 +112,7 @@ interface AiSuggestionBody {
 
 export async function POST(request: NextRequest) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   let body: AiSuggestionBody
   try {

@@ -1,47 +1,11 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import type { RejectedBy } from '@/lib/crawler/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // verifyAdmin: crawl-now/route.ts 와 동일하게 복제 (공통 추출은 추후)
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-
-  return null
-}
 
 export interface SourceStatusInfo {
   inserted7d: number
@@ -79,11 +43,11 @@ const REJECT_REASON_KEYS: (keyof RejectedBy)[] = ['ad', 'excludedGroup', 'tooSho
  * admin 인증 필수.
  */
 export async function GET() {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
     let { data, error } = await admin

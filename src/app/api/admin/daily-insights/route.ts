@@ -1,45 +1,9 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
-  }
-
-  return { error: null }
-}
 
 /**
  * GET /api/admin/daily-insights?day_of=YYYY-MM-DD
@@ -47,10 +11,10 @@ async function verifyAdmin() {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { error: authError } = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     const requestedDay = request.nextUrl.searchParams.get('day_of')
 
     const { data: dayRows, error: dayError } = await admin

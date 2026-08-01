@@ -8,7 +8,8 @@
     "prebuild": "node scripts/build-topic-cover-manifest.mjs && node scripts/check-prefetch.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:admin-auth": "node scripts/check-admin-auth.mjs"
   },
   "dependencies": {
     "@extractus/article-extractor": "^8.1.0",

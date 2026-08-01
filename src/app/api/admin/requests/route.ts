@@ -1,47 +1,11 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import type { OpsRequestRow } from '@/lib/admin/ops-requests'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // verifyAdmin: source-status/route.ts 와 동일하게 복제 (공통 추출은 추후)
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-
-  return null
-}
 
 const TABLE_MISSING_CODE = '42P01'
 const COLUMN_MISSING_CODE = '42703'
@@ -51,15 +15,15 @@ const COLUMN_MISSING_CODE = '42703'
  * ops_requests 목록 조회. 테이블 미적용(42P01) → graceful 빈 목록.
  */
 export async function GET(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const postType = req.nextUrl.searchParams.get('post_type')
   const status = req.nextUrl.searchParams.get('status')
   const owner = req.nextUrl.searchParams.get('owner')
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     let query = admin
       .from('ops_requests')
       .select('*')
@@ -91,8 +55,8 @@ export async function GET(req: NextRequest) {
  * 신규 요청/공지 생성.
  */
 export async function POST(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const body = await req.json() as Partial<OpsRequestRow>
   const title = body.title?.trim()
@@ -119,7 +83,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     let insertRes = await admin.from('ops_requests').insert(payload).select('*').single()
 
     if (insertRes.error?.code === COLUMN_MISSING_CODE && ('phase' in payload || 'seq' in payload)) {
@@ -152,8 +116,8 @@ export async function POST(req: NextRequest) {
  * status='done' 전환 시 resolved_at 은 DB 트리거(187 SQL)가 자동 세팅.
  */
 export async function PATCH(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const body = await req.json() as Partial<OpsRequestRow> & { id?: string }
   const { id, ...rest } = body
@@ -172,7 +136,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     let updateRes = await admin.from('ops_requests').update(updatePayload).eq('id', id).select('*').single()
 
     if (updateRes.error?.code === COLUMN_MISSING_CODE && ('phase' in updatePayload || 'seq' in updatePayload)) {

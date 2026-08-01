@@ -1,30 +1,14 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildRiseFacts, saveRiseFactors, verifyRiseFactors } from '@/lib/keywords/rise'
 import { getKeywordSnapshot } from '@/lib/keywords/detail'
 import { RISE_FRAME_FALLBACK } from '@/lib/keywords/rise-frame'
 import { loadPrompt } from '@/lib/prompts/load-prompt'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-async function verifyAdmin(): Promise<NextResponse | null> {
-  const supabase = await createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-  return null
-}
 
 async function checkEligibility(name: string): Promise<{
   eligible: boolean
@@ -40,8 +24,8 @@ async function checkEligibility(name: string): Promise<{
 }
 
 export async function GET(request: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const name = request.nextUrl.searchParams.get('name')?.trim() ?? ''
   if (!name) {
@@ -128,8 +112,8 @@ function validateAnalysis(analysis: Record<string, unknown>): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let body: ImportBody
   try {

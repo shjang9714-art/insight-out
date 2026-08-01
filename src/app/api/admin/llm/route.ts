@@ -1,48 +1,16 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
   effectiveTokenLimit,
 } from '@/lib/llm/token-limit'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { getKstPeriod } from '@/lib/translate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-
-  return null
-}
 
 /**
  * GET /api/admin/llm
@@ -50,11 +18,11 @@ async function verifyAdmin() {
  * LLM 호출 없음 — DB 조회만.
  */
 export async function GET() {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest({ capability: 'manage_settings' })
+  if (!gate.ok) return gate.response
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const period = getKstPeriod()
 
     const [usageRes, settingsRes, routingRes, modelsRes] = await Promise.all([
@@ -110,8 +78,8 @@ export async function GET() {
  * llm_settings 업데이트 — 키 값은 다루지 않음.
  */
 export async function PATCH(req: Request) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest({ capability: 'manage_settings' })
+  if (!gate.ok) return gate.response
 
   try {
     const body = await req.json() as {
@@ -125,7 +93,7 @@ export async function PATCH(req: Request) {
       set_active?: boolean
     }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
 
     if (body.task_type !== undefined) {
       if (

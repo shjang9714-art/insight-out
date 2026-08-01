@@ -32,7 +32,7 @@ function hostnameOf(url: string): string | null {
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
   const { contentId } = await params
 
   let body: ActionBody

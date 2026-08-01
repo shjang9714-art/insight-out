@@ -1,7 +1,5 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { PROMPT_CATALOG } from '@/lib/prompts/catalog'
 
 export const runtime = 'nodejs'
@@ -15,36 +13,14 @@ export const dynamic = 'force-dynamic'
  * PATCH : { key, prompt_text, label? } upsert
  */
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) { toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }) }
-  }
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
-  }
-  return { error: null }
-}
 
 interface DbPromptRow { key: string; label: string | null; prompt_text: string; updated_at: string }
 
 export async function GET() {
-  const { error } = await verifyAdmin()
-  if (error) return error
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
-  const admin = createAdminClient()
+  const admin = gate.admin
   const { data, error: dbError } = await admin
     .from('llm_prompts')
     .select('key, label, prompt_text, updated_at')
@@ -82,8 +58,8 @@ export async function GET() {
 interface PatchBody { key?: unknown; prompt_text?: unknown; label?: unknown }
 
 export async function PATCH(request: NextRequest) {
-  const { error: authError } = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let body: PatchBody
   try {
@@ -104,7 +80,7 @@ export async function PATCH(request: NextRequest) {
   const entry = PROMPT_CATALOG.find(e => e.key === key)!
   const label = typeof body.label === 'string' && body.label.trim() ? body.label.trim() : entry.label
 
-  const admin = createAdminClient()
+  const admin = gate.admin
   const { error: upsertError } = await admin
     .from('llm_prompts')
     .upsert({ key, label, prompt_text: promptText, updated_at: new Date().toISOString() }, { onConflict: 'key' })

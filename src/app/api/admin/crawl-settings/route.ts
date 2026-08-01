@@ -1,7 +1,5 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { DEFAULT_MIN_BODY_LENGTH } from '@/lib/crawler/quality'
 
 export const runtime = 'nodejs'
@@ -10,47 +8,17 @@ export const dynamic = 'force-dynamic'
 const MIN_ALLOWED = 50
 const MAX_ALLOWED = 5000
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-
-  return null
-}
 
 /**
  * GET /api/admin/crawl-settings
  * 현재 본문 최소 길이 설정. crawl_settings 미적용(42P01) 시 기본값 250 반환(graceful).
  */
 export async function GET() {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest({ capability: 'manage_settings' })
+  if (!gate.ok) return gate.response
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('crawl_settings')
       .select('min_body_length')
@@ -77,8 +45,8 @@ export async function GET() {
  * body: { min_body_length: number } — 50~5000 범위.
  */
 export async function PATCH(req: Request) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest({ capability: 'manage_settings' })
+  if (!gate.ok) return gate.response
 
   try {
     const body = await req.json() as { min_body_length?: number }
@@ -96,7 +64,7 @@ export async function PATCH(req: Request) {
       )
     }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { error } = await admin
       .from('crawl_settings')
       .upsert({ id: true, min_body_length: minBodyLength }, { onConflict: 'id' })

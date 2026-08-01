@@ -1,7 +1,5 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeReportHtml } from '@/lib/reports/sanitize-html'
 import type { AiReportType } from '@/lib/types'
 
@@ -19,28 +17,6 @@ export const dynamic = 'force-dynamic'
 
 const REPORT_TYPES: AiReportType[] = ['시장동향', '경쟁사분석', '키워드분석', '서비스리포트', '자유주제']
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) { toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) {
-    return { error: NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 }), userId: null }
-  }
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') {
-    return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }), userId: null }
-  }
-  return { error: null, userId: user.id }
-}
 
 interface ImportBody {
   type?: string
@@ -59,8 +35,8 @@ interface ImportBody {
  * body: { reportId, title?, summary?, bodyHtml? }
  */
 export async function PATCH(request: NextRequest) {
-  const { error: authError } = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let body: ImportBody & { reportId?: string }
   try {
@@ -82,7 +58,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: '변경할 항목이 없습니다.' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin = gate.admin
   const { error } = await admin.from('ai_reports').update(patch).eq('id', reportId)
   if (error) {
     console.error('[reports/import] PATCH 실패:', error.message)
@@ -92,8 +68,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error: authError, userId } = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let body: ImportBody
   try {
@@ -113,12 +89,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'topic·title·bodyHtml 은 필수입니다.' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin = gate.admin
 
   const { data: inserted, error: insertError } = await admin
     .from('ai_reports')
     .insert({
-      user_id: userId,
+      user_id: gate.userId,
       type,
       status: 'completed',
       title,
