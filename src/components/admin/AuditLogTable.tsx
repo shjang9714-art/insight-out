@@ -28,5 +28,5 @@ const columns: AdminTableColumn<AuditLogRow>[] = [
 ]
 
 export function AuditLogTable({ rows }: { rows: AuditLogRow[] }) {
-  return <AdminTable columns={columns} rows={rows} rowKey={(row) => String(row.id)} state={rows.length === 0 ? 'empty' : 'idle'} emptyMessage="감사 기록이 없습니다." rowClassName={(row) => row.outcome === 'started' ? 'bg-warning-soft/40' : ''} />
+  return <AdminTable columns={columns} rows={rows} rowKey={(row) => String(row.id)} state={rows.length === 0 ? 'empty' : 'idle'} emptyMessage="감사 기록이 없습니다." truncated={rows.length === 100 ? { shown: 100, total: null } : undefined} rowClassName={(row) => row.outcome === 'started' ? 'bg-warning-soft/40' : ''} />
 }

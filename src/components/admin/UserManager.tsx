@@ -35,6 +35,8 @@ import {
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { DEPARTMENT_DISPLAY_LABEL, FIXED_DEPARTMENT, isOrgGroup, ORG_GROUPS } from '@/lib/org'
 import { cn } from '@/lib/utils'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 interface UserRow {
   id: string
@@ -51,9 +53,15 @@ interface UserRow {
 
 interface Props {
   initialUsers: UserRow[]
+  tableState: AdminTableState
+  page: number
+  pageSize: number
+  total: number | null
+  sort: { key: string; dir: 'asc' | 'desc' }
 }
 
-export default function UserManager({ initialUsers }: Props) {
+export default function UserManager({ initialUsers, tableState, page, pageSize, total, sort }: Props) {
+  const table = useAdminTable({ defaultSort: sort, pageSize })
   const [users, setUsers] = useState<UserRow[]>(initialUsers)
   const [error, setError] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -216,6 +224,15 @@ export default function UserManager({ initialUsers }: Props) {
 
   const pendingUsers = users.filter(u => u.approval_status === 'pending')
   const adminCount = users.filter(u => u.role === 'admin').length
+  const columns: AdminTableColumn<UserRow>[] = [
+    { key: 'email', header: '이메일', sortKey: 'email', truncate: true, width: 'max-w-[200px]', cell: (user) => <span className="font-medium text-foreground" title={user.email}>{user.email}</span> },
+    { key: 'name', header: '이름', sortKey: 'name', truncate: true, width: 'max-w-[200px]', cell: (user) => <span className="text-muted-foreground" title={user.name ?? undefined}>{user.name || '—'}</span> },
+    { key: 'organization', header: '조직', width: 'min-w-[150px]', cell: (user) => <><p className="text-xs font-medium text-foreground"><span className="mr-1 text-muted-foreground">그룹</span>{user.team || '—'}</p><p className="mt-1 text-xs text-muted-foreground"><span className="mr-1">팀</span>{user.team_name || '—'}</p></> },
+    { key: 'role', header: '권한', sortKey: 'role', cell: (user) => user.role === 'admin' ? <span className="inline-flex items-center gap-1 rounded-full bg-brand-600/10 px-2.5 py-0.5 text-xs font-semibold text-brand-600"><ShieldCheck className="h-3 w-3" />admin</span> : <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">user</span> },
+    { key: 'approval', header: '승인', sortKey: 'approval_status', cell: (user) => user.approval_status === 'approved' ? <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge> : user.approval_status === 'rejected' ? <StatusBadge tone="negative" label="거절" /> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge> },
+    { key: 'created_at', header: '가입일', sortKey: 'created_at', nowrap: true, cell: (user) => <span className="text-xs text-muted-foreground">{new Date(user.created_at).toLocaleDateString('ko-KR')}</span> },
+    { key: 'actions', header: '작업', align: 'right', nowrap: true, cell: (user) => <div className="flex items-center justify-end gap-1.5">{user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}{user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}<button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button><button onClick={() => handleToggleRole(user)} disabled={togglingId === user.id || isPending} className={cn('inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40', user.role === 'admin' ? 'bg-destructive/10 text-destructive' : 'bg-positive-soft text-positive')}>{togglingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : user.role === 'admin' ? <><ShieldOff className="h-3 w-3" />user로 변경</> : <><ShieldCheck className="h-3 w-3" />admin으로 승격</>}</button></div> },
+  ]
 
   return (
     <div className="space-y-6">
@@ -326,127 +343,25 @@ export default function UserManager({ initialUsers }: Props) {
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          전체 {users.length}명 · admin {adminCount}명
+          전체 {total?.toLocaleString() ?? '확인 불가'}명 · 현재 페이지 admin {adminCount}명
         </p>
       </div>
 
       {/* ── 사용자 테이블 ── */}
-      {users.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-          등록된 사용자가 없습니다.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[700px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">이메일</th>
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">조직</th>
-                <th className="px-4 py-3">권한</th>
-                <th className="px-4 py-3">승인</th>
-                <th className="px-4 py-3">가입일</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {users.map(u => (
-                <tr key={u.id} className="transition-colors hover:bg-accent/50">
-                  <td className="max-w-[200px] truncate px-4 py-3 font-medium text-foreground" title={u.email}>{u.email}</td>
-                  <td className="max-w-[200px] truncate px-4 py-3 text-muted-foreground" title={u.name ?? undefined}>{u.name || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td
-                    className="min-w-[150px] px-4 py-3"
-                    title={u.department ?? undefined}
-                  >
-                    <p className="text-xs font-medium text-foreground">
-                      <span className="mr-1 text-muted-foreground">그룹</span>
-                      {u.team || <span className="text-muted-foreground/40">—</span>}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      <span className="mr-1">팀</span>
-                      {u.team_name || <span className="text-muted-foreground/40">—</span>}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3">
-                    {u.role === 'admin' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-600/10 px-2.5 py-0.5 text-xs font-semibold text-brand-600">
-                        <ShieldCheck className="h-3 w-3" />
-                        admin
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                        user
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {u.approval_status === 'approved' ? (
-                      <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge>
-                    ) : u.approval_status === 'rejected' ? (
-                      <StatusBadge tone="negative" label="거절" />
-                    ) : (
-                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {new Date(u.created_at).toLocaleDateString('ko-KR')}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {u.approval_status !== 'approved' && (
-                        <button
-                          onClick={() => handleApprove(u)}
-                          disabled={approvingId === u.id || isPending}
-                          className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40"
-                        >
-                          {approvingId === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-                          승인
-                        </button>
-                      )}
-                      {u.approval_status !== 'rejected' && u.approval_status !== 'approved' && (
-                        <button
-                          onClick={() => handleReject(u)}
-                          disabled={approvingId === u.id || isPending}
-                          className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40"
-                        >
-                          {approvingId === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
-                          거절
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleEditOpen(u)}
-                        className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-                      >
-                        <Pencil className="h-3 w-3" />
-                        정보 수정
-                      </button>
-                      <button
-                        onClick={() => handleToggleRole(u)}
-                        disabled={togglingId === u.id || isPending}
-                        className={cn(
-                          'inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40',
-                          u.role === 'admin'
-                            ? 'bg-destructive/10 text-destructive'
-                            : 'bg-positive-soft text-positive'
-                        )}
-                      >
-                        {togglingId === u.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : u.role === 'admin' ? (
-                          <><ShieldOff className="h-3 w-3" />user로 변경</>
-                        ) : (
-                          <><ShieldCheck className="h-3 w-3" />admin으로 승격</>
-                        )}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={users}
+        rowKey={(user) => user.id}
+        minWidth="min-w-[900px]"
+        state={tableState}
+        emptyMessage="등록된 사용자가 없습니다."
+        errorMessage="사용자 목록을 불러오지 못했습니다."
+        onRetry={() => window.location.reload()}
+        sort={table.sort}
+        onSortChange={table.toggleSort}
+        pagination={{ page, pageSize, total }}
+        onPageChange={table.setPage}
+      />
 
       <Dialog open={editingUser !== null} onOpenChange={handleEditOpenChange}>
         <DialogContent className="max-w-md">
