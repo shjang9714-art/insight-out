@@ -1,3 +1,4 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { DartApiError } from '@/lib/company-docs/dart'
@@ -15,22 +16,6 @@ interface CollectBody {
   since?: unknown
 }
 
-async function verifyAdmin(): Promise<NextResponse | null> {
-  const supabase = await createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-  return null
-}
 
 function validateSince(value: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return '수집 시작일 형식이 올바르지 않습니다.'
@@ -45,8 +30,8 @@ function validateSince(value: string): string | null {
 }
 
 export async function POST(request: Request) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   let body: CollectBody
   try {

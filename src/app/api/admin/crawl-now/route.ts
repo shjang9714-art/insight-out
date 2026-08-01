@@ -1,57 +1,15 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { after, NextResponse, type NextRequest } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { runCrawl } from '@/lib/crawler/orchestrator'
 import {
   summarizeCrawlProgress,
   type CrawlProgressLog,
 } from '@/lib/crawler/progress'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json(
-      { error: '로그인이 필요합니다.' },
-      { status: 401 }
-    )
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json(
-      { error: '관리자 권한이 필요합니다.' },
-      { status: 403 }
-    )
-  }
-
-  return null
-}
 
 /**
  * POST /api/admin/crawl-now
@@ -61,8 +19,8 @@ async function verifyAdmin() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const authError = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
     let sourceId: string | undefined
     let backfillDays: number | undefined
@@ -73,7 +31,7 @@ export async function POST(request: NextRequest) {
       backfillDays = typeof raw === 'number' && raw >= 0 ? raw : undefined
     } catch { /* 전체 수집 */ }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     let sourcesTotal: number
 
     if (sourceId) {
@@ -112,8 +70,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const authError = await verifyAdmin()
-    if (authError) return authError
+    const gate = await verifyAdminRequest()
+    if (!gate.ok) return gate.response
 
     const startedAt = request.nextUrl.searchParams.get('startedAt')
     const sourcesTotal = Number(
@@ -133,7 +91,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const admin = createAdminClient()
+    const admin = gate.admin
     let { data, error } = await admin
       .from('crawl_logs')
       .select(`
