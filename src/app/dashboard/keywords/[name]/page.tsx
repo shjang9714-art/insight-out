@@ -129,7 +129,7 @@ function KeywordArticleTimeline({ articles }: { articles: KeywordArticle[] }) {
                   href={`/dashboard/contents/${article.id}`}
                   prefetch={false}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="noopener"
                   className="text-sm font-semibold leading-snug text-foreground transition-colors hover:text-brand-600"
                 >
                   {article.title}
@@ -167,7 +167,7 @@ function RiseFootnotes({
           href={`/dashboard/contents/${contentId}`}
           prefetch={false}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener"
           className="hover:underline"
         >
           [{index}]
@@ -245,7 +245,7 @@ function RiseFactorsSection({
                   href={`/dashboard/contents/${contentId}`}
                   prefetch={false}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="noopener"
                   className="transition-colors hover:text-brand-600"
                 >
                   {article?.title ?? '근거 콘텐츠'}

@@ -47,7 +47,7 @@ export default function ReportStyleCard({
   ctaLabel = '리포트 열기',
   openInNewTab = false,
 }: ReportStyleCardProps) {
-  const newTabProps = openInNewTab ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {}
+  const newTabProps = openInNewTab ? { target: '_blank' as const, rel: 'noopener' } : {}
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-brand-200 hover:shadow-[0_4px_20px_-6px_rgb(0_0_0/0.15)]">
       {/* 표지 — 제목 없이 유형 색 + 아이콘 + 워드마크 */}

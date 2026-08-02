@@ -128,7 +128,7 @@ export default function EntityEventTimeline({ events, updatedAt }: Props) {
                     href={`/dashboard/contents/${ev.citations[0]}`}
                     prefetch={false}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noopener"
                     aria-label={`${headline} 관련 기사로 이동`}
                     className="block text-sm font-semibold text-foreground leading-snug hover:underline focus-visible:outline-2 focus-visible:outline-brand-600 focus-visible:outline-offset-2"
                   >
@@ -156,7 +156,7 @@ export default function EntityEventTimeline({ events, updatedAt }: Props) {
                         href={`/dashboard/contents/${cid}`}
                         prefetch={false}
                         target="_blank"
-                        rel="noopener noreferrer"
+                        rel="noopener"
                         aria-label={`"${headline}" 근거 기사 보기`}
                         className="text-[11px] text-brand-600 hover:underline focus-visible:outline-2 focus-visible:outline-brand-600 focus-visible:outline-offset-2"
                       >

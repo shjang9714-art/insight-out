@@ -125,7 +125,7 @@ export default function ContentRow({
           href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`}
           prefetch={false}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener"
           className="min-w-0 flex-1"
         >
           {body}

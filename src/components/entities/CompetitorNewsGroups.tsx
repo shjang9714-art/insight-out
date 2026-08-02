@@ -59,7 +59,7 @@ function CompetitorCard({ result, articlesPerCard }: CardProps) {
                 href={`/dashboard/contents/${a.id}?origin=entities&view=competitor`}
                 prefetch={false}
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="noopener"
                 className="group flex items-start gap-2 rounded-md px-1 py-1 -mx-1 transition-colors hover:bg-muted/50"
               >
                 <span className="min-h-[2.8em] min-w-0 flex-1 text-sm leading-[1.4] text-foreground/85 line-clamp-2 transition-colors group-hover:text-brand-600">

@@ -201,7 +201,7 @@ export default function ContentListCard({
       href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`}
       prefetch={false}
       target="_blank"
-      rel="noopener noreferrer"
+      rel="noopener"
       className={cardClass}
     >
       <article className="h-full">{inner}</article>

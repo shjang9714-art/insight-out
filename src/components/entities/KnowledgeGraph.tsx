@@ -1257,7 +1257,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                         href={`/dashboard/contents/${c.content_id}`}
                         prefetch={false}
                         target="_blank"
-                        rel="noopener noreferrer"
+                        rel="noopener"
                         className="pointer-events-auto block text-xs leading-tight text-foreground hover:text-brand-600 hover:underline"
                       >
                         {c.title}
@@ -1348,7 +1348,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                       href={`/dashboard/contents/${c.id}`}
                       prefetch={false}
                       target="_blank"
-                      rel="noopener noreferrer"
+                      rel="noopener"
                       className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
                     >
                       {c.title}
@@ -1398,7 +1398,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                     href={`/dashboard/contents/${c.content_id}`}
                     prefetch={false}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noopener"
                     className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
                   >
                     {c.title}
@@ -1434,7 +1434,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                     href={`/dashboard/contents/${content.id}`}
                     prefetch={false}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noopener"
                     className="block text-xs text-foreground/80 hover:text-brand-600 hover:underline leading-snug line-clamp-2"
                   >
                     {content.title}

@@ -175,7 +175,7 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
                   href={item.href}
                   prefetch={false}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="noopener"
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >
@@ -243,7 +243,7 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
                   href={`/dashboard/contents/${item.id}`}
                   prefetch={false}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="noopener"
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >
