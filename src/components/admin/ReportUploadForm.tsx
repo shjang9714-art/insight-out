@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Upload, X, FileText, Loader2, CheckCircle } from 'lucide-react'
+import { Upload, X, FileText, Loader2 } from 'lucide-react'
 import { renderPdfCover } from '@/lib/contents/pdf-cover'
 import { uploadCover } from '@/lib/contents/upload-cover'
 import CoverImageField from '@/components/admin/CoverImageField'
@@ -45,18 +46,6 @@ function extLabel(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
   const map: Record<string, string> = { pdf: 'PDF', pptx: 'PPT', docx: 'Word', xlsx: 'Excel' }
   return map[ext] ?? ext.toUpperCase()
-}
-
-/** 표지 실패 사유 한글화(291) */
-const COVER_REASON_LABEL: Record<string, string> = {
-  render_failed:  '1페이지 렌더 실패',
-  blank_page:     '1페이지가 비어 있음(스캔 PDF일 수 있음)',
-  upload_failed:  '저장 실패',
-  update_failed:  '저장 실패',
-}
-function coverReasonLabel(reason?: string): string {
-  if (!reason) return '알 수 없는 오류'
-  return COVER_REASON_LABEL[reason] ?? reason
 }
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -99,24 +88,7 @@ export default function ReportUploadForm() {
   const [keywords, setKeywords]   = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError]         = useState<string | null>(null)
-  const [success, setSuccess]     = useState(false)
-  const [extractResult, setExtractResult] = useState<{
-    ok: boolean
-    chars?: number
-    lang?: string
-    translated?: boolean
-    summarized?: boolean
-    entities?: number
-    issues?: number
-    reason?: string
-    message?: string
-    coverSet?: boolean
-    coverReason?: string
-  } | null>(null)
-  const [coverGenerated, setCoverGenerated] = useState(false)
   const [coverFile, setCoverFile] = useState<File | null>(null)
-  // 표지 결과 표시용(291) — coverFile은 성공 화면 렌더 전 초기화되므로 별도 보관.
-  const [manualCoverUsed, setManualCoverUsed] = useState(false)
 
   // DB 메타데이터 로드
   useEffect(() => {
@@ -146,7 +118,6 @@ export default function ReportUploadForm() {
     setFile(f)
     setForm(prev => ({ ...prev, title: suggestTitle(f.name) }))
     setError(null)
-    setSuccess(false)
   }
 
   const clearFile = () => {
@@ -179,7 +150,7 @@ export default function ReportUploadForm() {
 
     setIsUploading(true)
     setError(null)
-    setManualCoverUsed(false)
+    const secondaryErrors: string[] = []
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -259,10 +230,9 @@ export default function ReportUploadForm() {
         try {
           const ext = coverFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
           await uploadCover(supabase, contentId, coverFile, ext)
-          setCoverGenerated(true)
-          setManualCoverUsed(true)
         } catch (coverErr) {
           console.error('[upload] 커버 업로드 실패:', coverErr)
+          secondaryErrors.push(`커버 업로드 실패: ${coverErr instanceof Error ? coverErr.message : '알 수 없는 오류'}`)
         }
       }
 
@@ -271,11 +241,10 @@ export default function ReportUploadForm() {
       if (ext === 'pdf') {
         try {
           const extractRes = await fetch(`/api/admin/contents/${contentId}/extract`, { method: 'POST' })
-          const extractData = await extractRes.json()
-          setExtractResult(extractData)
+          await extractRes.json()
         } catch (extractErr) {
           console.error('[upload] 추출 호출 실패:', extractErr)
-          setExtractResult({ ok: false, reason: 'fetch_error', message: '추출 요청 실패' })
+          secondaryErrors.push(`본문 추출 실패: ${extractErr instanceof Error ? extractErr.message : '알 수 없는 오류'}`)
         }
 
         // ⑦ 표지(1페이지) 자동 생성 — 사용자가 커버를 직접 지정하지 않았을 때만
@@ -284,20 +253,21 @@ export default function ReportUploadForm() {
             const coverBlob = await renderPdfCover(file!)
             if (coverBlob) {
               await uploadCover(supabase, contentId, coverBlob, 'webp')
-              setCoverGenerated(true)
             }
           } catch (coverErr) {
             console.error('[upload] 표지 생성 실패:', coverErr)
+            secondaryErrors.push(`표지 생성 실패: ${coverErr instanceof Error ? coverErr.message : '알 수 없는 오류'}`)
           }
         }
       }
 
       // 성공 → 폼 초기화
-      setSuccess(true)
       clearFile()
       setForm(FORM_INIT)
       setKeywords([])
       setCoverFile(null)
+      toast.success('리포트를 등록했습니다')
+      if (secondaryErrors.length > 0) setError(secondaryErrors.join(' · '))
 
     } catch (err) {
       console.error('[admin/upload] error:', err)
@@ -305,68 +275,6 @@ export default function ReportUploadForm() {
     } finally {
       setIsUploading(false)
     }
-  }
-
-  // ── 성공 화면 ──────────────────────────────────────────────────────────────
-
-  if (success) {
-    return (
-      <Card className="max-w-md mx-auto text-center py-12 px-8">
-        <CheckCircle className="mx-auto mb-4 h-12 w-12 text-positive" />
-        <h2 className="text-lg font-semibold text-foreground mb-1">업로드 완료</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          리포트가 성공적으로 등록됐습니다.
-        </p>
-
-        {/* 추출 결과 */}
-        {extractResult && (
-          <div className={cn(
-            'mb-6 rounded-lg border px-4 py-3 text-left text-sm',
-            extractResult.ok
-              ? 'border-positive/20 bg-positive-soft text-positive'
-              : extractResult.reason === 'scanned'
-                ? 'border-amber-100 bg-amber-50 text-amber-800'
-                : 'border-muted bg-muted/50 text-muted-foreground'
-          )}>
-            {extractResult.ok ? (
-              <div className="space-y-0.5">
-                <p className="font-medium">본문 추출 완료</p>
-                <p className="text-xs">
-                  {extractResult.chars?.toLocaleString()}자
-                  {extractResult.lang === 'en' && (extractResult.translated ? ' · 한국어 번역 완료' : ' · 번역 미적용')}
-                  {extractResult.summarized ? ' · 요약 생성' : ''}
-                  {(extractResult.issues ?? 0) > 0 ? ` · 이슈 ${extractResult.issues}건 연결` : ''}
-                  {(extractResult.entities ?? 0) > 0 ? ` · 엔티티 ${extractResult.entities}건 연결` : ''}
-                </p>
-              </div>
-            ) : extractResult.reason === 'scanned' ? (
-              <div>
-                <p className="font-medium">스캔 PDF 추정 — 텍스트 추출 실패</p>
-                <p className="text-xs mt-0.5">OCR 처리가 필요합니다. 본문 없이 등록됐습니다.</p>
-              </div>
-            ) : (
-              <p>본문 추출을 건너뜀 ({extractResult.reason ?? '비 PDF'})</p>
-            )}
-            {manualCoverUsed ? (
-              <p className="mt-1.5 text-xs opacity-80">표지 직접 지정됨</p>
-            ) : coverGenerated || extractResult.coverSet ? (
-              <p className="mt-1.5 text-xs opacity-80">· 표지 자동 추출 완료</p>
-            ) : (
-              <p className="mt-1.5 text-xs text-amber-700">
-                · 표지 자동 추출 실패({coverReasonLabel(extractResult.coverReason)}) — 콘텐츠 관리에서 표지를 직접 올려주세요
-              </p>
-            )}
-          </div>
-        )}
-
-        <Button onClick={() => {
-          setSuccess(false)
-          setExtractResult(null)
-          setCoverGenerated(false)
-          setManualCoverUsed(false)
-        }}>다른 파일 업로드</Button>
-      </Card>
-    )
   }
 
   // ── 메인 폼 ────────────────────────────────────────────────────────────────

@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
-import SearchProvidersPanel from '@/components/admin/SearchProvidersPanel'
+import SearchProvidersPanel, {
+  type Loaded,
+  type SearchProviderData,
+} from '@/components/admin/SearchProvidersPanel'
 import SourceManager from '@/components/admin/SourceManager'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import { parseProviderCounts, type ProviderCounts } from '@/lib/admin/crawl-providers'
+import { parseProviderCounts } from '@/lib/admin/crawl-providers'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
@@ -22,9 +25,11 @@ export default async function AdminSourcesPage() {
     !!(process.env.NAVER_CLIENT_SECRET ?? process.env.NAVER_SEARCH_CLIENT_SECRET)
   const gdeltEnabled = process.env.GDELT_ENABLED !== 'false'
 
-  let providers: ProviderCounts | null = null
-  let lastCrawledAt: string | null = null
-  let seedCount: number | null = null
+  let providerState: Loaded<SearchProviderData> = {
+    available: true,
+    data: { providers: null, lastCrawledAt: null },
+  }
+  let seedState: Loaded<number> = { available: true, data: 0 }
 
   try {
     const admin = createAdminClient()
@@ -47,32 +52,43 @@ export default async function AdminSourcesPage() {
       if (providerRun.error.code !== '42P01') {
         console.error('[/admin/sources] 최신 검색 수집원 집계 조회 실패:', providerRun.error.message)
       }
+      providerState = { available: false, error: '잠시 후 다시 시도해주세요.' }
     } else if (providerRun.data) {
-      providers = parseProviderCounts(providerRun.data.meta)
-      lastCrawledAt = providerRun.data.started_at
+      providerState = {
+        available: true,
+        data: {
+          providers: parseProviderCounts(providerRun.data.meta),
+          lastCrawledAt: providerRun.data.started_at,
+        },
+      }
     }
 
     if (seedRows.error) {
       console.error('[/admin/sources] 검색 시드 조회 실패:', seedRows.error.message)
+      seedState = { available: false, error: '잠시 후 다시 시도해주세요.' }
     } else {
-      seedCount = new Set(
-        ((seedRows.data ?? []) as SearchSeedRow[])
-          .flatMap((row) => row.search_seeds ?? [])
-      ).size
+      seedState = {
+        available: true,
+        data: new Set(
+          ((seedRows.data ?? []) as SearchSeedRow[])
+            .flatMap((row) => row.search_seeds ?? [])
+        ).size,
+      }
     }
   } catch (error) {
     console.error('[/admin/sources] 검색 수집원 상태 조회 오류:', error)
+    providerState = { available: false, error: '잠시 후 다시 시도해주세요.' }
+    seedState = { available: false, error: '잠시 후 다시 시도해주세요.' }
   }
 
   return (
     <>
       <AdminPageHeader />
       <SearchProvidersPanel
-        providers={providers}
+        providerState={providerState}
         keySet={keySet}
         gdeltEnabled={gdeltEnabled}
-        seedCount={seedCount}
-        lastCrawledAt={lastCrawledAt}
+        seedState={seedState}
       />
       <SourceManager />
     </>
