@@ -3,8 +3,8 @@ import { FileArchive } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import CompanyDocumentsCollector, {
   type DartCompanyOption,
 } from '@/components/admin/CompanyDocumentsCollector'
@@ -150,6 +150,40 @@ export default async function CompanyDocumentsAdminPage() {
   }))
   const documents = documentsData
 
+  const documentColumns: AdminTableColumn<DocumentRow>[] = [
+    { key: 'entity', header: '기업', nowrap: true, cell: (document) => <span className="font-medium text-foreground">{firstRelation(document.entities)?.canonical_name ?? '미매칭'}</span> },
+    {
+      key: 'title',
+      header: '문서명',
+      width: 'max-w-md',
+      cell: (document) => {
+        const content = firstRelation(document.contents)
+        return content?.original_url ? (
+          <a href={content.original_url} target="_blank" rel="noopener noreferrer" className="line-clamp-2 text-foreground hover:text-brand-600 hover:underline">
+            {content.title}
+          </a>
+        ) : (content?.title ?? '제목 없음')
+      },
+    },
+    { key: 'type', header: '유형', nowrap: true, cell: (document) => <span className="text-muted-foreground">{document.doc_type}</span> },
+    { key: 'published_on', header: '발행일', nowrap: true, cell: (document) => <span className="text-muted-foreground">{formatDate(document.published_on)}</span> },
+    {
+      key: 'status',
+      header: '상태',
+      nowrap: true,
+      cell: (document) => {
+        const content = firstRelation(document.contents)
+        return (
+          <span className={content?.status === 'published'
+            ? 'rounded-full bg-positive-soft px-2 py-0.5 text-xs font-medium text-positive'
+            : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'}>
+            {content?.status === 'published' ? '자동공개' : document.review_status === '검토대기' ? '검토대기' : '보류'}
+          </span>
+        )
+      },
+    },
+  ]
+
   // llm_usage는 service_role 전용 GRANT라 세션 클라이언트로는 조회 불가 — admin 클라이언트 사용.
   const admin = createAdminClient()
   const [naverQuota, tavilyQuota] = await Promise.all([
@@ -202,7 +236,10 @@ export default async function CompanyDocumentsAdminPage() {
       {schemaReady && <CompanyDocumentUploadForm />}
 
       {schemaReady && !reviewQueueSchemaMissing && !reviewQueueErrorMessage && (
-        <CompanyDocumentReviewInbox initialItems={reviewQueueItems} />
+        <CompanyDocumentReviewInbox
+          initialItems={reviewQueueItems}
+          truncated={reviewQueueItems.length === 100 ? { shown: 100, total: null } : undefined}
+        />
       )}
 
       <section className="space-y-3">
@@ -211,65 +248,17 @@ export default async function CompanyDocumentsAdminPage() {
           <p className="mt-1 text-xs text-muted-foreground">최신 50건 · 상세 편집은 355-C에서 제공합니다.</p>
         </div>
 
-        {documents.length === 0 ? (
-          <AdminEmptyState
-            icon={FileArchive}
-            message={
-              documentsErrorMessage ? '조회 오류로 표시하지 못했습니다(위 안내 참고).'
-                : schemaReady ? '아직 적재된 기업자료가 없습니다.'
-                : '기업자료 테이블이 준비되지 않았습니다.'
-            }
-            className="rounded-xl border border-border bg-card p-10"
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
-            <table className="min-w-[760px] w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
-                  <th className="px-4 py-3">기업</th>
-                  <th className="px-4 py-3">문서명</th>
-                  <th className="px-4 py-3">유형</th>
-                  <th className="px-4 py-3">발행일</th>
-                  <th className="px-4 py-3">상태</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {documents.map((document) => {
-                  const content = firstRelation(document.contents)
-                  const entity = firstRelation(document.entities)
-                  return (
-                    <tr key={document.content_id} className="hover:bg-accent/50">
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-foreground">
-                        {entity?.canonical_name ?? '미매칭'}
-                      </td>
-                      <td className="max-w-md px-4 py-3">
-                        {content?.original_url ? (
-                          <a
-                            href={content.original_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="line-clamp-2 text-foreground hover:text-brand-600 hover:underline"
-                          >
-                            {content.title}
-                          </a>
-                        ) : (content?.title ?? '제목 없음')}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{document.doc_type}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(document.published_on)}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span className={content?.status === 'published'
-                          ? 'rounded-full bg-positive-soft px-2 py-0.5 text-xs font-medium text-positive'
-                          : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'}>
-                          {content?.status === 'published' ? '자동공개' : document.review_status === '검토대기' ? '검토대기' : '보류'}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <AdminTable
+          columns={documentColumns}
+          rows={documents}
+          rowKey={(document) => document.content_id}
+          minWidth="min-w-[760px]"
+          state={documentsErrorMessage ? 'error' : documents[0] ? 'idle' : 'empty'}
+          emptyIcon={FileArchive}
+          emptyMessage={schemaReady ? '아직 적재된 기업자료가 없습니다.' : '기업자료 테이블이 준비되지 않았습니다.'}
+          errorMessage="조회 오류로 표시하지 못했습니다(위 안내 참고)."
+          truncated={documents.length === 50 ? { shown: 50, total: null } : undefined}
+        />
       </section>
     </div>
   )

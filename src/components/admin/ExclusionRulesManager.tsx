@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { cn } from '@/lib/utils'
 import {
@@ -61,6 +62,7 @@ const FORM_INIT = {
 export default function ExclusionRulesManager() {
   const [rules, setRules] = useState<ExclusionRuleRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [rulesState, setRulesState] = useState<AdminTableState>('loading')
   const [tableReady, setTableReady] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -151,15 +153,19 @@ export default function ExclusionRulesManager() {
 
   async function loadRules() {
     setIsLoading(true)
+    setRulesState('loading')
     setError(null)
     try {
       const res = await fetch('/api/admin/exclusion-rules')
       const data = await res.json() as { items: ExclusionRuleRow[]; tableReady: boolean }
-      setRules(data.items ?? [])
+      const nextRules = data.items ?? []
+      setRules(nextRules)
       setTableReady(data.tableReady ?? true)
+      setRulesState(nextRules[0] ? 'idle' : 'empty')
     } catch {
       setError('목록을 불러오지 못했습니다.')
       setTableReady(false)
+      setRulesState('error')
     } finally {
       setIsLoading(false)
     }
@@ -231,7 +237,11 @@ export default function ExclusionRulesManager() {
     try {
       const res = await fetch(`/api/admin/exclusion-rules?id=${rule.id}`, { method: 'DELETE' })
       if (res.ok) {
-        setRules((prev) => prev.filter((r) => r.id !== rule.id))
+        setRules((prev) => {
+          const nextRules = prev.filter((r) => r.id !== rule.id)
+          setRulesState(nextRules[0] ? 'idle' : 'empty')
+          return nextRules
+        })
       } else {
         const data = await res.json() as { error?: string }
         setError(data.error ?? '삭제에 실패했습니다.')
@@ -250,6 +260,40 @@ export default function ExclusionRulesManager() {
     : totalHits === 0
       ? `규칙 ${rules.length}개 · 아직 집계 전(수집 1회 후 반영)`
       : `규칙 ${rules.length}개 · 지금까지 ${totalHits.toLocaleString()}건 차단${neverHitCount > 0 ? ` · 안 걸린 규칙 ${neverHitCount}개` : ''}`
+
+  const columns: AdminTableColumn<ExclusionRuleRow>[] = [
+    { key: 'type', header: '종류', nowrap: true, cell: (rule) => <span className="text-muted-foreground">{EXCLUSION_RULE_TYPE_LABEL[rule.rule_type] ?? rule.rule_type}</span> },
+    { key: 'value', header: '값', width: 'max-w-xs', truncate: true, cell: (rule) => <span className="font-medium text-foreground" title={rule.value}>{rule.value}</span> },
+    { key: 'action', header: '동작', nowrap: true, cell: (rule) => <StatusBadge tone={EXCLUSION_ACTION_TONE[rule.action] ?? 'neutral'} label={EXCLUSION_ACTION_LABEL[rule.action] ?? rule.action} /> },
+    {
+      key: 'active',
+      header: '활성',
+      nowrap: true,
+      cell: (rule) => (
+        <button
+          onClick={() => void patchRule(rule.id, { is_active: !rule.is_active })}
+          disabled={workingId === rule.id}
+          className={cn('admin-table-td font-medium transition-colors', rule.is_active ? 'text-positive hover:opacity-80' : 'text-muted-foreground hover:text-foreground')}
+        >
+          {rule.is_active ? '활성' : '비활성'}
+        </button>
+      ),
+    },
+    { key: 'hits', header: '적중', nowrap: true, cell: (rule) => <span className={cn('admin-table-td', rule.hit_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground')}>{rule.hit_count.toLocaleString()}</span> },
+    { key: 'last_hit_at', header: '최근 차단', nowrap: true, cell: (rule) => <span className="admin-caption text-muted-foreground">{rule.last_hit_at ? formatRelativeHit(rule.last_hit_at) : '—'}</span> },
+    { key: 'note', header: '비고', width: 'max-w-[200px]', truncate: true, cell: (rule) => <span className="admin-caption text-muted-foreground" title={rule.note ?? undefined}>{rule.note ?? '—'}</span> },
+    { key: 'created_at', header: '등록일 (KST)', nowrap: true, cell: (rule) => <span className="admin-caption text-muted-foreground">{formatKst(rule.created_at)}</span> },
+    {
+      key: 'actions',
+      header: '관리',
+      align: 'right',
+      cell: (rule) => (
+        <button onClick={() => void handleDelete(rule)} disabled={workingId === rule.id} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-negative-soft hover:text-negative" title="삭제">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-6">
@@ -360,87 +404,16 @@ export default function ExclusionRulesManager() {
 
       {error && <p className="admin-caption text-negative">{error}</p>}
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16 admin-body text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          불러오는 중...
-        </div>
-      ) : rules.length === 0 ? (
-        <AdminEmptyState message={tableReady ? '등록된 제외 규칙이 없습니다.' : '규칙을 표시할 수 없습니다.'} />
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[720px] admin-body">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left admin-table-th text-muted-foreground">
-                <th className="px-4 py-3">종류</th>
-                <th className="px-4 py-3">값</th>
-                <th className="px-4 py-3">동작</th>
-                <th className="px-4 py-3">활성</th>
-                <th className="px-4 py-3">적중</th>
-                <th className="px-4 py-3 whitespace-nowrap">최근 차단</th>
-                <th className="px-4 py-3">비고</th>
-                <th className="px-4 py-3 whitespace-nowrap">등록일 (KST)</th>
-                <th className="px-4 py-3 text-right">관리</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rules.map((r) => (
-                <tr key={r.id} className={cn('hover:bg-accent/50 transition-colors', !r.is_active && 'opacity-50')}>
-                  <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
-                    {EXCLUSION_RULE_TYPE_LABEL[r.rule_type] ?? r.rule_type}
-                  </td>
-                  <td className="max-w-xs px-4 py-3 admin-table-td font-medium text-foreground">
-                    <span className="block truncate" title={r.value}>{r.value}</span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <StatusBadge
-                      tone={EXCLUSION_ACTION_TONE[r.action] ?? 'neutral'}
-                      label={EXCLUSION_ACTION_LABEL[r.action] ?? r.action}
-                    />
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <button
-                      onClick={() => void patchRule(r.id, { is_active: !r.is_active })}
-                      disabled={workingId === r.id}
-                      className={cn(
-                        'admin-table-td font-medium transition-colors',
-                        r.is_active ? 'text-positive hover:opacity-80' : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {r.is_active ? '활성' : '비활성'}
-                    </button>
-                  </td>
-                  <td className={cn(
-                    'whitespace-nowrap px-4 py-3 admin-table-td',
-                    r.hit_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
-                  )}>
-                    {r.hit_count.toLocaleString()}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 admin-caption text-muted-foreground">
-                    {r.last_hit_at ? formatRelativeHit(r.last_hit_at) : '—'}
-                  </td>
-                  <td className="max-w-[200px] px-4 py-3 admin-caption text-muted-foreground">
-                    {r.note ? <span className="block truncate" title={r.note}>{r.note}</span> : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 admin-caption text-muted-foreground">
-                    {formatKst(r.created_at)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => void handleDelete(r)}
-                      disabled={workingId === r.id}
-                      className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-negative-soft hover:text-negative"
-                      title="삭제"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={rules}
+        rowKey={(rule) => rule.id}
+        minWidth="min-w-[720px]"
+        rowClassName={(rule) => cn(!rule.is_active && 'opacity-50')}
+        state={rulesState}
+        emptyMessage={tableReady ? '등록된 제외 규칙이 없습니다.' : '규칙을 표시할 수 없습니다.'}
+        errorMessage="목록을 불러오지 못했습니다."
+      />
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>

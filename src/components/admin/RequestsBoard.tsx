@@ -22,6 +22,7 @@ import {
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import { cn } from '@/lib/utils'
 import {
   type OpsPostType,
@@ -70,6 +71,7 @@ export default function RequestsBoard() {
   const [segment, setSegment] = useState<OpsPostType>('request')
   const [posts, setPosts] = useState<OpsRequestRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [tableState, setTableState] = useState<AdminTableState>('loading')
   const [tableReady, setTableReady] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,15 +91,19 @@ export default function RequestsBoard() {
 
   async function loadPosts(type: OpsPostType) {
     setIsLoading(true)
+    setTableState('loading')
     setError(null)
     try {
       const res = await fetch(`/api/admin/requests?post_type=${type}`)
       const data = await res.json() as { items: OpsRequestRow[]; tableReady: boolean }
-      setPosts(data.items ?? [])
+      const nextPosts = data.items ?? []
+      setPosts(nextPosts)
       setTableReady(data.tableReady ?? true)
+      setTableState(nextPosts[0] ? 'idle' : 'empty')
     } catch {
       setError('목록을 불러오지 못했습니다.')
       setTableReady(false)
+      setTableState('error')
     } finally {
       setIsLoading(false)
     }
@@ -179,6 +185,71 @@ export default function RequestsBoard() {
     return true
   })
 
+  const requestColumns: AdminTableColumn<OpsRequestRow>[] = [
+    {
+      key: 'title',
+      header: '제목',
+      width: 'max-w-sm',
+      cell: (post) => (
+        <div className="admin-cell-wrap admin-table-td font-medium text-foreground">
+          <span className="line-clamp-2">{post.title}</span>
+          {post.body && <p className="mt-0.5 line-clamp-1 admin-caption text-muted-foreground">{post.body}</p>}
+        </div>
+      ),
+    },
+    { key: 'kind', header: '종류', nowrap: true, cell: (post) => <span className="admin-table-td text-muted-foreground">{REQUEST_KIND_LABEL[post.kind] ?? post.kind}</span> },
+    {
+      key: 'status',
+      header: '상태',
+      nowrap: true,
+      cell: (post) => (
+        <Select value={post.status} onValueChange={(value) => void patchPost(post.id, { status: value })} disabled={workingId === post.id}>
+          <SelectTrigger className="h-8 w-[110px] text-xs">
+            <SelectValue>
+              <StatusBadge tone={REQUEST_STATUS_TONE[post.status as OpsRequestStatus] ?? 'neutral'} label={REQUEST_STATUS_LABEL[post.status as OpsRequestStatus] ?? post.status} />
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {REQUEST_STATUSES.map((status) => <SelectItem key={status} value={status}>{REQUEST_STATUS_LABEL[status]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      ),
+    },
+    { key: 'owner', header: '담당', nowrap: true, cell: (post) => <span className="admin-table-td text-muted-foreground">{post.owner ?? '—'}</span> },
+    { key: 'ref', header: '참조', width: 'max-w-[160px]', truncate: true, cell: (post) => <span className="admin-table-td text-muted-foreground" title={post.ref ?? undefined}>{post.ref ?? '—'}</span> },
+    { key: 'updated_at', header: '업데이트 (KST)', nowrap: true, cell: (post) => <span className="admin-caption text-muted-foreground">{formatKst(post.updated_at)}</span> },
+  ]
+
+  const workColumns: AdminTableColumn<OpsRequestRow>[] = [
+    {
+      key: 'status',
+      header: '신호등',
+      width: 'w-[90px]',
+      nowrap: true,
+      cell: (post) => {
+        const status = post.status as OpsRequestStatus
+        return (
+          <Select value={post.status} onValueChange={(value) => void patchPost(post.id, { status: value })} disabled={workingId === post.id}>
+            <SelectTrigger className="h-8 w-[110px] text-xs">
+              <SelectValue>
+                <StatusBadge tone={REQUEST_STATUS_TONE[status] ?? 'neutral'} label={`${STATUS_EMOJI[status] ?? ''} ${REQUEST_STATUS_LABEL[status] ?? post.status}`} />
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {REQUEST_STATUSES.map((nextStatus) => <SelectItem key={nextStatus} value={nextStatus}>{STATUS_EMOJI[nextStatus]} {REQUEST_STATUS_LABEL[nextStatus]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )
+      },
+    },
+    { key: 'title', header: '제목', width: 'max-w-sm', cell: (post) => <span className="line-clamp-2 admin-cell-wrap admin-table-td font-medium text-foreground">{post.title}</span> },
+    { key: 'ref', header: '참조', width: 'max-w-[160px]', truncate: true, cell: (post) => <span className="admin-table-td text-muted-foreground" title={post.ref ?? undefined}>{post.ref ?? '—'}</span> },
+    { key: 'owner', header: '담당', nowrap: true, cell: (post) => <span className="admin-table-td text-muted-foreground">{post.owner ?? '—'}</span> },
+    { key: 'body', header: '메모', width: 'max-w-xs', cell: (post) => <span className="line-clamp-2 admin-cell-wrap admin-caption text-muted-foreground">{post.body ?? '—'}</span> },
+  ]
+
+  const requestTableState = tableState === 'idle' && !filteredRequests[0] ? 'empty' : tableState
+
   return (
     <div className="space-y-6">
       {!tableReady && (
@@ -243,77 +314,16 @@ export default function RequestsBoard() {
           </div>
 
           {/* 목록 */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16 admin-body text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              불러오는 중...
-            </div>
-          ) : filteredRequests.length === 0 ? (
-            <AdminEmptyState message={tableReady ? '등록된 요청이 없습니다.' : '요청 목록을 표시할 수 없습니다.'} />
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
-              <table className="w-full min-w-[720px] admin-body">
-                <thead>
-                  <tr className="border-b border-border bg-muted text-left admin-table-th text-muted-foreground">
-                    <th className="px-4 py-3">제목</th>
-                    <th className="px-4 py-3">종류</th>
-                    <th className="px-4 py-3">상태</th>
-                    <th className="px-4 py-3">담당</th>
-                    <th className="px-4 py-3">참조</th>
-                    <th className="px-4 py-3 whitespace-nowrap">업데이트 (KST)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredRequests.map((p) => {
-                    const isDone = p.status === 'done'
-                    return (
-                      <tr key={p.id} className={cn('hover:bg-accent/50 transition-colors', isDone && 'opacity-60')}>
-                        <td className="admin-cell-wrap max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
-                          <span className="line-clamp-2">{p.title}</span>
-                          {p.body && (
-                            <p className="mt-0.5 line-clamp-1 admin-caption text-muted-foreground">{p.body}</p>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
-                          {REQUEST_KIND_LABEL[p.kind] ?? p.kind}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <Select
-                            value={p.status}
-                            onValueChange={(v) => void patchPost(p.id, { status: v })}
-                            disabled={workingId === p.id}
-                          >
-                            <SelectTrigger className="h-8 w-[110px] text-xs">
-                              <SelectValue>
-                                <StatusBadge
-                                  tone={REQUEST_STATUS_TONE[p.status as OpsRequestStatus] ?? 'neutral'}
-                                  label={REQUEST_STATUS_LABEL[p.status as OpsRequestStatus] ?? p.status}
-                                />
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {REQUEST_STATUSES.map((s) => (
-                                <SelectItem key={s} value={s}>{REQUEST_STATUS_LABEL[s]}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
-                          {p.owner ?? '—'}
-                        </td>
-                        <td className="max-w-[160px] px-4 py-3 admin-table-td text-muted-foreground">
-                          {p.ref ? <span className="block truncate" title={p.ref}>{p.ref}</span> : '—'}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 admin-caption text-muted-foreground">
-                          {formatKst(p.updated_at)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <AdminTable
+            columns={requestColumns}
+            rows={filteredRequests}
+            rowKey={(post) => post.id}
+            minWidth="min-w-[720px]"
+            rowClassName={(post) => cn(post.status === 'done' && 'opacity-60')}
+            state={requestTableState}
+            emptyMessage={tableReady ? '등록된 요청이 없습니다.' : '요청 목록을 표시할 수 없습니다.'}
+            errorMessage="목록을 불러오지 못했습니다."
+          />
         </>
       ) : segment === 'announcement' ? (
         <>
@@ -383,62 +393,14 @@ export default function RequestsBoard() {
               {groupWorkByPhase(posts).map(([phase, items]) => (
                 <div key={phase}>
                   <h3 className="admin-section-title mb-2 text-foreground">{phase}</h3>
-                  <div className="overflow-x-auto rounded-xl border border-border bg-card">
-                    <table className="w-full min-w-[720px] admin-body">
-                      <thead>
-                        <tr className="border-b border-border bg-muted text-left admin-table-th text-muted-foreground">
-                          <th className="px-4 py-3 w-[90px]">신호등</th>
-                          <th className="px-4 py-3">제목</th>
-                          <th className="px-4 py-3">참조</th>
-                          <th className="px-4 py-3">담당</th>
-                          <th className="px-4 py-3">메모</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {items.map((p) => {
-                          const status = p.status as OpsRequestStatus
-                          const isDone = status === 'done'
-                          return (
-                            <tr key={p.id} className={cn('hover:bg-accent/50 transition-colors', isDone && 'opacity-60')}>
-                              <td className="whitespace-nowrap px-4 py-3">
-                                <Select
-                                  value={p.status}
-                                  onValueChange={(v) => void patchPost(p.id, { status: v })}
-                                  disabled={workingId === p.id}
-                                >
-                                  <SelectTrigger className="h-8 w-[110px] text-xs">
-                                    <SelectValue>
-                                      <StatusBadge
-                                        tone={REQUEST_STATUS_TONE[status] ?? 'neutral'}
-                                        label={`${STATUS_EMOJI[status] ?? ''} ${REQUEST_STATUS_LABEL[status] ?? p.status}`}
-                                      />
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {REQUEST_STATUSES.map((s) => (
-                                      <SelectItem key={s} value={s}>{STATUS_EMOJI[s]} {REQUEST_STATUS_LABEL[s]}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              <td className="admin-cell-wrap max-w-sm px-4 py-3 admin-table-td font-medium text-foreground">
-                                <span className="line-clamp-2">{p.title}</span>
-                              </td>
-                              <td className="max-w-[160px] px-4 py-3 admin-table-td text-muted-foreground">
-                                {p.ref ? <span className="block truncate" title={p.ref}>{p.ref}</span> : '—'}
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-3 admin-table-td text-muted-foreground">
-                                {p.owner ?? '—'}
-                              </td>
-                              <td className="admin-cell-wrap max-w-xs px-4 py-3 admin-caption text-muted-foreground">
-                                {p.body ? <span className="line-clamp-2">{p.body}</span> : '—'}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <AdminTable
+                    columns={workColumns}
+                    rows={items}
+                    rowKey={(post) => post.id}
+                    minWidth="min-w-[720px]"
+                    rowClassName={(post) => cn(post.status === 'done' && 'opacity-60')}
+                    state="idle"
+                  />
                 </div>
               ))}
             </div>
