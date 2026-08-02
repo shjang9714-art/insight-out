@@ -19,8 +19,11 @@ import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminFailedJobsCard, { type FailedJobRow } from '@/components/admin/AdminFailedJobsCard'
 import AdminMailDispatchCard, { type MailRunRow } from '@/components/admin/AdminMailDispatchCard'
 import { AdminCollectionAnalysisDialog } from '@/components/admin/AdminCollectionAnalysisDialog'
-import SearchProvidersPanel from '@/components/admin/SearchProvidersPanel'
-import { parseProviderCounts, type ProviderCounts } from '@/lib/admin/crawl-providers'
+import SearchProvidersPanel, {
+  type Loaded,
+  type SearchProviderData,
+} from '@/components/admin/SearchProvidersPanel'
+import { parseProviderCounts } from '@/lib/admin/crawl-providers'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,10 +90,12 @@ export default async function AdminPage() {
   try { admin = createAdminClient() } catch { /* env 미설정 시 무시 */ }
 
   // 검색 수집원 현황(472) — /admin/sources 와 동일 조회 형태, 실패해도 대시보드 나머지는 정상 렌더
-  async function fetchSearchProviderRun() {
-    if (!admin) return { data: null, error: null }
+  async function fetchSearchProviderRun(): Promise<Loaded<SearchProviderData>> {
+    if (!admin) {
+      return { available: false, error: '잠시 후 다시 시도해주세요.' }
+    }
     try {
-      return await admin
+      const result = await admin
         .from('job_runs')
         .select('started_at, meta')
         .eq('job_key', 'cron:crawl')
@@ -98,22 +103,44 @@ export default async function AdminPage() {
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (result.error) {
+        console.error('[/admin] 검색 수집원 집계 조회 실패:', result.error.message)
+        return { available: false, error: '잠시 후 다시 시도해주세요.' }
+      }
+      return {
+        available: true,
+        data: {
+          providers: result.data ? parseProviderCounts(result.data.meta) : null,
+          lastCrawledAt: result.data?.started_at ?? null,
+        },
+      }
     } catch (error) {
       console.error('[/admin] 검색 수집원 집계 조회 실패:', error)
-      return { data: null, error }
+      return { available: false, error: '잠시 후 다시 시도해주세요.' }
     }
   }
 
-  async function fetchSearchSeeds() {
-    if (!admin) return { data: null, error: null }
+  async function fetchSearchSeeds(): Promise<Loaded<number>> {
+    if (!admin) return { available: false, error: '잠시 후 다시 시도해주세요.' }
     try {
-      return await admin
+      const result = await admin
         .from('keyword_groups')
         .select('search_seeds')
         .eq('is_active', true)
+      if (result.error) {
+        console.error('[/admin] 검색 시드 조회 실패:', result.error.message)
+        return { available: false, error: '잠시 후 다시 시도해주세요.' }
+      }
+      type SearchSeedRow = { search_seeds: string[] | null }
+      return {
+        available: true,
+        data: new Set(
+          ((result.data ?? []) as SearchSeedRow[]).flatMap((row) => row.search_seeds ?? [])
+        ).size,
+      }
     } catch (error) {
       console.error('[/admin] 검색 시드 조회 실패:', error)
-      return { data: null, error }
+      return { available: false, error: '잠시 후 다시 시도해주세요.' }
     }
   }
 
@@ -329,20 +356,6 @@ export default async function AdminPage() {
     !!(process.env.NAVER_CLIENT_SECRET ?? process.env.NAVER_SEARCH_CLIENT_SECRET)
   const gdeltEnabled = process.env.GDELT_ENABLED !== 'false'
 
-  let searchProviders: ProviderCounts | null = null
-  let searchProvidersLastCrawledAt: string | null = null
-  if (!searchProviderRunRes.error && searchProviderRunRes.data) {
-    searchProviders = parseProviderCounts(searchProviderRunRes.data.meta)
-    searchProvidersLastCrawledAt = searchProviderRunRes.data.started_at
-  }
-
-  type SearchSeedRow = { search_seeds: string[] | null }
-  const searchSeedCount = searchSeedsRes.error
-    ? null
-    : new Set(
-        ((searchSeedsRes.data ?? []) as SearchSeedRow[]).flatMap((row) => row.search_seeds ?? [])
-      ).size
-
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
   const chartData: ChartData = {
@@ -378,11 +391,10 @@ export default async function AdminPage() {
 
       {/* ②-1 검색 수집원 현황(472) — 네이버·GDELT·Google 유입과 시드 수 */}
       <SearchProvidersPanel
-        providers={searchProviders}
+        providerState={searchProviderRunRes}
         keySet={naverKeySet}
         gdeltEnabled={gdeltEnabled}
-        seedCount={searchSeedCount}
-        lastCrawledAt={searchProvidersLastCrawledAt}
+        seedState={searchSeedsRes}
       />
 
       {/* ③ 사용량 및 수집 관리 */}

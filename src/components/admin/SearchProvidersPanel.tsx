@@ -1,14 +1,23 @@
 import Link from 'next/link'
 import { Search } from 'lucide-react'
+import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import type { ProviderCounts } from '@/lib/admin/crawl-providers'
 import { cn } from '@/lib/utils'
 
-interface SearchProvidersPanelProps {
+export type Loaded<T> =
+  | { available: true; data: T }
+  | { available: false; error: string }
+
+export interface SearchProviderData {
   providers: ProviderCounts | null
+  lastCrawledAt: string | null
+}
+
+interface SearchProvidersPanelProps {
+  providerState: Loaded<SearchProviderData>
   keySet: boolean
   gdeltEnabled: boolean
-  seedCount: number | null
-  lastCrawledAt: string | null
+  seedState: Loaded<number>
 }
 
 function formatKst(iso: string | null): string {
@@ -24,12 +33,13 @@ function formatKst(iso: string | null): string {
 }
 
 export default function SearchProvidersPanel({
-  providers,
+  providerState,
   keySet,
   gdeltEnabled,
-  seedCount,
-  lastCrawledAt,
+  seedState,
 }: SearchProvidersPanelProps) {
+  const providers = providerState.available ? providerState.data.providers : null
+  const lastCrawledAt = providerState.available ? providerState.data.lastCrawledAt : null
   const phaseSkipped = providers?.keyword_phase_skipped ?? false
   const providerRows = [
     {
@@ -64,31 +74,36 @@ export default function SearchProvidersPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span
-            className={cn(
-              'rounded-full border px-2.5 py-1',
-              seedCount === 0
-                ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
-                : 'border-border bg-muted/50 text-muted-foreground'
-            )}
-          >
-            검색 시드 {seedCount === null ? '데이터 없음' : `${seedCount.toLocaleString()}개`}
-          </span>
-          <span
-            className={cn(
-              'rounded-full border px-2.5 py-1',
-              phaseSkipped
-                ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
-                : 'border-border bg-muted/50 text-muted-foreground'
-            )}
-          >
-            마지막 크롤 {formatKst(lastCrawledAt)}
-          </span>
+          {seedState.available && (
+            <span
+              className={cn(
+                'rounded-full border px-2.5 py-1',
+                seedState.data === 0
+                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
+                  : 'border-border bg-muted/50 text-muted-foreground'
+              )}
+            >
+              검색 시드 {seedState.data.toLocaleString()}개
+            </span>
+          )}
+          {providerState.available && (
+            <span
+              className={cn(
+                'rounded-full border px-2.5 py-1',
+                phaseSkipped
+                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
+                  : 'border-border bg-muted/50 text-muted-foreground'
+              )}
+            >
+              마지막 크롤 {formatKst(lastCrawledAt)}
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="divide-y divide-border">
-        {providerRows.map((provider) => {
+      {providerState.available ? (
+        <div className="divide-y divide-border">
+          {providerRows.map((provider) => {
           const hasNoRecentItems = provider.recentCount === 0
           const isWarning = !provider.isReady || hasNoRecentItems
 
@@ -126,10 +141,27 @@ export default function SearchProvidersPanel({
               </p>
             </div>
           )
-        })}
-      </div>
+          })}
+        </div>
+      ) : (
+        <AdminEmptyState
+          variant="error"
+          message="검색 수집원 데이터를 불러오지 못했습니다"
+          hint={providerState.error}
+          className="m-4"
+        />
+      )}
 
-      {(phaseSkipped || seedCount === 0) && (
+      {!seedState.available && (
+        <AdminEmptyState
+          variant="error"
+          message="검색 시드 데이터를 불러오지 못했습니다"
+          hint={seedState.error}
+          className="m-4"
+        />
+      )}
+
+      {providerState.available && seedState.available && (phaseSkipped || seedState.data === 0) && (
         <div className="border-t border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-600">
           키워드 검색 단계 미실행(시드 미설정)
         </div>
