@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { CATEGORY_DEFS, DB_CONTENT_CATEGORIES } from '@/lib/categories'
 import { ADMIN_CATEGORY_TABS } from '@/lib/admin/content-tabs'
 import { cn } from '@/lib/utils'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
 export const metadata: Metadata = {
   title: '분류·카테고리 | 어드민 | Insight Out',
@@ -79,6 +80,19 @@ export default async function AdminTaxonomyPage() {
       ),
     }))
 
+  const mappingColumns: AdminTableColumn<MappingRow>[] = [
+    { key: 'dbCategory', header: 'DB 카테고리', cell: (row) => <span className="font-medium text-foreground">{row.dbCategory}</span> },
+    { key: 'userLabel', header: '사용자 화면', cell: (row) => <span className={row.userLabel ? 'text-foreground' : 'text-muted-foreground'}>{row.userLabel ?? '—'}</span> },
+    { key: 'adminLabel', header: '어드민 탭', cell: (row) => <span className={row.adminLabel ? 'text-foreground' : 'text-muted-foreground'}>{row.adminLabel ?? '—'}</span> },
+    { key: 'count', header: '콘텐츠 건수', numeric: true, cell: (row) => row.count === null ? '—' : row.count.toLocaleString('ko-KR') },
+    { key: 'note', header: '비고', cell: (row) => <span className={cn('text-xs', row.note === ORPHAN_NOTE ? 'font-medium text-amber-600' : 'text-muted-foreground')}>{row.note ?? '-'}</span> },
+  ]
+
+  const generatedColumns: AdminTableColumn<(typeof generatedDefs)[number]>[] = [
+    { key: 'label', header: '사용자 화면', cell: (def) => <span className="font-medium text-foreground">{def.label}</span> },
+    { key: 'dbCategories', header: '매핑된 dbCategories', cell: (def) => <span className="text-muted-foreground">{def.unmappedDbCategories.length > 0 ? def.unmappedDbCategories.join(', ') : '—'}</span> },
+  ]
+
   return (
     <>
       <AdminPageHeader />
@@ -87,38 +101,14 @@ export default async function AdminTaxonomyPage() {
         카테고리 정의는 코드가 단일 진실입니다(<code className="admin-caption">src/lib/categories.ts</code>). 이 화면은 조회 전용이며 편집할 수 없습니다.
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-3">DB 카테고리</th>
-              <th className="px-4 py-3">사용자 화면</th>
-              <th className="px-4 py-3">어드민 탭</th>
-              <th className="px-4 py-3 text-right">콘텐츠 건수</th>
-              <th className="px-4 py-3">비고</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.map((row) => (
-              <tr key={row.dbCategory} className={cn(row.note === ORPHAN_NOTE && 'bg-amber-50 dark:bg-amber-950/20')}>
-                <td className="px-4 py-3 font-medium text-foreground">{row.dbCategory}</td>
-                <td className={cn('px-4 py-3', !row.userLabel ? 'text-muted-foreground' : 'text-foreground')}>
-                  {row.userLabel ?? '—'}
-                </td>
-                <td className={cn('px-4 py-3', !row.adminLabel ? 'text-muted-foreground' : 'text-foreground')}>
-                  {row.adminLabel ?? '—'}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                  {row.count === null ? '—' : row.count.toLocaleString('ko-KR')}
-                </td>
-                <td className={cn('px-4 py-3 text-xs', row.note === ORPHAN_NOTE ? 'font-medium text-amber-600' : 'text-muted-foreground')}>
-                  {row.note ?? '-'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <AdminTable
+        columns={mappingColumns}
+        rows={rows}
+        rowKey={(row) => row.dbCategory}
+        minWidth="min-w-[720px]"
+        rowClassName={(row) => cn(row.note === ORPHAN_NOTE && 'bg-amber-50 dark:bg-amber-950/20')}
+        state="idle"
+      />
 
       {generatedDefs.length > 0 && (
         <div className="mt-6">
@@ -126,26 +116,13 @@ export default async function AdminTaxonomyPage() {
           <p className="admin-caption mb-3 text-muted-foreground">
             아래는 사용자 화면에서만 존재하는 생성물 카테고리로, 불일치가 아닙니다.
           </p>
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
-            <table className="w-full min-w-[480px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-3">사용자 화면</th>
-                  <th className="px-4 py-3">매핑된 dbCategories</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {generatedDefs.map((def) => (
-                  <tr key={def.id}>
-                    <td className="px-4 py-3 font-medium text-foreground">{def.label}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {def.unmappedDbCategories.length > 0 ? def.unmappedDbCategories.join(', ') : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <AdminTable
+            columns={generatedColumns}
+            rows={generatedDefs}
+            rowKey={(def) => def.id}
+            minWidth="min-w-[480px]"
+            state="idle"
+          />
         </div>
       )}
     </>
