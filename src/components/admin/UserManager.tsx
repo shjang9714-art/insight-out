@@ -53,6 +53,8 @@ interface UserRow {
 
 interface Props {
   initialUsers: UserRow[]
+  currentUserId: string
+  initialAdminCount: number
   tableState: AdminTableState
   page: number
   pageSize: number
@@ -60,9 +62,10 @@ interface Props {
   sort: { key: string; dir: 'asc' | 'desc' }
 }
 
-export default function UserManager({ initialUsers, tableState, page, pageSize, total, sort }: Props) {
+export default function UserManager({ initialUsers, currentUserId, initialAdminCount, tableState, page, pageSize, total, sort }: Props) {
   const table = useAdminTable({ defaultSort: sort, pageSize })
   const [users, setUsers] = useState<UserRow[]>(initialUsers)
+  const [adminCount, setAdminCount] = useState(initialAdminCount)
   const [error, setError] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -84,7 +87,8 @@ export default function UserManager({ initialUsers, tableState, page, pageSize, 
   const handleToggleRole = (user: UserRow) => {
     const newRole: UserRole = user.role === 'admin' ? 'user' : 'admin'
     const label = newRole === 'admin' ? 'admin으로 승격' : '일반 user로 변경'
-    if (!window.confirm(`${user.email}\n\n${label}하시겠습니까?`)) return
+    const targetLabel = `${user.name || '이름 미입력'} (${user.email})${user.id === currentUserId ? ' · 본인 계정' : ''}`
+    if (!window.confirm(`${targetLabel}\n\n${label}하시겠습니까?`)) return
 
     setTogglingId(user.id)
     startTransition(async () => {
@@ -95,6 +99,7 @@ export default function UserManager({ initialUsers, tableState, page, pageSize, 
         setUsers(prev =>
           prev.map(u => u.id === user.id ? { ...u, role: newRole } : u)
         )
+        setAdminCount(prev => prev + (newRole === 'admin' ? 1 : -1))
       }
       setTogglingId(null)
     })
@@ -125,6 +130,7 @@ export default function UserManager({ initialUsers, tableState, page, pageSize, 
           if (exists) return prev.map(u => u.id === promoted.id ? { ...u, role: 'admin' } : u)
           return [promoted, ...prev]
         })
+        setAdminCount(prev => prev + 1)
         setFormSuccess(`${promoted.email} 계정이 admin으로 변경되었습니다.`)
         setEmailInput('')
       }
@@ -223,7 +229,6 @@ export default function UserManager({ initialUsers, tableState, page, pageSize, 
   // ── 렌더 ──────────────────────────────────────────────────────────────────
 
   const pendingUsers = users.filter(u => u.approval_status === 'pending')
-  const adminCount = users.filter(u => u.role === 'admin').length
   const columns: AdminTableColumn<UserRow>[] = [
     { key: 'email', header: '이메일', sortKey: 'email', truncate: true, width: 'max-w-[200px]', cell: (user) => <span className="font-medium text-foreground" title={user.email}>{user.email}</span> },
     { key: 'name', header: '이름', sortKey: 'name', truncate: true, width: 'max-w-[200px]', cell: (user) => <span className="text-muted-foreground" title={user.name ?? undefined}>{user.name || '—'}</span> },
@@ -231,7 +236,36 @@ export default function UserManager({ initialUsers, tableState, page, pageSize, 
     { key: 'role', header: '권한', sortKey: 'role', cell: (user) => user.role === 'admin' ? <span className="inline-flex items-center gap-1 rounded-full bg-brand-600/10 px-2.5 py-0.5 text-xs font-semibold text-brand-600"><ShieldCheck className="h-3 w-3" />admin</span> : <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">user</span> },
     { key: 'approval', header: '승인', sortKey: 'approval_status', cell: (user) => user.approval_status === 'approved' ? <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge> : user.approval_status === 'rejected' ? <StatusBadge tone="negative" label="거절" /> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge> },
     { key: 'created_at', header: '가입일', sortKey: 'created_at', nowrap: true, cell: (user) => <span className="text-xs text-muted-foreground">{new Date(user.created_at).toLocaleDateString('ko-KR')}</span> },
-    { key: 'actions', header: '작업', align: 'right', nowrap: true, cell: (user) => <div className="flex items-center justify-end gap-1.5">{user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}{user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}<button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button><button onClick={() => handleToggleRole(user)} disabled={togglingId === user.id || isPending} className={cn('inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40', user.role === 'admin' ? 'bg-destructive/10 text-destructive' : 'bg-positive-soft text-positive')}>{togglingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : user.role === 'admin' ? <><ShieldOff className="h-3 w-3" />user로 변경</> : <><ShieldCheck className="h-3 w-3" />admin으로 승격</>}</button></div> },
+    { key: 'actions', header: '작업', align: 'right', nowrap: true, cell: (user) => {
+      const roleChangeDisabledReason = user.id === currentUserId
+        ? '본인의 관리자 권한은 직접 변경할 수 없습니다.'
+        : user.role === 'admin' && adminCount === 1
+          ? '마지막 관리자를 변경하려면 다른 관리자를 먼저 지정하세요.'
+          : null
+
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center justify-end gap-1.5">
+            {user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}
+            {user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}
+            <button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button>
+            <span title={roleChangeDisabledReason ?? undefined}>
+              <button
+                type="button"
+                onClick={() => handleToggleRole(user)}
+                disabled={roleChangeDisabledReason !== null || togglingId === user.id || isPending}
+                className={cn('inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40', user.role === 'admin' ? 'bg-destructive/10 text-destructive' : 'bg-positive-soft text-positive')}
+              >
+                {togglingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : user.role === 'admin' ? <><ShieldOff className="h-3 w-3" />user로 변경</> : <><ShieldCheck className="h-3 w-3" />admin으로 승격</>}
+              </button>
+            </span>
+          </div>
+          {roleChangeDisabledReason && (
+            <span className="text-[11px] text-muted-foreground">{roleChangeDisabledReason}</span>
+          )}
+        </div>
+      )
+    } },
   ]
 
   return (
@@ -343,7 +377,7 @@ export default function UserManager({ initialUsers, tableState, page, pageSize, 
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          전체 {total?.toLocaleString() ?? '확인 불가'}명 · 현재 페이지 admin {adminCount}명
+          전체 {total?.toLocaleString() ?? '확인 불가'}명 · 전체 admin {adminCount}명
         </p>
       </div>
 
