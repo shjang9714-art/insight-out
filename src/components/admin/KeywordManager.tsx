@@ -303,17 +303,16 @@ export default function KeywordManager() {
           columns={keywordColumns}
           rows={[]}
           rowKey={keyword => keyword.id}
-          loading
+          state="loading"
         />
       ) : keywords.length === 0 ? (
         <AdminTable
           columns={keywordColumns}
           rows={[]}
           rowKey={keyword => keyword.id}
-          empty={{
-            message: '등록된 키워드가 없습니다.',
-            hint: '키워드 추가 버튼으로 첫 번째 키워드를 등록해보세요.',
-          }}
+          state="empty"
+          emptyMessage="등록된 키워드가 없습니다."
+          emptyHint="키워드 추가 버튼으로 첫 번째 키워드를 등록해보세요."
         />
       ) : (
         <AdminTable
@@ -321,6 +320,7 @@ export default function KeywordManager() {
           rows={keywords}
           rowKey={keyword => keyword.id}
           minWidth="min-w-[400px]"
+          state="idle"
         />
       )}
     </div>

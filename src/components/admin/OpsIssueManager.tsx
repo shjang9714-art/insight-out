@@ -1,19 +1,74 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { updateOpsIssue } from '@/app/admin/ops-issues/actions'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 
-type Issue = { id: string; category: string; severity: 'critical' | 'warning' | 'notice'; status: string; title: string; suspected_cause: string | null; recommended_action: string | null; impact: string | null; occurrence_count: number; first_seen_at: string; last_seen_at: string; assignee: string | null; resolution_note: string | null; related_url: string | null; resolved_at?: string | null }
-type Admin = { id: string; name: string | null; email: string }
+export type Issue = { id: string; category: string; severity: 'critical' | 'warning' | 'notice'; status: string; title: string; suspected_cause: string | null; recommended_action: string | null; impact: string | null; occurrence_count: number; first_seen_at: string; last_seen_at: string; assignee: string | null; resolution_note: string | null; related_url: string | null; resolved_at?: string | null }
+export type Admin = { id: string; name: string | null; email: string }
+
 const statusLabel: Record<string, string> = { open: '미확인', acknowledged: '확인', in_progress: '처리중', resolved: '해결', ignored: '무시' }
 const severityLabel = { critical: '긴급', warning: '주의', notice: '알림' }
-const fmt = (v: string) => new Date(v).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+const fmt = (value: string) => new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 
-export default function OpsIssueManager({ initialIssues, admins }: { initialIssues: Issue[]; admins: Admin[] }) {
-  const [issues, setIssues] = useState(initialIssues); const [statusFilter, setStatusFilter] = useState('open'); const [severityFilter, setSeverityFilter] = useState('all'); const [pending, startTransition] = useTransition(); const [error, setError] = useState<string | null>(null)
-  const visible = issues.filter(i => (statusFilter === 'all' || (statusFilter === 'open' ? i.status !== 'resolved' : i.status === statusFilter)) && (severityFilter === 'all' || i.severity === severityFilter))
-  const save = (issue: Issue, patch: Parameters<typeof updateOpsIssue>[1]) => { setError(null); startTransition(async () => { const result = await updateOpsIssue(issue.id, patch); if (!result.ok) { setError(result.error ?? '저장 실패'); return } setIssues(prev => prev.map(i => i.id === issue.id ? { ...i, ...patch, resolved_at: patch.status === 'resolved' ? new Date().toISOString() : patch.status ? null : i.resolved_at } : i)) }) }
-  return <section className="space-y-5"><div className="flex flex-wrap gap-2"><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="open">미해결</SelectItem><SelectItem value="all">전체</SelectItem><SelectItem value="resolved">해결</SelectItem><SelectItem value="ignored">무시</SelectItem></SelectContent></Select><Select value={severityFilter} onValueChange={setSeverityFilter}><SelectTrigger className="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">모든 심각도</SelectItem><SelectItem value="critical">긴급</SelectItem><SelectItem value="warning">주의</SelectItem><SelectItem value="notice">알림</SelectItem></SelectContent></Select></div>{error && <p className="text-sm text-destructive">{error}</p>}{visible.length === 0 ? <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">표시할 운영 이슈가 없습니다.</div> : <div className="space-y-3">{visible.map(issue => <article key={issue.id} className="rounded-xl border bg-card p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="mb-2 flex flex-wrap gap-2"><Badge variant={issue.severity === 'critical' ? 'destructive' : 'secondary'}>{severityLabel[issue.severity]}</Badge><Badge variant="outline">{statusLabel[issue.status] ?? issue.status}</Badge><span className="text-xs text-muted-foreground">{issue.category} · {issue.occurrence_count}회 발생</span></div><h2 className="font-semibold">{issue.title}</h2><p className="mt-1 text-sm text-muted-foreground">{issue.suspected_cause ?? '원인 미상'} · 권장: {issue.recommended_action ?? '로그 확인'}</p></div>{issue.related_url && <a className="text-sm text-brand-600 underline" href={issue.related_url} target="_blank" rel="noreferrer">관련 링크</a>}</div><p className="mt-3 text-xs text-muted-foreground">최초 {fmt(issue.first_seen_at)} · 최근 {fmt(issue.last_seen_at)}{issue.impact ? ` · 영향: ${issue.impact}` : ''}</p><div className="mt-4 grid gap-3 md:grid-cols-3"><Select disabled={pending} value={issue.status} onValueChange={status => save(issue, { status: status as Parameters<typeof updateOpsIssue>[1]['status'] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusLabel).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select><Select disabled={pending} value={issue.assignee ?? 'none'} onValueChange={v => save(issue, { assignee: v === 'none' ? null : v })}><SelectTrigger><SelectValue placeholder="담당자 없음" /></SelectTrigger><SelectContent><SelectItem value="none">담당자 없음</SelectItem>{admins.map(a => <SelectItem key={a.id} value={a.id}>{a.name || a.email}</SelectItem>)}</SelectContent></Select><textarea className="min-h-10 rounded-md border bg-background p-2 text-sm" defaultValue={issue.resolution_note ?? ''} placeholder="해결 메모" onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => { const value = e.currentTarget.value || null; if (value !== issue.resolution_note) save(issue, { resolution_note: value }) }} /></div></article>)}</div>}</section>
+interface Props {
+  initialIssues: Issue[]
+  admins: Admin[]
+  state: AdminTableState
+  page: number
+  pageSize: number
+  total: number | null
+}
+
+export default function OpsIssueManager({ initialIssues, admins, state, page, pageSize, total }: Props) {
+  const router = useRouter()
+  const table = useAdminTable({ defaultSort: { key: 'last_seen_at', dir: 'desc' }, pageSize })
+  const [issues, setIssues] = useState(initialIssues)
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  const save = (issue: Issue, patch: Parameters<typeof updateOpsIssue>[1]) => {
+    setError(null)
+    startTransition(async () => {
+      const result = await updateOpsIssue(issue.id, patch)
+      if (!result.ok) {
+        setError(result.error ?? '저장에 실패했습니다.')
+        return
+      }
+      setIssues((previous) => previous.map((item) => item.id === issue.id ? { ...item, ...patch, resolved_at: patch.status === 'resolved' ? new Date().toISOString() : patch.status ? null : item.resolved_at } : item))
+      if (patch.status) router.refresh()
+    })
+  }
+
+  const columns: AdminTableColumn<Issue>[] = [
+    { key: 'severity', header: '심각도', nowrap: true, cell: (issue) => <Badge variant={issue.severity === 'critical' ? 'destructive' : 'secondary'}>{severityLabel[issue.severity]}</Badge> },
+    { key: 'issue', header: '이슈', width: 'min-w-[320px]', cell: (issue) => <div><div className="flex items-center gap-2"><span className="font-semibold text-foreground">{issue.title}</span>{issue.related_url && <a className="text-xs text-brand-600 underline" href={issue.related_url} target="_blank" rel="noreferrer">관련 링크</a>}</div><p className="mt-1 text-xs text-muted-foreground">{issue.suspected_cause ?? '원인 미상'} · 권장: {issue.recommended_action ?? '로그 확인'}</p></div> },
+    { key: 'category', header: '분류/발생', nowrap: true, cell: (issue) => <span className="text-xs text-muted-foreground">{issue.category} · {issue.occurrence_count}회</span> },
+    { key: 'last_seen_at', header: '최근 감지', nowrap: true, cell: (issue) => <span className="text-xs text-muted-foreground">{fmt(issue.last_seen_at)}</span> },
+    { key: 'status', header: '상태', width: 'w-36', cell: (issue) => <Select disabled={pending} value={issue.status} onValueChange={(status) => save(issue, { status: status as Parameters<typeof updateOpsIssue>[1]['status'] })}><SelectTrigger aria-label={`${issue.title} 상태`}><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusLabel).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select> },
+    { key: 'assignee', header: '담당자', width: 'w-40', cell: (issue) => <Select disabled={pending} value={issue.assignee ?? 'none'} onValueChange={(value) => save(issue, { assignee: value === 'none' ? null : value })}><SelectTrigger aria-label={`${issue.title} 담당자`}><SelectValue placeholder="담당자 없음" /></SelectTrigger><SelectContent><SelectItem value="none">담당자 없음</SelectItem>{admins.map((admin) => <SelectItem key={admin.id} value={admin.id}>{admin.name || admin.email}</SelectItem>)}</SelectContent></Select> },
+    { key: 'resolution_note', header: '해결 메모', width: 'min-w-[180px]', cell: (issue) => <textarea className="min-h-10 w-full rounded-md border bg-background p-2 text-sm" defaultValue={issue.resolution_note ?? ''} placeholder="해결 메모" onBlur={(event) => { const value = event.currentTarget.value || null; if (value !== issue.resolution_note) save(issue, { resolution_note: value }) }} /> },
+  ]
+
+  return (
+    <section className="space-y-4">
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+      <AdminTable
+        columns={columns}
+        rows={issues}
+        rowKey={(issue) => issue.id}
+        state={state}
+        emptyMessage="조건에 맞는 운영 이슈가 없습니다."
+        errorMessage="운영 이슈를 불러오지 못했습니다."
+        onRetry={() => window.location.reload()}
+        pagination={{ page, pageSize, total }}
+        onPageChange={table.setPage}
+        minWidth="min-w-[1200px]"
+      />
+    </section>
+  )
 }
