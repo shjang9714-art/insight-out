@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import {
   Dialog,
   DialogContent,
@@ -116,6 +118,7 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
   // source_id 없으면 로딩 불필요 — 초기값으로 제어해 effect 내 동기 setState 방지
   const [isLoading, setIsLoading] = useState(() => !!log.source_id)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [savingContentId, setSavingContentId] = useState<string | null>(null)
 
   // Dialog 마운트 시 데이터 fetch (조건부 렌더로 mount 제어)
   useEffect(() => {
@@ -152,17 +155,25 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStatusChange = async (contentId: string, newStatus: ContentStatus) => {
-    // 낙관적 갱신
-    setContents(prev =>
-      prev ? prev.map(c => c.id === contentId ? { ...c, status: newStatus } : c) : prev
-    )
-    const { error } = await supabase
-      .from('contents')
-      .update({ status: newStatus })
-      .eq('id', contentId)
-    if (error) {
-      // 실패 시 원복을 위해 재조회
-      setFetchError(`상태 변경 실패: ${error.message}`)
+    setSavingContentId(contentId)
+    setFetchError(null)
+    try {
+      const { error } = await supabase
+        .from('contents')
+        .update({ status: newStatus })
+        .eq('id', contentId)
+      if (error) {
+        setFetchError(`상태 변경 실패: ${error.message}`)
+        return
+      }
+      setContents(prev =>
+        prev ? prev.map(c => c.id === contentId ? { ...c, status: newStatus } : c) : prev
+      )
+      toast.success('상태를 변경했습니다')
+    } catch (error) {
+      setFetchError(`상태 변경 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setSavingContentId(null)
     }
   }
 
@@ -196,9 +207,7 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
           )}
 
           {fetchError && (
-            <div className="rounded-lg border border-negative/20 bg-negative-soft px-4 py-3 text-sm text-negative">
-              {fetchError}
-            </div>
+            <AdminErrorBox onDismiss={() => setFetchError(null)}>{fetchError}</AdminErrorBox>
           )}
 
           {!isLoading && !fetchError && contents !== null && contents.length === 0 && (
@@ -250,11 +259,16 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
                         className="text-[11px]"
                       />
                       <div className="flex gap-0.5">
+                        {savingContentId === c.id && (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="상태 저장 중" />
+                        )}
                         {CONTENT_STATUSES.filter(s => s !== c.status).map(s => (
                           <button
                             key={s}
+                            type="button"
+                            disabled={savingContentId === c.id}
                             onClick={() => handleStatusChange(c.id, s)}
-                            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                             title={`${CONTENT_STATUS_CONFIG[s].label}으로 변경`}
                           >
                             → {CONTENT_STATUS_CONFIG[s].label}

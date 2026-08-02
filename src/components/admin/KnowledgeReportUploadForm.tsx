@@ -1,7 +1,8 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { CheckCircle2, FileText, Loader2, Upload, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { FileText, Loader2, Upload, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { renderPdfCover } from '@/lib/contents/pdf-cover'
 import { uploadCover } from '@/lib/contents/upload-cover'
@@ -36,7 +37,6 @@ export default function KnowledgeReportUploadForm({ disabled, onCreated }: Knowl
   const [isDragging, setDragging] = useState(false)
   const [isUploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const acceptFile = (nextFile: File) => {
     const extension = nextFile.name.split('.').pop()?.toLowerCase() ?? ''
@@ -51,7 +51,6 @@ export default function KnowledgeReportUploadForm({ disabled, onCreated }: Knowl
     setFile(nextFile)
     setTitle((current) => current || suggestedTitle(nextFile.name))
     setError(null)
-    setSuccessMessage(null)
   }
 
   const clearFile = () => {
@@ -74,7 +73,7 @@ export default function KnowledgeReportUploadForm({ disabled, onCreated }: Knowl
 
     setUploading(true)
     setError(null)
-    setSuccessMessage(null)
+    const secondaryErrors: string[] = []
 
     try {
       const tokenResponse = await fetch('/api/admin/upload', {
@@ -123,6 +122,7 @@ export default function KnowledgeReportUploadForm({ disabled, onCreated }: Knowl
           if (cover) await uploadCover(supabase, metadata.report.id, cover, 'webp')
         } catch (coverError) {
           console.error('[knowledge-reports] PDF 표지 생성 실패:', coverError)
+          secondaryErrors.push(`PDF 표지 생성 실패: ${coverError instanceof Error ? coverError.message : '알 수 없는 오류'}`)
         }
 
         try {
@@ -136,17 +136,19 @@ export default function KnowledgeReportUploadForm({ disabled, onCreated }: Knowl
             : 'PDF 등록 완료 · 본문 추출은 건너뛰었습니다.'
         } catch (extractionError) {
           console.error('[knowledge-reports] PDF 본문 추출 실패:', extractionError)
+          secondaryErrors.push(`PDF 본문 추출 실패: ${extractionError instanceof Error ? extractionError.message : '알 수 없는 오류'}`)
           extractionNote = 'PDF 등록 완료 · 본문 추출은 나중에 다시 시도할 수 있습니다.'
         }
       }
 
       onCreated(metadata.report)
-      setSuccessMessage(`지식보고서를 등록했습니다. ${extractionNote}`)
       clearFile()
       setTitle('')
       setSummary('')
       setKeywords([])
       setKeywordInput('')
+      toast.success(`지식보고서를 등록했습니다. ${extractionNote}`)
+      if (secondaryErrors.length > 0) setError(secondaryErrors.join(' · '))
     } catch (uploadError) {
       console.error('[knowledge-reports] 업로드 실패:', uploadError)
       setError(uploadError instanceof Error ? uploadError.message : '업로드 중 오류가 발생했습니다.')
@@ -158,12 +160,6 @@ export default function KnowledgeReportUploadForm({ disabled, onCreated }: Knowl
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {error && <AdminErrorBox>{error}</AdminErrorBox>}
-      {successMessage && (
-        <div className="flex items-start gap-2 rounded-lg border border-positive/20 bg-positive-soft px-4 py-3 text-sm text-positive">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          {successMessage}
-        </div>
-      )}
 
       <Card>
         <CardHeader>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, CheckCircle, Send } from 'lucide-react'
+import { Loader2, Send } from 'lucide-react'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import CoverImageField from '@/components/admin/CoverImageField'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
@@ -81,7 +82,6 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
   const [keywords, setKeywords]     = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError]           = useState<string | null>(null)
-  const [success, setSuccess]       = useState(false)
   const [coverFile, setCoverFile]         = useState<File | null>(null)
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(initialForm?.thumbnailUrl || '')
 
@@ -108,6 +108,7 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
 
     setIsSubmitting(true)
     setError(null)
+    const secondaryErrors: string[] = []
 
     try {
       const res = await fetch('/api/admin/paste', {
@@ -147,39 +148,31 @@ export default function TextPasteForm({ initialForm }: Props = {}) {
               if (!copyRes.ok) throw new Error(`서버 복사 실패 (${copyRes.status})`)
             } catch (copyErr) {
               console.error('[paste] og:image 서버 복사 실패, 외부 URL로 폴백:', copyErr)
-              await supabase.from('contents').update({ thumbnail_url: coverPreviewUrl }).eq('id', data.id)
+              secondaryErrors.push(`커버 이미지 복사 실패: ${copyErr instanceof Error ? copyErr.message : '알 수 없는 오류'}`)
+              const { error: fallbackError } = await supabase
+                .from('contents')
+                .update({ thumbnail_url: coverPreviewUrl })
+                .eq('id', data.id)
+              if (fallbackError) throw fallbackError
             }
           }
         } catch (coverErr) {
           console.error('[paste] 커버 저장 실패:', coverErr)
+          secondaryErrors.push(`커버 저장 실패: ${coverErr instanceof Error ? coverErr.message : '알 수 없는 오류'}`)
         }
       }
 
-      setSuccess(true)
       setForm(FORM_INIT)
       setKeywords([])
       setCoverFile(null)
       setCoverPreviewUrl('')
+      toast.success('콘텐츠를 등록했습니다')
+      if (secondaryErrors.length > 0) setError(secondaryErrors.join(' · '))
     } catch (err) {
       setError(err instanceof Error ? err.message : '등록 중 오류가 발생했습니다.')
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  // ── 성공 화면 ──────────────────────────────────────────────────────────────
-
-  if (success) {
-    return (
-      <Card className="max-w-md mx-auto text-center py-12 px-8">
-        <CheckCircle className="mx-auto mb-4 h-12 w-12 text-positive" />
-        <h2 className="text-lg font-semibold text-foreground mb-1">등록 완료</h2>
-        <p className="text-sm text-muted-foreground mb-6">
-          콘텐츠가 성공적으로 등록됐습니다.
-        </p>
-        <Button onClick={() => setSuccess(false)}>계속 추가</Button>
-      </Card>
-    )
   }
 
   // ── 메인 폼 ────────────────────────────────────────────────────────────────
