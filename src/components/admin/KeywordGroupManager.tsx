@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils'
 import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { TagType } from '@/lib/types'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,7 @@ const TAG_TYPE_LABELS: Record<TagType, string> = {
 
 // signal_type enum 값 (SQL 65와 반드시 일치)
 const NO_SIGNAL = 'none'
+const PAGE_SIZE = 20
 
 const SIGNAL_TYPES = [
   '경쟁사동향',
@@ -169,10 +172,13 @@ function ChipInput({ id, label, hint, chips, onChange }: ChipInputProps) {
 
 export default function KeywordGroupManager() {
   const supabase = createClient()
+  const table = useAdminTable({ defaultSort: { key: 'kind', dir: 'asc' }, pageSize: PAGE_SIZE })
 
   const [groups,    setGroups]    = useState<GroupRow[]>([])
+  const [total,     setTotal]     = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error,     setError]     = useState<string | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   const [showForm,  setShowForm]  = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -184,15 +190,21 @@ export default function KeywordGroupManager() {
 
   async function loadGroups() {
     setIsLoading(true)
-    const { data, error: err } = await supabase
+    setError(null)
+    setFetchError(null)
+    const { data, error: err, count } = await supabase
       .from('keyword_groups')
-      .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, signal_hint, is_active')
+      .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, signal_hint, is_active', { count: 'exact' })
       .order('kind')
       .order('name')
+      .range((table.page - 1) * PAGE_SIZE, table.page * PAGE_SIZE - 1)
     if (err) {
-      setError(`키워드 그룹 목록 로드 실패: ${err.message}`)
+      const message = `키워드 그룹 목록 로드 실패: ${err.message}`
+      setError(message)
+      setFetchError(message)
     } else {
       setGroups((data ?? []) as GroupRow[])
+      setTotal(count ?? 0)
     }
     setIsLoading(false)
   }
@@ -200,20 +212,24 @@ export default function KeywordGroupManager() {
   useEffect(() => {
     const init = async () => {
       setIsLoading(true)
-      const { data, error: err } = await supabase
+      const { data, error: err, count } = await supabase
         .from('keyword_groups')
-        .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, signal_hint, is_active')
+        .select('id, name, kind, tag_type, description, include_patterns, exclude_patterns, search_seeds, weight, signal_hint, is_active', { count: 'exact' })
         .order('kind')
         .order('name')
+        .range((table.page - 1) * PAGE_SIZE, table.page * PAGE_SIZE - 1)
       if (err) {
-        setError(`키워드 그룹 목록 로드 실패: ${err.message}`)
+        const message = `키워드 그룹 목록 로드 실패: ${err.message}`
+        setError(message)
+        setFetchError(message)
       } else {
         setGroups((data ?? []) as GroupRow[])
+        setTotal(count ?? 0)
       }
       setIsLoading(false)
     }
     void init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [table.page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 폼 열기/닫기 ────────────────────────────────────────────────────────
 
@@ -332,6 +348,20 @@ export default function KeywordGroupManager() {
       setGroups(prev => prev.filter(g => g.id !== group.id))
     }
   }
+
+  const columns: AdminTableColumn<GroupRow>[] = [
+    { key: 'name', header: '이름 / Kind', cell: (group) => <><div className="font-medium text-foreground">{group.name}</div><div className="text-xs text-muted-foreground">{group.kind}</div></> },
+    { key: 'tagType', header: '태그 유형', cell: (group) => <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{TAG_TYPE_LABELS[group.tag_type]}</span> },
+    { key: 'weight', header: '가중치', align: 'center', cell: (group) => <span className="text-xs font-medium tabular-nums">{group.weight}</span> },
+    { key: 'include', header: 'Include', align: 'center', cell: (group) => <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', group.include_patterns?.length > 0 ? 'bg-positive-soft text-positive' : 'text-muted-foreground')}>{group.include_patterns?.length ?? 0}개</span> },
+    { key: 'exclude', header: 'Exclude', align: 'center', cell: (group) => <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', group.exclude_patterns?.length > 0 ? 'bg-negative-soft text-negative' : 'text-muted-foreground')}>{group.exclude_patterns?.length ?? 0}개</span> },
+    { key: 'seeds', header: 'Seeds', align: 'center', cell: (group) => <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', group.search_seeds?.length > 0 ? 'bg-blue-50 text-blue-700' : 'text-muted-foreground')}>{group.search_seeds?.length ?? 0}개</span> },
+    { key: 'signal', header: '시그널', cell: (group) => group.signal_hint ? <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">{group.signal_hint}</span> : <span className="text-xs text-muted-foreground">—</span> },
+    { key: 'active', header: '활성', cell: (group) => <button onClick={() => handleToggle(group)} className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors', group.is_active ? 'bg-positive-soft text-positive hover:opacity-80' : 'bg-muted text-muted-foreground hover:bg-accent')}>{group.is_active ? '활성' : '비활성'}</button> },
+    { key: 'actions', header: '작업', align: 'right', cell: (group) => <div className="flex items-center justify-end gap-0.5"><button onClick={() => openEdit(group)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => handleDelete(group)} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button></div> },
+  ]
+
+  const tableState: AdminTableState = isLoading ? 'loading' : fetchError ? 'error' : total === 0 ? 'empty' : 'idle'
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -518,7 +548,7 @@ export default function KeywordGroupManager() {
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {isLoading ? '불러오는 중…' : `총 ${groups.length}개 그룹`}
+          {isLoading ? '불러오는 중…' : `총 ${total}개 그룹`}
         </p>
         {!showForm && (
           <Button size="sm" onClick={openAdd}>
@@ -529,122 +559,18 @@ export default function KeywordGroupManager() {
       </div>
 
       {/* ── 목록 테이블 ── */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          불러오는 중…
-        </div>
-      ) : groups.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-          등록된 키워드 그룹이 없습니다.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[860px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">이름 / Kind</th>
-                <th className="px-4 py-3">태그 유형</th>
-                <th className="px-4 py-3 text-center">가중치</th>
-                <th className="px-4 py-3 text-center">Include</th>
-                <th className="px-4 py-3 text-center">Exclude</th>
-                <th className="px-4 py-3 text-center">Seeds</th>
-                <th className="px-4 py-3">시그널</th>
-                <th className="px-4 py-3">활성</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {groups.map(group => (
-                <tr key={group.id} className="hover:bg-accent/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">{group.name}</div>
-                    <div className="text-xs text-muted-foreground">{group.kind}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                      {TAG_TYPE_LABELS[group.tag_type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center text-xs font-medium tabular-nums">
-                    {group.weight}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={cn(
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      group.include_patterns?.length > 0
-                        ? 'bg-positive-soft text-positive'
-                        : 'text-muted-foreground'
-                    )}>
-                      {group.include_patterns?.length ?? 0}개
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={cn(
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      group.exclude_patterns?.length > 0
-                        ? 'bg-negative-soft text-negative'
-                        : 'text-muted-foreground'
-                    )}>
-                      {group.exclude_patterns?.length ?? 0}개
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={cn(
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      group.search_seeds?.length > 0
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-muted-foreground'
-                    )}>
-                      {group.search_seeds?.length ?? 0}개
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {group.signal_hint ? (
-                      <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
-                        {group.signal_hint}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleToggle(group)}
-                      className={cn(
-                        'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
-                        group.is_active
-                          ? 'bg-positive-soft text-positive hover:opacity-80'
-                          : 'bg-muted text-muted-foreground hover:bg-accent'
-                      )}
-                    >
-                      {group.is_active ? '활성' : '비활성'}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => openEdit(group)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        title="수정"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(group)}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={groups}
+        rowKey={(group) => group.id}
+        minWidth="min-w-[860px]"
+        state={tableState}
+        emptyMessage="등록된 키워드 그룹이 없습니다."
+        errorMessage={fetchError ?? undefined}
+        onRetry={loadGroups}
+        pagination={{ page: table.page, pageSize: PAGE_SIZE, total }}
+        onPageChange={table.setPage}
+      />
     </div>
   )
 }

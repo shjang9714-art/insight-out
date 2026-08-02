@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   title: '크롤링 현황 | 어드민 | Insight Out',
   description: '소스별 자동 수집 실행 로그',
 }
+const PAGE_SIZE = 20
 
 // ─── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,10 @@ function parseDecodeStats(meta: unknown): DecodeStats | null {
 
 // ─── 페이지 ───────────────────────────────────────────────────────────────────
 
-export default async function CrawlLogsPage() {
+export default async function CrawlLogsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const params = await searchParams
+  const parsedPage = Number.parseInt(params.page ?? '1', 10)
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
   // ── 서버 Supabase client (쿠키 기반, RLS admin 통과) ─────────────────────────
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -78,13 +82,14 @@ export default async function CrawlLogsPage() {
     }
   )
 
-  let { data, error } = await supabase
+  let { data, error, count } = await supabase
     .from('crawl_logs')
     .select(
-      'id, status, fetched_count, inserted_count, duplicate_count, held_count, rejected_count, rejected_by, error_message, started_at, finished_at, created_at, source_id, sources(name, type)'
+      'id, status, fetched_count, inserted_count, duplicate_count, held_count, rejected_count, rejected_by, error_message, started_at, finished_at, created_at, source_id, sources(name, type)',
+      { count: 'exact' }
     )
     .order('created_at', { ascending: false })
-    .limit(100)
+    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
   // 312 SQL(rejected_count/rejected_by) 미적용 시 undefined_column — 해당 컬럼 없이 재조회.
   if (error?.code === '42703') {
@@ -92,15 +97,32 @@ export default async function CrawlLogsPage() {
     const retry = await supabase
       .from('crawl_logs')
       .select(
-        'id, status, fetched_count, inserted_count, duplicate_count, held_count, error_message, started_at, finished_at, created_at, source_id, sources(name, type)'
+        'id, status, fetched_count, inserted_count, duplicate_count, held_count, error_message, started_at, finished_at, created_at, source_id, sources(name, type)',
+        { count: 'exact' }
       )
       .order('created_at', { ascending: false })
-      .limit(100)
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
     data = retry.data as unknown as typeof data
     error = retry.error
+    count = retry.count
   }
 
   const logs = (data ?? []) as unknown as CrawlLogRow[]
+
+  // 상단 요약은 이관 전과 동일하게 최신 100건을 기준으로 계산한다.
+  let summaryResult = await supabase
+    .from('crawl_logs')
+    .select('status, inserted_count, rejected_count, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (summaryResult.error?.code === '42703') {
+    summaryResult = await supabase
+      .from('crawl_logs')
+      .select('status, inserted_count, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100) as unknown as typeof summaryResult
+  }
+  const summaryRows = (summaryResult.data ?? []) as Pick<CrawlLogRow, 'status' | 'inserted_count' | 'rejected_count' | 'created_at'>[]
 
   // job_runs는 service_role 전용이다. 아직 테이블/진단 필드가 없거나 조회가 실패하면
   // 기존 크롤 로그 화면은 그대로 유지하고 공급자 진단만 숨긴다.
@@ -161,8 +183,8 @@ export default async function CrawlLogsPage() {
   const cutoffDate = new Date()
   cutoffDate.setHours(cutoffDate.getHours() - 24)
   const cutoffIso = cutoffDate.toISOString()
-  const recent = logs.filter((l) => l.created_at >= cutoffIso)
-  const summaryLogs = recent.length > 0 ? recent : logs
+  const recent = summaryRows.filter((log) => log.created_at >= cutoffIso)
+  const summaryLogs = recent.length > 0 ? recent : summaryRows
 
   const successCount  = summaryLogs.filter((l) => l.status === 'success').length
   const partialCount  = summaryLogs.filter((l) => l.status === 'partial').length
@@ -171,7 +193,7 @@ export default async function CrawlLogsPage() {
   // rejected_count 가 하나라도 null(SQL 미적용)이면 합계 자체가 의미 없으므로 '—' 표시.
   const rejectedKnown = summaryLogs.every((l) => l.rejected_count != null)
   const totalRejected = summaryLogs.reduce((s, l) => s + (l.rejected_count ?? 0), 0)
-  const lastRunAt     = logs[0]?.created_at ?? null
+  const lastRunAt     = summaryRows[0]?.created_at ?? null
 
   // ── 요약 카드 데이터 ──────────────────────────────────────────────────────
   const summaryCards = [
@@ -296,7 +318,14 @@ export default async function CrawlLogsPage() {
       </div>
 
       {/* 로그 표 (클라이언트 컴포넌트 — 드릴다운·소스 대구분 배지) */}
-      <CrawlLogsTable logs={logs} />
+      <CrawlLogsTable
+        logs={logs}
+        state={error ? 'error' : count === 0 ? 'empty' : 'idle'}
+        errorMessage={error ? `수집 기록을 불러오지 못했습니다: ${error.message}` : undefined}
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={count}
+      />
     </>
   )
 }
