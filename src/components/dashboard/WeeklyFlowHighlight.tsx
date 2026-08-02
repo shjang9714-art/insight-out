@@ -39,7 +39,7 @@ function FlowStepBody({ step }: { step: WeeklyFlowStep }) {
           href={`/dashboard/contents/${article.content_id}`}
           prefetch={false}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener"
           title={article.title}
           aria-label={article.title}
           className="mt-0.5 block text-sm leading-relaxed text-foreground underline decoration-transparent underline-offset-2 transition-colors hover:cursor-pointer hover:text-brand-700 hover:decoration-brand-700"

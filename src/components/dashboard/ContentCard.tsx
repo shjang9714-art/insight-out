@@ -200,7 +200,7 @@ export default function ContentCard({
       href={resolvedHref}
       prefetch={false}
       target="_blank"
-      rel="noopener noreferrer"
+      rel="noopener"
       className={cardClass}
     >
       {inner}

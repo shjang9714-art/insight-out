@@ -423,7 +423,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                                       href={`/dashboard/contents/${c.content_id}`}
                                       prefetch={false}
                                       target="_blank"
-                                      rel="noopener noreferrer"
+                                      rel="noopener"
                                       className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
                                     >
                                       {meta.title}
@@ -453,7 +453,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                                   href={`/dashboard/contents/${id}`}
                                   prefetch={false}
                                   target="_blank"
-                                  rel="noopener noreferrer"
+                                  rel="noopener"
                                   className="block text-xs text-brand-600 hover:underline truncate"
                                 >
                                   {meta.title}

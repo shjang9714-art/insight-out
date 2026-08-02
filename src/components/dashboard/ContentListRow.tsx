@@ -55,7 +55,7 @@ export default function ContentListRow({
         href={detailHref}
         prefetch={false}
         target="_blank"
-        rel="noopener noreferrer"
+        rel="noopener"
         className="flex h-24 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted sm:h-28 sm:w-40"
       >
         <CoverImage
@@ -80,7 +80,7 @@ export default function ContentListRow({
           ))}
         </div>
 
-        <Link href={detailHref} prefetch={false} target="_blank" rel="noopener noreferrer">
+        <Link href={detailHref} prefetch={false} target="_blank" rel="noopener">
           <h2 className="line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
             {title}
           </h2>

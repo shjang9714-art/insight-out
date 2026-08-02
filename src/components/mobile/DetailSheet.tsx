@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { BellPlus, FilePlus2, Share2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ContentDetailModalProvider } from '@/lib/content-detail/modal-context'
 
 interface DetailSheetProps {
   children: ReactNode
@@ -62,7 +63,7 @@ export default function DetailSheet({ children, titleFallback }: DetailSheetProp
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            {children}
+            <ContentDetailModalProvider>{children}</ContentDetailModalProvider>
           </div>
 
           <div className="grid shrink-0 grid-cols-3 gap-2 border-t border-border bg-background px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 md:pb-3">

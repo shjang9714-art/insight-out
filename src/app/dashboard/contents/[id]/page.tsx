@@ -264,6 +264,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
       <div className="mb-6">
         <BackLink
           fallbackHref={listFallback}
+          referrerFallback
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
         />
       </div>
@@ -514,6 +515,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
         <div className="mt-10 flex items-center justify-between border-t border-border pt-6">
           <BackLink
             fallbackHref={listFallback}
+            referrerFallback
             className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-brand-600"
           />
 

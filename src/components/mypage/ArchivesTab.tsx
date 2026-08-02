@@ -157,7 +157,7 @@ export default function ArchivesTab({
                             <a
                               href={`/dashboard/contents/${item.contents.id}`}
                               target="_blank"
-                              rel="noopener noreferrer"
+                              rel="noopener"
                               className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
                             >
                               {item.contents.title}
