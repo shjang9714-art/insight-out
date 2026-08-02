@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '리포트 | Insight Out',
-  description: 'AI가 분석한 시장동향·경쟁사 분석 리포트와 외부 리포트',
+  description: 'AI가 분석한 시장동향·경쟁사 분석 리포트와 컨설팅 리포트',
 }
 
 type SearchParams = Promise<{ view?: string }>
@@ -105,15 +105,15 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       )}
       {view === 'external' && (
         <Suspense fallback={<ReportGridSkeleton />}>
-          <ContentsBoard fixedCategory="리서치" title="외부 리포트" />
+          <ContentsBoard fixedCategory="리서치" title="컨설팅 리포트" />
         </Suspense>
       )}
       {view === 'knowledge' && (
         <Suspense fallback={<ReportGridSkeleton />}>
           <ContentsBoard
             fixedCategory="지식보고서"
-            title="지식보고서"
-            schemaPendingMessage="지식보고서 카테고리를 준비하고 있습니다. SQL 적용 후 목록이 표시됩니다."
+            title="AI참고서"
+            schemaPendingMessage="AI참고서 카테고리를 준비하고 있습니다. SQL 적용 후 목록이 표시됩니다."
           />
         </Suspense>
       )}

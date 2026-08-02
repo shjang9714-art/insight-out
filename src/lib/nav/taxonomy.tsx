@@ -72,7 +72,7 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     tabs: [
       { id: '뉴스', label: '뉴스', value: '뉴스' },
       { id: '유튜브', label: '유튜브', value: '유튜브' },
-      { id: '웹인사이트', label: '웹인사이트', value: '웹인사이트' },
+      { id: '웹인사이트', label: '기술 Blog', value: '웹인사이트' },
     ],
   },
   '/dashboard/reports': {
@@ -83,8 +83,8 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     preserveParams: false,
     tabs: [
       { id: 'ai', label: aiLabel('AI 리포트'), value: 'ai' },
-      { id: 'external', label: '외부 리포트', value: 'external' },
-      { id: 'knowledge', label: aiLabel('지식보고서'), value: 'knowledge' },
+      { id: 'external', label: '컨설팅 리포트', value: 'external' },
+      { id: 'knowledge', label: aiLabel('AI참고서'), value: 'knowledge' },
     ],
   },
 }
