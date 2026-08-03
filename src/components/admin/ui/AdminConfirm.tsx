@@ -8,6 +8,7 @@ export type ConfirmOptions = {
   description?: string
   targets?: string[]
   loadCount?: () => Promise<number>
+  countLabel?: string
   confirmLabel?: string
   destructive?: boolean
 }
@@ -75,7 +76,7 @@ export function AdminConfirmHost({ children }: { children: ReactNode }) {
                 {request.targets.length > 10 && <p className="mt-1 text-muted-foreground">외 {request.targets.length - 10}건</p>}
               </div>
             )}
-            {request.loadCount && <p className="mt-3 text-sm">삭제 대상: {loading ? '조회 중...' : count === null ? '확인할 수 없습니다.' : `${count.toLocaleString()}건`}</p>}
+            {request.loadCount && <p className="mt-3 text-sm">{request.countLabel ?? '삭제 대상'}: {loading ? '조회 중...' : count === null ? '확인할 수 없습니다.' : `${count.toLocaleString()}건`}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <Button ref={cancelRef} type="button" variant="outline" onClick={() => close(false)}>취소</Button>
               {request.loadCount && count === null && !loading && (

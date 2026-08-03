@@ -1257,7 +1257,7 @@ export default function AdminContentManager() {
     const ids = [...selectedIds]
     if (ids.length === 0) return
     const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
-    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '연쇄 삭제되는 북마크·아카이브 항목도 함께 확인해주세요.', targets: titles, confirmLabel: '삭제', destructive: true, loadCount: async () => {
+    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '연쇄 삭제되는 북마크·아카이브 항목도 함께 확인해주세요.', targets: titles, countLabel: '함께 삭제되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: async () => {
       const [bookmarks, archives] = await Promise.all([
         supabase.from('bookmarks').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
         supabase.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
