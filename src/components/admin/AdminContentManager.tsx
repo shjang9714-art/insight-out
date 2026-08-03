@@ -59,6 +59,7 @@ import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import ContentCard from '@/components/dashboard/ContentCard'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
 interface AdminContentRow {
   id: string
@@ -263,14 +264,6 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   } catch {
     return null
   }
-}
-
-function formatKst(iso: string): string {
-  return new Date(iso).toLocaleString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
 }
 
 /** 348 — 테이블 셀용 짧은 KST 표기: 2026.07.14 15:12 (전체 표기는 title 속성으로) */
@@ -1222,19 +1215,6 @@ export default function AdminContentManager() {
   }, [edit, contents]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
-  const allPageIds  = contents.map((c) => c.id)
-  const allSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id))
-  const someSelected = allPageIds.some((id) => selectedIds.has(id)) && !allSelected
-
-  const toggleAll = () => {
-    setBulkBodyBackfillNotice(null)
-    if (allSelected) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(allPageIds))
-    }
-  }
-
   const toggleRow = (id: string) => {
     setBulkBodyBackfillNotice(null)
     setSelectedIds((prev) => {
@@ -1511,6 +1491,16 @@ export default function AdminContentManager() {
     ? CATEGORY_SOURCE_TYPE[category]
     : undefined
   const sourceOptions = mappedType ? sources.filter((s) => s.type === mappedType) : sources
+  const contentTableColumns: AdminTableColumn<AdminContentRow>[] = [
+    { key: 'title', header: '제목', cell: (content) => <Link href={`/admin/contents/${content.id}`} className="line-clamp-2 block font-medium text-foreground hover:text-brand-600 hover:underline">{content.title}</Link>, truncate: 2 },
+    { key: 'category', header: '카테고리', cell: (content) => CONTENT_CATEGORY_LABEL[content.category], nowrap: true },
+    { key: 'source', header: '소스', cell: (content) => content.sources?.name ?? <span className="text-muted-foreground/60">Google News 검색</span>, truncate: true },
+    { key: 'status', header: '상태', cell: (content) => <div className="flex min-w-0 flex-wrap items-center gap-1.5"><StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} className="shrink-0" /><ReviewReasonBadge content={content} /></div> },
+    { key: 'body', header: '본문 길이', cell: (content) => { const bodyState=getBodyState(content); const len=bodyLength(content); const bodyText=bodyState==='none'?'미시도':len!=null?`${len.toLocaleString()}자`:'처리됨'; const canBackfillBody=bodyState!=='full'; const disabled=workingId===content.id || bodyBackfillId===content.id || isBulkWorking; return <div><div className="flex items-center gap-1"><span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>{bodyText}</span>{canBackfillBody&&<button type="button" disabled={disabled} title="본문 보강" aria-label={`${content.title} 본문 보강`} onClick={()=>{void handleBodyBackfill(content)}} className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">{bodyBackfillId===content.id?<Loader2 className="h-3 w-3 animate-spin"/>:<RotateCcw className="h-3 w-3"/>}</button>}</div>{bodyBackfillNotices[content.id]&&<p className={cn('mt-1 text-[11px] font-medium leading-tight', BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotices[content.id].tone])}>{bodyBackfillNotices[content.id].message}</p>}</div> } },
+    { key: 'collected', header: '수집일 (KST)', cell: (content) => formatKstCompact(content.collected_at), nowrap: true },
+    { key: 'actions', header: '관리', align: 'right', cell: (content) => <RowActions content={content} disabled={workingId===content.id || bodyBackfillId===content.id || isBulkWorking} isWorking={workingId===content.id} onStatusChange={handleStatusChange} onEdit={openEdit} onDelete={handleDelete} /> },
+  ]
+
   const bulkReviewFilters = currentBulkReviewFilters()
   const bulkReviewHasFilter = hasBulkReviewFilter(bulkReviewFilters)
   const bulkReviewUnsupportedFilter = bookmarkedOnly || coverFilter !== 'all'
@@ -2160,143 +2150,20 @@ export default function AdminContentManager() {
       ) : (
         <>
           {/* ── 데스크톱: 단일 테이블 그리드 (348 — sticky 관리 열 제거, 행 배경·hover가 관리까지 이어짐) ── */}
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-            <table className="w-full min-w-[1072px] table-fixed border-collapse text-sm">
-              <colgroup>
-                <col className="w-9" />
-                <col />{/* 제목: 잔여 폭 전부 흡수 */}
-                <col className="w-[96px]" />
-                <col className="w-[128px]" />
-                <col className="w-[160px]" />
-                <col className="w-[104px]" />
-                <col className="w-[152px]" />
-                <col className="w-[144px]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
-                  <th className="px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      ref={(el) => { if (el) el.indeterminate = someSelected }}
-                      onChange={toggleAll}
-                      className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                      aria-label="전체 선택"
-                    />
-                  </th>
-                  <th className="px-3 py-3">제목</th>
-                  <th className="px-3 py-3">카테고리</th>
-                  <th className="px-3 py-3">소스</th>
-                  <th className="px-3 py-3">상태</th>
-                  <th className="px-3 py-3">본문 길이</th>
-                  <th className="px-3 py-3">수집일 (KST)</th>
-                  <th className="px-3 py-3 text-right">관리</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {contents.map((content) => {
-                  const isWorking   = workingId === content.id
-                  const isBodyBackfilling = bodyBackfillId === content.id
-                  const isSelected  = selectedIds.has(content.id)
-                  const bodyState = getBodyState(content)
-                  const canBackfillBody = bodyState !== 'full'
-                  const isRowDisabled = isWorking || isBodyBackfilling || isBulkWorking
-                  const bodyBackfillNotice = bodyBackfillNotices[content.id]
-                  const len = bodyLength(content)
-                  const bodyText = bodyState === 'none' ? '미시도'
-                    : len != null ? `${len.toLocaleString()}자`
-                    : '처리됨'
-                  return (
-                    <tr
-                      key={content.id}
-                      className={cn(
-                        'transition-colors hover:bg-accent/50',
-                        isSelected && 'bg-brand-600/5'
-                      )}
-                    >
-                      <td className="px-3 py-3 align-middle">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleRow(content.id)}
-                          className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                          aria-label={`${content.title} 선택`}
-                        />
-                      </td>
-                      <td className="admin-cell-wrap px-3 py-3 align-middle font-medium text-foreground">
-                        <Link
-                          href={`/admin/contents/${content.id}`}
-                          className="line-clamp-2 block hover:text-brand-600 hover:underline"
-                        >
-                          {content.title}
-                        </Link>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-middle text-muted-foreground">
-                        {CONTENT_CATEGORY_LABEL[content.category]}
-                      </td>
-                      <td className="truncate px-3 py-3 align-middle text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
-                        {content.sources?.name ?? (
-                          <span className="text-muted-foreground/60">Google News 검색</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 align-middle">
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                          <StatusBadge
-                            tone={CONTENT_STATUS_TONE[content.status]}
-                            label={CONTENT_STATUS_LABEL[content.status]}
-                            className="shrink-0"
-                          />
-                          <ReviewReasonBadge content={content} />
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 align-middle">
-                        <div className="flex items-center gap-1">
-                          <span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>
-                            {bodyText}
-                          </span>
-                          {canBackfillBody && (
-                            <button
-                              type="button"
-                              disabled={isRowDisabled}
-                              title="본문 보강"
-                              aria-label={`${content.title} 본문 보강`}
-                              onClick={() => { void handleBodyBackfill(content) }}
-                              className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-                            >
-                              {isBodyBackfilling
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : <RotateCcw className="h-3 w-3" />
-                              }
-                            </button>
-                          )}
-                        </div>
-                        {bodyBackfillNotice && (
-                          <p className={cn(
-                            'mt-1 text-[11px] font-medium leading-tight',
-                            BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotice.tone]
-                          )}>
-                            {bodyBackfillNotice.message}
-                          </p>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 align-middle text-xs text-muted-foreground tabular-nums" title={formatKst(content.collected_at)}>
-                        {formatKstCompact(content.collected_at)}
-                      </td>
-                      <td className="px-3 py-3 align-middle text-right">
-                        <RowActions
-                          content={content}
-                          disabled={isRowDisabled}
-                          isWorking={isWorking}
-                          onStatusChange={handleStatusChange}
-                          onEdit={openEdit}
-                          onDelete={handleDelete}
-                        />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="hidden md:block">
+            <AdminTable
+              columns={contentTableColumns}
+              rows={contents}
+              rowKey={(content) => content.id}
+              minWidth="min-w-[1072px]"
+              state={isLoading ? 'loading' : error ? 'error' : contents.length === 0 ? 'empty' : 'idle'}
+              errorMessage={error ?? undefined}
+              selection={{ selected: selectedIds, onChange: setSelectedIds }}
+              pagination={{ page, pageSize, total: totalCount }}
+              onPageChange={setPage}
+              emptyMessage="조건에 맞는 콘텐츠가 없습니다."
+              emptyHint="필터를 바꾸거나 수집을 실행해보세요."
+            />
           </div>
 
           {/* ── 모바일: 카드 리스트 (348 — 테이블 축소 대신 카드로 전환) ── */}
