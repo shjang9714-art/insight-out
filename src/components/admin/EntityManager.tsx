@@ -23,6 +23,7 @@ import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -259,6 +260,43 @@ export default function EntityManager() {
   const visibleEntities = filterType === 'all'
     ? baseList
     : baseList.filter(e => e.entity_type === filterType)
+
+  const entityColumns: AdminTableColumn<EntityRow>[] = [
+    {
+      key: 'name',
+      header: '이름',
+      cell: (entity) => (
+        <div>
+          <div className="font-medium text-foreground">{entity.canonical_name}</div>
+          {entity.description && <div className="truncate text-xs text-muted-foreground">{entity.description}</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'type',
+      header: '유형',
+      cell: (entity) => <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', ENTITY_TYPE_CLS[entity.entity_type])}>{ENTITY_TYPE_LABEL[entity.entity_type]}</span>,
+    },
+    { key: 'mentions', header: '언급', align: 'center', cell: (entity) => entity.mention_count },
+    {
+      key: 'attributes',
+      header: '속성',
+      cell: (entity) => <div className="flex flex-wrap items-center gap-1">{entity.is_competitor && <StatusBadge tone="negative" label="경쟁사" />}{entity.competitor_group && <StatusBadge tone="neutral" label={entity.competitor_group} />}</div>,
+    },
+    {
+      key: 'actions',
+      header: '작업',
+      align: 'right',
+      cell: (entity) => (
+        <div className="flex items-center justify-end gap-0.5">
+          <button onClick={() => openEdit(entity)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button>
+          <button onClick={() => { if (aliasEntityId === entity.id) { closeAliases(); return }; void openAliases(entity.id) }} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', aliasEntityId === entity.id ? 'bg-accent text-foreground' : 'text-muted-foreground')} title="동의어"><Tag className="h-3.5 w-3.5" /></button>
+          <button onClick={() => { if (mergeSourceId === entity.id) { closeMerge(); return }; openMerge(entity.id) }} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', mergeSourceId === entity.id ? 'bg-accent text-foreground' : 'text-muted-foreground')} title="병합"><GitMerge className="h-3.5 w-3.5" /></button>
+          <button onClick={() => { void handleDelete(entity) }} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button>
+        </div>
+      ),
+    },
+  ]
 
   const typeCounts = entities.reduce<Record<string, number>>((acc, e) => {
     acc[e.entity_type] = (acc[e.entity_type] ?? 0) + 1
@@ -1082,106 +1120,15 @@ export default function EntityManager() {
           {searchQuery ? '검색 결과가 없습니다.' : '등록된 엔티티가 없습니다.'}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">유형</th>
-                <th className="px-4 py-3 text-center">언급</th>
-                <th className="px-4 py-3">속성</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visibleEntities.map(entity => (
-                <tr
-                  key={entity.id}
-                  className={cn(
-                    'transition-colors hover:bg-accent/50',
-                    (aliasEntityId === entity.id || mergeSourceId === entity.id) && 'bg-accent/30'
-                  )}
-                >
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">{entity.canonical_name}</div>
-                    {entity.description && (
-                      <div className="truncate text-xs text-muted-foreground">{entity.description}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={cn(
-                      'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                      ENTITY_TYPE_CLS[entity.entity_type]
-                    )}>
-                      {ENTITY_TYPE_LABEL[entity.entity_type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center text-xs font-medium tabular-nums">
-                    {entity.mention_count}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-1">
-                      {entity.is_competitor && (
-                        <StatusBadge tone="negative" label="경쟁사" />
-                      )}
-                      {entity.competitor_group && (
-                        <StatusBadge tone="neutral" label={entity.competitor_group} />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => openEdit(entity)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        title="수정"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (aliasEntityId === entity.id) { closeAliases(); return }
-                          void openAliases(entity.id)
-                        }}
-                        className={cn(
-                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
-                          aliasEntityId === entity.id
-                            ? 'bg-accent text-foreground'
-                            : 'text-muted-foreground'
-                        )}
-                        title="동의어"
-                      >
-                        <Tag className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (mergeSourceId === entity.id) { closeMerge(); return }
-                          openMerge(entity.id)
-                        }}
-                        className={cn(
-                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
-                          mergeSourceId === entity.id
-                            ? 'bg-accent text-foreground'
-                            : 'text-muted-foreground'
-                        )}
-                        title="병합"
-                      >
-                        <GitMerge className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => { void handleDelete(entity) }}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AdminTable
+          columns={entityColumns}
+          rows={visibleEntities}
+          rowKey={(entity) => entity.id}
+          minWidth="min-w-[720px]"
+          state={isLoading ? 'loading' : error ? 'error' : visibleEntities.length === 0 ? 'empty' : 'idle'}
+          errorMessage={error ?? undefined}
+          emptyMessage={searchQuery ? '검색 결과가 없습니다.' : '등록된 엔티티가 없습니다.'}
+        />
       )}
     </div>
   )
