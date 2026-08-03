@@ -20,7 +20,6 @@ import type {
   NewsletterForm,
   ProfileForm,
   SaveStatus,
-  ServiceOption,
   WatchlistSummaryItem,
 } from '@/components/mypage/types'
 
@@ -40,11 +39,6 @@ export default function MyPage() {
   })
   const [profileStatus, setProfileStatus] = useState<SaveStatus>('idle')
   const [profileError, setProfileError] = useState<string | null>(null)
-
-  const [services, setServices] = useState<ServiceOption[]>([])
-  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set())
-  const [servicesStatus, setServicesStatus] = useState<SaveStatus>('idle')
-  const [servicesError, setServicesError] = useState<string | null>(null)
 
   const [watchlistItems, setWatchlistItems] = useState<WatchlistSummaryItem[]>([])
 
@@ -115,28 +109,25 @@ export default function MyPage() {
 
       const [
         userRes,
-        userServicesRes,
-        allServicesRes,
         subRes,
         bookmarksRes,
         archivesRes,
         watchlistRows,
       ] = await Promise.all([
         supabase.from('users').select('name, department, team, team_name, default_lens').eq('id', user.id).single(),
-        supabase.from('user_services').select('service_id').eq('user_id', user.id),
-        supabase.from('services').select('*').order('order'),
         supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
         supabase
           .from('bookmarks')
           .select(`
-            id, content_id, youtube_video_id, created_at,
+            id, content_id, youtube_video_id, ai_report_id, created_at,
             contents(id, title, category, original_url, published_at),
-            youtube_videos(id, video_id, title, channel_name, published_at)
+            youtube_videos(id, video_id, title, channel_name, published_at),
+            ai_reports(id, title, type, published_at)
           `)
           .order('created_at', { ascending: false }),
         supabase
           .from('archives')
-          .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, added_at, contents(id, title, category, original_url))`)
+          .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, ai_report_id, added_at, contents(id, title, category, original_url), ai_reports(id, title, type, published_at))`)
           .order('created_at', { ascending: false }),
         fetchWatchlistForUser(user.id),
       ])
@@ -157,12 +148,13 @@ export default function MyPage() {
           department: (userRow.department as Department) ?? '기타',
           team: userRow.team ?? '',
           team_name: userRow.team_name ?? '',
-          default_lens: (userRow.default_lens as LensKey) ?? 'all',
+          default_lens:
+            userRow.default_lens === 'watch' || userRow.default_lens === 'all'
+              ? userRow.default_lens
+              : 'all',
         })
       }
 
-      if (allServicesRes.data) setServices(allServicesRes.data as ServiceOption[])
-      if (userServicesRes.data) setSelectedServiceIds(new Set(userServicesRes.data.map((row) => row.service_id)))
       setWatchlistItems(watchlistRows)
 
       if (bookmarksRes.error) setBookmarkError('북마크를 불러오지 못했습니다.')
@@ -231,41 +223,6 @@ export default function MyPage() {
     }
   }
 
-  const handleServicesSave = async (nextIds: string[]): Promise<boolean> => {
-    setServicesError(null)
-    setServicesStatus('saving')
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('로그인 정보를 찾을 수 없습니다.')
-
-      const { error: deleteError } = await supabase
-        .from('user_services')
-        .delete()
-        .eq('user_id', user.id)
-      if (deleteError) throw new Error(`삭제 실패: ${deleteError.message}`)
-
-      if (nextIds.length > 0) {
-        const rows = nextIds.map((service_id) => ({
-          user_id: user.id,
-          service_id,
-          is_pinned: false,
-        }))
-        const { error: insertError } = await supabase.from('user_services').insert(rows)
-        if (insertError) throw new Error(`저장 실패: ${insertError.message}`)
-      }
-
-      setSelectedServiceIds(new Set(nextIds))
-      setServicesStatus('saved')
-      setTimeout(() => setServicesStatus('idle'), 2500)
-      return true
-    } catch (err) {
-      setServicesError(err instanceof Error ? err.message : '오류가 발생했습니다.')
-      setServicesStatus('error')
-      return false
-    }
-  }
-
   const handleNewsletterSave = async (e: FormEvent) => {
     e.preventDefault()
 
@@ -330,10 +287,16 @@ export default function MyPage() {
     }
   }
 
-  async function handleRemoveItem(archiveId: string, contentId: string | null, youtubeId: string | null) {
+  async function handleRemoveItem(
+    archiveId: string,
+    contentId: string | null,
+    youtubeId: string | null,
+    reportId: string | null = null
+  ) {
     setArchiveError(null)
     let query = supabase.from('archive_items').delete().eq('archive_id', archiveId)
     if (contentId) query = query.eq('content_id', contentId)
+    else if (reportId) query = query.eq('ai_report_id', reportId)
     else if (youtubeId) query = query.eq('youtube_video_id', youtubeId)
 
     const { error } = await query
@@ -346,7 +309,11 @@ export default function MyPage() {
             ? {
                 ...archive,
                 items: archive.items.filter((item) =>
-                  contentId ? item.content_id !== contentId : item.youtube_video_id !== youtubeId
+                  contentId
+                    ? item.content_id !== contentId
+                    : reportId
+                      ? item.ai_report_id !== reportId
+                      : item.youtube_video_id !== youtubeId
                 ),
               }
             : archive
@@ -431,11 +398,6 @@ export default function MyPage() {
             newsletterStatus={newsletterStatus}
             newsletterError={newsletterError}
             onNewsletterSave={handleNewsletterSave}
-            services={services}
-            selectedServiceIds={Array.from(selectedServiceIds)}
-            servicesStatus={servicesStatus}
-            servicesError={servicesError}
-            onServicesSave={handleServicesSave}
             watchlistItems={watchlistItems}
             onWatchlistChange={refreshWatchlistSummary}
           />

@@ -16,12 +16,14 @@ import {
   RELEVANCE_LABEL,
   RELEVANCE_CLS,
 } from '@/lib/insight/card-meta'
+import { buildCompanyMatchOr, getCompanyNewsSinceIso } from '@/lib/insight/company-match'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ week?: string }>
 }
 
 interface ContentMeta {
@@ -33,6 +35,17 @@ interface ContentMeta {
   matched_keywords: string[] | null
 }
 
+interface CompanyNewsItem {
+  id: string
+  title: string
+  published_at: string | null
+  collected_at: string
+  sources: ContentMeta['sources']
+}
+
+const COMPANY_NEWS_WINDOW_DAYS = 30
+const COMPANY_NEWS_LIMIT = 10
+
 function formatPeriod(start: string, end: string): string {
   const fmt = (d: Date) =>
     `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
@@ -43,13 +56,46 @@ function sourceName(sources: ContentMeta['sources']): string | null {
   return Array.isArray(sources) ? sources[0]?.name ?? null : sources?.name ?? null
 }
 
+function formatNewsDate(date: string): string {
+  return new Date(date).toLocaleDateString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  })
+}
+
+function splitImplicationItems(text: string): string[] {
+  const normalized = text.replace(/\r\n?/g, '\n').trim()
+  if (!normalized) return []
+
+  const superscriptMarkers = normalized.match(/[¹²³⁴⁵⁶⁷⁸⁹]/g) ?? []
+  const hasSuperscriptList =
+    superscriptMarkers.length > 1 && /(?:^|\s)[¹²³⁴⁵⁶⁷⁸⁹]/.test(normalized)
+
+  let withMarkerBreaks = normalized.replace(/\s*(?=[①-⑳])/g, '\n')
+  withMarkerBreaks = (hasSuperscriptList
+    ? withMarkerBreaks.replace(/\s*(?=[¹²³⁴⁵⁶⁷⁸⁹])/g, '\n')
+    : withMarkerBreaks.replace(/(^|\s+)(?=[¹²³⁴⁵⁶⁷⁸⁹]\s*)/g, '$1\n'))
+    .replace(/(^|\s+)(?=\d{1,2}\.\s)/g, '$1\n')
+
+  if (!withMarkerBreaks.includes('\n')) return [normalized]
+
+  return withMarkerBreaks
+    .split(/\n+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
 export const metadata: Metadata = {
   title: '기업 동향 상세 | Insight Out',
   description: '인사이트 카드의 핵심·시사점·근거를 확인합니다.',
 }
 
-export default async function InsightDetailPage({ params }: PageProps) {
+export default async function InsightDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
+  const query = await searchParams
+  const selectedWeek = typeof query.week === 'string' && query.week ? query.week : undefined
 
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -93,27 +139,63 @@ export default async function InsightDetailPage({ params }: PageProps) {
     }
   }
 
-  // 내 관련도 — 로그인 사용자의 워치리스트(회사)·담당서비스(산업) 문자열 매칭(간이, lens.ts와 동일 방식)
+  let companyNews: CompanyNewsItem[] = []
+  if (card.scope === 'company') {
+    try {
+      const { data: companyRow, error: companyError } = await supabase
+        .from('curated_companies')
+        .select('aliases')
+        .eq('name', card.topic)
+        .maybeSingle()
+
+      if (companyError) {
+        console.warn('[기업 최근 뉴스] 회사 별칭 조회 실패:', companyError.message)
+      }
+
+      const aliases = !companyError && Array.isArray(companyRow?.aliases)
+        ? companyRow.aliases.filter((alias): alias is string => typeof alias === 'string')
+        : []
+      const since = getCompanyNewsSinceIso(COMPANY_NEWS_WINDOW_DAYS)
+      let newsQuery = supabase
+        .from('contents')
+        .select('id, title, published_at, collected_at, sources(name)')
+        .eq('status', 'published')
+        .gte('collected_at', since)
+        .or(buildCompanyMatchOr(card.topic, aliases))
+        .order('collected_at', { ascending: false })
+        .limit(COMPANY_NEWS_LIMIT)
+
+      if (allIds.length > 0) {
+        newsQuery = newsQuery.not('id', 'in', `(${allIds.join(',')})`)
+      }
+
+      const { data: newsRows, error: newsError } = await newsQuery
+      if (newsError) {
+        console.warn('[기업 최근 뉴스] 콘텐츠 조회 실패:', newsError.message)
+      } else {
+        companyNews = (newsRows ?? []) as unknown as CompanyNewsItem[]
+      }
+    } catch (error) {
+      console.warn(
+        '[기업 최근 뉴스] 섹션 조회 중 오류:',
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+  }
+
+  // 내 관련도 — 로그인 사용자의 워치리스트(회사) 문자열 매칭(간이, lens.ts와 동일 방식)
   const { data: { user } } = await supabase.auth.getUser()
   let relevanceMatched = false
   let hasPersonalization = false
   if (user) {
-    const [{ data: watchlistRows }, { data: serviceRows }] = await Promise.all([
-      supabase.from('user_watchlist').select('company').eq('user_id', user.id),
-      supabase.from('user_services').select('services(name)').eq('user_id', user.id),
-    ])
+    const { data: watchlistRows } = await supabase
+      .from('user_watchlist')
+      .select('company')
+      .eq('user_id', user.id)
     const watchlist = ((watchlistRows ?? []) as { company: string }[]).map(w => w.company.toLowerCase())
-    const serviceNames = ((serviceRows ?? []) as unknown as { services: { name: string } | { name: string }[] | null }[])
-      .flatMap(r => {
-        const s = r.services
-        if (!s) return []
-        return Array.isArray(s) ? s.map(x => x.name.toLowerCase()) : [s.name.toLowerCase()]
-      })
-    hasPersonalization = watchlist.length > 0 || serviceNames.length > 0
+    hasPersonalization = watchlist.length > 0
     const topicLower = card.topic.toLowerCase()
-    relevanceMatched =
-      watchlist.some(w => topicLower.includes(w) || w.includes(topicLower)) ||
-      serviceNames.some(s => topicLower.includes(s) || s.includes(topicLower))
+    relevanceMatched = watchlist.some(w => topicLower.includes(w) || w.includes(topicLower))
   }
 
   const importance = computeImportance(card)
@@ -124,8 +206,11 @@ export default async function InsightDetailPage({ params }: PageProps) {
   const cardHeadline = card.card_headline ? stripLlmArtifacts(card.card_headline) : null
   const headline = stripLlmArtifacts(card.headline)
   const implication = card.implication ? stripLlmArtifacts(card.implication) : null
+  const implicationItems = implication ? splitImplicationItems(implication) : []
 
-  const backHref = card.scope === 'company' ? '/dashboard/entities?view=watchlist' : '/dashboard/ai-analysis'
+  const backHref = card.scope === 'company'
+    ? `/dashboard/entities?view=watchlist${selectedWeek ? `&week=${encodeURIComponent(selectedWeek)}` : ''}`
+    : '/dashboard/ai-analysis'
 
   return (
     <PageContainer variant="reading">
@@ -164,14 +249,6 @@ export default async function InsightDetailPage({ params }: PageProps) {
         )}
       </div>
 
-      {/* 시사점 */}
-      {implication && (
-        <div className="mb-8 space-y-1.5">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">시사점</h2>
-          <p className="text-base text-foreground leading-relaxed">{implication}</p>
-        </div>
-      )}
-
       {/* 근거 자료 */}
       {(citations.length > 0 || referenceOnlyIds.length > 0) && (
         <div className="mb-8 space-y-3">
@@ -190,6 +267,8 @@ export default async function InsightDetailPage({ params }: PageProps) {
                         <Link
                           href={`/dashboard/contents/${c.content_id}`}
                           prefetch={false}
+                          target="_blank"
+                          rel="noopener"
                           className="block text-sm text-brand-600 hover:underline"
                         >
                           {meta.title}
@@ -218,6 +297,8 @@ export default async function InsightDetailPage({ params }: PageProps) {
                       <Link
                         href={`/dashboard/contents/${cid}`}
                         prefetch={false}
+                        target="_blank"
+                        rel="noopener"
                         className="block text-sm text-brand-600 hover:underline truncate"
                       >
                         {meta.title}
@@ -231,6 +312,52 @@ export default async function InsightDetailPage({ params }: PageProps) {
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 회사 카드 전용 최근 뉴스 — 기존 근거 자료와 중복되는 콘텐츠는 조회에서 제외한다. */}
+      {companyNews.length > 0 && (
+        <div className="mb-8 space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+            이 회사 최근 뉴스
+          </h2>
+          <ul className="overflow-hidden rounded-lg border border-border bg-card divide-y divide-border">
+            {companyNews.map((news) => {
+              const newsSource = sourceName(news.sources)
+              const newsDate = formatNewsDate(news.published_at ?? news.collected_at)
+
+              return (
+                <li key={news.id}>
+                  <Link
+                    href={`/dashboard/contents/${news.id}`}
+                    prefetch={false}
+                    className="group block px-4 py-3 transition-colors hover:bg-muted/50"
+                  >
+                    <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
+                      {news.title}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {[newsSource, newsDate].filter(Boolean).join(' · ')}
+                    </p>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* 시사점 */}
+      {implicationItems.length > 0 && (
+        <div className="mb-8 space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">시사점</h2>
+          <div className="space-y-3">
+            {implicationItems.map((item, index) => (
+              <p key={index} className="text-base leading-relaxed text-foreground">
+                {item}
+              </p>
+            ))}
+          </div>
         </div>
       )}
 

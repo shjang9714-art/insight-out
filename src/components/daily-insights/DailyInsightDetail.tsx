@@ -11,10 +11,10 @@ interface DailyInsightDetailProps {
   relatedInsights?: DailyInsightRow[]
 }
 
-// 3C(시장·경쟁사) 섹션 — 근거 없어 null인 항목은 렌더 자체를 생략(빈 제목만 남기지 않음, §6).
+// 경쟁사 동향 섹션 — 근거 없어 null이면 렌더 자체를 생략(빈 제목만 남기지 않음, §6).
+// 시장·산업 동향 박스는 상세 페이지에서 제거(implication_lenses 4카드로 대체, §6).
 // 자사 시사점(implication)은 implication_lenses 유무에 따라 EvidenceDrilldown이 별도 처리.
-const TREND_SECTIONS: { key: 'market_trend' | 'competitor_trend'; label: string; emoji: string }[] = [
-  { key: 'market_trend', label: '시장·산업 동향', emoji: '📈' },
+const TREND_SECTIONS: { key: 'competitor_trend'; label: string; emoji: string }[] = [
   { key: 'competitor_trend', label: '경쟁사 동향', emoji: '🏢' },
 ]
 

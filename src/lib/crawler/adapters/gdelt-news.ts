@@ -9,6 +9,37 @@ function gdeltDate(value: Date): string {
   return `${value.getUTCFullYear()}${p(value.getUTCMonth() + 1)}${p(value.getUTCDate())}${p(value.getUTCHours())}${p(value.getUTCMinutes())}${p(value.getUTCSeconds())}`
 }
 
+/** GDELT DOC API의 seendate 전용 형식(YYYYMMDDTHHMMSSZ)을 UTC Date로 변환한다. */
+export function parseGdeltSeenDate(value: string | undefined): Date | null {
+  if (!value) return null
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value)
+  if (!match) return null
+
+  const [, year, month, day, hour, minute, second] = match
+  const date = new Date(Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second)
+  ))
+
+  // Date.UTC의 월·일 overflow 보정을 허용하지 않고 원본 값과 정확히 일치할 때만 인정한다.
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day) ||
+    date.getUTCHours() !== Number(hour) ||
+    date.getUTCMinutes() !== Number(minute) ||
+    date.getUTCSeconds() !== Number(second)
+  ) {
+    return null
+  }
+
+  return date
+}
+
 export async function fetchGdeltNews(query: string, since: string, opts: { maxRecords?: number } = {}): Promise<RawItem[]> {
   if (process.env.GDELT_ENABLED === 'false') return []
   const now = new Date()
@@ -27,8 +58,8 @@ export async function fetchGdeltNews(query: string, since: string, opts: { maxRe
     const items: RawItem[] = []
     for (const article of payload.articles ?? []) {
       if (!article.url?.match(/^https?:\/\//i) || !article.title || !article.seendate) continue
-      const date = new Date(article.seendate)
-      if (Number.isNaN(date.getTime()) || date < start) continue
+      const date = parseGdeltSeenDate(article.seendate)
+      if (!date || date < start) continue
       const title = cleanBodyText(htmlToPlainText(article.title))
       if (!title) continue
       items.push({ original_url: article.url, title, published_at: date.toISOString(), language: 'ko' })

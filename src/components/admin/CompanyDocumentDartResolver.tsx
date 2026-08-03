@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
 interface MatchCandidate {
   corpCode: string
@@ -41,6 +42,33 @@ export default function CompanyDocumentDartResolver() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ResolveResult | null>(null)
+
+  const unmatchedColumns: AdminTableColumn<UnmatchedItem>[] = [
+    {
+      key: 'name',
+      header: '주요기업',
+      nowrap: true,
+      cell: (item) => <span className="font-medium text-foreground">{item.name}</span>,
+    },
+    {
+      key: 'candidates',
+      header: 'DART 후보',
+      cell: (item) => item.candidates.length === 0 ? (
+        <span className="text-muted-foreground">후보 없음</span>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {item.candidates.map((candidate) => (
+            <span
+              key={candidate.corpCode}
+              className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
+            >
+              {candidate.corpName} · {candidate.corpCode}{candidate.listed ? ' · 상장' : ''}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+  ]
 
   async function handleResolve() {
     setIsLoading(true)
@@ -126,39 +154,13 @@ export default function CompanyDocumentDartResolver() {
                   <p className="text-xs font-medium text-muted-foreground">
                     미매칭 — 후보가 여럿이거나 확실하지 않아 자동 저장하지 않았습니다. 필요 시 355-A SQL 핸드오프로 직접 등록해주세요.
                   </p>
-                  <div className="overflow-x-auto rounded-xl border border-border">
-                    <table className="min-w-[560px] w-full border-collapse text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
-                          <th className="px-4 py-2">주요기업</th>
-                          <th className="px-4 py-2">DART 후보</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {result.unmatched.map((item) => (
-                          <tr key={item.entityId}>
-                            <td className="whitespace-nowrap px-4 py-2 font-medium text-foreground align-top">{item.name}</td>
-                            <td className="px-4 py-2">
-                              {item.candidates.length === 0 ? (
-                                <span className="text-muted-foreground">후보 없음</span>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {item.candidates.map((candidate) => (
-                                    <span
-                                      key={candidate.corpCode}
-                                      className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
-                                    >
-                                      {candidate.corpName} · {candidate.corpCode}{candidate.listed ? ' · 상장' : ''}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <AdminTable
+                    columns={unmatchedColumns}
+                    rows={result.unmatched}
+                    rowKey={(item) => item.entityId}
+                    minWidth="min-w-[560px]"
+                    state="idle"
+                  />
                 </div>
               )}
             </>

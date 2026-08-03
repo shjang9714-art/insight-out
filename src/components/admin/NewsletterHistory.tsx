@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 
 interface Issue {
   id: string
@@ -19,9 +20,10 @@ interface Recipient {
 
 interface Props {
   initialIssues: Issue[]
+  state: AdminTableState
 }
 
-export default function NewsletterHistory({ initialIssues }: Props) {
+export default function NewsletterHistory({ initialIssues, state }: Props) {
   // 400 §1.2 — 발송 후 이력이 갱신되지 않는 기존 결함(setter 없음). 탭화와 무관, 이번엔 고치지 않는다.
   const [issues] = useState<Issue[]>(initialIssues)
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
@@ -51,60 +53,50 @@ export default function NewsletterHistory({ initialIssues }: Props) {
     return `${opened}/${recipients.length} (${Math.round((opened / recipients.length) * 100)}%)`
   }
 
+  const columns: AdminTableColumn<Issue>[] = [
+    { key: 'sent_on', header: '발송일', cell: (issue) => <span className="text-foreground">{issue.sent_on}</span> },
+    { key: 'subject', header: '제목', width: 'max-w-xs', truncate: true, cell: (issue) => <span className="text-foreground">{issue.subject}</span> },
+    { key: 'recipient_cnt', header: '수신자', align: 'center', cell: (issue) => <span className="text-muted-foreground">{issue.recipient_cnt}</span> },
+    {
+      key: 'status',
+      header: '상태',
+      align: 'center',
+      cell: (issue) => (
+        <span className={cn(
+          'rounded-full px-2 py-0.5 text-xs font-medium',
+          issue.status === 'sent' ? 'bg-positive-soft text-positive' :
+          issue.status === 'partial' ? 'bg-risk-soft text-risk' :
+          issue.status === 'failed' ? 'bg-negative-soft text-negative' :
+          'bg-muted text-muted-foreground'
+        )}>
+          {issue.status}
+        </span>
+      ),
+    },
+    { key: 'triggered_by', header: '트리거', align: 'center', cell: (issue) => <span className="text-xs text-muted-foreground">{issue.triggered_by}</span> },
+    {
+      key: 'open_rate',
+      header: '오픈율',
+      align: 'center',
+      cell: (issue) => (
+        <span className="text-xs text-muted-foreground">
+          {selectedIssueId === issue.id
+            ? recipientsLoading ? '...' : openRate(issue.id) ?? '-'
+            : '클릭해서 확인'}
+        </span>
+      ),
+    },
+  ]
+
   return (
-    <div>
-      {issues.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          아직 발송 이력이 없습니다.
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-muted-foreground">
-                <th className="pb-2 text-left font-medium">발송일</th>
-                <th className="pb-2 text-left font-medium">제목</th>
-                <th className="pb-2 text-center font-medium">수신자</th>
-                <th className="pb-2 text-center font-medium">상태</th>
-                <th className="pb-2 text-center font-medium">트리거</th>
-                <th className="pb-2 text-center font-medium">오픈율</th>
-              </tr>
-            </thead>
-            <tbody>
-              {issues.map((issue) => (
-                <>
-                  <tr
-                    key={issue.id}
-                    onClick={() => handleSelectIssue(issue.id)}
-                    className="cursor-pointer border-b border-border hover:bg-accent/50 transition-colors"
-                  >
-                    <td className="py-3 text-foreground">{issue.sent_on}</td>
-                    <td className="py-3 text-foreground max-w-xs truncate">{issue.subject}</td>
-                    <td className="py-3 text-center text-muted-foreground">{issue.recipient_cnt}</td>
-                    <td className="py-3 text-center">
-                      <span className={cn(
-                        'rounded-full px-2 py-0.5 text-xs font-medium',
-                        issue.status === 'sent' ? 'bg-positive-soft text-positive' :
-                        issue.status === 'partial' ? 'bg-risk-soft text-risk' :
-                        issue.status === 'failed' ? 'bg-negative-soft text-negative' :
-                        'bg-muted text-muted-foreground'
-                      )}>
-                        {issue.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-center text-muted-foreground text-xs">{issue.triggered_by}</td>
-                    <td className="py-3 text-center text-muted-foreground text-xs">
-                      {selectedIssueId === issue.id
-                        ? recipientsLoading ? '...' : openRate(issue.id) ?? '-'
-                        : '클릭해서 확인'}
-                    </td>
-                  </tr>
-                </>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <AdminTable
+      columns={columns}
+      rows={issues}
+      rowKey={(issue) => issue.id}
+      state={state}
+      emptyMessage="아직 발송 이력이 없습니다."
+      errorMessage="발송 이력을 불러오지 못했습니다."
+      onRowClick={(issue) => handleSelectIssue(issue.id)}
+    />
   )
 }

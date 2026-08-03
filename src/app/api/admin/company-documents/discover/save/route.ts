@@ -42,7 +42,7 @@ function parseCandidate(value: unknown): Candidate | null {
  */
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   let body: SaveBody
   try {

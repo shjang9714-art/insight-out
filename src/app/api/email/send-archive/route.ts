@@ -95,8 +95,9 @@ export async function POST(req: NextRequest) {
       .select(`
         id, name,
         archive_items(
-          content_id, youtube_video_id,
-          contents(id, title, category, summary_ko, original_url, file_path, published_at, sources(name))
+          content_id, youtube_video_id, ai_report_id,
+          contents(id, title, category, summary_ko, original_url, file_path, published_at, sources(name)),
+          ai_reports(id, title, type, published_at)
         )
       `)
       .eq('id', archiveId)
@@ -130,9 +131,12 @@ export async function POST(req: NextRequest) {
     const attachments: BrevoAttachment[] = []
     let totalAttachmentSize = 0
 
+    const siteBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'
+
     for (const archiveItem of archive.archive_items as unknown as {
       content_id: string | null
       youtube_video_id: string | null
+      ai_report_id: string | null
       contents: {
         id: string
         title: string
@@ -143,9 +147,32 @@ export async function POST(req: NextRequest) {
         published_at: string | null
         sources: { name: string } | null
       } | null
+      ai_reports: {
+        id: string
+        title: string
+        type: string
+        published_at: string | null
+      } | null
     }[]) {
       const content = archiveItem.contents
-      if (!content) continue
+
+      if (!content) {
+        // 리포트 항목 — 본문(contents)이 없으므로 제목+링크만으로 카드 구성
+        const report = archiveItem.ai_reports
+        if (!report) continue // 삭제/미발행 리포트 — 스킵
+
+        items.push({
+          title: report.title,
+          category: `AI 리포트 · ${report.type}`,
+          sourceName: null,
+          publishedAt: report.published_at ?? null,
+          summaryKo: null,
+          originalUrl: `${siteBaseUrl}/dashboard/reports/${report.id}`,
+          reportSignedUrl: null,
+          isAttached: false,
+        })
+        continue
+      }
 
       let reportSignedUrl: string | null = null
       let isAttached = false

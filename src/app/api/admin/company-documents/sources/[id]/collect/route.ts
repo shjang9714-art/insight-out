@@ -24,7 +24,7 @@ function defaultSince(lastSuccessAt: string | null): string {
  */
 export async function POST(_request: NextRequest, { params }: RouteParams) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
   const { id } = await params
 
   const { data: source, error: sourceError } = await auth.admin

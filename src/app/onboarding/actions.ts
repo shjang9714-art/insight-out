@@ -16,7 +16,7 @@ interface ActionResult {
   error: string | null
 }
 
-const LENS_KEYS: LensKey[] = ['mine', 'watch', 'all']
+const LENS_KEYS: LensKey[] = ['watch', 'all']
 
 function getErrorCode(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null

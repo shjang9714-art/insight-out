@@ -415,8 +415,7 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
     }
   }
 
-  const { data: urlData } = admin.storage.from('briefings').getPublicUrl(storagePath)
-  const audioUrl = urlData.publicUrl
+  const audioUrl = `briefings/${storagePath}`
 
   // 6. 사용량 기록 (합성 성공 후에만)
   const { error: incrementError } = await admin.rpc('increment_tts_usage', {

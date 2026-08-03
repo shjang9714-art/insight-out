@@ -75,10 +75,42 @@ export function registerArchiveTools(server: McpServer) {
       const output: unknown[] = []
       for (const archive of archives ?? []) {
         const { data: items, error: itemsError } = await admin.from('archive_items')
-          .select('content_id, note, added_at, order, contents(title, original_url, published_at)')
+          .select('content_id, ai_report_id, note, added_at, order, contents(title, original_url, published_at), ai_reports(title, type, published_at)')
           .eq('archive_id', archive.id).order('order', { ascending: true }).order('added_at', { ascending: false }).limit(limit ?? 100)
         if (itemsError) return dbError(itemsError, 'archive_items')
-        output.push({ id: archive.id, name: archive.name, description: archive.description, items: items ?? [] })
+        // 리포트 항목은 contents 조인이 없어 빈 엔트리로 보이므로 타입 표기와 함께 별도 형태로 반환한다.
+        const normalizedItems = (items ?? []).map((item) => {
+          const row = item as unknown as {
+            content_id: string | null
+            ai_report_id: string | null
+            note: string | null
+            added_at: string
+            order: number
+            contents: { title: string; original_url: string | null; published_at: string | null } | null
+            ai_reports: { title: string; type: string; published_at: string | null } | null
+          }
+          if (row.ai_report_id && row.ai_reports) {
+            return {
+              type: 'ai_report',
+              ai_report_id: row.ai_report_id,
+              note: row.note,
+              added_at: row.added_at,
+              order: row.order,
+              title: row.ai_reports.title,
+              report_type: row.ai_reports.type,
+              published_at: row.ai_reports.published_at,
+            }
+          }
+          return {
+            type: 'content',
+            content_id: row.content_id,
+            note: row.note,
+            added_at: row.added_at,
+            order: row.order,
+            contents: row.contents,
+          }
+        })
+        output.push({ id: archive.id, name: archive.name, description: archive.description, items: normalizedItems })
       }
       return ok(output.length ? output.map(stringify).join('\n\n') : '아카이브가 없습니다.')
     } catch (error) { return dbError(error, 'archives') }

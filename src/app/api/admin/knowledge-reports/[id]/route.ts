@@ -11,7 +11,7 @@ interface RouteContext {
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   const { id } = await params
   let body: { title?: unknown; summary?: unknown; keywords?: unknown }
@@ -49,7 +49,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   const { id } = await params
   const { error } = await auth.admin

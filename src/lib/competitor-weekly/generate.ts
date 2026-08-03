@@ -109,6 +109,7 @@ interface ContentRow {
   lgu_impact: string | null
   cluster_id: string | null
   importance_score: number | null
+  published_at: string | null
   collected_at: string
 }
 
@@ -132,7 +133,7 @@ async function loadWeekContents(
   const baseQuery = () =>
     admin
       .from('contents')
-      .select('id, title, summary_ko, body_original, matched_groups, lgu_impact, cluster_id, importance_score, collected_at')
+      .select('id, title, summary_ko, body_original, matched_groups, lgu_impact, cluster_id, importance_score, published_at, collected_at')
       .eq('status', 'published')
       .gte('collected_at', sinceIso)
       .lt('collected_at', untilIso)
@@ -144,7 +145,7 @@ async function loadWeekContents(
     // lgu_impact 컬럼 미적용(241 SQL 전) — 컬럼 제외 후 재시도(graceful)
     const retry = await admin
       .from('contents')
-      .select('id, title, summary_ko, body_original, matched_groups, cluster_id, importance_score, collected_at')
+      .select('id, title, summary_ko, body_original, matched_groups, cluster_id, importance_score, published_at, collected_at')
       .eq('status', 'published')
       .gte('collected_at', sinceIso)
       .lt('collected_at', untilIso)
@@ -176,11 +177,34 @@ interface RawEvent {
 
 const INTERPRETATION_MARKERS = /(보인다|전망|예상된다|주목|공격적|두드러|활발|긍정적|부정적|시사한다)/
 
-function parseEventsOutput(raw: string, validIds: Set<string>): RawEvent[] {
+function isDateInWeek(date: string, weekStart: string, weekEnd: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+  const parsed = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) return false
+  return date >= weekStart && date <= weekEnd
+}
+
+function toKstDateString(value: string | null): string | null {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+function parseEventsOutput(
+  raw: string,
+  validIds: Set<string>,
+  publishedDateById: Map<string, string | null>,
+  weekStart: string,
+  weekEnd: string,
+  areaKey: string,
+): RawEvent[] {
   try {
     const parsed = JSON.parse(stripJsonFence(raw)) as unknown
     if (!Array.isArray(parsed)) return []
     const out: RawEvent[] = []
+    let correctedCount = 0
+    let droppedCount = 0
     for (const item of parsed) {
       if (typeof item !== 'object' || item === null) continue
       const o = item as Record<string, unknown>
@@ -191,13 +215,26 @@ function parseEventsOutput(raw: string, validIds: Set<string>): RawEvent[] {
         console.warn('[CompetitorWeekly] 패스① 해석어 감지 — 사건 제외:', o.event)
         continue
       }
+      let date = o.date
+      if (!isDateInWeek(date, weekStart, weekEnd)) {
+        const publishedDate = publishedDateById.get(o.content_id)
+        if (!publishedDate || !isDateInWeek(publishedDate, weekStart, weekEnd)) {
+          droppedCount += 1
+          continue
+        }
+        date = publishedDate
+        correctedCount += 1
+      }
       const numbers = (typeof o.numbers === 'object' && o.numbers !== null)
         ? Object.fromEntries(
             Object.entries(o.numbers as Record<string, unknown>)
               .filter(([, v]) => typeof v === 'string') as [string, string][]
           )
         : undefined
-      out.push({ date: o.date, actor: o.actor, event: o.event, numbers, content_id: o.content_id })
+      out.push({ date, actor: o.actor, event: o.event, numbers, content_id: o.content_id })
+    }
+    if (correctedCount > 0 || droppedCount > 0) {
+      console.warn(`[CompetitorWeekly] area=${areaKey} date 보정 ${correctedCount}건 / 드롭 ${droppedCount}건`)
     }
     return out
   } catch {
@@ -328,6 +365,7 @@ export async function generateCompetitorWeeklyReport(
       })
       const picked = sorted.slice(0, 12)
       const idSet = new Set(picked.map((a) => a.id))
+      const publishedDateById = new Map(picked.map((a) => [a.id, toKstDateString(a.published_at)]))
 
       const system = factsPromptTpl.replace('{area_label}', area.label)
       const raw = await llmComplete('summarize', system, buildAreaUserPrompt(area.label, picked))
@@ -335,7 +373,7 @@ export async function generateCompetitorWeeklyReport(
         console.warn(`[CompetitorWeekly] area="${area.key}" 패스① 응답 없음 — 건너뜀`)
         continue
       }
-      const rawEvents = parseEventsOutput(raw, idSet)
+      const rawEvents = parseEventsOutput(raw, idSet, publishedDateById, weekStart, weekEnd, area.key)
       if (rawEvents.length === 0) {
         console.warn(`[CompetitorWeekly] area="${area.key}" 패스① 사건 0건 — 건너뜀`)
         continue

@@ -5,8 +5,8 @@ export function toExcerpt(summaryKo: string | null, bodyOriginal: string | null,
   return text.length > max ? text.slice(0, max) + '…' : text
 }
 
-export function tagsOf(keywords: string[], category: string, services: string[]): string[] {
-  const base = keywords.length ? keywords : [category, ...services]
+export function tagsOf(keywords: string[], category: string): string[] {
+  const base = keywords.length ? keywords : [category]
   return [...new Set(base)].slice(0, 4)
 }
 

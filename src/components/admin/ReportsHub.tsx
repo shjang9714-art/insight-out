@@ -6,14 +6,18 @@ import AdminTabShell from '@/components/admin/ui/AdminTabShell'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
+import AiJobsPanel from '@/components/admin/AiJobsPanel'
+import PromptConsole from '@/components/admin/PromptConsole'
 import ReportCreateForm from '@/components/admin/reports/ReportCreateForm'
 import ReportRow, { type AdminReportListItem } from '@/components/admin/reports/ReportRow'
 
 type Filter = 'all' | 'published' | 'unpublished'
 
 const TABS = [
-  { value: 'list',   label: '발행 콘텐츠' },
-  { value: 'create', label: '리포트 생성' },
+  { value: 'list',    label: '발행 콘텐츠' },
+  { value: 'create',  label: '리포트 생성' },
+  { value: 'prompts', label: '프롬프트' },
+  { value: 'ai-jobs', label: 'AI 보강' },
 ]
 
 export default function ReportsHub() {
@@ -99,8 +103,18 @@ export default function ReportsHub() {
               </div>
             )}
           </div>
-        ) : (
+        ) : tab === 'create' ? (
           <ReportCreateForm onCreated={() => void load()} />
+        ) : tab === 'prompts' ? (
+          <div className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              프롬프트를 저장하면 <strong>다음 생성부터 즉시 적용</strong>됩니다. 결과 품질은 생성 후 상세·미리보기로 검수하세요.
+              저장 전 값은 코드 기본값(폴백)이 쓰입니다.
+            </p>
+            <PromptConsole />
+          </div>
+        ) : (
+          <AiJobsPanel />
         )
       }
     />

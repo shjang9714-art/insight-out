@@ -121,7 +121,13 @@ export default function ContentRow({
     <article className="group rounded-xl border border-border bg-card px-5 py-4 shadow-sm transition-all hover:border-brand-200 hover:shadow-md">
       {/* 메인 행: 본문 + 액션 */}
       <div className="flex w-full items-center gap-4">
-        <Link href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`} prefetch={false} className="min-w-0 flex-1">
+        <Link
+          href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`}
+          prefetch={false}
+          target="_blank"
+          rel="noopener"
+          className="min-w-0 flex-1"
+        >
           {body}
         </Link>
 

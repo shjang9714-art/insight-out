@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ExternalLink, FileSearch, Globe2, Newspaper, Video, type LucideIcon } from 'lucide-react'
+import CoverImage from '@/components/common/CoverImage'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 
@@ -53,19 +54,17 @@ export default function ContentListRow({
       <Link
         href={detailHref}
         prefetch={false}
+        target="_blank"
+        rel="noopener"
         className="flex h-24 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted sm:h-28 sm:w-40"
       >
-        {thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnailUrl}
-            alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-            loading="lazy"
-          />
-        ) : (
-          <Icon className="h-9 w-9 text-muted-foreground/35" strokeWidth={1.4} aria-hidden />
-        )}
+        <CoverImage
+          src={thumbnailUrl}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          loading="lazy"
+          fallback={<Icon className="h-9 w-9 text-muted-foreground/35" strokeWidth={1.4} aria-hidden />}
+        />
       </Link>
 
       <div className="min-w-0 flex-1">
@@ -81,7 +80,7 @@ export default function ContentListRow({
           ))}
         </div>
 
-        <Link href={detailHref} prefetch={false}>
+        <Link href={detailHref} prefetch={false} target="_blank" rel="noopener">
           <h2 className="line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
             {title}
           </h2>
@@ -92,8 +91,14 @@ export default function ContentListRow({
         </p>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          <span className="truncate">
-            {[sourceName, formatDate(publishedAt)].filter(Boolean).join(' · ')}
+          <span className="flex min-w-0 flex-1 items-center gap-1">
+            {sourceName && (
+              <>
+                <span className="truncate">{sourceName}</span>
+                <span className="shrink-0" aria-hidden>·</span>
+              </>
+            )}
+            <span className="shrink-0 whitespace-nowrap">{formatDate(publishedAt)}</span>
           </span>
           {originalUrl && (
             <a

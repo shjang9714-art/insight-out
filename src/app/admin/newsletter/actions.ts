@@ -1,29 +1,12 @@
 'use server'
 
-import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { requireAdminAction } from '@/lib/admin/require-admin-action'
+import { completeAudit } from '@/lib/admin/audit'
 import { runNewsletterDispatch } from '@/lib/newsletter/dispatch'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
 import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
-
-async function requireAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cs) { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  return profile?.role === 'admin' ? user : null
-}
+import { toTemplateTopTeaser } from '@/lib/newsletter/top-teaser'
 
 function serviceClient() {
   return createServiceClient(
@@ -41,8 +24,8 @@ export interface NewsletterSettingsInput {
 }
 
 export async function updateNewsletterSettings(input: NewsletterSettingsInput) {
-  const user = await requireAdmin()
-  if (!user) return { error: '관리자 권한이 필요합니다.' }
+  const gate = await requireAdminAction({ action: 'newsletter.settings.update', capability: 'manage_settings' })
+  if (!gate.ok) return { error: gate.error }
 
   if (input.send_hour_kst < 0 || input.send_hour_kst > 23) {
     return { error: '발송 시각은 0~23 사이여야 합니다.' }
@@ -68,25 +51,29 @@ export async function updateNewsletterSettings(input: NewsletterSettingsInput) {
     })
     .eq('id', 1)
 
+  await completeAudit(serviceClient(), gate.auditId, { targetType: 'newsletter_settings', targetId: '1', outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) return { error: `저장 실패: ${error.message}` }
   return { ok: true }
 }
 
 export async function sendNewsletterNow() {
-  const user = await requireAdmin()
-  if (!user) return { error: '관리자 권한이 필요합니다.' }
+  const gate = await requireAdminAction({ action: 'newsletter.send', capability: 'send_broadcast' })
+  if (!gate.ok) return { error: gate.error }
 
   try {
     const result = await runNewsletterDispatch({ triggeredBy: 'manual' })
+    await completeAudit(serviceClient(), gate.auditId, { targetType: 'newsletter_issues', targetId: result.issueId, targetCount: result.sent ?? 0, payload: { recipientCount: (result.sent ?? 0) + (result.failed ?? 0) }, outcome: result.ok ? 'ok' : 'failed', error: result.ok ? undefined : result.skipped })
     return result
   } catch (err) {
-    return { error: err instanceof Error ? err.message : '발송 중 오류가 발생했습니다.' }
+    const message = err instanceof Error ? err.message : '발송 중 오류가 발생했습니다.'
+    await completeAudit(serviceClient(), gate.auditId, { targetType: 'newsletter_issues', outcome: 'failed', error: message })
+    return { error: message }
   }
 }
 
 export async function getPreviewHtml() {
-  const user = await requireAdmin()
-  if (!user) return { error: '관리자 권한이 필요합니다.' }
+  const gate = await requireAdminAction({ action: 'newsletter.preview' })
+  if (!gate.ok) return { error: gate.error }
 
   const db = serviceClient()
 
@@ -129,13 +116,12 @@ export async function getPreviewHtml() {
         insight: c.insight,
       })),
     })),
-    dailyInsight: prepared.dailyInsight
-      ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
-      : null,
+    topTeaser: toTemplateTopTeaser(prepared.topTeaser),
     knowledgeReports: prepared.knowledgeReports,
     companyTrends: prepared.companyTrends,
     unsubscribeUrl: `${baseUrl}/api/newsletter/unsubscribe?token=PREVIEW`,
   })
 
+  await completeAudit(db, gate.auditId, { targetType: 'newsletter_issues', outcome: 'ok' })
   return { html }
 }

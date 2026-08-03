@@ -128,6 +128,8 @@ function KeywordArticleTimeline({ articles }: { articles: KeywordArticle[] }) {
                 <Link
                   href={`/dashboard/contents/${article.id}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener"
                   className="text-sm font-semibold leading-snug text-foreground transition-colors hover:text-brand-600"
                 >
                   {article.title}
@@ -164,6 +166,8 @@ function RiseFootnotes({
           key={contentId}
           href={`/dashboard/contents/${contentId}`}
           prefetch={false}
+          target="_blank"
+          rel="noopener"
           className="hover:underline"
         >
           [{index}]
@@ -240,6 +244,8 @@ function RiseFactorsSection({
                 <Link
                   href={`/dashboard/contents/${contentId}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener"
                   className="transition-colors hover:text-brand-600"
                 >
                   {article?.title ?? '근거 콘텐츠'}

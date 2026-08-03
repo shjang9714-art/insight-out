@@ -26,7 +26,7 @@ function isSchemaMissing(error: { code?: string } | null): boolean {
  */
 export async function GET() {
   const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  if (!auth.ok) return auth.response
 
   const { data, error } = await auth.admin
     .from('document_sources')
@@ -49,8 +49,8 @@ export async function GET() {
  * 소스 등록. document_sources는 쓰기 RLS가 없어 admin 클라이언트로만 가능하다.
  */
 export async function POST(request: Request) {
-  const auth = await verifyAdminRequest()
-  if ('response' in auth) return auth.response
+  const auth = await verifyAdminRequest({ capability: 'manage_sources' })
+  if (!auth.ok) return auth.response
 
   let body: CreateBody
   try {

@@ -29,7 +29,10 @@ import {
 import type { SourceType, CollectionMethod } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
+import AdminManualCrawl from '@/components/admin/AdminManualCrawl'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +51,7 @@ const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
 
 // 신규 선택 가능한 수집 방법(html·api 어댑터 미구현 — 기존 행 편집 시 현행값 유지)
 const COLLECTION_METHODS: CollectionMethod[] = ['rss', 'manual', 'youtube']
+const PAGE_SIZE = 20
 
 function defaultCollectionMethod(type: SourceType): CollectionMethod {
   if (type === 'youtube_channel') return 'youtube'
@@ -148,10 +152,15 @@ interface SourceManagerProps {
 
 export default function SourceManager({ initialSelectedType = 'all' }: SourceManagerProps) {
   const supabase = createClient()
+  const table = useAdminTable({ defaultSort: { key: 'order', dir: 'asc' }, pageSize: PAGE_SIZE })
 
   const [sources,   setSources]   = useState<SourceRow[]>([])
+  const [total,     setTotal]     = useState(0)
+  const [filteredTotal, setFilteredTotal] = useState(0)
+  const [typeCounts, setTypeCounts] = useState<Record<SourceType, number>>({ news_site: 0, report_publisher: 0, web_insight: 0, youtube_channel: 0, newsletter: 0 })
   const [isLoading, setIsLoading] = useState(true)       // 초기값 true — useEffect 에서 setIsLoading(true) 호출 불필요
   const [error,     setError]     = useState<string | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   // 추가/수정 폼 상태 (editingId=null → 추가, string → 수정)
   const [showForm,   setShowForm]   = useState(false)
@@ -171,15 +180,28 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
 
   async function loadSources() {
     setIsLoading(true)
-    const { data, error: err } = await supabase
+    setError(null)
+    setFetchError(null)
+    let query = supabase
       .from('sources')
-      .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, collection_method, last_crawled_at, order')
+      .select('id, name, type, url, rss_url, is_active, crawl_interval_minutes, collection_method, last_crawled_at, order', { count: 'exact' })
       .order('order', { ascending: true })
       .order('name',  { ascending: true })
+    if (selectedType !== 'all') query = query.eq('type', selectedType)
+    const [{ data, error: err, count }, totalResult, ...typeResults] = await Promise.all([
+      query.range((table.page - 1) * PAGE_SIZE, table.page * PAGE_SIZE - 1),
+      supabase.from('sources').select('id', { count: 'exact', head: true }),
+      ...SOURCE_TYPES.map((type) => supabase.from('sources').select('id', { count: 'exact', head: true }).eq('type', type)),
+    ])
     if (err) {
-      setError(`소스 목록 로드 실패: ${err.message}`)
+      const message = `소스 목록 로드 실패: ${err.message}`
+      setError(message)
+      setFetchError(message)
     } else {
       setSources((data ?? []) as SourceRow[])
+      setFilteredTotal(count ?? 0)
+      setTotal(totalResult.count ?? 0)
+      setTypeCounts(Object.fromEntries(SOURCE_TYPES.map((type, index) => [type, typeResults[index].count ?? 0])) as Record<SourceType, number>)
     }
     setIsLoading(false)
   }
@@ -187,7 +209,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
   useEffect(() => {
     const init = async () => { await loadSources() }
     void init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedType, table.page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 폼 열기/닫기 ──────────────────────────────────────────────────────────
 
@@ -357,22 +379,24 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
 
   // ── 유형 필터 (§A) ────────────────────────────────────────────────────────
 
-  // 유형별 개수 계산
-  const typeCounts = SOURCE_TYPES.reduce((acc, type) => {
-    acc[type] = sources.filter(s => s.type === type).length
-    return acc
-  }, {} as Record<SourceType, number>)
-
-  // 필터링된 소스 목록
-  const filteredSources = selectedType === 'all'
-    ? sources
-    : sources.filter(s => s.type === selectedType)
-
   // collection_method 선택 옵션 — 기존 행에 html·api 있으면 편집 시 현행값 표시
   const availableCollectionMethods: CollectionMethod[] =
     form.collection_method === 'html' || form.collection_method === 'api'
       ? [form.collection_method, ...COLLECTION_METHODS]
       : COLLECTION_METHODS
+
+  const columns: AdminTableColumn<SourceRow>[] = [
+    { key: 'name', header: '이름', truncate: true, width: 'max-w-[220px]', cell: (source) => <span className="font-medium text-foreground" title={source.name}>{source.name}</span> },
+    { key: 'type', header: '유형', cell: (source) => <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{SOURCE_TYPE_LABELS[source.type]}</span> },
+    { key: 'method', header: '수집방법', cell: (source) => <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{COLLECTION_METHOD_LABELS[source.collection_method]}</span> },
+    { key: 'rss', header: 'RSS URL', width: 'max-w-[200px]', cell: (source) => source.rss_url ? <span className="block max-w-[180px] truncate text-xs text-muted-foreground" title={source.rss_url}>{source.rss_url}</span> : <span className="text-xs text-muted-foreground/40">—</span> },
+    { key: 'active', header: '활성', nowrap: true, cell: (source) => <button onClick={() => handleToggle(source)} className={cn('whitespace-nowrap text-xs font-medium transition-colors', source.is_active ? 'text-positive hover:opacity-80' : 'text-muted-foreground hover:text-foreground')}>{source.is_active ? '활성' : '비활성'}</button> },
+    { key: 'interval', header: '주기(분)', cell: (source) => <span className="text-xs text-muted-foreground">{source.crawl_interval_minutes ?? '—'}</span> },
+    { key: 'lastCrawled', header: '마지막 수집 (KST)', nowrap: true, cell: (source) => <span className="text-xs text-muted-foreground">{formatKst(source.last_crawled_at)}</span> },
+    { key: 'actions', header: '작업', align: 'right', cell: (source) => <div className="flex items-center justify-end gap-0.5"><button onClick={() => openEdit(source)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => handleDelete(source)} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button></div> },
+  ]
+
+  const tableState: AdminTableState = isLoading ? 'loading' : fetchError ? 'error' : filteredTotal === 0 ? 'empty' : 'idle'
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -640,7 +664,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       {!showForm && (
         <div className="flex items-center gap-0 overflow-x-auto border-b border-border">
           <button
-            onClick={() => setSelectedType('all')}
+            onClick={() => { setSelectedType('all'); table.setPage(1) }}
             className={cn(
               'whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors',
               selectedType === 'all'
@@ -648,12 +672,12 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            전체 <span className="ml-1 text-xs">({sources.length})</span>
+            전체 <span className="ml-1 text-xs">({total})</span>
           </button>
           {SOURCE_TYPES.map(type => (
             <button
               key={type}
-              onClick={() => setSelectedType(type)}
+              onClick={() => { setSelectedType(type); table.setPage(1) }}
               className={cn(
                 'whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors',
                 selectedType === type
@@ -668,13 +692,14 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       )}
 
       {/* ── 목록 헤더 ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {isLoading ? '불러오는 중…' : `총 ${sources.length}개 소스${selectedType !== 'all' ? ` (${filteredSources.length}개 표시)` : ''}`}
+          {isLoading ? '불러오는 중…' : `총 ${total}개 소스${selectedType !== 'all' ? ` (${filteredTotal}개 표시)` : ''}`}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!showForm && (
             <>
+              <AdminManualCrawl onComplete={loadSources} />
               <Button
                 size="sm"
                 variant="outline"
@@ -693,103 +718,18 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       </div>
 
       {/* ── 목록 테이블 ── */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          소스 목록 로드 중...
-        </div>
-      ) : sources.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-          등록된 소스가 없습니다. 소스 추가 버튼으로 첫 번째 소스를 등록해보세요.
-        </div>
-      ) : filteredSources.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-          선택한 유형의 소스가 없습니다.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[700px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">유형</th>
-                <th className="px-4 py-3">수집방법</th>
-                <th className="px-4 py-3 max-w-[200px]">RSS URL</th>
-                <th className="px-4 py-3">활성</th>
-                <th className="px-4 py-3">주기(분)</th>
-                <th className="px-4 py-3 whitespace-nowrap">마지막 수집 (KST)</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredSources.map(src => (
-                <tr key={src.id} className="hover:bg-accent/50 transition-colors">
-                  <td className="max-w-[220px] truncate px-4 py-3 font-medium text-foreground" title={src.name}>{src.name}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                      {SOURCE_TYPE_LABELS[src.type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                      {COLLECTION_METHOD_LABELS[src.collection_method]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 max-w-[200px]">
-                    {src.rss_url ? (
-                      <span
-                        className="block max-w-[180px] truncate text-xs text-muted-foreground"
-                        title={src.rss_url}
-                      >
-                        {src.rss_url}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <button
-                      onClick={() => handleToggle(src)}
-                      className={cn(
-                        'whitespace-nowrap text-xs font-medium transition-colors',
-                        src.is_active
-                          ? 'text-positive hover:opacity-80'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {src.is_active ? '활성' : '비활성'}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {src.crawl_interval_minutes ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
-                    {formatKst(src.last_crawled_at)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => openEdit(src)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        title="수정"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(src)}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={sources}
+        rowKey={(source) => source.id}
+        minWidth="min-w-[700px]"
+        state={tableState}
+        emptyMessage={total === 0 ? '등록된 소스가 없습니다. 소스 추가 버튼으로 첫 번째 소스를 등록해보세요.' : '선택한 유형의 소스가 없습니다.'}
+        errorMessage={fetchError ?? undefined}
+        onRetry={loadSources}
+        pagination={{ page: table.page, pageSize: PAGE_SIZE, total: filteredTotal }}
+        onPageChange={table.setPage}
+      />
 
       <SourceImportDialog
         open={showImport}

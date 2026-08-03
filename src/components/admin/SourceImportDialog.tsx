@@ -4,9 +4,11 @@ import { useState } from 'react'
 import { CheckCircle2, Loader2, Upload, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import type {
   SourceImportFormat,
   SourceImportResponse,
+  SourceImportRow,
 } from '@/lib/sources/types'
 
 interface SourceImportDialogProps {
@@ -95,6 +97,36 @@ export function SourceImportDialog({
     && validatedInput === text
     && validatedFormat === format,
   )
+
+  const resultColumns: AdminTableColumn<SourceImportRow>[] = [
+    { key: 'index', header: '행', cell: (row) => row.index },
+    { key: 'name', header: '이름', cell: (row) => row.name || '-' },
+    { key: 'type', header: '유형', cell: (row) => row.type || '-' },
+    { key: 'rss_url', header: 'RSS URL', width: 'max-w-md', cell: (row) => <span className="break-all font-mono text-xs">{row.rss_url || '-'}</span> },
+    { key: 'is_active', header: '활성', cell: (row) => row.is_active ? '활성' : '비활성' },
+    { key: 'crawl_interval_minutes', header: '주기(분)', cell: (row) => row.crawl_interval_minutes },
+    {
+      key: 'status',
+      header: '상태',
+      cell: (row) => row.status === 'success' ? (
+        <span className="inline-flex items-center gap-1 text-positive">
+          <CheckCircle2 className="size-4" />
+          정상
+        </span>
+      ) : row.status === 'duplicate' ? (
+        <span className="inline-flex items-center gap-1 text-amber-700">
+          <XCircle className="size-4" />
+          중복
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-destructive">
+          <XCircle className="size-4" />
+          오류
+        </span>
+      ),
+    },
+    { key: 'message', header: '메시지', cell: (row) => <span className="text-muted-foreground">{row.message}</span> },
+  ]
 
   return (
     <div
@@ -186,59 +218,13 @@ export function SourceImportDialog({
                 <Badge variant="outline">중복 {result.summary.duplicate}건</Badge>
               </div>
 
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full min-w-[900px] text-sm">
-                  <thead className="bg-muted/60 text-left">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">행</th>
-                      <th className="px-3 py-2 font-medium">이름</th>
-                      <th className="px-3 py-2 font-medium">유형</th>
-                      <th className="px-3 py-2 font-medium">RSS URL</th>
-                      <th className="px-3 py-2 font-medium">활성</th>
-                      <th className="px-3 py-2 font-medium">주기(분)</th>
-                      <th className="px-3 py-2 font-medium">상태</th>
-                      <th className="px-3 py-2 font-medium">메시지</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.rows.map((row) => (
-                      <tr key={row.index} className="border-t align-top">
-                        <td className="px-3 py-2">{row.index}</td>
-                        <td className="px-3 py-2">{row.name || '-'}</td>
-                        <td className="px-3 py-2">{row.type || '-'}</td>
-                        <td className="max-w-md break-all px-3 py-2 font-mono text-xs">
-                          {row.rss_url || '-'}
-                        </td>
-                        <td className="px-3 py-2">
-                          {row.is_active ? '활성' : '비활성'}
-                        </td>
-                        <td className="px-3 py-2">{row.crawl_interval_minutes}</td>
-                        <td className="px-3 py-2">
-                          {row.status === 'success' ? (
-                            <span className="inline-flex items-center gap-1 text-positive">
-                              <CheckCircle2 className="size-4" />
-                              정상
-                            </span>
-                          ) : row.status === 'duplicate' ? (
-                            <span className="inline-flex items-center gap-1 text-amber-700">
-                              <XCircle className="size-4" />
-                              중복
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-destructive">
-                              <XCircle className="size-4" />
-                              오류
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {row.message}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <AdminTable
+                columns={resultColumns}
+                rows={result.rows}
+                rowKey={(row) => String(row.index)}
+                minWidth="min-w-[900px]"
+                state="idle"
+              />
             </div>
           )}
         </div>

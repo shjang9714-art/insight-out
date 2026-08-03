@@ -16,11 +16,27 @@ export interface NewsletterNewsGroup {
   cards: NewsletterCard[]
 }
 
-export interface NewsletterDailyInsight {
+export interface NewsletterTopTeaserFlowStep {
+  phase: string
+  text: string
+  sourceUrl: string | null
+  sourceName: string | null
+}
+
+export interface NewsletterTopTeaserFlow {
+  type: 'flow'
+  headline: string | null
+  steps: NewsletterTopTeaserFlowStep[]
+}
+
+export interface NewsletterTopTeaserInsight {
+  type: 'insight'
   headline: string
   summaryKo: string
   detailUrl: string
 }
+
+export type NewsletterTopTeaser = NewsletterTopTeaserFlow | NewsletterTopTeaserInsight
 
 export interface NewsletterKnowledgeReport {
   category: string
@@ -40,7 +56,7 @@ export interface NewsletterEmailData {
   issueNo: number
   greetingName: string | null
   newsGroups: NewsletterNewsGroup[]
-  dailyInsight: NewsletterDailyInsight | null
+  topTeaser: NewsletterTopTeaser | null
   knowledgeReports: NewsletterKnowledgeReport[]
   companyTrends: NewsletterCompanyTrend[]
   unsubscribeUrl: string
@@ -53,8 +69,7 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
 }
 
-function buildDailyInsightSection(data: NewsletterEmailData['dailyInsight']): string {
-  if (!data) return ''
+function buildTopTeaserInsightSection(data: NewsletterTopTeaserInsight): string {
   return `
   <tr>
     <td style="padding:20px 40px 8px;">
@@ -70,6 +85,49 @@ function buildDailyInsightSection(data: NewsletterEmailData['dailyInsight']): st
       </table>
     </td>
   </tr>`
+}
+
+function buildTopTeaserFlowSection(data: NewsletterTopTeaserFlow): string {
+  const stepsHtml = data.steps
+    .map((step, i, arr) => {
+      const isLast = i === arr.length - 1
+      const body = step.sourceUrl
+        ? `<a href="${step.sourceUrl}" style="color:#111827; text-decoration:none;">${escapeHtml(step.text)}</a>`
+        : escapeHtml(step.text)
+      return `
+        <tr>
+          <td width="26" valign="top" style="padding:0 0 ${isLast ? '0' : '14px'};">
+            <span style="display:inline-block; width:20px; height:20px; line-height:20px; text-align:center; font-size:11px; font-weight:700; color:#E6007E; background:#fce7f0; border-radius:999px;">${i + 1}</span>
+          </td>
+          <td valign="top" style="padding:0 0 ${isLast ? '0' : '14px'};">
+            <p style="margin:0 0 3px; font-size:10.5px; font-weight:700; letter-spacing:0.06em; color:#E6007E; text-transform:uppercase;">${escapeHtml(step.phase)}</p>
+            <p style="margin:0; font-size:13.5px; line-height:1.6; color:#374151;">${body}</p>
+            ${step.sourceName ? `<p style="margin:2px 0 0; font-size:11px; color:#9ca3af;">${escapeHtml(step.sourceName)}</p>` : ''}
+          </td>
+        </tr>`
+    })
+    .join('')
+
+  return `
+  <tr>
+    <td style="padding:20px 40px 8px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fdf2f8; border-radius:12px;">
+        <tr>
+          <td style="padding:22px 24px;">
+            <p style="margin:0 0 10px; font-size:11px; font-weight:700; letter-spacing:0.12em; color:#E6007E;">🧭 이번 주 핵심 흐름</p>
+            ${data.headline ? `<p style="margin:0 0 14px; font-size:19px; font-weight:800; line-height:1.4; color:#111827;">${escapeHtml(data.headline)}</p>` : ''}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${stepsHtml}
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`
+}
+
+function buildTopTeaserSection(data: NewsletterEmailData['topTeaser']): string {
+  if (!data) return ''
+  return data.type === 'flow' ? buildTopTeaserFlowSection(data) : buildTopTeaserInsightSection(data)
 }
 
 function buildNewsCardItem(card: NewsletterCard, i: number, isLast: boolean): string {
@@ -237,11 +295,11 @@ export function buildNewsletterHtml(data: NewsletterEmailData): string {
     <td style="padding:28px 40px 8px;">
       <p class="io-text-body" style="margin:0; font-size:14px; line-height:1.7; color:#374151;">
         ${greeting}
-        ${data.dailyInsight ? `아래 <strong style="color:#E6007E;">주간 핵심 인사이트</strong>부터 확인해 보세요.` : ''}
+        ${data.topTeaser ? `아래 <strong style="color:#E6007E;">${data.topTeaser.type === 'flow' ? '이번 주 핵심 흐름' : '주간 핵심 인사이트'}</strong>부터 확인해 보세요.` : ''}
       </p>
     </td>
   </tr>
-${buildDailyInsightSection(data.dailyInsight)}
+${buildTopTeaserSection(data.topTeaser)}
 ${buildNewsCardsSection(data.newsGroups)}
 ${buildKnowledgeReportsSection(data.knowledgeReports)}
 ${buildCompanyTrendsSection(data.companyTrends)}

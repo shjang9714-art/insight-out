@@ -5,36 +5,15 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
-import StatusBadge from '@/components/admin/ui/StatusBadge'
-import { JOB_RUN_STATUS_TONE, JOB_RUN_STATUS_LABEL } from '@/lib/admin/status-style'
+import JobRunsTable, { type JobRunRow } from '@/components/admin/JobRunsTable'
 import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
 import { cn } from '@/lib/utils'
-import { History } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '작업 이력 | 어드민 | Insight Out',
   description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.',
-}
-
-type JobRunStatus = 'running' | 'succeeded' | 'failed' | 'skipped'
-
-interface JobRunRow {
-  id: string
-  job_key: string
-  trigger: 'cron' | 'admin'
-  mode: string | null
-  status: JobRunStatus
-  started_at: string
-  finished_at: string | null
-  duration_ms: number | null
-  processed: number | null
-  filled: number | null
-  skipped_count: number | null
-  remaining: number | null
-  error: string | null
 }
 
 const STATUS_FILTERS: { value: string; label: string }[] = [
@@ -65,25 +44,26 @@ function formatKST(d: string | null): string {
   })
 }
 
-function formatCount(n: number | null): string {
-  return n === null ? '—' : n.toLocaleString()
-}
-
 function buildHref(params: Record<string, string>): string {
   const sp = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== ''))
   const qs = sp.toString()
   return qs ? `/admin/job-runs?${qs}` : '/admin/job-runs'
 }
 
-interface PageProps {
-  searchParams: Promise<{ status?: string; job?: string; range?: string }>
-}
+interface PageProps { searchParams: Promise<{ status?: string; job?: string; range?: string; page?: string; sort?: string; dir?: string }> }
+
+const PAGE_SIZE = 50
+const SORT_KEYS = new Set(['started_at', 'job_key', 'status', 'duration_ms'])
 
 export default async function AdminJobRunsPage({ searchParams }: PageProps) {
   const params = await searchParams
   const status = params.status ?? ''
   const jobFilter = params.job ?? ''
   const range = params.range ?? '7'
+  const parsedPage = Number.parseInt(params.page ?? '1', 10)
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+  const sortKey = params.sort && SORT_KEYS.has(params.sort) ? params.sort : 'started_at'
+  const sortDir = params.dir === 'asc' ? 'asc' : 'desc'
 
   // 어드민 role 직접 재확인(미들웨어 의존 금지, 289 §3-4)
   const cookieStore = await cookies()
@@ -109,9 +89,8 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
 
   let query = admin
     .from('job_runs')
-    .select('id, job_key, trigger, mode, status, started_at, finished_at, duration_ms, processed, filled, skipped_count, remaining, error')
-    .order('started_at', { ascending: false })
-    .limit(200)
+    .select('id, job_key, trigger, mode, status, started_at, finished_at, duration_ms, processed, filled, skipped_count, remaining, error', { count: 'exact' })
+    .order(sortKey, { ascending: sortDir === 'asc' })
 
   if (status) query = query.eq('status', status)
   if (jobFilter) query = query.ilike('job_key', `%${jobFilter}%`)
@@ -124,9 +103,10 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
     query = query.gte('started_at', cutoffDate.toISOString())
   }
 
-  const { data, error } = await query
-  const ready = !error || error.code !== '42P01'
-  const runs = (ready ? (data ?? []) : []) as JobRunRow[]
+  query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+  const { data, error, count } = await query
+  const ready = !error
+  const runs = (data ?? []) as JobRunRow[]
 
   // 292 — 계측 누락("EXPECTED_CRONS 에 있는데 job_runs 에 기록이 없음") + "안 돈 크론"
   // (기록은 있는데 maxAgeHours 초과) 을 한 장치로 감지. skipped 도 "돌았다"로 친다(§4 가드).
@@ -161,13 +141,7 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <AdminPageHeader />
 
-      {!ready ? (
-        <AdminEmptyState
-          icon={History}
-          message="작업 이력 테이블이 아직 준비되지 않았습니다 (SQL 289 미적용)."
-        />
-      ) : (
-        <>
+      <>
           {cronStatuses.length > 0 && (
             <div className="rounded-xl border border-border p-3">
               {allCronsNormal ? (
@@ -204,7 +178,7 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
 	                // prefetch-ok: 필터 칩 — 개수 고정, 이동 잦음
 	                <Link
 	                  key={f.value}
-                  href={buildHref({ status: f.value, job: jobFilter, range })}
+                  href={buildHref({ status: f.value, job: jobFilter, range, page: '1', sort: sortKey, dir: sortDir })}
                   className={cn(
                     'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                     status === f.value
@@ -221,7 +195,7 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
 	                // prefetch-ok: 필터 칩 — 개수 고정, 이동 잦음
 	                <Link
 	                  key={f.value}
-                  href={buildHref({ status, job: jobFilter, range: f.value })}
+                  href={buildHref({ status, job: jobFilter, range: f.value, page: '1', sort: sortKey, dir: sortDir })}
                   className={cn(
                     'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                     range === f.value
@@ -235,51 +209,17 @@ export default async function AdminJobRunsPage({ searchParams }: PageProps) {
             </div>
           </div>
 
-          {runs.length === 0 ? (
-            <AdminEmptyState icon={History} message="조건에 맞는 작업 실행 기록이 없습니다." />
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">시작 시각</th>
-                    <th className="px-3 py-2 font-medium">잡</th>
-                    <th className="px-3 py-2 font-medium">트리거</th>
-                    <th className="px-3 py-2 font-medium">상태</th>
-                    <th className="px-3 py-2 font-medium">소요</th>
-                    <th className="px-3 py-2 font-medium">처리/설정/스킵/남음</th>
-                    <th className="px-3 py-2 font-medium">오류</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {runs.map((run) => (
-                    <tr key={run.id} className="align-top">
-                      <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">{formatKST(run.started_at)}</td>
-                      <td className="px-3 py-2 font-medium text-foreground">
-                        {run.job_key}
-                        {run.mode && <span className="ml-1 text-xs text-muted-foreground">({run.mode})</span>}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{run.trigger}</td>
-                      <td className="px-3 py-2">
-                        <StatusBadge tone={JOB_RUN_STATUS_TONE[run.status]} label={JOB_RUN_STATUS_LABEL[run.status]} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
-                        {run.duration_ms === null ? '—' : `${run.duration_ms.toLocaleString()}ms`}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
-                        {formatCount(run.processed)} / {formatCount(run.filled)} / {formatCount(run.skipped_count)} / {formatCount(run.remaining)}
-                      </td>
-                      <td className="max-w-xs truncate px-3 py-2 text-xs text-negative" title={run.error ?? undefined}>
-                        {run.error ?? '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <JobRunsTable
+            key={`${page}-${sortKey}-${sortDir}-${status}-${jobFilter}-${range}`}
+            rows={runs}
+            state={!ready ? 'error' : runs.length === 0 ? 'empty' : 'idle'}
+            errorMessage={error?.code === '42P01' ? '작업 이력 테이블이 아직 준비되지 않았습니다 (SQL 289 미적용).' : '작업 이력을 불러오지 못했습니다.'}
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={count}
+            sort={{ key: sortKey, dir: sortDir }}
+          />
         </>
-      )}
     </div>
   )
 }

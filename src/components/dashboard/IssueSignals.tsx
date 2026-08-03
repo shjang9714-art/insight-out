@@ -80,7 +80,7 @@ export default async function IssueSignals() {
     <div className="flex items-center gap-3 rounded-xl bg-muted/50 px-4 py-2 ring-1 ring-border/60">
       <div className="flex shrink-0 items-center gap-1.5">
         <TrendingUp className="h-4 w-4 text-orange-500" />
-        <span className="whitespace-nowrap text-xs font-semibold text-foreground">오늘의 급상승</span>
+        <span className="whitespace-nowrap text-xs font-semibold text-foreground">오늘의 급상승 뉴스</span>
         <span className="whitespace-nowrap text-[11px] text-muted-foreground">{todayLabel}</span>
       </div>
 

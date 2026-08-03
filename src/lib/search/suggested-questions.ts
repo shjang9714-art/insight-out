@@ -1,6 +1,5 @@
 export interface SuggestedQuestionsCtx {
   watchlist: string[]
-  serviceNames: string[]
 }
 
 const DEFAULT_QUESTIONS = [
@@ -31,17 +30,12 @@ export function buildSuggestedQuestions(
     add(`${display} 최근 동향은?`)
   }
 
-  // 2. 개인화 — 담당 서비스
-  for (const svcName of ctx.serviceNames.slice(0, 2)) {
-    add(`${svcName} 관련 이슈는?`)
-  }
-
-  // 3. 뜨는 토픽
+  // 2. 뜨는 토픽
   for (const theme of topThemes.slice(0, 3)) {
     add(`${theme} 정리해줘`)
   }
 
-  // 4. 기본 템플릿
+  // 3. 기본 템플릿
   for (const q of DEFAULT_QUESTIONS) {
     add(q)
   }

@@ -994,7 +994,8 @@ CREATE TABLE IF NOT EXISTS "public"."archive_items" (
     "note" "text",
     "order" integer DEFAULT 0 NOT NULL,
     "added_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "archive_items_one_item" CHECK ((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) = 1))
+    "ai_report_id" "uuid",
+    CONSTRAINT "archive_items_one_item" CHECK (((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) + (("ai_report_id" IS NOT NULL))::integer) = 1))
 );
 
 
@@ -1022,7 +1023,8 @@ CREATE TABLE IF NOT EXISTS "public"."bookmarks" (
     "content_id" "uuid",
     "youtube_video_id" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "bookmarks_one_item" CHECK ((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) = 1))
+    "ai_report_id" "uuid",
+    CONSTRAINT "bookmarks_one_item" CHECK (((((("content_id" IS NOT NULL))::integer + (("youtube_video_id" IS NOT NULL))::integer) + (("ai_report_id" IS NOT NULL))::integer) = 1))
 );
 
 
@@ -1800,7 +1802,9 @@ CREATE TABLE IF NOT EXISTS "public"."llm_task_routing" (
     "priority" integer NOT NULL,
     "provider" "text" NOT NULL,
     "model_id" "text" NOT NULL,
-    "is_active" boolean DEFAULT true NOT NULL
+    "is_active" boolean DEFAULT true NOT NULL,
+    "last_error" "text",
+    "last_error_at" timestamp with time zone
 );
 
 
@@ -2943,6 +2947,13 @@ CREATE UNIQUE INDEX "archive_items_youtube_key" ON "public"."archive_items" USIN
 
 
 --
+-- Name: archive_items_archive_report_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "archive_items_archive_report_key" ON "public"."archive_items" USING "btree" ("archive_id", "ai_report_id") WHERE ("ai_report_id" IS NOT NULL);
+
+
+--
 -- Name: archives_user_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2961,6 +2972,13 @@ CREATE UNIQUE INDEX "bookmarks_user_content_key" ON "public"."bookmarks" USING "
 --
 
 CREATE UNIQUE INDEX "bookmarks_user_youtube_key" ON "public"."bookmarks" USING "btree" ("user_id", "youtube_video_id") WHERE ("youtube_video_id" IS NOT NULL);
+
+
+--
+-- Name: bookmarks_user_report_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "bookmarks_user_report_key" ON "public"."bookmarks" USING "btree" ("user_id", "ai_report_id") WHERE ("ai_report_id" IS NOT NULL);
 
 
 --
@@ -3885,6 +3903,14 @@ ALTER TABLE ONLY "public"."archive_items"
 
 
 --
+-- Name: archive_items archive_items_ai_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."archive_items"
+    ADD CONSTRAINT "archive_items_ai_report_id_fkey" FOREIGN KEY ("ai_report_id") REFERENCES "public"."ai_reports"("id") ON DELETE CASCADE;
+
+
+--
 -- Name: archives archives_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3906,6 +3932,14 @@ ALTER TABLE ONLY "public"."bookmarks"
 
 ALTER TABLE ONLY "public"."bookmarks"
     ADD CONSTRAINT "bookmarks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+--
+-- Name: bookmarks bookmarks_ai_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."bookmarks"
+    ADD CONSTRAINT "bookmarks_ai_report_id_fkey" FOREIGN KEY ("ai_report_id") REFERENCES "public"."ai_reports"("id") ON DELETE CASCADE;
 
 
 --
@@ -6329,4 +6363,27 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 --
 
 -- \unrestrict 0g4lUvC1EHN0RUcEujbYZdz2XTLCWNPeUBUjC9BOnwIdb0q99RjrWkwOIa1wRNC
-
+-- 486: 관리자 행위 감사 로그
+create table if not exists public.admin_audit_log (
+  id bigint generated always as identity primary key,
+  actor_id uuid references public.users(id) on delete set null,
+  actor_email text,
+  action text not null,
+  method text,
+  path text,
+  capability text,
+  target_type text,
+  target_id text,
+  target_count integer,
+  payload jsonb,
+  outcome text not null default 'started' check (outcome in ('started', 'ok', 'failed')),
+  error text,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+create index if not exists admin_audit_log_created_idx on public.admin_audit_log (created_at desc);
+create index if not exists admin_audit_log_actor_idx on public.admin_audit_log (actor_id, created_at desc);
+create index if not exists admin_audit_log_target_idx on public.admin_audit_log (target_type, target_id);
+alter table public.admin_audit_log enable row level security;
+drop policy if exists "admin_audit_log: admin 조회" on public.admin_audit_log;
+create policy "admin_audit_log: admin 조회" on public.admin_audit_log for select using (public.is_admin());

@@ -1,47 +1,11 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { EXCLUSION_RULE_TYPES, EXCLUSION_ACTIONS, type ExclusionRuleRow } from '@/lib/admin/exclusion-rules'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // verifyAdmin: requests/route.ts 와 동일하게 복제 (공통 추출은 추후)
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-
-  return null
-}
 
 const TABLE_MISSING_CODE = '42P01'
 
@@ -50,11 +14,11 @@ const TABLE_MISSING_CODE = '42P01'
  * 전체 규칙 목록. 테이블 미적용(42P01) → graceful 빈 목록.
  */
 export async function GET() {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('exclusion_rules')
       .select('*')
@@ -80,8 +44,8 @@ export async function GET() {
  * 신규 규칙 생성. { rule_type, value, action?, note?, created_by? }
  */
 export async function POST(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const body = await req.json() as Partial<ExclusionRuleRow>
   const value = body.value?.trim()
@@ -103,7 +67,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('exclusion_rules')
       .insert(payload)
@@ -135,8 +99,8 @@ export async function POST(req: NextRequest) {
  * 부분 수정. body.id 필수.
  */
 export async function PATCH(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const body = await req.json() as Partial<ExclusionRuleRow> & { id?: string }
   const { id, ...rest } = body
@@ -155,7 +119,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('exclusion_rules')
       .update(updatePayload)
@@ -184,8 +148,8 @@ export async function PATCH(req: NextRequest) {
  * DELETE /api/admin/exclusion-rules?id=<uuid>
  */
 export async function DELETE(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) {
@@ -193,7 +157,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { error } = await admin.from('exclusion_rules').delete().eq('id', id)
 
     if (error) {

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
-import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import EntityAutocomplete, { type EntityOption } from '@/components/admin/EntityAutocomplete'
 import { COMPANY_DOC_SOURCE_KINDS, SOURCE_KIND_LABELS } from '@/lib/company-docs/constants'
 import type { CompanyDocumentSourceKind } from '@/lib/types'
@@ -66,7 +66,7 @@ function formatKst(iso: string | null): string {
 
 export default function CompanyDocumentSourceRegistry() {
   const [sources, setSources] = useState<SourceRow[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [tableState, setTableState] = useState<AdminTableState>('loading')
   const [error, setError] = useState<string | null>(null)
   const [schemaMissing, setSchemaMissing] = useState(false)
 
@@ -79,18 +79,19 @@ export default function CompanyDocumentSourceRegistry() {
   const [collectMessage, setCollectMessage] = useState<string | null>(null)
 
   async function loadSources() {
-    setIsLoading(true)
+    setTableState('loading')
     try {
       const res = await fetch('/api/admin/company-documents/sources')
       const data = await res.json() as { sources?: SourceRow[]; schemaMissing?: boolean; error?: string }
       if (!res.ok) throw new Error(data.error ?? '소스 목록을 불러오지 못했습니다.')
-      setSources(data.sources ?? [])
+      const nextSources = data.sources ?? []
+      setSources(nextSources)
       setSchemaMissing(data.schemaMissing === true)
       setError(null)
+      setTableState(nextSources[0] ? 'idle' : 'empty')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '소스 목록을 불러오지 못했습니다.')
-    } finally {
-      setIsLoading(false)
+      setTableState('error')
     }
   }
 
@@ -198,7 +199,11 @@ export default function CompanyDocumentSourceRegistry() {
       setError(data.error ?? '삭제에 실패했습니다.')
       return
     }
-    setSources((prev) => prev.filter((s) => s.id !== src.id))
+    setSources((prev) => {
+      const nextSources = prev.filter((source) => source.id !== src.id)
+      setTableState(nextSources[0] ? 'idle' : 'empty')
+      return nextSources
+    })
   }
 
   async function handleCollect(src: SourceRow) {
@@ -220,6 +225,45 @@ export default function CompanyDocumentSourceRegistry() {
       setCollectingId(null)
     }
   }
+
+  const columns: AdminTableColumn<SourceRow>[] = [
+    { key: 'entity', header: '기업', nowrap: true, cell: (src) => <span className="font-medium text-foreground">{firstRelation(src.entities)?.canonical_name ?? '미매칭'}</span> },
+    { key: 'source', header: '소스', width: 'max-w-xs', truncate: true, cell: (src) => <a href={src.url} target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 hover:underline" title={src.url}>{src.name}</a> },
+    { key: 'kind', header: '종류', nowrap: true, cell: (src) => <span className="text-muted-foreground">{SOURCE_KIND_LABELS[src.source_kind]}</span> },
+    { key: 'interval', header: '주기(분)', nowrap: true, cell: (src) => <span className="text-muted-foreground">{src.interval_minutes ?? '—'}</span> },
+    { key: 'last_crawled_at', header: '마지막 수집', nowrap: true, cell: (src) => <span className="text-xs text-muted-foreground">{formatKst(src.last_crawled_at)}</span> },
+    {
+      key: 'status',
+      header: '상태',
+      nowrap: true,
+      cell: (src) => (
+        <>
+          <button onClick={() => void handleToggleActive(src)} className={src.is_active ? 'text-xs font-medium text-positive hover:opacity-80' : 'text-xs font-medium text-muted-foreground hover:text-foreground'}>
+            {src.is_active ? '활성' : '비활성'}
+          </button>
+          {src.error_state && <span className="ml-2 text-[11px] text-negative" title={src.error_state}>오류</span>}
+        </>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '작업',
+      align: 'right',
+      cell: (src) => (
+        <div className="flex items-center justify-end gap-0.5">
+          <button onClick={() => void handleCollect(src)} disabled={collectingId === src.id} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50" title="즉시 수집">
+            {collectingId === src.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          </button>
+          <button onClick={() => openEdit(src)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => void handleDelete(src)} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ),
+    },
+  ]
 
   if (schemaMissing) return null
 
@@ -325,66 +369,15 @@ export default function CompanyDocumentSourceRegistry() {
         </Card>
       )}
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 불러오는 중...
-        </div>
-      ) : sources.length === 0 ? (
-        <AdminEmptyState message="등록된 소스가 없습니다." className="border-dashed p-10" />
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full min-w-[880px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
-                <th className="px-4 py-3">기업</th>
-                <th className="px-4 py-3">소스</th>
-                <th className="px-4 py-3">종류</th>
-                <th className="px-4 py-3">주기(분)</th>
-                <th className="px-4 py-3">마지막 수집</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sources.map((src) => (
-                <tr key={src.id} className="hover:bg-accent/50">
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-foreground">{firstRelation(src.entities)?.canonical_name ?? '미매칭'}</td>
-                  <td className="max-w-xs truncate px-4 py-3" title={src.url}>
-                    <a href={src.url} target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 hover:underline">{src.name}</a>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{SOURCE_KIND_LABELS[src.source_kind]}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{src.interval_minutes ?? '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">{formatKst(src.last_crawled_at)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <button onClick={() => void handleToggleActive(src)} className={src.is_active ? 'text-xs font-medium text-positive hover:opacity-80' : 'text-xs font-medium text-muted-foreground hover:text-foreground'}>
-                      {src.is_active ? '활성' : '비활성'}
-                    </button>
-                    {src.error_state && <span className="ml-2 text-[11px] text-negative" title={src.error_state}>오류</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => void handleCollect(src)}
-                        disabled={collectingId === src.id}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-                        title="즉시 수집"
-                      >
-                        {collectingId === src.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                      </button>
-                      <button onClick={() => openEdit(src)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => void handleDelete(src)} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={sources}
+        rowKey={(src) => src.id}
+        minWidth="min-w-[880px]"
+        state={tableState}
+        emptyMessage="등록된 소스가 없습니다."
+        errorMessage="소스 목록을 불러오지 못했습니다."
+      />
     </section>
   )
 }

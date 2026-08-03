@@ -5,6 +5,7 @@ import AdminTabShell from '@/components/admin/ui/AdminTabShell'
 import NewsletterHistory from '@/components/admin/NewsletterHistory'
 import NewsletterSendPanel from '@/components/admin/NewsletterSendPanel'
 import NewsletterSettingsForm, { type NewsletterSettingsState } from '@/components/admin/NewsletterSettingsForm'
+import type { AdminTableState } from '@/components/admin/ui/AdminTable'
 
 interface Issue {
   id: string
@@ -25,9 +26,10 @@ const TABS = [
 interface Props {
   initialSettings: NewsletterSettingsState
   initialIssues: Issue[]
+  issuesState: AdminTableState
 }
 
-export default function NewsletterHub({ initialSettings, initialIssues }: Props) {
+export default function NewsletterHub({ initialSettings, initialIssues, issuesState }: Props) {
   // 400 §2.2 — settings만 탭 경계를 넘어 Hub에 둔다(편집 중 탭 이동 시 유실 방지).
   // send/history 상태는 각 탭 컴포넌트 내부에 둔다(서로 참조하지 않음, 언마운트 시 초기화 허용).
   const [settings, setSettings] = useState<NewsletterSettingsState>(initialSettings)
@@ -41,7 +43,7 @@ export default function NewsletterHub({ initialSettings, initialIssues }: Props)
       aria-label="뉴스레터 관리"
       renderContent={(tab) =>
         tab === 'history'
-          ? <NewsletterHistory initialIssues={initialIssues} />
+          ? <NewsletterHistory initialIssues={initialIssues} state={issuesState} />
           : tab === 'send'
             ? <NewsletterSendPanel />
             : (

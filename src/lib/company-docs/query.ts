@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CompanyDocumentType } from '@/lib/types'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 
 /**
  * 355-B — 사용자 탭(기업동향 > 기업·기술 자료) 조회 헬퍼.
@@ -55,7 +56,7 @@ function normalizeRow(row: CompanyDocumentRow): CompanyDocumentListItem {
     contentId: row.content_id,
     title: contents?.title ?? '(제목 없음)',
     summaryKo: contents?.summary_ko ?? null,
-    thumbnailUrl: contents?.thumbnail_url ?? null,
+    thumbnailUrl: resolveStorageUrl(contents?.thumbnail_url ?? null),
     originalUrl: contents?.original_url ?? null,
     publishedAt: row.published_on ?? contents?.published_at ?? null,
     entityId: row.entity_id,

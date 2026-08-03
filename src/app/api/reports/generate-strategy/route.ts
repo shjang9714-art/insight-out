@@ -94,6 +94,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[generate-strategy]', err)
-    return NextResponse.json({ error: '전략보고서 생성 중 오류가 발생했습니다.' }, { status: 500 })
+    return NextResponse.json({ error: 'AI 리포트 생성 중 오류가 발생했습니다.' }, { status: 500 })
   }
 }

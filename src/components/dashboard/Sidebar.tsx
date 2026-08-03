@@ -17,6 +17,7 @@ interface ArchivedItem {
   title: string
   category: string | null
   addedAt: string
+  href: string
 }
 
 function formatDate(d: string) {
@@ -49,7 +50,7 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
 
       const { data } = await supabase
         .from('archives')
-        .select('archive_items(added_at, contents(id, title, category))')
+        .select('archive_items(added_at, contents(id, title, category), ai_reports(id, title, type))')
         .eq('user_id', user.id)
 
       const items: ArchivedItem[] = []
@@ -57,6 +58,7 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
         archive_items: {
           added_at: string
           contents: { id: string; title: string; category: string | null } | null
+          ai_reports: { id: string; title: string; type: string } | null
         }[]
       }[]) {
         for (const ai of archive.archive_items ?? []) {
@@ -66,6 +68,15 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
               title: ai.contents.title,
               category: ai.contents.category,
               addedAt: ai.added_at,
+              href: `/dashboard/contents/${ai.contents.id}`,
+            })
+          } else if (ai.ai_reports) {
+            items.push({
+              id: ai.ai_reports.id,
+              title: ai.ai_reports.title,
+              category: `AI 리포트 · ${ai.ai_reports.type}`,
+              addedAt: ai.added_at,
+              href: `/dashboard/reports/${ai.ai_reports.id}`,
             })
           }
         }
@@ -161,8 +172,10 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
               {archived.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/dashboard/contents/${item.id}`}
+                  href={item.href}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener"
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >
@@ -229,6 +242,8 @@ export default function Sidebar({ onClose, collapsed = false, onToggleCollapse }
                   key={item.id}
                   href={`/dashboard/contents/${item.id}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener"
                   onClick={() => onClose?.()}
                   className="block w-full rounded-lg px-2 py-2 transition-colors hover:bg-brand-50"
                 >

@@ -23,6 +23,7 @@ import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -31,9 +32,9 @@ const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'pol
 const COMPETITOR_GROUP_SUGGESTIONS = ['통신', '클라우드·플랫폼', '빅테크']
 
 const ENTITY_SELECT_WITH_GROUP =
-  'id, canonical_name, entity_type, description, is_competitor, service_id, mention_count, competitor_group'
+  'id, canonical_name, entity_type, description, is_competitor, mention_count, competitor_group'
 const ENTITY_SELECT_NO_GROUP =
-  'id, canonical_name, entity_type, description, is_competitor, service_id, mention_count'
+  'id, canonical_name, entity_type, description, is_competitor, mention_count'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -43,15 +44,9 @@ interface EntityRow {
   entity_type: EntityType
   description: string | null
   is_competitor: boolean
-  service_id: string | null
   mention_count: number
   /** 224 SQL 미적용 시 셀렉트에서 제외되어 undefined일 수 있음 */
   competitor_group?: string | null
-}
-
-interface ServiceRow {
-  id: string
-  name: string
 }
 
 interface AliasRow {
@@ -65,7 +60,6 @@ interface EntityForm {
   entity_type: EntityType
   description: string
   is_competitor: boolean
-  service_id: string
   competitor_group: string
 }
 
@@ -74,7 +68,6 @@ const FORM_INIT: EntityForm = {
   entity_type:      'company',
   description:      '',
   is_competitor:    false,
-  service_id:       '',
   competitor_group: '',
 }
 
@@ -148,7 +141,6 @@ export default function EntityManager() {
 
   // 목록 상태
   const [entities,      setEntities]      = useState<EntityRow[]>([])
-  const [services,      setServices]      = useState<ServiceRow[]>([])
   const [isLoading,     setIsLoading]     = useState(true)
   const [error,         setError]         = useState<string | null>(null)
   const [filterType,    setFilterType]    = useState<EntityType | 'all'>('all')
@@ -222,18 +214,12 @@ export default function EntityManager() {
   useEffect(() => {
     const init = async () => {
       setIsLoading(true)
-      const [entRes, svcRes] = await Promise.all([
-        fetchEntitiesGraceful(),
-        supabase.from('services').select('id, name').order('name'),
-      ])
+      const entRes = await fetchEntitiesGraceful()
       setGroupSupported(entRes.groupSupported)
       if (entRes.error) {
         setError(`엔티티 목록 로드 실패: ${entRes.error.message}`)
       } else {
         setEntities((entRes.data ?? []) as EntityRow[])
-      }
-      if (!svcRes.error) {
-        setServices((svcRes.data ?? []) as ServiceRow[])
       }
       setIsLoading(false)
     }
@@ -275,6 +261,43 @@ export default function EntityManager() {
     ? baseList
     : baseList.filter(e => e.entity_type === filterType)
 
+  const entityColumns: AdminTableColumn<EntityRow>[] = [
+    {
+      key: 'name',
+      header: '이름',
+      cell: (entity) => (
+        <div>
+          <div className="font-medium text-foreground">{entity.canonical_name}</div>
+          {entity.description && <div className="truncate text-xs text-muted-foreground">{entity.description}</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'type',
+      header: '유형',
+      cell: (entity) => <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', ENTITY_TYPE_CLS[entity.entity_type])}>{ENTITY_TYPE_LABEL[entity.entity_type]}</span>,
+    },
+    { key: 'mentions', header: '언급', align: 'center', cell: (entity) => entity.mention_count },
+    {
+      key: 'attributes',
+      header: '속성',
+      cell: (entity) => <div className="flex flex-wrap items-center gap-1">{entity.is_competitor && <StatusBadge tone="negative" label="경쟁사" />}{entity.competitor_group && <StatusBadge tone="neutral" label={entity.competitor_group} />}</div>,
+    },
+    {
+      key: 'actions',
+      header: '작업',
+      align: 'right',
+      cell: (entity) => (
+        <div className="flex items-center justify-end gap-0.5">
+          <button onClick={() => openEdit(entity)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button>
+          <button onClick={() => { if (aliasEntityId === entity.id) { closeAliases(); return }; void openAliases(entity.id) }} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', aliasEntityId === entity.id ? 'bg-accent text-foreground' : 'text-muted-foreground')} title="동의어"><Tag className="h-3.5 w-3.5" /></button>
+          <button onClick={() => { if (mergeSourceId === entity.id) { closeMerge(); return }; openMerge(entity.id) }} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', mergeSourceId === entity.id ? 'bg-accent text-foreground' : 'text-muted-foreground')} title="병합"><GitMerge className="h-3.5 w-3.5" /></button>
+          <button onClick={() => { void handleDelete(entity) }} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button>
+        </div>
+      ),
+    },
+  ]
+
   const typeCounts = entities.reduce<Record<string, number>>((acc, e) => {
     acc[e.entity_type] = (acc[e.entity_type] ?? 0) + 1
     return acc
@@ -295,7 +318,6 @@ export default function EntityManager() {
       entity_type:      entity.entity_type,
       description:      entity.description ?? '',
       is_competitor:    entity.is_competitor,
-      service_id:       entity.service_id ?? '',
       competitor_group: entity.competitor_group ?? '',
     })
     setEditingId(entity.id)
@@ -325,7 +347,6 @@ export default function EntityManager() {
         description:    form.description.trim() || null,
         // 그룹 지정 시 경쟁사 자동 체크(224 §2-4) — 수동 체크 해제도 유지
         is_competitor:  form.is_competitor || Boolean(competitorGroup),
-        service_id:     form.service_id || null,
         // 224 SQL 미적용 시 컬럼 자체가 없어 payload에 넣으면 저장이 실패하므로 제외(graceful)
         ...(groupSupported ? { competitor_group: competitorGroup } : {}),
       }
@@ -876,38 +897,16 @@ export default function EntityManager() {
                   placeholder="이 엔티티에 대한 간단한 설명"
                 />
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="ent-service">
-                    연결 서비스{' '}
-                    <span className="text-xs font-normal text-muted-foreground">(선택)</span>
-                  </Label>
-                  <Select
-                    value={form.service_id || 'none'}
-                    onValueChange={(v) => setForm(p => ({ ...p, service_id: v === 'none' ? '' : v }))}
-                  >
-                    <SelectTrigger id="ent-service">
-                      <SelectValue placeholder="없음" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">없음</SelectItem>
-                      {services.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-end pb-1">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={form.is_competitor}
-                      onChange={(e) => setForm(p => ({ ...p, is_competitor: e.target.checked }))}
-                      className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                    />
-                    <span className="text-sm text-foreground">경쟁사</span>
-                  </label>
-                </div>
+              <div className="flex items-center">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.is_competitor}
+                    onChange={(e) => setForm(p => ({ ...p, is_competitor: e.target.checked }))}
+                    className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
+                  />
+                  <span className="text-sm text-foreground">경쟁사</span>
+                </label>
               </div>
               {groupSupported && (
                 <div className="flex flex-col gap-1.5">
@@ -1121,106 +1120,15 @@ export default function EntityManager() {
           {searchQuery ? '검색 결과가 없습니다.' : '등록된 엔티티가 없습니다.'}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">유형</th>
-                <th className="px-4 py-3 text-center">언급</th>
-                <th className="px-4 py-3">속성</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visibleEntities.map(entity => (
-                <tr
-                  key={entity.id}
-                  className={cn(
-                    'transition-colors hover:bg-accent/50',
-                    (aliasEntityId === entity.id || mergeSourceId === entity.id) && 'bg-accent/30'
-                  )}
-                >
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">{entity.canonical_name}</div>
-                    {entity.description && (
-                      <div className="truncate text-xs text-muted-foreground">{entity.description}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={cn(
-                      'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                      ENTITY_TYPE_CLS[entity.entity_type]
-                    )}>
-                      {ENTITY_TYPE_LABEL[entity.entity_type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center text-xs font-medium tabular-nums">
-                    {entity.mention_count}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-1">
-                      {entity.is_competitor && (
-                        <StatusBadge tone="negative" label="경쟁사" />
-                      )}
-                      {entity.competitor_group && (
-                        <StatusBadge tone="neutral" label={entity.competitor_group} />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => openEdit(entity)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        title="수정"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (aliasEntityId === entity.id) { closeAliases(); return }
-                          void openAliases(entity.id)
-                        }}
-                        className={cn(
-                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
-                          aliasEntityId === entity.id
-                            ? 'bg-accent text-foreground'
-                            : 'text-muted-foreground'
-                        )}
-                        title="동의어"
-                      >
-                        <Tag className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (mergeSourceId === entity.id) { closeMerge(); return }
-                          openMerge(entity.id)
-                        }}
-                        className={cn(
-                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
-                          mergeSourceId === entity.id
-                            ? 'bg-accent text-foreground'
-                            : 'text-muted-foreground'
-                        )}
-                        title="병합"
-                      >
-                        <GitMerge className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => { void handleDelete(entity) }}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AdminTable
+          columns={entityColumns}
+          rows={visibleEntities}
+          rowKey={(entity) => entity.id}
+          minWidth="min-w-[720px]"
+          state={isLoading ? 'loading' : error ? 'error' : visibleEntities.length === 0 ? 'empty' : 'idle'}
+          errorMessage={error ?? undefined}
+          emptyMessage={searchQuery ? '검색 결과가 없습니다.' : '등록된 엔티티가 없습니다.'}
+        />
       )}
     </div>
   )

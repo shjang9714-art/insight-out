@@ -1,7 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
-import { createClient as createServiceRoleClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { sha256 } from '@/lib/crawler/normalize'
 
 function safeSegment(value: string): string {
@@ -33,41 +31,8 @@ function safeSegment(value: string): string {
 export async function POST(request: NextRequest) {
   // ─── 1. 인증 + 관리자 확인 ─────────────────────────────────────────────────
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   // ─── 2. 요청 파싱 ─────────────────────────────────────────────────────────
 
@@ -90,19 +55,7 @@ export async function POST(request: NextRequest) {
 
   // ─── 3. 서명된 업로드 URL 생성 (service_role) ─────────────────────────────
 
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceRoleKey) {
-    console.error('[api/admin/upload] SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다.')
-    return NextResponse.json(
-      { error: '서버 설정 오류입니다. 관리자에게 문의하세요.' },
-      { status: 500 }
-    )
-  }
-
-  const adminClient = createServiceRoleClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceRoleKey
-  )
+  const adminClient = gate.admin
 
   const ext = filename.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
 

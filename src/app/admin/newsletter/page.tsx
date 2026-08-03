@@ -15,7 +15,7 @@ export default async function AdminNewsletterPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const [{ data: settings }, { data: issues }] = await Promise.all([
+  const [{ data: settings }, { data: issues, error: issuesError }] = await Promise.all([
     db.from('newsletter_settings').select('*').eq('id', 1).single(),
     db
       .from('newsletter_issues')
@@ -38,6 +38,7 @@ export default async function AdminNewsletterPage() {
       <NewsletterHub
         initialSettings={settings ?? defaultSettings}
         initialIssues={issues ?? []}
+        issuesState={issuesError ? 'error' : issues?.[0] ? 'idle' : 'empty'}
       />
     </Suspense>
   )

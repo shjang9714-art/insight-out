@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sendBrevoEmail, normalizeBrevoError } from '@/lib/email/brevo'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
 import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
+import { toTemplateTopTeaser } from '@/lib/newsletter/top-teaser'
 
 export interface DispatchResult {
   ok: boolean
@@ -98,8 +99,16 @@ export async function runNewsletterDispatch({
   }
 
   // 4. issue 생성 — 카드 인사이트·티저·5분류 그룹 데이터는 payload 에 그대로 저장(감사 추적 + 재사용 가능).
+  // content_ids 는 뉴스카드 + 지식보고서 + 최상단 흐름이 인용한 근거기사까지 전부 포함 — 다음 회차의
+  // 주간 기사 중복 배제(§규칙2)가 추가 테이블 없이 이 컬럼만 보고 판단할 수 있어야 하기 때문이다.
   const subject = (settings.subject_tpl ?? 'Insight Out 뉴스레터 · {date}').replace('{date}', todayKST)
-  const contentIds = prepared.newsGroups.flatMap((g) => g.cards.map((c) => c.id))
+  const contentIds = Array.from(
+    new Set([
+      ...prepared.newsGroups.flatMap((g) => g.cards.map((c) => c.id)),
+      ...prepared.knowledgeReports.map((r) => r.id),
+      ...(prepared.topTeaser?.articleIds ?? []),
+    ])
+  )
 
   const { count: sentIssueCount } = await supabase
     .from('newsletter_issues')
@@ -149,9 +158,7 @@ export async function runNewsletterDispatch({
           insight: c.insight,
         })),
       })),
-      dailyInsight: prepared.dailyInsight
-        ? { headline: prepared.dailyInsight.headline, summaryKo: prepared.dailyInsight.summaryKo, detailUrl: prepared.dailyInsight.detailUrl }
-        : null,
+      topTeaser: toTemplateTopTeaser(prepared.topTeaser),
       knowledgeReports: prepared.knowledgeReports,
       companyTrends: prepared.companyTrends,
       unsubscribeUrl,

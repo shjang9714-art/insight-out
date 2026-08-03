@@ -160,6 +160,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
                 <Link
                   href={`/dashboard/contents/${firstCitation.content_id}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener"
                   className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
                 >
                   {contentMap[firstCitation.content_id].title}
@@ -175,6 +177,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
           <Link
             href={`/dashboard/contents/${card.source_content_ids[0]}`}
             prefetch={false}
+            target="_blank"
+            rel="noopener"
             className="block text-[11px] text-brand-600 hover:underline truncate"
           >
             {contentMap[card.source_content_ids[0]].title}
@@ -213,6 +217,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
                       <Link
                         href={`/dashboard/contents/${c.content_id}`}
                         prefetch={false}
+                        target="_blank"
+                        rel="noopener"
                         className="mt-0.5 block text-[11px] text-brand-600 hover:underline truncate"
                       >
                         {meta.title}
@@ -233,6 +239,8 @@ function CardNewsItem({ card, matched, hasPersonalization, contentMap, bucketByT
                   key={id}
                   href={`/dashboard/contents/${id}`}
                   prefetch={false}
+                  target="_blank"
+                  rel="noopener"
                   className="block text-[11px] text-brand-600 hover:underline truncate"
                 >
                   {meta.title}
@@ -331,7 +339,7 @@ export default function InsightCardNewsList({
         ) : !hasSetting ? (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              담당 서비스·관심 기업을 설정하면 여기에 모아 보여드려요.
+              관심 기업을 설정하면 여기에 모아 보여드려요.
             </p>
             <Link
               href="/dashboard/mypage"
@@ -343,7 +351,7 @@ export default function InsightCardNewsList({
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              설정하신 담당/관심 기업 관련 인사이트가 아직 없어요.
+              설정하신 관심 기업 관련 인사이트가 아직 없어요.
             </p>
             <button
               type="button"
@@ -363,7 +371,7 @@ export default function InsightCardNewsList({
       {activeLens !== 'all' && (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center rounded-full bg-brand-600/10 px-2.5 py-1 text-xs font-medium text-brand-600">
-            {activeLens === 'mine' ? '내 업무' : '내 관심사'} · {totalCount}건
+            내 관심사 · {totalCount}건
           </span>
           <button
             type="button"

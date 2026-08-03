@@ -25,7 +25,7 @@ interface Props {
 const TASK_LABELS: Record<string, string> = {
   classify: '분류·감성·시그널·LGU임팩트·이슈매칭',
   summarize: '요약·경쟁사주간·기업인사이트·브리핑하이라이트',
-  report: '전략보고서·이슈브리프·이슈후보·엔티티이벤트·엔티티정규화',
+  report: 'AI 리포트·이슈브리프·이슈후보·엔티티이벤트·엔티티정규화',
   briefing: '모닝브리핑 스크립트',
   key_insight: '키워드 인사이트',
   daily_insight: '데일리 인사이트',

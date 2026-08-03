@@ -21,6 +21,8 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import { ISSUE_STATUS_TONE } from '@/lib/admin/status-style'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ const FORM_INIT: IssueForm = {
   status: 'draft',
   match_keywords: [],
 }
+const PAGE_SIZE = 20
 
 const STATUS_LABEL: Record<IssueStatus, string> = {
   draft:     '초안',
@@ -130,11 +133,15 @@ function ChipInput({ chips, onChange, placeholder }: ChipInputProps) {
 
 export default function IssueManager() {
   const supabase = createClient()
+  const table = useAdminTable({ defaultSort: { key: 'created_at', dir: 'desc' }, pageSize: PAGE_SIZE })
 
   // 목록 상태
   const [issues,       setIssues]       = useState<IssueRow[]>([])
+  const [total,        setTotal]        = useState(0)
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   const [isLoading,    setIsLoading]    = useState(true)
   const [error,        setError]        = useState<string | null>(null)
+  const [fetchError,   setFetchError]   = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<IssueStatus | 'all'>('all')
   const [searchQuery,  setSearchQuery]  = useState('')
 
@@ -164,15 +171,27 @@ export default function IssueManager() {
   // ── 초기 로드 ─────────────────────────────────────────────────────────────
 
   async function loadIssues() {
-    const { data, error: err } = await supabase
+    setError(null)
+    setFetchError(null)
+    let query = supabase
       .from('issues')
-      .select('id, title, summary, status, match_keywords, source, created_at')
+      .select('id, title, summary, status, match_keywords, source, created_at', { count: 'exact' })
       .order('created_at', { ascending: false })
+    if (filterStatus !== 'all') query = query.eq('status', filterStatus)
+    if (searchQuery.trim()) query = query.ilike('title', `%${searchQuery.trim()}%`)
+    const [{ data, error: err, count }, ...countResults] = await Promise.all([
+      query.range((table.page - 1) * PAGE_SIZE, table.page * PAGE_SIZE - 1),
+      ...(['draft', 'published', 'archived'] as IssueStatus[]).map((status) => supabase.from('issues').select('id', { count: 'exact', head: true }).eq('status', status)),
+    ])
 
     if (err) {
-      setError(`이슈 목록 로드 실패: ${err.message}`)
+      const message = `이슈 목록 로드 실패: ${err.message}`
+      setError(message)
+      setFetchError(message)
       return
     }
+    setTotal(count ?? 0)
+    setStatusCounts(Object.fromEntries((['draft', 'published', 'archived'] as IssueStatus[]).map((status, index) => [status, countResults[index].count ?? 0])))
 
     const rows = ((data ?? []) as IssueRow[]).map(sanitizeIssueRow)
 
@@ -225,24 +244,14 @@ export default function IssueManager() {
       setIsLoading(false)
     }
     void init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filterStatus, searchQuery, table.page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 파생 목록 ─────────────────────────────────────────────────────────────
 
   const aiCandidates = issues.filter(i => i.source === 'claude' && i.status === 'draft')
 
-  const visibleIssues = issues.filter(issue => {
-    if (filterStatus !== 'all' && issue.status !== filterStatus) return false
-    if (searchQuery.trim()) {
-      return issue.title.toLowerCase().includes(searchQuery.toLowerCase())
-    }
-    return true
-  })
-
-  const statusCounts = issues.reduce<Record<string, number>>((acc, i) => {
-    acc[i.status] = (acc[i.status] ?? 0) + 1
-    return acc
-  }, {})
+  const visibleIssues = issues
+  const overallTotal = Object.values(statusCounts).reduce((sum, count) => sum + count, 0)
 
   // ── 폼 열기/닫기 ─────────────────────────────────────────────────────────
 
@@ -435,6 +444,16 @@ export default function IssueManager() {
       setTransitioningId(null)
     }
   }
+
+  const columns: AdminTableColumn<IssueRow>[] = [
+    { key: 'title', header: '제목', cell: (issue) => <div className="admin-cell-wrap"><div className="line-clamp-1 font-medium text-foreground">{issue.title}</div>{issue.summary && <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{issue.summary}</div>}{rematchMsg?.id === issue.id && <div className={cn('mt-1 text-[11px] font-medium', rematchMsg.ok ? 'text-positive' : 'text-negative')}>{rematchMsg.text}</div>}{briefMsg?.id === issue.id && <div className={cn('mt-1 text-[11px] font-medium', briefMsg.ok ? 'text-positive' : 'text-negative')}>{briefMsg.text}</div>}</div> },
+    { key: 'status', header: '상태', cell: (issue) => <StatusBadge tone={ISSUE_STATUS_TONE[issue.status]} label={STATUS_LABEL[issue.status]} /> },
+    { key: 'assigned', header: '배정', align: 'center', cell: (issue) => <span className="text-xs font-medium tabular-nums">{issue.content_count ?? 0}</span> },
+    { key: 'keywords', header: '키워드', align: 'center', cell: (issue) => <span className="text-xs tabular-nums text-muted-foreground">{issue.match_keywords?.length ?? 0}</span> },
+    { key: 'actions', header: '작업', align: 'right', cell: (issue) => <div className="flex items-center justify-end gap-0.5"><button onClick={() => openEdit(issue)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => { void handleRematch(issue) }} disabled={rematchingId === issue.id} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', rematchingId === issue.id ? 'cursor-wait text-muted-foreground/40' : issue.match_keywords?.length > 0 ? 'text-brand-600 hover:bg-brand-50' : 'text-muted-foreground/30 cursor-default')} title={issue.match_keywords?.length > 0 ? '키워드로 재배정' : 'match_keywords 없음'}>{rematchingId === issue.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}</button><button onClick={() => { void handleBrief(issue) }} disabled={briefingId === issue.id} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', briefingId === issue.id ? 'cursor-wait text-muted-foreground/40' : 'text-blue-500 hover:bg-blue-50 hover:text-blue-700')} title="AI 브리핑 생성">{briefingId === issue.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrainCircuit className="h-3.5 w-3.5" />}</button><button onClick={() => { void handleDelete(issue) }} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button></div> },
+  ]
+
+  const tableState: AdminTableState = isLoading ? 'loading' : fetchError ? 'error' : total === 0 ? 'empty' : 'idle'
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -677,7 +696,7 @@ export default function IssueManager() {
             검토 대기 <span className="tabular-nums">{statusCounts['draft']}</span>건
           </p>
           <button
-            onClick={() => setFilterStatus(filterStatus === 'draft' ? 'all' : 'draft')}
+            onClick={() => { setFilterStatus(filterStatus === 'draft' ? 'all' : 'draft'); table.setPage(1) }}
             className={cn(
               'text-xs font-medium px-2.5 py-1 rounded-full border transition-colors',
               filterStatus === 'draft'
@@ -696,23 +715,23 @@ export default function IssueManager() {
           items={(['all', 'draft', 'published', 'archived'] as const).map((s) => ({
             value: s,
             label: s === 'all' ? '전체' : STATUS_LABEL[s],
-            count: s === 'all' ? issues.length : (statusCounts[s] ?? 0),
+            count: s === 'all' ? overallTotal : (statusCounts[s] ?? 0),
           }))}
           value={filterStatus}
-          onChange={(v) => setFilterStatus(v as IssueStatus | 'all')}
+          onChange={(v) => { setFilterStatus(v as IssueStatus | 'all'); table.setPage(1) }}
           aria-label="이슈 상태"
         />
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Input
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); table.setPage(1) }}
               placeholder="이슈 제목 검색…"
               className="pr-8"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => { setSearchQuery(''); table.setPage(1) }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label="검색어 지우기"
               >
@@ -731,122 +750,22 @@ export default function IssueManager() {
 
       {/* ── 목록 카운트 ── */}
       <p className="text-sm text-muted-foreground">
-        {isLoading ? '불러오는 중…' : `${visibleIssues.length}개 표시 (전체 ${issues.length}개)`}
+        {isLoading ? '불러오는 중…' : `${visibleIssues.length}개 표시 (전체 ${overallTotal}개)`}
       </p>
 
       {/* ── 목록 테이블 ── */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />불러오는 중…
-        </div>
-      ) : visibleIssues.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-          {searchQuery ? '검색 결과가 없습니다.' : '등록된 이슈가 없습니다.'}
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[680px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">제목</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3 text-center">배정</th>
-                <th className="px-4 py-3 text-center">키워드</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visibleIssues.map(issue => (
-                <tr key={issue.id} className="transition-colors hover:bg-accent/50">
-                  <td className="admin-cell-wrap px-4 py-3">
-                    <div className="line-clamp-1 font-medium text-foreground">{issue.title}</div>
-                    {issue.summary && (
-                      <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{issue.summary}</div>
-                    )}
-                    {rematchMsg?.id === issue.id && (
-                      <div className={cn(
-                        'mt-1 text-[11px] font-medium',
-                        rematchMsg.ok ? 'text-positive' : 'text-negative'
-                      )}>
-                        {rematchMsg.text}
-                      </div>
-                    )}
-                    {briefMsg?.id === issue.id && (
-                      <div className={cn(
-                        'mt-1 text-[11px] font-medium',
-                        briefMsg.ok ? 'text-positive' : 'text-negative'
-                      )}>
-                        {briefMsg.text}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge tone={ISSUE_STATUS_TONE[issue.status]} label={STATUS_LABEL[issue.status]} />
-                  </td>
-                  <td className="px-4 py-3 text-center text-xs font-medium tabular-nums">
-                    {issue.content_count ?? 0}
-                  </td>
-                  <td className="px-4 py-3 text-center text-xs tabular-nums text-muted-foreground">
-                    {issue.match_keywords?.length ?? 0}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <button
-                        onClick={() => openEdit(issue)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        title="수정"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => { void handleRematch(issue) }}
-                        disabled={rematchingId === issue.id}
-                        className={cn(
-                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
-                          rematchingId === issue.id
-                            ? 'cursor-wait text-muted-foreground/40'
-                            : issue.match_keywords?.length > 0
-                              ? 'text-brand-600 hover:bg-brand-50'
-                              : 'text-muted-foreground/30 cursor-default'
-                        )}
-                        title={issue.match_keywords?.length > 0 ? '키워드로 재배정' : 'match_keywords 없음'}
-                      >
-                        {rematchingId === issue.id
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <RefreshCw className="h-3.5 w-3.5" />
-                        }
-                      </button>
-                      <button
-                        onClick={() => { void handleBrief(issue) }}
-                        disabled={briefingId === issue.id}
-                        className={cn(
-                          'rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground',
-                          briefingId === issue.id
-                            ? 'cursor-wait text-muted-foreground/40'
-                            : 'text-blue-500 hover:bg-blue-50 hover:text-blue-700'
-                        )}
-                        title="AI 브리핑 생성"
-                      >
-                        {briefingId === issue.id
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <BrainCircuit className="h-3.5 w-3.5" />
-                        }
-                      </button>
-                      <button
-                        onClick={() => { void handleDelete(issue) }}
-                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={visibleIssues}
+        rowKey={(issue) => issue.id}
+        minWidth="min-w-[680px]"
+        state={tableState}
+        emptyMessage={searchQuery ? '검색 결과가 없습니다.' : '등록된 이슈가 없습니다.'}
+        errorMessage={fetchError ?? undefined}
+        onRetry={loadIssues}
+        pagination={{ page: table.page, pageSize: PAGE_SIZE, total }}
+        onPageChange={table.setPage}
+      />
     </div>
   )
 }

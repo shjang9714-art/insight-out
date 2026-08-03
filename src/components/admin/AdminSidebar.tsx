@@ -3,7 +3,7 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Search, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Search, ChevronDown, ChevronRight, ExternalLink, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ADMIN_NAV_GROUPS } from '@/lib/admin/nav'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
@@ -27,12 +27,14 @@ export function AdminSidebar() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [query, setQuery] = useState('')
+  const [showPlanned, setShowPlanned] = useState(false)
 
   const [width, setWidth] = useState(DEFAULT_W)
   const [collapsed, setCollapsed] = useState(false)
   const [folded, setFolded] = useState<Set<string>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null)
+  const resizeHandleRef = useRef<HTMLDivElement>(null)
 
   // 하이드레이션 안전 — 초기 렌더는 기본값, mount 후 localStorage 반영
   useEffect(() => {
@@ -76,6 +78,7 @@ export function AdminSidebar() {
       setWidth(next)
     }
     function handleMouseUp() {
+      resizeHandleRef.current?.blur()
       setIsDragging(false)
       dragState.current = null
       document.body.style.userSelect = ''
@@ -211,6 +214,12 @@ export function AdminSidebar() {
   const trimmedQuery = query.trim().toLowerCase()
 
   const allItems = ADMIN_NAV_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, group: g.group })))
+  const visibleGroups = ADMIN_NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => showPlanned || !item.disabled),
+    }))
+    .filter((group) => group.items.length > 0)
 
   const searchResults = trimmedQuery
     ? allItems.filter(
@@ -330,7 +339,7 @@ export function AdminSidebar() {
           )
         ) : (
           /* 기본 그룹 네비 — 8그룹 평탄화(지시서 278) + 그룹 폴딩(442) */
-          ADMIN_NAV_GROUPS.map((group) => {
+          visibleGroups.map((group) => {
             const isFolded = folded.has(group.group)
             return (
               <div key={group.group}>
@@ -360,7 +369,7 @@ export function AdminSidebar() {
                         return (
                           <li key={item.href}>
                             <span
-                              title={collapsed ? item.label : undefined}
+                              title={collapsed ? item.label : item.roadmap}
                               aria-label={collapsed ? item.label : undefined}
                               className={cn(
                                 'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 opacity-70 cursor-default text-muted-foreground',
@@ -384,7 +393,7 @@ export function AdminSidebar() {
                           {/* prefetch-ok: 어드민 사이드바 네비 — 개수 고정, 이동 잦음 */}
                           <Link
                             href={item.href}
-                            title={collapsed ? item.label : undefined}
+                            title={collapsed ? item.label : item.roadmap}
                             aria-label={collapsed ? item.label : undefined}
                             className={cn(
                               'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 transition-colors',
@@ -396,6 +405,9 @@ export function AdminSidebar() {
                           >
                             <Icon className="h-5 w-5 shrink-0" />
                             {!collapsed && <span className="flex-1">{item.label}</span>}
+                            {!collapsed && item.external && (
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-label="사용자 화면으로 이동" />
+                            )}
                             {!collapsed && item.href === '/admin/requests' && openRequestCount > 0 && (
                               <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
                                 {openRequestCount}
@@ -418,6 +430,19 @@ export function AdminSidebar() {
         )}
       </nav>
 
+      {!collapsed && (
+        <div className="shrink-0 px-2 pb-2">
+          <button
+            type="button"
+            aria-pressed={showPlanned}
+            onClick={() => setShowPlanned((current) => !current)}
+            className="w-full rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {showPlanned ? '예정 기능 숨기기' : '예정 기능 보기'}
+          </button>
+        </div>
+      )}
+
       {/* 하단 고정 영역 — 테마 토글 */}
       <div className={cn('shrink-0 border-t border-border px-2 py-3', collapsed && 'flex justify-center px-0')}>
         <AdminThemeToggle />
@@ -426,13 +451,17 @@ export function AdminSidebar() {
       {/* 리사이즈 핸들 */}
       {!collapsed && (
         <div
+          ref={resizeHandleRef}
           role="separator"
           aria-orientation="vertical"
           aria-label="사이드바 폭 조절"
           tabIndex={0}
           onMouseDown={handleHandleMouseDown}
           onKeyDown={handleHandleKeyDown}
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-brand-600/40 focus:bg-brand-600/40 focus:outline-none"
+          className={cn(
+            'absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-brand-600/40 focus-visible:bg-brand-600/40 focus:outline-none',
+            isDragging && 'bg-brand-600/40'
+          )}
         />
       )}
     </aside>

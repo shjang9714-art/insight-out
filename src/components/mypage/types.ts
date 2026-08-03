@@ -1,4 +1,4 @@
-import type { Department, Service } from '@/lib/types'
+import type { Department } from '@/lib/types'
 import type { LensKey } from '@/lib/lens'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -28,6 +28,7 @@ export interface BookmarkWithItem {
   id: string
   content_id: string | null
   youtube_video_id: string | null
+  ai_report_id: string | null
   created_at: string
   contents: {
     id: string
@@ -43,6 +44,12 @@ export interface BookmarkWithItem {
     channel_name: string
     published_at: string | null
   } | null
+  ai_reports: {
+    id: string
+    title: string
+    type: string
+    published_at: string | null
+  } | null
 }
 
 export interface ArchiveWithItems {
@@ -53,9 +60,9 @@ export interface ArchiveWithItems {
   items: {
     content_id: string | null
     youtube_video_id: string | null
+    ai_report_id: string | null
     added_at: string
     contents: { id: string; title: string; category: string; original_url: string | null } | null
+    ai_reports: { id: string; title: string; type: string; published_at: string | null } | null
   }[]
 }
-
-export type ServiceOption = Service

@@ -20,7 +20,7 @@ export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: Luc
   { label: '홈',        href: '/dashboard',          exact: true  },
   { label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
   { label: '기업동향',   href: '/dashboard/entities', exact: false },
-  { label: '콘텐츠',     href: '/dashboard/contents', exact: false },
+  { label: '자료실',     href: '/dashboard/contents', exact: false },
   { label: '리포트',     href: '/dashboard/reports',  exact: false, icon: FileText },
 ]
 

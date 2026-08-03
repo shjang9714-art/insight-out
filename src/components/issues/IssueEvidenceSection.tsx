@@ -1,6 +1,7 @@
 'use client'
 
 import { ExternalLink, FileText } from 'lucide-react'
+import CoverImage from '@/components/common/CoverImage'
 import { cn } from '@/lib/utils'
 
 export interface EvidenceRow {
@@ -57,19 +58,12 @@ export default function IssueEvidenceSection({ items }: Props) {
                 >
                   {/* 썸네일 */}
                   <div className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                    {item.thumbnail_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.thumbnail_url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
-                    ) : (
-                      <FileText className="h-6 w-6 text-muted-foreground/40" />
-                    )}
+                    <CoverImage
+                      src={item.thumbnail_url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      fallback={<FileText className="h-6 w-6 text-muted-foreground/40" />}
+                    />
                   </div>
 
                   {/* 본문 */}

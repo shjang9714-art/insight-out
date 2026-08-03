@@ -10,6 +10,7 @@ import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type EntityType } from '@/li
 import IssueSentimentTrend, { type SentimentDay } from '@/components/issues/IssueSentimentTrend'
 import IssueEvidenceExplorer, { type EvidenceItem } from '@/components/issues/IssueEvidenceExplorer'
 import IssueEvidenceSection, { type EvidenceRow } from '@/components/issues/IssueEvidenceSection'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 import type { IssueBrief } from '@/lib/issues/brief'
 import PageContainer from '@/components/PageContainer'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
@@ -370,7 +371,10 @@ export default async function IssueDetailPage({ params }: PageProps) {
     .order('max_signal_score', { ascending: false })
     .order('published_at', { ascending: false })
   if (!evErr) {
-    evidenceRows = (evData ?? []) as unknown as EvidenceRow[]
+    evidenceRows = ((evData ?? []) as unknown as EvidenceRow[]).map((row) => ({
+      ...row,
+      thumbnail_url: resolveStorageUrl(row.thumbnail_url),
+    }))
   }
   // evErr 시 뷰 미생성 상태 — 빈 배열로 graceful degrade
 
@@ -478,6 +482,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
                           key={cid}
                           href={`/dashboard/contents/${cid}`}
                           prefetch={false}
+                          target="_blank"
+                          rel="noopener"
                           className="inline-block rounded border border-blue-200 bg-white px-2 py-1 text-[11px] text-blue-700 transition-colors hover:border-blue-400 max-w-[240px] truncate"
                         >
                           {art.title}
@@ -519,6 +525,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
                             <Link
                               href={`/dashboard/contents/${a.id}`}
                               prefetch={false}
+                              target="_blank"
+                              rel="noopener"
                               className="block text-[11px] text-muted-foreground leading-snug line-clamp-2 hover:text-brand-600 transition-colors"
                             >
                               {a.title}
@@ -723,6 +731,8 @@ export default async function IssueDetailPage({ params }: PageProps) {
                             <Link
                               href={`/dashboard/contents/${article.id}`}
                               prefetch={false}
+                              target="_blank"
+                              rel="noopener"
                               className="text-sm font-medium text-foreground leading-snug hover:text-brand-600 transition-colors"
                             >
                               {article.title}

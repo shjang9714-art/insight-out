@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
+import { effectiveTokenLimit } from '@/lib/llm/token-limit'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage } from '@/components/admin/AdminOpsSignals'
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
@@ -18,6 +19,11 @@ import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminFailedJobsCard, { type FailedJobRow } from '@/components/admin/AdminFailedJobsCard'
 import AdminMailDispatchCard, { type MailRunRow } from '@/components/admin/AdminMailDispatchCard'
 import { AdminCollectionAnalysisDialog } from '@/components/admin/AdminCollectionAnalysisDialog'
+import SearchProvidersPanel, {
+  type Loaded,
+  type SearchProviderData,
+} from '@/components/admin/SearchProvidersPanel'
+import { parseProviderCounts } from '@/lib/admin/crawl-providers'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +89,61 @@ export default async function AdminPage() {
   let admin: ReturnType<typeof createAdminClient> | null = null
   try { admin = createAdminClient() } catch { /* env 미설정 시 무시 */ }
 
+  // 검색 수집원 현황(472) — /admin/sources 와 동일 조회 형태, 실패해도 대시보드 나머지는 정상 렌더
+  async function fetchSearchProviderRun(): Promise<Loaded<SearchProviderData>> {
+    if (!admin) {
+      return { available: false, error: '잠시 후 다시 시도해주세요.' }
+    }
+    try {
+      const result = await admin
+        .from('job_runs')
+        .select('started_at, meta')
+        .eq('job_key', 'cron:crawl')
+        .in('status', ['succeeded', 'failed'])
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (result.error) {
+        console.error('[/admin] 검색 수집원 집계 조회 실패:', result.error.message)
+        return { available: false, error: '잠시 후 다시 시도해주세요.' }
+      }
+      return {
+        available: true,
+        data: {
+          providers: result.data ? parseProviderCounts(result.data.meta) : null,
+          lastCrawledAt: result.data?.started_at ?? null,
+        },
+      }
+    } catch (error) {
+      console.error('[/admin] 검색 수집원 집계 조회 실패:', error)
+      return { available: false, error: '잠시 후 다시 시도해주세요.' }
+    }
+  }
+
+  async function fetchSearchSeeds(): Promise<Loaded<number>> {
+    if (!admin) return { available: false, error: '잠시 후 다시 시도해주세요.' }
+    try {
+      const result = await admin
+        .from('keyword_groups')
+        .select('search_seeds')
+        .eq('is_active', true)
+      if (result.error) {
+        console.error('[/admin] 검색 시드 조회 실패:', result.error.message)
+        return { available: false, error: '잠시 후 다시 시도해주세요.' }
+      }
+      type SearchSeedRow = { search_seeds: string[] | null }
+      return {
+        available: true,
+        data: new Set(
+          ((result.data ?? []) as SearchSeedRow[]).flatMap((row) => row.search_seeds ?? [])
+        ).size,
+      }
+    } catch (error) {
+      console.error('[/admin] 검색 시드 조회 실패:', error)
+      return { available: false, error: '잠시 후 다시 시도해주세요.' }
+    }
+  }
+
   const [
     totalRes, todayRes, pendingRes, publishedRes, rejectedRes,
     activeSourcesRes, totalSourcesRes, bookmarkedRes, researchRes,
@@ -101,6 +162,8 @@ export default async function AdminPage() {
     failedJobsRes,
     // 신규 — 메일 발송 이력(438)
     mailRunsRes,
+    // 신규 — 검색 수집원 현황(472)
+    searchProviderRunRes, searchSeedsRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }),
@@ -164,6 +227,9 @@ export default async function AdminPage() {
           .order('started_at', { ascending: false })
           .limit(30)
       : Promise.resolve({ data: [], error: null }),
+    // 검색 수집원 현황(472) — 최신 크롤 실행의 공급자별 유입 + 활성 검색 시드
+    fetchSearchProviderRun(),
+    fetchSearchSeeds(),
   ])
 
   // ── 카테고리 집계 ──────────────────────────────────────────────────────────
@@ -254,7 +320,7 @@ export default async function AdminPage() {
       enabled:     s?.enabled ?? true,
       keyCount,
       tokensUsed:  usageMap.get(p.name) ?? 0,
-      tokenLimit:  (s?.monthly_token_limit ?? 1_000_000) * keyCount,
+      tokenLimit:  effectiveTokenLimit(s?.monthly_token_limit, keyCount),
     }
   })
 
@@ -283,6 +349,12 @@ export default async function AdminPage() {
   // ── 메일 발송 이력(438) — 42P01(테이블 미적용) 시 카드 숨김 ─────────────────
   const mailRunsReady = !mailRunsRes.error
   const mailRuns: MailRunRow[] = mailRunsReady ? ((mailRunsRes.data ?? []) as MailRunRow[]) : []
+
+  // ── 검색 수집원 현황(472) ─────────────────────────────────────────────────
+  const naverKeySet =
+    !!(process.env.NAVER_CLIENT_ID ?? process.env.NAVER_SEARCH_CLIENT_ID) &&
+    !!(process.env.NAVER_CLIENT_SECRET ?? process.env.NAVER_SEARCH_CLIENT_SECRET)
+  const gdeltEnabled = process.env.GDELT_ENABLED !== 'false'
 
   // ── ChartData 직렬화 ───────────────────────────────────────────────────────
 
@@ -315,6 +387,14 @@ export default async function AdminPage() {
         todayFailed={todayFailed}
         sourcesToCheck={sourcesToCheck}
         pendingUsers={pendingUsers}
+      />
+
+      {/* ②-1 검색 수집원 현황(472) — 네이버·GDELT·Google 유입과 시드 수 */}
+      <SearchProvidersPanel
+        providerState={searchProviderRunRes}
+        keySet={naverKeySet}
+        gdeltEnabled={gdeltEnabled}
+        seedState={searchSeedsRes}
       />
 
       {/* ③ 사용량 및 수집 관리 */}

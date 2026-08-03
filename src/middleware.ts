@@ -16,6 +16,7 @@ export async function middleware(request: NextRequest) {
   const withPathname = () => {
     const headers = new Headers(request.headers)
     headers.set('x-pathname', request.nextUrl.pathname)
+    headers.set('x-http-method', request.method)
     return headers
   }
   let supabaseResponse = NextResponse.next({ request: { headers: withPathname() } })

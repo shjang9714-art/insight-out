@@ -3,6 +3,13 @@ import { normalizeUrl } from './normalize'
 
 const GOOGLE_NEWS_DECODE_ENDPOINT = 'https://news.google.com/_/DotsSplashUi/data/batchexecute'
 
+export interface ResolveOutcome {
+  url: string
+  isGoogleNews: boolean
+  resolved: boolean
+  method: 'passthrough' | 'redirect' | 'decoded' | 'failed'
+}
+
 /** `.../rss/articles/<base64>` 또는 `.../articles/<base64>` 경로의 마지막 세그먼트 추출. */
 function extractGoogleNewsBase64(url: string): string | null {
   try {
@@ -66,16 +73,18 @@ async function decodeGoogleNewsUrl(url: string, html: string): Promise<string | 
 }
 
 /**
- * Google News 리다이렉트 URL 을 실제 원문 URL 로 해소한다.
+ * Google News 리다이렉트 URL을 실제 원문 URL로 해소하고 해소 경로를 함께 반환한다.
  * - `news.google.com` 이 아니면 그대로 반환.
  * - fetch redirect follow 후 최종 URL 이 google 도메인이 아니면 그것 반환(구버전 인코딩).
  * - 여전히 google 도메인이면(신규 인코딩) batchexecute 디코드 시도.
  * - 실패·타임아웃 모두 원본 url 반환(throw 금지).
  */
-export async function resolveArticleUrl(url: string): Promise<string> {
+export async function resolveArticleUrlDetailed(url: string): Promise<ResolveOutcome> {
   try {
     const host = new URL(url).hostname
-    if (!host.includes('news.google.com')) return url
+    if (!host.includes('news.google.com')) {
+      return { url, isGoogleNews: false, resolved: false, method: 'passthrough' }
+    }
 
     const res = await fetch(url, {
       redirect: 'follow',
@@ -83,17 +92,38 @@ export async function resolveArticleUrl(url: string): Promise<string> {
     })
     const finalUrl = res.url
     if (finalUrl && !new URL(finalUrl).hostname.includes('google.')) {
-      return finalUrl
+      return { url: finalUrl, isGoogleNews: true, resolved: true, method: 'redirect' }
     }
 
     const html = await res.text()
     const decoded = await decodeGoogleNewsUrl(url, html)
-    if (decoded) return decoded
+    if (decoded) {
+      return { url: decoded, isGoogleNews: true, resolved: true, method: 'decoded' }
+    }
 
-    return url
+    return { url, isGoogleNews: true, resolved: false, method: 'failed' }
   } catch {
-    return url
+    let isGoogleNews = false
+    try {
+      isGoogleNews = new URL(url).hostname.includes('news.google.com')
+    } catch {
+      // 잘못된 URL도 기존처럼 원문 문자열로 graceful 폴백한다.
+    }
+    return {
+      url,
+      isGoogleNews,
+      resolved: false,
+      method: isGoogleNews ? 'failed' : 'passthrough',
+    }
   }
+}
+
+/**
+ * 기존 호출부 호환 래퍼. 상세 해소 결과에서 URL만 반환해 동작·시그니처를 유지한다.
+ */
+export async function resolveArticleUrl(url: string): Promise<string> {
+  const outcome = await resolveArticleUrlDetailed(url)
+  return outcome.url
 }
 
 /**

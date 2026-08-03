@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
+  analysisState,
   hasAnalysis,
   type CompetitorWeeklyReportRow,
   type CompetitorWeeklySection,
@@ -8,6 +9,7 @@ import {
   type UtilizedCompanyDocument,
 } from '@/lib/competitor-weekly/query'
 import { cleanNarrative } from '@/lib/text/clean-narrative'
+import StatusBadge from '@/components/admin/ui/StatusBadge'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import AiMark from '@/components/ui/AiMark'
 
@@ -187,6 +189,8 @@ function AnalysisSection({ section }: { section: CompetitorWeeklySection }) {
                   <Link
                     href={`/dashboard/contents/${e.content_id}`}
                     prefetch={false}
+                    target="_blank"
+                    rel="noopener"
                     className="transition-colors hover:text-brand-600"
                   >
                     {e.source_name || e.event}
@@ -208,6 +212,7 @@ function LegacySection({ section }: { section: CompetitorWeeklySection }) {
     <section className="mb-8 rounded-xl border border-border bg-card p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="text-[15px] font-bold text-foreground">{section.area_label}</h2>
+        <StatusBadge tone="risk" label="분석 전" />
         <LguImpactBadge impact={section.impact} showNeutral />
       </div>
       <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
@@ -240,6 +245,8 @@ function UtilizedDocuments({ documents }: { documents: UtilizedCompanyDocument[]
             <Link
               href={`/dashboard/contents/${doc.contentId}`}
               prefetch={false}
+              target="_blank"
+              rel="noopener"
               className="text-foreground transition-colors hover:text-brand-600"
             >
               {doc.title}
@@ -263,6 +270,7 @@ export default function CompetitorWeeklyReport({ report, utilizedDocuments = [] 
   const { week_start, week_end, summary, overall_impact, emerging_topics, sections } = report
   const totalEvents = (sections ?? []).reduce((n, s) => n + (s.events?.length ?? 0), 0)
   const conflictAreas = [...new Set((sections ?? []).flatMap(s => s.conflict_areas ?? []))]
+  const reportAnalysisState = analysisState(sections ?? [])
 
   return (
     <article className="io-report">
@@ -282,14 +290,30 @@ export default function CompetitorWeeklyReport({ report, utilizedDocuments = [] 
           </span>
         </div>
 
-        {summary && (
+        {reportAnalysisState !== 'none' && summary && (
           <h1 className="mt-2.5 text-[24px] font-bold leading-[1.35] tracking-tight text-foreground">
             {cleanNarrative(summary)}
           </h1>
         )}
+        {reportAnalysisState === 'none' && (
+          <p className="mt-2.5 text-sm text-muted-foreground">
+            분석 전 — 사실 나열만 표시됩니다
+          </p>
+        )}
+        {reportAnalysisState === 'partial' && (
+          <p className="mt-2.5 text-sm text-muted-foreground">
+            일부 영역만 분석됨
+          </p>
+        )}
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <LguImpactBadge impact={overall_impact} showNeutral />
+          {reportAnalysisState !== 'done' && (
+            <StatusBadge
+              tone="risk"
+              label={reportAnalysisState === 'none' ? '분석 전(사실만)' : '분석 일부'}
+            />
+          )}
           {conflictAreas.length > 0 && (
             <span className="text-[12px] text-muted-foreground">{conflictAreas.join(' · ')}</span>
           )}

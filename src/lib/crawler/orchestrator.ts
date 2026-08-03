@@ -104,11 +104,10 @@ async function translateEnglishContent(
 interface CrawlKeyword {
   id: string
   name: string
-  service_id: string | null
 }
 
 /**
- * 적재된 콘텐츠에 키워드/서비스 태그를 자동 부여한다 (#24).
+ * 적재된 콘텐츠에 키워드 태그를 자동 부여한다 (#24).
  * - 매칭 0건이면 아무것도 하지 않음(정상 종료).
  * - 태깅 오류는 로그만 — 적재 결과를 막지 않음.
  */
@@ -128,15 +127,6 @@ async function tagContent(
       matched.map(k => ({ content_id: contentId, keyword_id: k.id })),
       { onConflict: 'content_id,keyword_id', ignoreDuplicates: true }
     )
-
-    // content_services (PK: content_id, service_id) — 매칭 키워드의 distinct service_id
-    const serviceIds = [...new Set(matched.map(k => k.service_id).filter((v): v is string => !!v))]
-    if (serviceIds.length) {
-      await admin.from('content_services').upsert(
-        serviceIds.map(sid => ({ content_id: contentId, service_id: sid })),
-        { onConflict: 'content_id,service_id', ignoreDuplicates: true }
-      )
-    }
   } catch (err) {
     console.error('[크롤러] 태깅 오류 (contentId:', contentId, '):', err)
   }
@@ -210,6 +200,15 @@ export interface CrawlSourceDetail {
   error?: string
 }
 
+/** 검색 공급자별 원본 수집량. 기존 fetched 총계와 별도로 운영 진단에만 사용한다. */
+export interface CrawlProviderCounts {
+  keyword_google: number
+  keyword_naver: number
+  keyword_gdelt: number
+  company_google: number
+  keyword_phase_skipped: boolean
+}
+
 /** 전체 크롤 실행 요약 (라우트 응답 형태) */
 export interface CrawlSummary {
   ok: boolean
@@ -222,6 +221,7 @@ export interface CrawlSummary {
   rejected: number
   held: number
   details: CrawlSourceDetail[]
+  providers: CrawlProviderCounts
   /** ok=false(전체 실패) 사유 요약 — run-job.ts 의 job_runs.error 에 그대로 기록됨.
    *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
    *  경고 흔적을 남긴다. */
@@ -718,7 +718,8 @@ async function crawlOne(
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
-  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  deadline?: number
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
@@ -750,6 +751,13 @@ async function crawlOne(
     }
 
     for (const item of rawItems) {
+      // 소프트 데드라인(runCrawl 전체) 초과 시 나머지 아이템 skip — maxDuration 하드킬 방지.
+      // backfillDays 로 아이템 수가 크게 늘어날 때(예: 30일치) 특히 중요.
+      if (deadline !== undefined && Date.now() >= deadline) {
+        crawlStatus = 'partial'
+        if (!errorMessage) errorMessage = '소프트 데드라인 초과로 나머지 아이템 건너뜀'
+        break
+      }
       const result = await processCrawlItem(
         admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
       )
@@ -794,7 +802,8 @@ async function crawlYoutube(
   source: Source,
   groups: ScoringGroup[],
   aliasMap: Map<string, string>,
-  transcriptBudget: TranslationBudget
+  transcriptBudget: TranslationBudget,
+  deadline?: number
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
@@ -811,6 +820,12 @@ async function crawlYoutube(
     counts.fetched = items.length
 
     for (const item of items) {
+      // 소프트 데드라인 초과 시 나머지 영상 skip(자막 수집 등 아이템당 비용이 큼) — maxDuration 하드킬 방지.
+      if (deadline !== undefined && Date.now() >= deadline) {
+        crawlStatus = 'partial'
+        if (!errorMessage) errorMessage = '소프트 데드라인 초과로 나머지 영상 건너뜀'
+        break
+      }
       try {
         const row = {
           source_id:        source.id,
@@ -929,8 +944,15 @@ async function crawlKeywordSearch(
   exclusionHits: Map<string, number> = new Map(),
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
   deadline?: number
-): Promise<{ counts: CrawlCounts; hadError: boolean; truncated: boolean; firstError?: string }> {
+): Promise<{
+  counts: CrawlCounts
+  providerFetched: { google: number; naver: number; gdelt: number }
+  hadError: boolean
+  truncated: boolean
+  firstError?: string
+}> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
+  const providerFetched = { google: 0, naver: 0, gdelt: 0 }
   let hadError = false
   let truncated = false
   let firstError: string | undefined
@@ -956,8 +978,11 @@ async function crawlKeywordSearch(
         3,
         [500, 1000, 2000]
       )
+      providerFetched.google += rawItems.length
       const naverItems = await fetchNaverNews(seed, since, { maxItems: 200 })
+      providerFetched.naver += naverItems.length
       const gdeltItems = await fetchGdeltNews(seed, since)
+      providerFetched.gdelt += gdeltItems.length
       const searchItems = [...rawItems, ...naverItems, ...gdeltItems]
       counts.fetched += searchItems.length
 
@@ -978,7 +1003,7 @@ async function crawlKeywordSearch(
     }
   }
 
-  return { counts, hadError, truncated, firstError }
+  return { counts, providerFetched, hadError, truncated, firstError }
 }
 
 /** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
@@ -1298,7 +1323,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     admin = createAdminClient()
     const [sourcesResult, keywordsResult, groupsResult] = await Promise.all([
       admin.from('sources').select('*').eq('is_active', true),
-      admin.from('keywords').select('id, name, service_id'),
+      admin.from('keywords').select('id, name'),
       admin.from('keyword_groups')
         .select('name, include_patterns, exclude_patterns, weight, signal_hint')
         .eq('is_active', true),
@@ -1439,6 +1464,13 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const transcriptBudget: TranslationBudget = {
     remaining: MAX_TRANSCRIPTS_PER_CRAWL,
   }
+  const providers: CrawlProviderCounts = {
+    keyword_google: 0,
+    keyword_naver: 0,
+    keyword_gdelt: 0,
+    company_google: 0,
+    keyword_phase_skipped: true,
+  }
 
   const scoped = options.sourceIds?.length
     ? rawSources.filter(s => options.sourceIds!.includes(s.id))
@@ -1451,7 +1483,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
 
   // GDELT BigQuery 소급 경로: 기존 아이템 처리 파이프라인을 그대로 재사용한다.
   if (options.gdeltBackfill) {
-    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], error: undefined }
+    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, error: undefined }
     const terms = [...new Set([...keywords.map(k => k.name), ...searchSeeds, ...groups.flatMap(g => g.include_patterns ?? [])])]
     const discovered = await queryGdeltMonth({ ...options.gdeltBackfill, keywordTerms: terms })
     const counts = zeroRejectedBy()
@@ -1461,15 +1493,18 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       if (result.errorMessage) console.warn('[GDELT 백필] 아이템 처리 실패:', result.errorMessage)
     }
     await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
-    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }] }
+    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers }
   }
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
   // youtube_channel → crawlYoutube, 그 외(news_site 등) → crawlOne
+  // 각 소스에 softDeadline 전달 — 이전엔 이 구간이 무제한이라(회사/키워드 seed 검색과 달리
+  // 데드라인 체크가 없었음) backfillDays 로 아이템 수가 늘면 maxDuration 하드킬까지 갈 수
+  // 있었다(job_runs 가 running 에서 멈추는 근본 원인, 2026-07-27 조사).
   const results = await Promise.allSettled(
     dueSources.map(s =>
       s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget)
+        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
         : crawlOne(
             admin,
             s,
@@ -1482,7 +1517,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
             issueList,
             exclusionRules,
             exclusionHits,
-            minBodyLength
+            minBodyLength,
+            softDeadline
           )
     )
   )
@@ -1536,11 +1572,15 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
 
   // 키워드 검색 수집 — 개별 소스 수집(sourceIds 지정) 시 skip
   if (!options.sourceIds?.length && searchSeeds.length > 0) {
+    providers.keyword_phase_skipped = false
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
       admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
     )
     if (kwResult.truncated) console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
+    providers.keyword_google = kwResult.providerFetched.google
+    providers.keyword_naver = kwResult.providerFetched.naver
+    providers.keyword_gdelt = kwResult.providerFetched.gdelt
     totalFetched    += kwResult.counts.fetched
     totalInserted   += kwResult.counts.inserted
     totalDuplicates += kwResult.counts.duplicate
@@ -1564,6 +1604,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     const companyResult = await crawlCompanySearch(
       admin, companySeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS, softDeadline
     )
+    providers.company_google = companyResult.counts.fetched
     totalFetched    += companyResult.counts.fetched
     totalInserted   += companyResult.counts.inserted
     totalDuplicates += companyResult.counts.duplicate
@@ -1634,6 +1675,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     rejected: totalRejected,
     held: totalHeld,
     details,
+    providers,
     error: errorSummary,
   }
 }

@@ -18,7 +18,7 @@ interface Props {
   setEmailInputValue: (value: string) => void
   defaultEmail: string
   onDeleteArchive: (archiveId: string) => void
-  onRemoveItem: (archiveId: string, contentId: string | null, youtubeId: string | null) => void
+  onRemoveItem: (archiveId: string, contentId: string | null, youtubeId: string | null, reportId?: string | null) => void
   onSendEmail: (archiveId: string, recipientsInput?: string) => void
   clearSendResult: () => void
 }
@@ -149,27 +149,38 @@ export default function ArchivesTab({
                   ) : (
                     archive.items.map((item) => (
                       <div
-                        key={item.content_id ?? item.youtube_video_id}
+                        key={item.content_id ?? item.ai_report_id ?? item.youtube_video_id}
                         className="flex items-start justify-between gap-2 px-4 py-3"
                       >
                         <div className="min-w-0 flex-1">
                           {item.contents ? (
                             <a
                               href={`/dashboard/contents/${item.contents.id}`}
+                              target="_blank"
+                              rel="noopener"
                               className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
                             >
                               {item.contents.title}
                             </a>
+                          ) : item.ai_reports ? (
+                            <a
+                              href={`/dashboard/reports/${item.ai_reports.id}`}
+                              className="line-clamp-1 text-sm font-medium text-foreground hover:text-brand-600"
+                            >
+                              {item.ai_reports.title}
+                            </a>
                           ) : (
-                            <span className="text-sm text-muted-foreground">(삭제된 콘텐츠)</span>
+                            <span className="text-sm text-muted-foreground">(삭제된 항목)</span>
                           )}
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            {item.contents?.category} · {new Date(item.added_at).toLocaleDateString('ko-KR')}
+                            {item.contents?.category ?? (item.ai_reports ? `AI 리포트 · ${item.ai_reports.type}` : null)}
+                            {' · '}
+                            {new Date(item.added_at).toLocaleDateString('ko-KR')}
                           </p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => onRemoveItem(archive.id, item.content_id, item.youtube_video_id)}
+                          onClick={() => onRemoveItem(archive.id, item.content_id, item.youtube_video_id, item.ai_report_id)}
                           className="shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:text-red-400"
                           title="목록에서 제거"
                         >

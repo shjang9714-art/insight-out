@@ -25,13 +25,14 @@ export interface ReviewItem {
 
 interface Props {
   initialItems: ReviewItem[]
+  truncated?: { shown: number; total: number | null }
 }
 
 /**
  * 355-C ③ — 수집 검토함. 자동수집(DART/발견) + 사용자 업로드 중 검토대기 문서를
  * 승인·기업변경·유형변경·발행일수정·이전버전연결·제외·소스차단할 수 있다.
  */
-export default function CompanyDocumentReviewInbox({ initialItems }: Props) {
+export default function CompanyDocumentReviewInbox({ initialItems, truncated }: Props) {
   const router = useRouter()
   // approve/exclude는 즉시 목록에서 사라져야 하므로 낙관적으로 숨긴다. 그 외 편집(기업/유형/
   // 발행일/버전연결)은 router.refresh()가 내려주는 새 initialItems를 그대로 렌더 중 읽어
@@ -92,6 +93,14 @@ export default function CompanyDocumentReviewInbox({ initialItems }: Props) {
 
       {error && <AdminErrorBox onDismiss={() => setError(null)}>{error}</AdminErrorBox>}
       {notice && <p className="text-xs text-muted-foreground" aria-live="polite">{notice}</p>}
+
+      {truncated && (
+        <p className="text-xs font-medium text-warning">
+          {truncated.total === null
+            ? `전체 수 미확인 · ${truncated.shown.toLocaleString()}건만 표시 — 상한에 걸렸습니다`
+            : `${truncated.total.toLocaleString()}건 중 ${truncated.shown.toLocaleString()}건만 표시 — 상한에 걸렸습니다`}
+        </p>
+      )}
 
       {items.length === 0 ? (
         <AdminEmptyState icon={Inbox} message="검토대기 문서가 없습니다." className="border-dashed p-10" />

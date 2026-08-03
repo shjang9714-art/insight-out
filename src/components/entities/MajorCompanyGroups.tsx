@@ -72,17 +72,19 @@ function CardFooter({ count, period }: { count: number; period: string }) {
 }
 
 /** 모든 그룹에서 동일한 폭을 유지하는 3열 그리드용 세로형 카드 */
-function CompanyCard({ entry }: { entry: MajorCompanyCard }) {
+function CompanyCard({ entry, weekStart }: { entry: MajorCompanyCard; weekStart?: string }) {
   const { company, card, hashtags } = entry
   const importance = computeImportance(card)
   const evidenceCount = card.citations.length || card.source_content_ids.length
+  const detailParams = new URLSearchParams({ origin: 'entities', view: 'watchlist' })
+  if (weekStart) detailParams.set('week', weekStart)
 
   return (
     // 346: 중요도 높은 카드의 투명 테두리와 음수 z-index 글로우가 카드 배경에 가려져
     // "테두리만 사라진" 것처럼 보였다. 카드 표면은 전부 동일하게 두고,
     // 중요 신호는 `● 중요` 마크 하나로만 준다(343 — 강조는 예외만).
     <Link
-      href={`${getCardDetailHref(card)}?origin=entities&view=watchlist`}
+      href={`${getCardDetailHref(card)}?${detailParams.toString()}`}
       prefetch={false}
       className={cn(
         'group flex flex-col gap-3 rounded-xl border border-border bg-card p-5 transition-all',
@@ -126,6 +128,8 @@ interface Props {
   repCount?: number
   /** 있으면 그룹이 repCount 초과 시 그룹 헤더에 "전체 보기 →" 노출 */
   seeAllHrefBase?: string
+  /** 선택 주를 전체 보기·상세 링크에도 유지 */
+  weekStart?: string
 }
 
 /**
@@ -134,7 +138,7 @@ interface Props {
  * 그리드는 카드 수와 무관하게 3열 고정 — 카드 폭·높이가 그룹마다 같아야 스캔 리듬이 유지된다.
  * (카드가 1~2개인 그룹은 우측 칸을 비워 둔다. 폭이 늘어난 예외 카드가 더 눈에 거슬린다.)
  */
-export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase }: Props) {
+export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase, weekStart }: Props) {
   return (
     <div className="space-y-11">
       {groups.map(group => {
@@ -151,12 +155,14 @@ export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase }:
               title={group.label}
               subtitle={groupSubtitle(representatives)}
               meta={`기업 ${group.companies.length}곳`}
-              seeAllHref={hiddenCount > 0 && seeAllHrefBase ? `${seeAllHrefBase}/${group.key}` : undefined}
+              seeAllHref={hiddenCount > 0 && seeAllHrefBase
+                ? `${seeAllHrefBase}/${group.key}${weekStart ? `?week=${weekStart}` : ''}`
+                : undefined}
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {representatives.map(entry => (
-                <CompanyCard key={entry.card.id} entry={entry} />
+                <CompanyCard key={entry.card.id} entry={entry} weekStart={weekStart} />
               ))}
             </div>
           </section>

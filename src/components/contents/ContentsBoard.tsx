@@ -5,17 +5,16 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { LayoutGrid, List, Loader2, Search, X } from 'lucide-react'
+import { LayoutGrid, List, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
-import { coverUrlFor } from '@/lib/contents/topic-cover'
+import { coverUrlsForList } from '@/lib/contents/topic-cover'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -59,16 +58,16 @@ const CONTENTS_VIEW_STORAGE_KEY = 'io:contents-view'
 const CONTENTS_VIEW_CHANGE_EVENT = 'io:contents-view-change'
 type ContentsView = 'card' | 'list'
 
-function getNewsViewSnapshot(): ContentsView {
+function getContentsViewSnapshot(): ContentsView {
   const savedView = window.localStorage.getItem(CONTENTS_VIEW_STORAGE_KEY)
   return savedView === 'list' ? 'list' : 'card'
 }
 
-function getNewsViewServerSnapshot(): ContentsView {
+function getContentsViewServerSnapshot(): ContentsView {
   return 'card'
 }
 
-function subscribeNewsView(onStoreChange: () => void): () => void {
+function subscribeContentsView(onStoreChange: () => void): () => void {
   const handleStorage = (event: StorageEvent) => {
     if (event.key === CONTENTS_VIEW_STORAGE_KEY) onStoreChange()
   }
@@ -177,9 +176,10 @@ function ContentCardGrid({ items, category, sortByCollected }: {
   category: ContentCategory | ''
   sortByCollected: boolean
 }) {
+  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
     <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-      {items.map(({ item, members }) => (
+      {items.map(({ item, members }, index) => (
         category === '유튜브' || category === '뉴스' ? (
           <ContentCard
             key={item.id}
@@ -189,7 +189,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             category={item.category}
             sourceName={item.sources?.name ?? item.author ?? null}
             publishedAt={displayDate(item, sortByCollected)}
-            thumbnailUrl={coverUrlFor(item)}
+            thumbnailUrl={coverUrls[index]}
             externalHref={category === '유튜브' ? item.original_url : null}
             keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
             lguImpact={item.lgu_impact ?? null}
@@ -203,7 +203,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             category={item.category}
             sourceName={item.sources?.name ?? item.author ?? null}
             publishedAt={displayDate(item, sortByCollected)}
-            coverImageUrl={coverUrlFor(item)}
+            coverImageUrl={coverUrls[index]}
             keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
           />
         ) : (
@@ -221,7 +221,7 @@ function ContentCardGrid({ items, category, sortByCollected }: {
             sourceName={item.sources?.name ?? null}
             tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
             clusterMembers={members.length > 0 ? members : undefined}
-            thumbnailUrl={coverUrlFor(item)}
+            thumbnailUrl={coverUrls[index]}
             lguImpact={item.lgu_impact ?? null}
           />
         )
@@ -234,9 +234,10 @@ function ContentRowList({ items, sortByCollected }: {
   items: ClusteredItem[]
   sortByCollected: boolean
 }) {
+  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
     <div className="space-y-3">
-      {items.map(({ item }) => (
+      {items.map(({ item }, index) => (
         <ContentListRow
           key={item.id}
           id={item.id}
@@ -247,7 +248,7 @@ function ContentRowList({ items, sortByCollected }: {
           originalUrl={item.original_url}
           sourceName={item.sources?.name ?? item.author ?? null}
           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-          thumbnailUrl={coverUrlFor(item)}
+          thumbnailUrl={coverUrls[index]}
           lguImpact={item.lgu_impact ?? null}
         />
       ))}
@@ -297,12 +298,11 @@ export default function ContentsBoard({
   const loadingPhase = useLoadingPhase(isLoading)
   // 395 — 직전 category를 들고 있다가 바뀌면 쿼리 전에 목록을 비운다(잔상 방지).
   const prevCategoryRef = useRef(category)
-  const [searchState, setSearchState] = useState({ source: searchQuery, input: searchQuery })
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
-  const newsView = useSyncExternalStore(
-    subscribeNewsView,
-    getNewsViewSnapshot,
-    getNewsViewServerSnapshot,
+  const contentsView = useSyncExternalStore(
+    subscribeContentsView,
+    getContentsViewSnapshot,
+    getContentsViewServerSnapshot,
   )
   // lgu_impact 컬럼 미적용(42703) 시 false — select 에서 제외하되 카드 배지는 유지한다.
   const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
@@ -327,29 +327,6 @@ export default function ContentsBoard({
     }
     router.replace(`${pathname}?${params.toString()}`)
   }
-
-  // 브라우저 탐색으로 q가 바뀐 경우에만 입력 초안을 새 URL 상태에 맞춘다.
-  if (searchState.source !== searchQuery) {
-    setSearchState({ source: searchQuery, input: searchQuery })
-  }
-  const searchInput = searchState.input
-
-  // 입력 중에는 URL과 목록 쿼리를 갱신하지 않고, 마지막 입력 300ms 뒤 한 번만 반영한다.
-  useEffect(() => {
-    const normalized = searchInput.trim().slice(0, 100)
-    if (normalized === searchQuery) return
-
-    const timer = window.setTimeout(() => {
-      const params = new URLSearchParams(window.location.search)
-      if (normalized) params.set('q', normalized)
-      else params.delete('q')
-      params.delete('page')
-      setPage(1)
-      router.replace(`${pathname}?${params.toString()}`)
-    }, 300)
-
-    return () => window.clearTimeout(timer)
-  }, [searchInput, searchQuery, router, pathname])
 
   // 현재 소스타입의 최근 30일 인기 키워드를 가져온다.
   useEffect(() => {
@@ -511,7 +488,6 @@ export default function ContentsBoard({
   }
 
   const clearSearchFilters = () => {
-    setSearchState((current) => ({ ...current, input: '' }))
     const params = new URLSearchParams(window.location.search)
     params.delete('q')
     params.delete('kw')
@@ -520,7 +496,7 @@ export default function ContentsBoard({
     router.replace(`${pathname}?${params.toString()}`)
   }
 
-  const changeNewsView = (view: ContentsView) => {
+  const changeContentsView = (view: ContentsView) => {
     window.localStorage.setItem(CONTENTS_VIEW_STORAGE_KEY, view)
     window.dispatchEvent(new Event(CONTENTS_VIEW_CHANGE_EVENT))
   }
@@ -530,7 +506,12 @@ export default function ContentsBoard({
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠')
 
-  const usesFlatList = category === '리서치' || category === '지식보고서' || category === '유튜브'
+  const supportsViewToggle = category === '뉴스' || category === '웹인사이트'
+  const usesContinuousLayout =
+    category === '웹인사이트'
+    || category === '리서치'
+    || category === '지식보고서'
+    || category === '유튜브'
 
   return (
     <>
@@ -549,26 +530,26 @@ export default function ContentsBoard({
             )
           )}
         </div>
-        {category === '뉴스' && (
-          <div className="flex items-center rounded-lg border border-border bg-card p-0.5" role="group" aria-label="뉴스 보기 방식">
+        {supportsViewToggle && (
+          <div className="flex items-center rounded-lg border border-border bg-card p-0.5" role="group" aria-label="콘텐츠 보기 방식">
             <Button
               type="button"
-              variant={newsView === 'card' ? 'secondary' : 'ghost'}
+              variant={contentsView === 'card' ? 'secondary' : 'ghost'}
               size="icon-sm"
-              onClick={() => changeNewsView('card')}
+              onClick={() => changeContentsView('card')}
               aria-label="카드 보기"
-              aria-pressed={newsView === 'card'}
+              aria-pressed={contentsView === 'card'}
               title="카드 보기"
             >
               <LayoutGrid aria-hidden />
             </Button>
             <Button
               type="button"
-              variant={newsView === 'list' ? 'secondary' : 'ghost'}
+              variant={contentsView === 'list' ? 'secondary' : 'ghost'}
               size="icon-sm"
-              onClick={() => changeNewsView('list')}
+              onClick={() => changeContentsView('list')}
               aria-label="리스트 보기"
-              aria-pressed={newsView === 'list'}
+              aria-pressed={contentsView === 'list'}
               title="리스트 보기"
             >
               <List aria-hidden />
@@ -577,30 +558,8 @@ export default function ContentsBoard({
         )}
       </div>
 
-      {/* ─── 검색 + 인기 키워드 ──────────────────────────────────────────────── */}
+      {/* ─── 인기 키워드 ──────────────────────────────────────────────── */}
       <div className="mb-6 space-y-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchState((current) => ({ ...current, input: event.target.value }))}
-            placeholder="제목·요약에서 검색…"
-            aria-label="콘텐츠 제목과 요약 검색"
-            className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-brand-600 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-950"
-          />
-          {searchInput && (
-            <button
-              type="button"
-              onClick={() => setSearchState((current) => ({ ...current, input: '' }))}
-              aria-label="검색어 지우기"
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
         {/* 394 — 항상 렌더 + 최소 높이 예약(칩 한 줄 높이). /api/contents/keywords 응답이 늦게 와도 아래 목록이 밀리지 않는다. */}
         <div className="flex min-h-[34px] flex-wrap items-center gap-2">
           {keywordChips.map(({ name }) => {
@@ -684,8 +643,12 @@ export default function ContentsBoard({
           {/* 395 — 상단 바 형태의 로딩 표시는 경고 배너처럼 읽혀 삭제. opacity만 유지(검색·칩 전환 시 "바뀌는 중" 최소 신호).
               더 보기(page>1)는 기존 목록 전체가 흐려지면 안 되므로 대상에서 제외한다. */}
           <div className={cn('transition-opacity duration-150', isLoading && page === 1 && 'opacity-[0.85]')}>
-            {usesFlatList ? (
-              <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+            {usesContinuousLayout ? (
+              supportsViewToggle && contentsView === 'list' ? (
+                <ContentRowList items={clusteredItems} sortByCollected={sortByCollected} />
+              ) : (
+                <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+              )
             ) : (
               <div className="space-y-6">
                 {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
@@ -693,7 +656,7 @@ export default function ContentsBoard({
                     <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
                       {seg.label}
                     </p>
-                    {category === '뉴스' && newsView === 'list' ? (
+                    {category === '뉴스' && contentsView === 'list' ? (
                       <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
                     ) : (
                       <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />

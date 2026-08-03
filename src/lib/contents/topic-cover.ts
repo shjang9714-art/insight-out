@@ -2,6 +2,7 @@
 // 폴백 체인: 실제 썸네일 > (og:image) > 생성 풀(이번) > BrandedCover(카드 컴포넌트 내장).
 
 import { TOPIC_COVER_POOL } from './topic-cover-manifest.generated'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 
 // 파일 rawKey(변형접미 제거 후, NFC 정규화) → 매칭 대상 canonical.
 // 매니페스트 생성 시점(scripts/build-topic-cover-manifest.mjs)에 이미 적용되어 TOPIC_COVER_POOL 키가
@@ -114,6 +115,28 @@ export function pickTopicCover({ id, matchedGroups, matchedKeywords, category }:
   return best.urls[hashIndex(id, best.urls.length)]
 }
 
+/**
+ * 지시서 469 — pickTopicCover 와 동일한 후보 매칭 로직으로 "선택된 풀 + 해시 인덱스"를 노출한다.
+ * pickTopicCover 자체는 URL 문자열만 반환해 목록 중복 회피(coverUrlsForList)에 필요한
+ * 풀 정보를 얻을 수 없어 별도로 둔다. pickTopicCover 는 변경하지 않는다(단건 동작 diff 0).
+ */
+function matchTopicPool({ id, matchedGroups, matchedKeywords, category }: PickTopicCoverInput): { urls: string[]; index: number } | null {
+  const candidates = [
+    ...(matchedGroups ?? []),
+    ...(matchedKeywords ?? []),
+    ...(category ? [category] : []),
+  ].filter(Boolean) as string[]
+
+  const matched = candidates
+    .map((c, i) => ({ i, urls: NORMALIZED_POOL[normalize(c)], priority: NORMALIZED_PRIORITY[normalize(c)] ?? DEFAULT_PRIORITY }))
+    .filter((x): x is { i: number; urls: string[]; priority: number } => Boolean(x.urls) && x.urls.length > 0)
+    .sort((a, b) => a.priority - b.priority || a.i - b.i)
+
+  const best = matched[0]
+  if (!best) return null
+  return { urls: best.urls, index: hashIndex(id, best.urls.length) }
+}
+
 interface CoverRow {
   id: string
   thumbnail_url?: string | null
@@ -124,10 +147,52 @@ interface CoverRow {
 
 /** 카드 thumbnailUrl 로 바로 넘길 값. 실제 썸네일 우선, 없으면 주제 매칭 생성 커버, 그것도 없으면 null(카드가 BrandedCover 렌더). */
 export function coverUrlFor(row: CoverRow): string | null {
-  return row.thumbnail_url ?? pickTopicCover({
+  return resolveStorageUrl(row.thumbnail_url ?? null) ?? pickTopicCover({
     id: row.id,
     matchedGroups: row.matched_groups,
     matchedKeywords: row.matched_keywords,
     category: row.category,
   }) ?? null
+}
+
+/**
+ * 지시서 469 — 목록(리스트) 렌더 전용. 같은 화면에 같은 주제 폴백 커버가 반복 노출되는 문제를
+ * 목록 렌더 시점에만 회피한다. coverUrlFor/pickTopicCover/hashIndex 의 단건 동작(같은 id → 같은
+ * 결과, 상세페이지·개별 카드 호출)은 절대 바꾸지 않는다 — 실제 썸네일이 있는 행은 그대로 두고,
+ * 폴백 주제 커버끼리 URL 이 겹칠 때만 같은 토픽 풀 내에서 다음 후보로 순환한다.
+ * 풀을 한 바퀴 돌아도 빈 자리가 없으면 원래 후보를 그대로 써서 중복을 허용한다(무한 루프 금지).
+ * 반환 배열은 입력과 1:1 대응(길이·순서 동일).
+ */
+export function coverUrlsForList(rows: CoverRow[]): (string | null)[] {
+  const usedFallbackUrls = new Set<string>()
+
+  return rows.map((row) => {
+    const realThumbnail = resolveStorageUrl(row.thumbnail_url ?? null)
+    if (realThumbnail) return realThumbnail
+
+    const pool = matchTopicPool({
+      id: row.id,
+      matchedGroups: row.matched_groups,
+      matchedKeywords: row.matched_keywords,
+      category: row.category,
+    })
+    if (!pool) return null
+
+    const { urls, index } = pool
+    let chosenIndex = index
+    if (usedFallbackUrls.has(urls[chosenIndex])) {
+      for (let step = 1; step < urls.length; step++) {
+        const candidateIndex = (index + step) % urls.length
+        if (!usedFallbackUrls.has(urls[candidateIndex])) {
+          chosenIndex = candidateIndex
+          break
+        }
+      }
+      // 풀 전부 소진 시 chosenIndex 는 원래 index 로 남음 → 중복 허용(무한 루프 없음)
+    }
+
+    const chosenUrl = urls[chosenIndex]
+    usedFallbackUrls.add(chosenUrl)
+    return chosenUrl
+  })
 }

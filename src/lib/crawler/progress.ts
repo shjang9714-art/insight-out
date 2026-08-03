@@ -1,6 +1,8 @@
 import type { RejectedBy } from './types'
 import { zeroRejectedBy } from './types'
 
+export const CRAWL_JOB_STORAGE_KEY = 'insight-out:admin-crawl-job'
+
 export interface CrawlJob {
   jobId: string
   startedAt: string

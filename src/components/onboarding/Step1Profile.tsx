@@ -18,9 +18,6 @@ import { LENS_PRESETS, type LensKey } from '@/lib/lens'
 import ServiceSelectionGrid from '@/components/mypage/ServiceSelectionGrid'
 import { FEED_CATEGORIES } from '@/lib/feed/categories'
 
-// 'mine' 렌즈는 user_services(담당 서비스)를 읽어 거르는데, 온보딩에서는 더 이상
-// 담당 서비스를 수집하지 않아 고르면 홈이 빈 화면이 된다 — 온보딩 선택지에서만 제외.
-// 대시보드·마이페이지 등 다른 곳의 mine 렌즈 자체는 그대로 둔다.
 const FILTER_OPTIONS: { value: LensKey; label: string; description: string }[] = (
   ['watch', 'all'] as const
 ).map((key) => ({ value: key, label: LENS_PRESETS[key].label, description: LENS_PRESETS[key].desc }))

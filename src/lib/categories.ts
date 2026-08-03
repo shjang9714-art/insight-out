@@ -47,7 +47,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
   {
     id: 'web-insight',
     Icon: Globe,
-    label: '웹인사이트',
+    label: '기술 Blog',
     category: '웹인사이트',
     dbCategories: ['웹인사이트', '오피니언'],
     iconClass: 'text-emerald-600 dark:text-emerald-400',

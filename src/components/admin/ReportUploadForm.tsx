@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -15,12 +15,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Upload, X, FileText, Loader2, CheckCircle } from 'lucide-react'
-import type { Service } from '@/lib/types'
+import { Upload, X, FileText, Loader2 } from 'lucide-react'
 import { renderPdfCover } from '@/lib/contents/pdf-cover'
 import { uploadCover } from '@/lib/contents/upload-cover'
 import CoverImageField from '@/components/admin/CoverImageField'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import KeywordTagInput from '@/components/admin/KeywordTagInput'
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -46,18 +46,6 @@ function extLabel(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
   const map: Record<string, string> = { pdf: 'PDF', pptx: 'PPT', docx: 'Word', xlsx: 'Excel' }
   return map[ext] ?? ext.toUpperCase()
-}
-
-/** 표지 실패 사유 한글화(291) */
-const COVER_REASON_LABEL: Record<string, string> = {
-  render_failed:  '1페이지 렌더 실패',
-  blank_page:     '1페이지가 비어 있음(스캔 PDF일 수 있음)',
-  upload_failed:  '저장 실패',
-  update_failed:  '저장 실패',
-}
-function coverReasonLabel(reason?: string): string {
-  if (!reason) return '알 수 없는 오류'
-  return COVER_REASON_LABEL[reason] ?? reason
 }
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -93,47 +81,23 @@ export default function ReportUploadForm() {
   const [supabase] = useState(createClient)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [services, setServices]   = useState<Service[]>([])
   const [sources, setSources]     = useState<Source[]>([])
   const [file, setFile]           = useState<File | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [form, setForm]           = useState<FormState>(FORM_INIT)
-  const [serviceIds, setServiceIds] = useState<Set<string>>(new Set())
   const [keywords, setKeywords]   = useState<string[]>([])
-  const [kwInput, setKwInput]     = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError]         = useState<string | null>(null)
-  const [success, setSuccess]     = useState(false)
-  const [extractResult, setExtractResult] = useState<{
-    ok: boolean
-    chars?: number
-    lang?: string
-    translated?: boolean
-    summarized?: boolean
-    entities?: number
-    issues?: number
-    reason?: string
-    message?: string
-    coverSet?: boolean
-    coverReason?: string
-  } | null>(null)
-  const [coverGenerated, setCoverGenerated] = useState(false)
   const [coverFile, setCoverFile] = useState<File | null>(null)
-  // 표지 결과 표시용(291) — coverFile은 성공 화면 렌더 전 초기화되므로 별도 보관.
-  const [manualCoverUsed, setManualCoverUsed] = useState(false)
 
   // DB 메타데이터 로드
   useEffect(() => {
     const load = async () => {
-      const [{ data: svcData }, { data: srcData }] = await Promise.all([
-        supabase.from('services').select('id, name, icon, order').order('order'),
-        supabase
-          .from('sources')
-          .select('id, name')
-          .eq('type', 'report_publisher')
-          .order('name'),
-      ])
-      if (svcData) setServices(svcData as Service[])
+      const { data: srcData } = await supabase
+        .from('sources')
+        .select('id, name')
+        .eq('type', 'report_publisher')
+        .order('name')
       if (srcData) setSources(srcData as Source[])
     }
     load()
@@ -154,7 +118,6 @@ export default function ReportUploadForm() {
     setFile(f)
     setForm(prev => ({ ...prev, title: suggestTitle(f.name) }))
     setError(null)
-    setSuccess(false)
   }
 
   const clearFile = () => {
@@ -167,39 +130,6 @@ export default function ReportUploadForm() {
     setIsDragOver(false)
     const f = e.dataTransfer.files?.[0]
     if (f) acceptFile(f)
-  }
-
-  // ── 서비스 태그 ────────────────────────────────────────────────────────────
-
-  const toggleService = (id: string) => {
-    setServiceIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }
-
-  // ── 키워드 ─────────────────────────────────────────────────────────────────
-
-  const commitKeyword = () => {
-    const kw = kwInput.trim()
-    if (kw && !keywords.includes(kw)) {
-      setKeywords(prev => [...prev, kw])
-    }
-    setKwInput('')
-  }
-
-  const handleKwKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      commitKeyword()
-    } else if (e.key === 'Backspace' && kwInput === '' && keywords.length > 0) {
-      setKeywords(prev => prev.slice(0, -1))
-    }
   }
 
   // ── 폼 유효성 검사 ─────────────────────────────────────────────────────────
@@ -220,7 +150,7 @@ export default function ReportUploadForm() {
 
     setIsUploading(true)
     setError(null)
-    setManualCoverUsed(false)
+    const secondaryErrors: string[] = []
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -267,14 +197,7 @@ export default function ReportUploadForm() {
       if (contentErr) throw new Error(`콘텐츠 저장 실패: ${contentErr.message}`)
       const contentId = contentRow.id
 
-      // ③ content_services 삽입
-      if (serviceIds.size > 0) {
-        const rows = [...serviceIds].map(sid => ({ content_id: contentId, service_id: sid }))
-        const { error: svcErr } = await supabase.from('content_services').insert(rows)
-        if (svcErr) throw new Error(`서비스 태그 저장 실패: ${svcErr.message}`)
-      }
-
-      // ④ 키워드: 대소문자 무시 조회 → 없으면 생성 → content_keywords 연결
+      // ③ 키워드: 대소문자 무시 조회 → 없으면 생성 → content_keywords 연결
       if (keywords.length > 0) {
         const kwIds: string[] = []
         for (const kw of keywords) {
@@ -307,10 +230,9 @@ export default function ReportUploadForm() {
         try {
           const ext = coverFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
           await uploadCover(supabase, contentId, coverFile, ext)
-          setCoverGenerated(true)
-          setManualCoverUsed(true)
         } catch (coverErr) {
           console.error('[upload] 커버 업로드 실패:', coverErr)
+          secondaryErrors.push(`커버 업로드 실패: ${coverErr instanceof Error ? coverErr.message : '알 수 없는 오류'}`)
         }
       }
 
@@ -319,11 +241,10 @@ export default function ReportUploadForm() {
       if (ext === 'pdf') {
         try {
           const extractRes = await fetch(`/api/admin/contents/${contentId}/extract`, { method: 'POST' })
-          const extractData = await extractRes.json()
-          setExtractResult(extractData)
+          await extractRes.json()
         } catch (extractErr) {
           console.error('[upload] 추출 호출 실패:', extractErr)
-          setExtractResult({ ok: false, reason: 'fetch_error', message: '추출 요청 실패' })
+          secondaryErrors.push(`본문 추출 실패: ${extractErr instanceof Error ? extractErr.message : '알 수 없는 오류'}`)
         }
 
         // ⑦ 표지(1페이지) 자동 생성 — 사용자가 커버를 직접 지정하지 않았을 때만
@@ -332,21 +253,21 @@ export default function ReportUploadForm() {
             const coverBlob = await renderPdfCover(file!)
             if (coverBlob) {
               await uploadCover(supabase, contentId, coverBlob, 'webp')
-              setCoverGenerated(true)
             }
           } catch (coverErr) {
             console.error('[upload] 표지 생성 실패:', coverErr)
+            secondaryErrors.push(`표지 생성 실패: ${coverErr instanceof Error ? coverErr.message : '알 수 없는 오류'}`)
           }
         }
       }
 
       // 성공 → 폼 초기화
-      setSuccess(true)
       clearFile()
       setForm(FORM_INIT)
-      setServiceIds(new Set())
       setKeywords([])
       setCoverFile(null)
+      toast.success('리포트를 등록했습니다')
+      if (secondaryErrors.length > 0) setError(secondaryErrors.join(' · '))
 
     } catch (err) {
       console.error('[admin/upload] error:', err)
@@ -354,68 +275,6 @@ export default function ReportUploadForm() {
     } finally {
       setIsUploading(false)
     }
-  }
-
-  // ── 성공 화면 ──────────────────────────────────────────────────────────────
-
-  if (success) {
-    return (
-      <Card className="max-w-md mx-auto text-center py-12 px-8">
-        <CheckCircle className="mx-auto mb-4 h-12 w-12 text-positive" />
-        <h2 className="text-lg font-semibold text-foreground mb-1">업로드 완료</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          리포트가 성공적으로 등록됐습니다.
-        </p>
-
-        {/* 추출 결과 */}
-        {extractResult && (
-          <div className={cn(
-            'mb-6 rounded-lg border px-4 py-3 text-left text-sm',
-            extractResult.ok
-              ? 'border-positive/20 bg-positive-soft text-positive'
-              : extractResult.reason === 'scanned'
-                ? 'border-amber-100 bg-amber-50 text-amber-800'
-                : 'border-muted bg-muted/50 text-muted-foreground'
-          )}>
-            {extractResult.ok ? (
-              <div className="space-y-0.5">
-                <p className="font-medium">본문 추출 완료</p>
-                <p className="text-xs">
-                  {extractResult.chars?.toLocaleString()}자
-                  {extractResult.lang === 'en' && (extractResult.translated ? ' · 한국어 번역 완료' : ' · 번역 미적용')}
-                  {extractResult.summarized ? ' · 요약 생성' : ''}
-                  {(extractResult.issues ?? 0) > 0 ? ` · 이슈 ${extractResult.issues}건 연결` : ''}
-                  {(extractResult.entities ?? 0) > 0 ? ` · 엔티티 ${extractResult.entities}건 연결` : ''}
-                </p>
-              </div>
-            ) : extractResult.reason === 'scanned' ? (
-              <div>
-                <p className="font-medium">스캔 PDF 추정 — 텍스트 추출 실패</p>
-                <p className="text-xs mt-0.5">OCR 처리가 필요합니다. 본문 없이 등록됐습니다.</p>
-              </div>
-            ) : (
-              <p>본문 추출을 건너뜀 ({extractResult.reason ?? '비 PDF'})</p>
-            )}
-            {manualCoverUsed ? (
-              <p className="mt-1.5 text-xs opacity-80">표지 직접 지정됨</p>
-            ) : coverGenerated || extractResult.coverSet ? (
-              <p className="mt-1.5 text-xs opacity-80">· 표지 자동 추출 완료</p>
-            ) : (
-              <p className="mt-1.5 text-xs text-amber-700">
-                · 표지 자동 추출 실패({coverReasonLabel(extractResult.coverReason)}) — 콘텐츠 관리에서 표지를 직접 올려주세요
-              </p>
-            )}
-          </div>
-        )}
-
-        <Button onClick={() => {
-          setSuccess(false)
-          setExtractResult(null)
-          setCoverGenerated(false)
-          setManualCoverUsed(false)
-        }}>다른 파일 업로드</Button>
-      </Card>
-    )
   }
 
   // ── 메인 폼 ────────────────────────────────────────────────────────────────
@@ -615,78 +474,19 @@ export default function ReportUploadForm() {
         </CardContent>
       </Card>
 
-      {/* ───────── 담당 서비스 ───────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-foreground">담당 서비스 태그</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {services.length === 0 ? (
-            <p className="text-sm text-muted-foreground">서비스 목록을 불러오는 중...</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {services.map(svc => {
-                const selected = serviceIds.has(svc.id)
-                return (
-                  <button
-                    key={svc.id}
-                    type="button"
-                    onClick={() => toggleService(svc.id)}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
-                      selected
-                        ? 'border-brand-600 bg-brand-600 text-white'
-                        : 'border-border bg-card text-foreground hover:border-border hover:bg-accent/50'
-                    )}
-                  >
-                    {svc.icon && <span>{svc.icon}</span>}
-                    <span>{svc.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* ───────── 키워드 ───────── */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold text-foreground">키워드 태그</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* 태그 입력 박스 */}
-          <div
-            onClick={() => document.getElementById('kw-input')?.focus()}
-            className="flex min-h-[44px] cursor-text flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring"
-          >
-            {keywords.map(kw => (
-              <Badge key={kw} variant="secondary" className="gap-1 pr-1 text-xs">
-                {kw}
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setKeywords(prev => prev.filter(k => k !== kw)) }}
-                  className="rounded-full p-0.5 hover:bg-accent"
-                  aria-label={`${kw} 삭제`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-            <input
-              id="kw-input"
-              type="text"
-              value={kwInput}
-              onChange={(e) => setKwInput(e.target.value)}
-              onKeyDown={handleKwKeyDown}
-              onBlur={commitKeyword}
-              placeholder={keywords.length === 0 ? 'Enter로 키워드 추가 (예: 클라우드, AI, 보안)' : ''}
-              className="min-w-[160px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Enter 또는 포커스 이탈 시 추가 · Backspace로 마지막 태그 삭제
-          </p>
+          <KeywordTagInput
+            value={keywords}
+            onChange={setKeywords}
+            title={form.title}
+            snippet={form.summary}
+            inputId="kw-input"
+          />
         </CardContent>
       </Card>
 

@@ -2,6 +2,8 @@ import 'server-only'
 
 import { llmComplete } from '@/lib/llm'
 import { insightAutoPublish, insightCompanyAutoPublish } from '@/lib/insight/auto-publish'
+import { buildCompanyMatchOr } from '@/lib/insight/company-match'
+import { getLastCompletedWeekKst } from '@/lib/competitor-weekly/generate'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -46,6 +48,12 @@ function kstDateString(offsetDays = 0): string {
 /** KST 날짜(YYYY-MM-DD) → UTC 00:00 ISO 문자열 */
 function kstDateToUtcIso(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00+09:00`).toISOString()
+}
+
+function addDaysToDateString(dateStr: string, days: number): string {
+  const date = new Date(`${dateStr}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 // ─── LLM 프롬프트 ────────────────────────────────────────────────────────────
@@ -272,6 +280,8 @@ interface CompanyOptions {
   articlesPerCompany?: number
   minArticles?: number
   deadline?: number
+  /** 특정 주 재생성(YYYY-MM-DD, 월요일 기준). 미지정 시 최근 완결된 주. */
+  weekStart?: string
 }
 
 // 254 — DB(llm_prompts key='company_insight') 미적용/미시드 시 폴백. 253 시드와 동일하게 한글 강제.
@@ -381,9 +391,11 @@ export async function generateCompanyInsightCards(
 
   const systemPrompt = await loadCompanyPrompt(adminClient)
 
-  const periodEnd = kstDateString(0)
-  const periodStart = kstDateString(days - 1)
-  const sinceIso = kstDateToUtcIso(periodStart)
+  const { weekStart: periodStart, weekEnd: periodEnd } = opts?.weekStart
+    ? { weekStart: opts.weekStart, weekEnd: addDaysToDateString(opts.weekStart, 6) }
+    : getLastCompletedWeekKst()
+  const corpusStart = kstDateString(days - 1)
+  const sinceIso = kstDateToUtcIso(corpusStart)
 
   const created: string[] = []
 
@@ -394,11 +406,7 @@ export async function generateCompanyInsightCards(
     }
     try {
       // 254 — name + aliases[] 다중 매칭(표기 차이 누락 방지)
-      const terms = [company, ...aliases]
-      const orClause = terms
-        .map((t) => t.replace(/[%_\\]/g, '\\$&'))
-        .flatMap((escaped) => [`title.ilike.%${escaped}%`, `summary_ko.ilike.%${escaped}%`])
-        .join(',')
+      const orClause = buildCompanyMatchOr(company, aliases)
 
       const { data: rawArticles } = await adminClient
         .from('contents')

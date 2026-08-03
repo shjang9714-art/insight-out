@@ -1,7 +1,5 @@
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
 import {
   type OpsRequestRow,
   type OpsRequestStatus,
@@ -14,40 +12,6 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // verifyAdmin: requests/route.ts 와 동일하게 복제 (공통 추출은 추후)
-async function verifyAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
-
-  return null
-}
 
 const TABLE_MISSING_CODE = '42P01'
 const COLUMN_MISSING_CODE = '42703'
@@ -96,13 +60,13 @@ function buildMarkdown(grouped: [string, OpsRequestRow[]][], generatedAt: string
  * phase/seq 컬럼 미적용(42703) 또는 테이블 미적용(42P01) → graceful.
  */
 export async function GET(req: NextRequest) {
-  const authError = await verifyAdmin()
-  if (authError) return authError
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
 
   const format = req.nextUrl.searchParams.get('format')
 
   try {
-    const admin = createAdminClient()
+    const admin = gate.admin
     const { data, error } = await admin
       .from('ops_requests')
       .select('*')

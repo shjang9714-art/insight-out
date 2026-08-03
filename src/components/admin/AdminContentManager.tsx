@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
@@ -14,6 +14,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -23,14 +29,22 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
+import {
+  BULK_REVIEW_LIMIT,
+  hasBulkReviewFilter,
+  type BulkReviewFilters,
+  type ReviewBodyFilter,
+} from '@/lib/admin/bulk-review'
 import { toDbCategories } from '@/lib/categories'
 import { ADMIN_CATEGORY_TABS, adminTabDbCategories, adminTabIdFor } from '@/lib/admin/content-tabs'
 import { CATEGORY_SOURCE_TYPE } from '@/lib/admin/content-source-types'
+import { REVIEW_REASONS, type ReviewReason } from '@/lib/crawler/quality'
 import {
   CONTENT_CATEGORY_LABEL,
   type ContentCategory,
@@ -41,9 +55,11 @@ import { getKstTodayStartIso } from '@/lib/date'
 import { cn } from '@/lib/utils'
 import { uploadCoverFile } from '@/lib/contents/upload-cover'
 import { compressImageToLimit } from '@/lib/images/compress-image'
+import { resolveStorageUrl } from '@/lib/storage/resolve-url'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import ContentCard from '@/components/dashboard/ContentCard'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
 interface AdminContentRow {
   id: string
@@ -54,7 +70,8 @@ interface AdminContentRow {
   bookmark_count: number | null
   body_fetched_at: string | null
   body_len: number | null
-  review_reason: string | null
+  review_reason?: string | null
+  matched_groups: string[] | null
   sources: { name: string } | null
   matched_keywords?: string[] | null
   thumbnail_url?: string | null
@@ -91,14 +108,34 @@ const MAX_BODY_BACKFILL_IDS = 50
 
 // 348 — 콘텐츠 검수 테이블을 하나의 그리드로 통합.
 //  · sticky 관리 열 / 열 너비 드래그(200·207) 제거 — 둘 다 고정 px 총합이 컨테이너보다 커져 가로 스크롤을 유발했다.
-//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 792px.
-//  · 1440px 뷰포트 기준 본문 폭 = 1440 - 사이드바 288 - 패딩 64 = 1088px → 제목 296px 확보, 가로 스크롤 0.
-//  · 테이블 min-width = 고정 폭 792 + 제목 최소 240 = 1032px (1200px 미만에선 관리 열 축소로 920px).
+//  · 제목만 auto(잔여 폭 전부 흡수), 나머지는 고정 폭. 고정 폭 합 = 820px.
+//  · 관리 열을 아이콘 전용으로 줄이고 수집일·카테고리·소스 열에 폭을 돌려 핵심 메타가 잘리지 않게 한다.
+//  · 테이블 min-width = 고정 폭 820 + 제목 최소 252 = 1072px.
 
-// 관리 버튼 공통 — 높이 32px, 1200px 미만에선 아이콘만
-const ACTION_BTN = 'h-8 gap-1 rounded-md px-2 text-xs'
-const ACTION_BTN_COMPACT = 'max-[1200px]:w-8 max-[1200px]:justify-center max-[1200px]:px-0'
-const ACTION_LABEL_COMPACT = 'max-[1200px]:sr-only'
+// 관리 액션 — 소스 관리와 같은 아이콘 전용 ghost(모바일 카드만 라벨 노출)
+const ACTION_BTN_GHOST = 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+const ACTION_BTN_DELETE = 'text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20'
+
+function ActionTooltip({
+  label,
+  enabled,
+  children,
+}: {
+  label: string
+  enabled: boolean
+  children: ReactElement
+}) {
+  if (!enabled) return children
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={6}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 // 검토 사유 칩 — 테이블 셀용 축약 라벨(전체 라벨은 title 속성으로 제공)
 const REVIEW_REASON_SHORT: Record<string, string> = {
@@ -109,6 +146,37 @@ const REVIEW_REASON_SHORT: Record<string, string> = {
   low_relevance:  '관련도 낮음',
   llm_irrelevant: 'AI 무관',
   excluded_rule:  '제외 규칙',
+}
+
+function getReviewReasonDisplay(content: AdminContentRow): { short: string; full: string } {
+  if (content.review_reason) {
+    const full = REVIEW_REASON_LABEL[content.review_reason] ?? '기타 사유'
+    return {
+      short: REVIEW_REASON_SHORT[content.review_reason] ?? full,
+      full,
+    }
+  }
+  if (!content.body_fetched_at) {
+    return { short: '본문 없음', full: '본문 없음' }
+  }
+  if (!content.matched_groups?.length) {
+    return { short: '매칭 없음', full: '매칭 없음' }
+  }
+  return { short: '사유 확인 필요', full: '사유 확인 필요' }
+}
+
+function ReviewReasonBadge({ content }: { content: AdminContentRow }) {
+  if (content.status !== 'pending') return null
+
+  const reason = getReviewReasonDisplay(content)
+  return (
+    <span
+      title={`검토 대기 사유: ${reason.full}`}
+      className="max-w-full truncate rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
+    >
+      {reason.short}
+    </span>
+  )
 }
 
 // 소스 필터 특수값
@@ -143,14 +211,30 @@ interface BodyBackfillNotice {
   tone: BodyBackfillNoticeTone
 }
 
+interface BulkReviewPreview {
+  count: number
+  filters: BulkReviewFilters
+}
+
+interface BulkReviewResponse {
+  processed?: number
+  error?: string
+  actualCount?: number
+}
+
 const BODY_BACKFILL_NOTICE_CLASS: Record<BodyBackfillNoticeTone, string> = {
   success: 'text-positive',
   warning: 'text-amber-600',
   error:   'text-destructive',
 }
 
+const REVIEW_REASON_ALL = 'all'
+const EMPTY_REVIEW_REASON_COUNTS = Object.fromEntries(
+  REVIEW_REASONS.map((reason) => [reason, 0])
+) as Record<ReviewReason, number>
+
 const CONTENT_ROW_BASE_SELECT =
-  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, thumbnail_url'
+  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, matched_groups, thumbnail_url'
 
 function contentRowSelect(len: boolean, reason: boolean): string {
   return [
@@ -182,14 +266,6 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   }
 }
 
-function formatKst(iso: string): string {
-  return new Date(iso).toLocaleString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
-
 /** 348 — 테이블 셀용 짧은 KST 표기: 2026.07.14 15:12 (전체 표기는 title 속성으로) */
 function formatKstCompact(iso: string): string {
   const parts = new Intl.DateTimeFormat('ko-KR', {
@@ -210,8 +286,8 @@ function bodyLength(r: AdminContentRow): number | null {
 }
 
 /**
- * 348 — 관리 버튼 그룹. 테이블 행과 모바일 카드가 동일한 핸들러를 공유한다.
- * 순서 고정: 노출|숨김 → 보기 → 수정 → 삭제
+ * 348 — 관리 액션 그룹. 테이블 행과 모바일 카드가 동일한 핸들러를 공유한다.
+ * 순서 고정: 노출|숨김 → 수정 → 삭제
  */
 function RowActions({
   content,
@@ -228,77 +304,73 @@ function RowActions({
   onStatusChange: (c: AdminContentRow, next: ContentStatus) => void
   onEdit: (c: AdminContentRow) => void
   onDelete: (c: AdminContentRow) => void
-  /** true면 라벨을 항상 노출(모바일 카드). false면 1200px 미만에서 아이콘만. */
+  /** true면 라벨을 노출(모바일 카드). false면 소스 관리처럼 아이콘만. */
   alwaysLabel?: boolean
 }) {
-  const compact = alwaysLabel ? '' : ACTION_BTN_COMPACT
-  const labelCls = alwaysLabel ? '' : ACTION_LABEL_COMPACT
+  const actionSize = alwaysLabel ? 'sm' : 'icon-sm'
+  const labelCls = alwaysLabel ? '' : 'sr-only'
 
   return (
-    <div className="flex items-center justify-end gap-1">
-      {content.status === 'published' ? (
-        <Button
-          type="button" size="sm" variant="outline"
-          disabled={disabled}
-          onClick={() => onStatusChange(content, 'rejected')}
-          title="숨김"
-          className={cn(ACTION_BTN, compact)}
-        >
-          <X className="h-3.5 w-3.5" />
-          <span className={labelCls}>숨김</span>
-        </Button>
-      ) : (
-        <Button
-          type="button" size="sm" variant="outline"
-          disabled={disabled}
-          onClick={() => onStatusChange(content, 'published')}
-          title="노출"
-          className={cn(
-            ACTION_BTN, compact,
-            'border-positive/40 text-positive hover:border-positive/70 hover:bg-positive-soft hover:text-positive'
-          )}
-        >
-          <Check className="h-3.5 w-3.5" />
-          <span className={labelCls}>노출</span>
-        </Button>
-      )}
-
-      <Button size="sm" variant="outline" asChild className={cn(ACTION_BTN, compact)}>
-        <Link href={`/admin/contents/${content.id}`} title="보기">
-          <Eye className="h-3.5 w-3.5" />
-          <span className={labelCls}>보기</span>
-        </Link>
-      </Button>
-
-      <Button
-        type="button" size="sm" variant="outline"
-        disabled={disabled}
-        onClick={() => onEdit(content)}
-        title="수정"
-        className={cn(ACTION_BTN, compact)}
-      >
-        <Pencil className="h-3.5 w-3.5" />
-        <span className={labelCls}>수정</span>
-      </Button>
-
-      <Button
-        type="button" size="sm" variant="outline"
-        disabled={disabled}
-        onClick={() => onDelete(content)}
-        title="삭제"
-        aria-label={`${content.title} 삭제`}
-        className={cn(
-          ACTION_BTN, compact,
-          'border-destructive/25 text-destructive/80 hover:border-destructive/60 hover:bg-destructive/10 hover:text-destructive'
+    <TooltipProvider delayDuration={200}>
+      <div className="flex items-center justify-end gap-0.5">
+        {content.status === 'published' ? (
+          <ActionTooltip label="숨김" enabled={!alwaysLabel}>
+            <Button
+              type="button" size={actionSize} variant="ghost"
+              disabled={disabled}
+              onClick={() => onStatusChange(content, 'rejected')}
+              aria-label="숨김"
+              className={ACTION_BTN_GHOST}
+            >
+              <X className="h-3.5 w-3.5" />
+              <span className={labelCls}>숨김</span>
+            </Button>
+          </ActionTooltip>
+        ) : (
+          <ActionTooltip label="노출" enabled={!alwaysLabel}>
+            <Button
+              type="button" size={actionSize} variant="ghost"
+              disabled={disabled}
+              onClick={() => onStatusChange(content, 'published')}
+              aria-label="노출"
+              className={ACTION_BTN_GHOST}
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span className={labelCls}>노출</span>
+            </Button>
+          </ActionTooltip>
         )}
-      >
-        {isWorking
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          : <Trash2 className="h-3.5 w-3.5" />
-        }
-        <span className={labelCls}>삭제</span>
-      </Button>
-    </div>
+
+        <ActionTooltip label="수정" enabled={!alwaysLabel}>
+          <Button
+            type="button" size={actionSize} variant="ghost"
+            disabled={disabled}
+            onClick={() => onEdit(content)}
+            aria-label="수정"
+            className={ACTION_BTN_GHOST}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className={labelCls}>수정</span>
+          </Button>
+        </ActionTooltip>
+
+        <ActionTooltip label="삭제" enabled={!alwaysLabel}>
+          <Button
+            type="button" size={actionSize} variant="ghost"
+            disabled={disabled}
+            onClick={() => onDelete(content)}
+            aria-label={`${content.title} 삭제`}
+            className={ACTION_BTN_DELETE}
+          >
+            {isWorking
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Trash2 className="h-3.5 w-3.5" />
+            }
+            <span className={labelCls}>삭제</span>
+          </Button>
+        </ActionTooltip>
+      </div>
+    </TooltipProvider>
   )
 }
 
@@ -447,6 +519,12 @@ export default function AdminContentManager() {
     return s === 'null' ? SOURCE_NULL : (s ?? SOURCE_ALL)
   })
   const [status,        setStatus]        = useState(() => searchParams.get('status') ?? 'all')
+  const [reviewReason,  setReviewReason]  = useState<ReviewReason | typeof REVIEW_REASON_ALL>(() => {
+    const reason = searchParams.get('review_reason')
+    return reason && (REVIEW_REASONS as readonly string[]).includes(reason)
+      ? reason as ReviewReason
+      : REVIEW_REASON_ALL
+  })
   const [todayOnly,     setTodayOnly]     = useState(() => searchParams.get('from') === 'today')
   const [bookmarkedOnly, setBookmarkedOnly] = useState(() => searchParams.get('bookmarked') === '1')
   // 291 — 표지(thumbnail_url) 없는 콘텐츠만 모아보는 필터. "사람이 개입할 길"의 핵심.
@@ -470,6 +548,14 @@ export default function AdminContentManager() {
     useState<Record<string, BodyBackfillNotice>>({})
   const [bulkBodyBackfillNotice, setBulkBodyBackfillNotice] =
     useState<BodyBackfillNotice | null>(null)
+  const [reviewReasonCounts, setReviewReasonCounts] =
+    useState<Record<ReviewReason, number>>(EMPTY_REVIEW_REASON_COUNTS)
+  const [isReasonCountsLoading, setIsReasonCountsLoading] = useState(true)
+  const [bulkReviewPreview, setBulkReviewPreview] = useState<BulkReviewPreview | null>(null)
+  const [isBulkReviewPreviewing, setIsBulkReviewPreviewing] = useState(false)
+  const [isBulkReviewExecuting, setIsBulkReviewExecuting] = useState(false)
+  const [bulkReviewNotice, setBulkReviewNotice] = useState<BodyBackfillNotice | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   // 편집 모달
   const [edit,        setEdit]        = useState<EditState | null>(null)
@@ -499,6 +585,7 @@ export default function AdminContentManager() {
 
   // review_reason 컬럼 가용 여부 (178, body_len 과 동일한 degrade 패턴)
   const reviewReasonRef = useRef(true)
+  const [reviewReasonAvailable, setReviewReasonAvailable] = useState(true)
 
   function hasUnsavedEdit(): boolean {
     return Boolean(edit && editSnapshotRef.current !== serializeEditState(edit))
@@ -533,6 +620,19 @@ export default function AdminContentManager() {
     return () => clearTimeout(id)
   }, [searchTerm])
 
+  // 검토 사유는 공유 가능한 URL로 유지한다. 기존 쿼리 파라미터는 보존한다.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (reviewReason === REVIEW_REASON_ALL) params.delete('review_reason')
+    else params.set('review_reason', reviewReason)
+    const query = params.toString()
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}`,
+    )
+  }, [reviewReason])
+
   // ── 검토 대기 카운트 (마운트 1회) ────────────────────────────────────────
   useEffect(() => {
     supabase
@@ -551,6 +651,73 @@ export default function AdminContentManager() {
       .then(({ data }) => setSources((data ?? []) as SourceOption[]))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── 검토 사유별 pending 건수 (현재 필터 조합, 사유 필터 자체는 제외) ───────
+  useEffect(() => {
+    if (!reviewReasonAvailable) {
+      setIsReasonCountsLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const run = async () => {
+      setIsReasonCountsLoading(true)
+      const withLen = bodyLenRef.current
+
+      const results = await Promise.all(REVIEW_REASONS.map(async (reason) => {
+        let query = supabase
+          .from('contents')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .eq('review_reason', reason)
+
+        if (category !== 'all') {
+          const dbCats = adminTabDbCategories(category) ?? toDbCategories(category as ContentCategory)
+          if (dbCats.length === 1) query = query.eq('category', dbCats[0])
+          else if (dbCats.length > 1) query = query.in('category', dbCats)
+          else query = query.eq('category', '__none__' as ContentCategory)
+        }
+        if (sourceId === SOURCE_NULL) query = query.is('source_id', null)
+        else if (sourceId !== SOURCE_ALL) query = query.eq('source_id', sourceId)
+        if (debouncedTerm.trim()) query = query.ilike('title', `%${debouncedTerm.trim()}%`)
+        if (todayOnly) query = query.gte('collected_at', getKstTodayStartIso())
+        if (bookmarkedOnly) query = query.gt('bookmark_count', 0)
+        if (coverFilter === 'missing') query = query.is('thumbnail_url', null)
+        if (bodyFilter === 'none') query = query.is('body_fetched_at', null)
+        if (withLen && bodyFilter === 'full') {
+          query = query.not('body_fetched_at', 'is', null).gte('body_len', 400)
+        }
+        if (withLen && bodyFilter === 'snippet') {
+          query = query.not('body_fetched_at', 'is', null).lt('body_len', 400)
+        }
+
+        const { count, error: countError } = await query
+        return { reason, count: count ?? 0, error: countError }
+      }))
+
+      if (cancelled) return
+      const missingColumn = results.some(({ error: countError }) => countError?.code === '42703')
+      if (missingColumn) {
+        reviewReasonRef.current = false
+        setReviewReasonAvailable(false)
+        setReviewReason(REVIEW_REASON_ALL)
+      } else {
+        const nextCounts = { ...EMPTY_REVIEW_REASON_COUNTS }
+        for (const result of results) {
+          if (result.error) {
+            console.error(`[contents] 검토 사유 건수 조회 실패(${result.reason}):`, result.error.message)
+          } else {
+            nextCounts[result.reason] = result.count
+          }
+        }
+        setReviewReasonCounts(nextCounts)
+      }
+      setIsReasonCountsLoading(false)
+    }
+
+    void run()
+    return () => { cancelled = true }
+  }, [category, sourceId, debouncedTerm, todayOnly, bookmarkedOnly, bodyFilter, coverFilter, reloadToken, reviewReasonAvailable]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── 콘텐츠 로드 (서버 페이지네이션) ─────────────────────────────────────
   useEffect(() => {
     const run = async () => {
@@ -563,12 +730,13 @@ export default function AdminContentManager() {
       const withLen = bodyLenRef.current
       const withReason = reviewReasonRef.current
 
-      const buildBase = (sel: string) => {
+      const buildBase = (sel: string, reason: boolean) => {
         let q = supabase
           .from('contents')
           .select(sel, { count: 'exact' })
           .order('collected_at', { ascending: false })
         if (status !== 'all')             q = q.eq('status', status as ContentStatus)
+        if (reason && reviewReason !== REVIEW_REASON_ALL) q = q.eq('review_reason', reviewReason)
         if (category !== 'all') {
           const dbCats = adminTabDbCategories(category) ?? toDbCategories(category as ContentCategory)
           if (dbCats.length === 1)        q = q.eq('category', dbCats[0])
@@ -592,7 +760,7 @@ export default function AdminContentManager() {
       }
 
       const runQuery = async (len: boolean, reason: boolean) => {
-        let q = applyBodyFilter(buildBase(contentRowSelect(len, reason)), len)
+        let q = applyBodyFilter(buildBase(contentRowSelect(len, reason), reason), len)
         q = q.range((page - 1) * pageSize, page * pageSize - 1)
         return q
       }
@@ -602,6 +770,8 @@ export default function AdminContentManager() {
       // Graceful fallback: review_reason 컬럼 미적용(42703) → 우선 review_reason 만 제외 후 재시도
       if (r.error?.code === '42703' && withReason) {
         reviewReasonRef.current = false
+        setReviewReasonAvailable(false)
+        setReviewReason(REVIEW_REASON_ALL)
         r = await runQuery(withLen, false)
       }
       // 여전히 42703 → body_len 도 컬럼 미적용 → 함께 제외
@@ -626,7 +796,7 @@ export default function AdminContentManager() {
       setIsLoading(false)
     }
     void run()
-  }, [status, category, sourceId, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter, coverFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, category, sourceId, reviewReason, debouncedTerm, page, pageSize, todayOnly, bookmarkedOnly, bodyFilter, coverFilter, reloadToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshPendingCount = async () => {
     const { count } = await supabase
@@ -760,8 +930,12 @@ export default function AdminContentManager() {
     if (!window.confirm(`"${content.title}" 콘텐츠를 삭제하시겠습니까?`)) return
     setWorkingId(content.id)
     setError(null)
-    const { error: deleteError } = await supabase
-      .from('contents').delete().eq('id', content.id)
+    const response = await fetch('/api/admin/contents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [content.id] }),
+    })
+    const deleteError = response.ok ? null : new Error('콘텐츠 삭제 요청 실패')
 
     if (deleteError) {
       setError(`콘텐츠 삭제에 실패했습니다: ${deleteError.message}`)
@@ -949,8 +1123,8 @@ export default function AdminContentManager() {
       }
       const ext = compressed.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       // 216 — storage 업로드만 즉시 수행. contents.thumbnail_url 기록은 저장(handleEditSave) 시점에.
-      const publicUrl = await uploadCoverFile(supabase, edit.id, compressed, ext)
-      setEdit((p) => p && { ...p, thumbnailUrl: publicUrl })
+      const storagePath = await uploadCoverFile(supabase, edit.id, compressed, ext)
+      setEdit((p) => p && { ...p, thumbnailUrl: storagePath })
     } catch (err) {
       setThumbError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다.')
     } finally {
@@ -1041,19 +1215,6 @@ export default function AdminContentManager() {
   }, [edit, contents]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 일괄 선택 (현재 페이지 기준) ─────────────────────────────────────────
-  const allPageIds  = contents.map((c) => c.id)
-  const allSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id))
-  const someSelected = allPageIds.some((id) => selectedIds.has(id)) && !allSelected
-
-  const toggleAll = () => {
-    setBulkBodyBackfillNotice(null)
-    if (allSelected) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(allPageIds))
-    }
-  }
-
   const toggleRow = (id: string) => {
     setBulkBodyBackfillNotice(null)
     setSelectedIds((prev) => {
@@ -1098,10 +1259,12 @@ export default function AdminContentManager() {
     setIsBulkWorking(true)
     setError(null)
 
-    const { error: bulkError } = await supabase
-      .from('contents')
-      .delete()
-      .in('id', ids)
+    const response = await fetch('/api/admin/contents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    const bulkError = response.ok ? null : new Error('콘텐츠 일괄 삭제 요청 실패')
 
     if (bulkError) {
       setError(`일괄 삭제에 실패했습니다: ${bulkError.message}`)
@@ -1180,6 +1343,132 @@ export default function AdminContentManager() {
     }
   }
 
+  const currentBulkReviewFilters = (): BulkReviewFilters => ({
+    category: category === 'all' ? null : category,
+    sourceId: sourceId === SOURCE_ALL ? null : sourceId,
+    reviewReason: reviewReason === REVIEW_REASON_ALL ? null : reviewReason,
+    bodyFilter: bodyFilter === 'all' ? null : bodyFilter as ReviewBodyFilter,
+    todayOnly,
+    searchTerm: debouncedTerm.trim() || null,
+  })
+
+  // ── 조건 기반 일괄 반려: 미리보기 → 확인 → 서버 실행 ───────────────────
+  const handleBulkReviewPreview = async () => {
+    const filters = currentBulkReviewFilters()
+    if (!hasBulkReviewFilter(filters)) {
+      setBulkReviewNotice({
+        message: '전체 반려를 막기 위해 사유·카테고리·소스 등 필터를 1개 이상 선택해주세요.',
+        tone: 'warning',
+      })
+      return
+    }
+    if (status !== 'pending' || bookmarkedOnly || coverFilter !== 'all') {
+      setBulkReviewNotice({
+        message: '검토 대기 상태에서 북마크·표지 필터를 해제한 뒤 실행해주세요.',
+        tone: 'warning',
+      })
+      return
+    }
+
+    setIsBulkReviewPreviewing(true)
+    setBulkReviewNotice(null)
+
+    let query = supabase
+      .from('contents')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+
+    if (filters.category) {
+      const dbCats = adminTabDbCategories(filters.category)
+        ?? toDbCategories(filters.category as ContentCategory)
+      if (dbCats.length === 1) query = query.eq('category', dbCats[0])
+      else if (dbCats.length > 1) query = query.in('category', dbCats)
+      else query = query.eq('category', '__none__' as ContentCategory)
+    }
+    if (filters.sourceId === SOURCE_NULL) query = query.is('source_id', null)
+    else if (filters.sourceId) query = query.eq('source_id', filters.sourceId)
+    if (filters.reviewReason) query = query.eq('review_reason', filters.reviewReason)
+    if (filters.bodyFilter === 'none') query = query.is('body_fetched_at', null)
+    if (filters.bodyFilter === 'full') {
+      query = query.not('body_fetched_at', 'is', null).gte('body_len', 400)
+    }
+    if (filters.bodyFilter === 'snippet') {
+      query = query.not('body_fetched_at', 'is', null).lt('body_len', 400)
+    }
+    if (filters.todayOnly) query = query.gte('collected_at', getKstTodayStartIso())
+    if (filters.searchTerm) query = query.ilike('title', `%${filters.searchTerm}%`)
+
+    const { count, error: previewError } = await query
+    setIsBulkReviewPreviewing(false)
+
+    if (previewError) {
+      setBulkReviewNotice({
+        message: `대상 건수 미리보기에 실패했습니다: ${previewError.message}`,
+        tone: 'error',
+      })
+      return
+    }
+
+    const previewCount = count ?? 0
+    if (previewCount === 0) {
+      setBulkReviewNotice({ message: '현재 조건에 맞는 검토 대기 콘텐츠가 없습니다.', tone: 'warning' })
+      return
+    }
+    if (previewCount > BULK_REVIEW_LIMIT) {
+      setBulkReviewNotice({
+        message: `대상이 ${BULK_REVIEW_LIMIT.toLocaleString('ko-KR')}건을 초과합니다. 필터를 더 좁혀주세요.`,
+        tone: 'warning',
+      })
+      return
+    }
+
+    setBulkReviewPreview({ count: previewCount, filters })
+  }
+
+  const handleBulkReviewExecute = async () => {
+    if (!bulkReviewPreview) return
+
+    setIsBulkReviewExecuting(true)
+    setBulkReviewNotice(null)
+    try {
+      const response = await fetch('/api/admin/contents/bulk-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...bulkReviewPreview.filters,
+          action: 'reject',
+          expectedCount: bulkReviewPreview.count,
+        }),
+      })
+      const rawResult = await readJsonSafe(response)
+      const result = rawResult && typeof rawResult === 'object'
+        ? rawResult as BulkReviewResponse
+        : {}
+
+      if (!response.ok) {
+        if (response.status === 409) setBulkReviewPreview(null)
+        throw new Error(result.error ?? '조건 일괄 반려에 실패했습니다.')
+      }
+
+      const processed = result.processed ?? 0
+      setBulkReviewPreview(null)
+      setBulkReviewNotice({
+        message: `${processed.toLocaleString('ko-KR')}건을 숨김 처리했습니다.`,
+        tone: 'success',
+      })
+      setPage(1)
+      setReloadToken((value) => value + 1)
+      await refreshPendingCount()
+    } catch (err) {
+      setBulkReviewNotice({
+        message: err instanceof Error ? err.message : '조건 일괄 반려 중 오류가 발생했습니다.',
+        tone: 'error',
+      })
+    } finally {
+      setIsBulkReviewExecuting(false)
+    }
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize) || 1
   const selectedBackfillCount = contents.filter((content) =>
     selectedIds.has(content.id) && getBodyState(content) !== 'full'
@@ -1202,6 +1491,46 @@ export default function AdminContentManager() {
     ? CATEGORY_SOURCE_TYPE[category]
     : undefined
   const sourceOptions = mappedType ? sources.filter((s) => s.type === mappedType) : sources
+  const contentTableColumns: AdminTableColumn<AdminContentRow>[] = [
+    { key: 'title', header: '제목', cell: (content) => <Link href={`/admin/contents/${content.id}`} className="line-clamp-2 block font-medium text-foreground hover:text-brand-600 hover:underline">{content.title}</Link>, truncate: 2 },
+    { key: 'category', header: '카테고리', cell: (content) => CONTENT_CATEGORY_LABEL[content.category], nowrap: true },
+    { key: 'source', header: '소스', cell: (content) => content.sources?.name ?? <span className="text-muted-foreground/60">Google News 검색</span>, truncate: true },
+    { key: 'status', header: '상태', cell: (content) => <div className="flex min-w-0 flex-wrap items-center gap-1.5"><StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} className="shrink-0" /><ReviewReasonBadge content={content} /></div> },
+    { key: 'body', header: '본문 길이', cell: (content) => { const bodyState=getBodyState(content); const len=bodyLength(content); const bodyText=bodyState==='none'?'미시도':len!=null?`${len.toLocaleString()}자`:'처리됨'; const canBackfillBody=bodyState!=='full'; const disabled=workingId===content.id || bodyBackfillId===content.id || isBulkWorking; return <div><div className="flex items-center gap-1"><span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>{bodyText}</span>{canBackfillBody&&<button type="button" disabled={disabled} title="본문 보강" aria-label={`${content.title} 본문 보강`} onClick={()=>{void handleBodyBackfill(content)}} className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">{bodyBackfillId===content.id?<Loader2 className="h-3 w-3 animate-spin"/>:<RotateCcw className="h-3 w-3"/>}</button>}</div>{bodyBackfillNotices[content.id]&&<p className={cn('mt-1 text-[11px] font-medium leading-tight', BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotices[content.id].tone])}>{bodyBackfillNotices[content.id].message}</p>}</div> } },
+    { key: 'collected', header: '수집일 (KST)', cell: (content) => formatKstCompact(content.collected_at), nowrap: true },
+    { key: 'actions', header: '관리', align: 'right', cell: (content) => <RowActions content={content} disabled={workingId===content.id || bodyBackfillId===content.id || isBulkWorking} isWorking={workingId===content.id} onStatusChange={handleStatusChange} onEdit={openEdit} onDelete={handleDelete} /> },
+  ]
+
+  const bulkReviewFilters = currentBulkReviewFilters()
+  const bulkReviewHasFilter = hasBulkReviewFilter(bulkReviewFilters)
+  const bulkReviewUnsupportedFilter = bookmarkedOnly || coverFilter !== 'all'
+  const canPreviewBulkReview =
+    reviewReasonAvailable
+    && status === 'pending'
+    && bulkReviewHasFilter
+    && !bulkReviewUnsupportedFilter
+    && !isBulkReviewPreviewing
+    && !isBulkReviewExecuting
+  const bulkReviewFilterLabels = bulkReviewPreview
+    ? [
+        bulkReviewPreview.filters.reviewReason
+          ? `사유: ${REVIEW_REASON_LABEL[bulkReviewPreview.filters.reviewReason] ?? bulkReviewPreview.filters.reviewReason}`
+          : null,
+        bulkReviewPreview.filters.category
+          ? `카테고리: ${CONTENT_CATEGORY_LABEL[bulkReviewPreview.filters.category as ContentCategory] ?? bulkReviewPreview.filters.category}`
+          : null,
+        bulkReviewPreview.filters.sourceId === SOURCE_NULL
+          ? '소스: Google News 검색'
+          : bulkReviewPreview.filters.sourceId
+            ? `소스: ${sources.find((source) => source.id === bulkReviewPreview.filters.sourceId)?.name ?? bulkReviewPreview.filters.sourceId}`
+            : null,
+        bulkReviewPreview.filters.bodyFilter === 'full' ? '본문: 풀본문' : null,
+        bulkReviewPreview.filters.bodyFilter === 'snippet' ? '본문: 스니펫' : null,
+        bulkReviewPreview.filters.bodyFilter === 'none' ? '본문: 미시도' : null,
+        bulkReviewPreview.filters.todayOnly ? '수집일: 오늘' : null,
+        bulkReviewPreview.filters.searchTerm ? `검색어: ${bulkReviewPreview.filters.searchTerm}` : null,
+      ].filter((label): label is string => Boolean(label))
+    : []
 
   // 편집 폼 카테고리 옵션 (실제 DB enum 값만, deprecated는 현재 행 값이면 추가)
   const EDIT_CATEGORY_OPTIONS: ContentCategory[] = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서']
@@ -1214,6 +1543,7 @@ export default function AdminContentManager() {
   const editSourceName = edit?.sourceId
     ? (sources.find((s) => s.id === edit.sourceId)?.name ?? null)
     : null
+  const editThumbnailUrl = resolveStorageUrl(edit?.thumbnailUrl ?? null)
   const editReviewChecks = edit ? buildReviewChecks(edit) : []
   const editReviewWarnings = editReviewChecks.filter((check) => !check.ok)
   const editLeftPanel = edit ? (
@@ -1231,7 +1561,7 @@ export default function AdminContentManager() {
             category={edit.category}
             sourceName={editSourceName}
             publishedAt={edit.publishedAt ? `${edit.publishedAt}T00:00:00+09:00` : null}
-            thumbnailUrl={edit.thumbnailUrl}
+            thumbnailUrl={editThumbnailUrl}
             href={null}
             keywords={normalizeKeywords(edit.keywords)}
           />
@@ -1285,9 +1615,9 @@ export default function AdminContentManager() {
           className="overflow-hidden rounded-xl border border-dashed border-border bg-muted/40"
         >
           <div className="flex aspect-[16/9] items-center justify-center bg-muted">
-            {edit.thumbnailUrl ? (
+            {editThumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={edit.thumbnailUrl} alt="커버 미리보기" className="h-full w-full object-cover" />
+              <img src={editThumbnailUrl} alt="커버 미리보기" className="h-full w-full object-cover" />
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <ImageIcon className="h-8 w-8" />
@@ -1531,7 +1861,7 @@ export default function AdminContentManager() {
       </div>
 
       {/* ── 검색·소스·상태·본문 상태·페이지 크기 필터 ── */}
-      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_200px_180px_160px_100px]">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_150px_170px_150px_120px_90px]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -1561,6 +1891,27 @@ export default function AdminContentManager() {
             <SelectItem value="all">전체 상태</SelectItem>
             {CONTENT_STATUSES.map((value) => (
               <SelectItem key={value} value={value}>{CONTENT_STATUS_LABEL[value]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={reviewReason}
+          disabled={!reviewReasonAvailable}
+          onValueChange={(value) => {
+            setReviewReason(value as ReviewReason | typeof REVIEW_REASON_ALL)
+            setStatus(value === REVIEW_REASON_ALL ? status : 'pending')
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="검토 사유" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={REVIEW_REASON_ALL}>전체 검토 사유</SelectItem>
+            {REVIEW_REASONS.map((reason) => (
+              <SelectItem key={reason} value={reason}>
+                {REVIEW_REASON_LABEL[reason]}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1597,8 +1948,15 @@ export default function AdminContentManager() {
       </div>
 
       {/* ── 활성 필터 칩 ── */}
-      {(todayOnly || bookmarkedOnly || coverFilter === 'missing' || sourceId !== SOURCE_ALL || (category !== 'all' && !categoryTabs.some((t) => t.value === category))) && (
+      {(todayOnly || bookmarkedOnly || coverFilter === 'missing' || sourceId !== SOURCE_ALL || reviewReason !== REVIEW_REASON_ALL || (category !== 'all' && !categoryTabs.some((t) => t.value === category))) && (
         <div className="flex flex-wrap gap-2">
+          {reviewReason !== REVIEW_REASON_ALL && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+              검토 사유: {REVIEW_REASON_LABEL[reviewReason]}
+              <button type="button" onClick={() => { setReviewReason(REVIEW_REASON_ALL); setPage(1) }}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="검토 사유 필터 제거">×</button>
+            </span>
+          )}
           {coverFilter === 'missing' && (
             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
               표지 없음
@@ -1659,6 +2017,72 @@ export default function AdminContentManager() {
           {isLoading ? '불러오는 중…' : `총 ${totalCount}건 · ${page} / ${totalPages} 페이지`}
         </p>
       </div>
+
+      {reviewReasonAvailable && (
+        <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label="검토 대기 사유 요약">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">검토 대기 사유별 현황</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                현재 카테고리·소스·본문·검색 조건에 해당하는 검토 대기 건수입니다.
+              </p>
+            </div>
+            {isReasonCountsLoading && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                건수 확인 중
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {REVIEW_REASONS.map((reason) => (
+              <AdminFilterChip
+                key={reason}
+                active={reviewReason === reason}
+                count={reviewReasonCounts[reason]}
+                onClick={() => {
+                  setReviewReason(reviewReason === reason ? REVIEW_REASON_ALL : reason)
+                  setStatus('pending')
+                  setPage(1)
+                }}
+              >
+                {REVIEW_REASON_LABEL[reason]}
+              </AdminFilterChip>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!canPreviewBulkReview}
+              onClick={() => { void handleBulkReviewPreview() }}
+              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
+            >
+              {isBulkReviewPreviewing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5" />
+              )}
+              조건 대상 숨김 미리보기
+            </Button>
+            {status !== 'pending' && (
+              <span className="text-xs text-muted-foreground">상태를 ‘검토 대기’로 선택하면 사용할 수 있습니다.</span>
+            )}
+            {status === 'pending' && !bulkReviewHasFilter && (
+              <span className="text-xs text-muted-foreground">사유·카테고리·소스 등 필터를 1개 이상 선택해주세요.</span>
+            )}
+            {status === 'pending' && bulkReviewUnsupportedFilter && (
+              <span className="text-xs text-muted-foreground">북마크·표지 필터는 조건 작업에 포함되지 않으므로 먼저 해제해주세요.</span>
+            )}
+            {bulkReviewNotice && (
+              <span className={cn('text-xs font-medium', BODY_BACKFILL_NOTICE_CLASS[bulkReviewNotice.tone])}>
+                {bulkReviewNotice.message}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── 선택 작업 바 (205 — 1개 이상 선택 시에만 sticky 등장) ── */}
       {selectedIds.size > 0 && (
@@ -1726,150 +2150,20 @@ export default function AdminContentManager() {
       ) : (
         <>
           {/* ── 데스크톱: 단일 테이블 그리드 (348 — sticky 관리 열 제거, 행 배경·hover가 관리까지 이어짐) ── */}
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
-            <table className="w-full min-w-[1032px] table-fixed border-collapse text-sm">
-              <colgroup>
-                <col className="w-9" />
-                <col />{/* 제목: 잔여 폭 전부 흡수 */}
-                <col className="w-[68px]" />
-                <col className="w-[104px]" />
-                <col className="w-[140px]" />
-                <col className="w-[92px]" />
-                <col className="w-[112px]" />
-                <col className="w-[240px]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-border bg-muted text-left text-xs font-semibold text-muted-foreground">
-                  <th className="px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      ref={(el) => { if (el) el.indeterminate = someSelected }}
-                      onChange={toggleAll}
-                      className="h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                      aria-label="전체 선택"
-                    />
-                  </th>
-                  <th className="px-3 py-3">제목</th>
-                  <th className="px-3 py-3">카테고리</th>
-                  <th className="px-3 py-3">소스</th>
-                  <th className="px-3 py-3">상태</th>
-                  <th className="px-3 py-3">본문 길이</th>
-                  <th className="px-3 py-3">수집일 (KST)</th>
-                  <th className="px-3 py-3 text-right">관리</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {contents.map((content) => {
-                  const isWorking   = workingId === content.id
-                  const isBodyBackfilling = bodyBackfillId === content.id
-                  const isSelected  = selectedIds.has(content.id)
-                  const bodyState = getBodyState(content)
-                  const canBackfillBody = bodyState !== 'full'
-                  const isRowDisabled = isWorking || isBodyBackfilling || isBulkWorking
-                  const bodyBackfillNotice = bodyBackfillNotices[content.id]
-                  const len = bodyLength(content)
-                  const bodyText = bodyState === 'none' ? '미시도'
-                    : len != null ? `${len.toLocaleString()}자`
-                    : '처리됨'
-                  return (
-                    <tr
-                      key={content.id}
-                      className={cn(
-                        'transition-colors hover:bg-accent/50',
-                        isSelected && 'bg-brand-600/5'
-                      )}
-                    >
-                      <td className="px-3 py-3 align-top">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleRow(content.id)}
-                          className="mt-0.5 h-4 w-4 rounded border-border accent-[--color-brand-600]"
-                          aria-label={`${content.title} 선택`}
-                        />
-                      </td>
-                      <td className="admin-cell-wrap px-3 py-3 align-top font-medium text-foreground">
-                        <Link
-                          href={`/admin/contents/${content.id}`}
-                          className="line-clamp-2 block hover:text-brand-600 hover:underline"
-                        >
-                          {content.title}
-                        </Link>
-                      </td>
-                      <td className="truncate px-3 py-3 align-top text-muted-foreground" title={CONTENT_CATEGORY_LABEL[content.category]}>
-                        {CONTENT_CATEGORY_LABEL[content.category]}
-                      </td>
-                      <td className="truncate px-3 py-3 align-top text-muted-foreground" title={content.sources?.name ?? 'Google News 검색'}>
-                        {content.sources?.name ?? (
-                          <span className="text-muted-foreground/60">Google News 검색</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex min-w-0 items-center gap-1">
-                          <StatusBadge
-                            tone={CONTENT_STATUS_TONE[content.status]}
-                            label={CONTENT_STATUS_LABEL[content.status]}
-                            className="shrink-0"
-                          />
-                          {content.status === 'pending' && content.review_reason && (
-                            <span
-                              title={`검토 대기 사유: ${REVIEW_REASON_LABEL[content.review_reason] ?? content.review_reason}`}
-                              className="truncate rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk"
-                            >
-                              {REVIEW_REASON_SHORT[content.review_reason] ?? content.review_reason}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex items-center gap-1">
-                          <span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>
-                            {bodyText}
-                          </span>
-                          {canBackfillBody && (
-                            <button
-                              type="button"
-                              disabled={isRowDisabled}
-                              title="본문 보강"
-                              aria-label={`${content.title} 본문 보강`}
-                              onClick={() => { void handleBodyBackfill(content) }}
-                              className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-                            >
-                              {isBodyBackfilling
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : <RotateCcw className="h-3 w-3" />
-                              }
-                            </button>
-                          )}
-                        </div>
-                        {bodyBackfillNotice && (
-                          <p className={cn(
-                            'mt-1 text-[11px] font-medium leading-tight',
-                            BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotice.tone]
-                          )}>
-                            {bodyBackfillNotice.message}
-                          </p>
-                        )}
-                      </td>
-                      <td className="truncate px-3 py-3 align-top text-xs text-muted-foreground tabular-nums" title={formatKst(content.collected_at)}>
-                        {formatKstCompact(content.collected_at)}
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <RowActions
-                          content={content}
-                          disabled={isRowDisabled}
-                          isWorking={isWorking}
-                          onStatusChange={handleStatusChange}
-                          onEdit={openEdit}
-                          onDelete={handleDelete}
-                        />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="hidden md:block">
+            <AdminTable
+              columns={contentTableColumns}
+              rows={contents}
+              rowKey={(content) => content.id}
+              minWidth="min-w-[1072px]"
+              state={isLoading ? 'loading' : error ? 'error' : contents.length === 0 ? 'empty' : 'idle'}
+              errorMessage={error ?? undefined}
+              selection={{ selected: selectedIds, onChange: setSelectedIds }}
+              pagination={{ page, pageSize, total: totalCount }}
+              onPageChange={setPage}
+              emptyMessage="조건에 맞는 콘텐츠가 없습니다."
+              emptyHint="필터를 바꾸거나 수집을 실행해보세요."
+            />
           </div>
 
           {/* ── 모바일: 카드 리스트 (348 — 테이블 축소 대신 카드로 전환) ── */}
@@ -1911,11 +2205,7 @@ export default function AdminContentManager() {
                       </Link>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <StatusBadge tone={CONTENT_STATUS_TONE[content.status]} label={CONTENT_STATUS_LABEL[content.status]} />
-                        {content.status === 'pending' && content.review_reason && (
-                          <span className="rounded-full bg-risk-soft px-1.5 py-0.5 text-[11px] font-medium text-risk">
-                            {REVIEW_REASON_SHORT[content.review_reason] ?? content.review_reason}
-                          </span>
-                        )}
+                        <ReviewReasonBadge content={content} />
                         <span className="text-muted-foreground/50">·</span>
                         <span className="text-xs text-muted-foreground">{CONTENT_CATEGORY_LABEL[content.category]}</span>
                         <span className="text-muted-foreground/50">·</span>
@@ -2000,6 +2290,72 @@ export default function AdminContentManager() {
           </div>
         </div>
       )}
+
+      {/* ── 조건 기반 일괄 반려 확인 ── */}
+      <Dialog
+        open={bulkReviewPreview !== null}
+        onOpenChange={(open) => {
+          if (!open && !isBulkReviewExecuting) setBulkReviewPreview(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>조건 대상 숨김 처리</DialogTitle>
+            <DialogDescription>
+              미리보기와 동일한 검토 대기 콘텐츠만 숨김 상태로 변경합니다.
+            </DialogDescription>
+          </DialogHeader>
+          {bulkReviewPreview && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                <p className="text-sm font-semibold text-foreground">
+                  대상 {bulkReviewPreview.count.toLocaleString('ko-KR')}건
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  실행 직전 서버 건수가 달라지면 작업을 중단하고 다시 미리보기를 요청합니다.
+                </p>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex items-start gap-3">
+                  <dt className="w-20 shrink-0 font-medium text-muted-foreground">상태</dt>
+                  <dd className="text-foreground">검토 대기</dd>
+                </div>
+                <div className="flex items-start gap-3">
+                  <dt className="w-20 shrink-0 font-medium text-muted-foreground">필터</dt>
+                  <dd className="flex flex-wrap gap-1.5">
+                    {bulkReviewFilterLabels.map((label) => (
+                      <span key={label} className="rounded-full bg-muted px-2 py-0.5 text-xs text-foreground">
+                        {label}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isBulkReviewExecuting}
+              onClick={() => setBulkReviewPreview(null)}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isBulkReviewExecuting}
+              onClick={() => { void handleBulkReviewExecute() }}
+            >
+              {isBulkReviewExecuting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {bulkReviewPreview
+                ? `${bulkReviewPreview.count.toLocaleString('ko-KR')}건 숨김 처리`
+                : '숨김 처리'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── 편집 모달 ── */}
       <Dialog open={edit !== null} onOpenChange={(open) => { if (!open) closeEdit() }}>

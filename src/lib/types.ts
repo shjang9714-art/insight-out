@@ -30,20 +30,6 @@ export interface UserProfile {
   updated_at: string
 }
 
-export interface Service {
-  id: string
-  name: string
-  description?: string
-  icon?: string
-  order: number
-}
-
-export interface UserService {
-  user_id: string
-  service_id: string
-  is_pinned: boolean
-}
-
 export interface NewsletterSubscription {
   user_id: string
   frequency: NewsletterFrequency
@@ -58,10 +44,6 @@ export interface OnboardingStep1 {
   default_lens: LensKey
   /** 맞춤 추천 피드 카테고리 키 배열 (FEED_CATEGORIES, users.feed_categories 에 저장) */
   selected_categories: string[]
-}
-
-export interface OnboardingStep2 {
-  service_ids: string[]
 }
 
 export interface OnboardingStep3 {
@@ -131,14 +113,6 @@ export interface Source {
   updated_at: string
 }
 
-export interface Keyword {
-  id: string
-  name: string
-  service_id?: string | null
-  is_competitor: boolean
-  created_at: string
-}
-
 export interface Content {
   id: string
   category: ContentCategory
@@ -173,12 +147,6 @@ export interface Content {
   collected_at: string
   created_at: string
   updated_at: string
-}
-
-export interface ContentService {
-  content_id: string
-  service_id: string
-  created_at: string
 }
 
 export interface ContentKeyword {

@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 import {
   Dialog,
   DialogContent,
@@ -116,6 +119,7 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
   // source_id 없으면 로딩 불필요 — 초기값으로 제어해 effect 내 동기 setState 방지
   const [isLoading, setIsLoading] = useState(() => !!log.source_id)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [savingContentId, setSavingContentId] = useState<string | null>(null)
 
   // Dialog 마운트 시 데이터 fetch (조건부 렌더로 mount 제어)
   useEffect(() => {
@@ -152,17 +156,25 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStatusChange = async (contentId: string, newStatus: ContentStatus) => {
-    // 낙관적 갱신
-    setContents(prev =>
-      prev ? prev.map(c => c.id === contentId ? { ...c, status: newStatus } : c) : prev
-    )
-    const { error } = await supabase
-      .from('contents')
-      .update({ status: newStatus })
-      .eq('id', contentId)
-    if (error) {
-      // 실패 시 원복을 위해 재조회
-      setFetchError(`상태 변경 실패: ${error.message}`)
+    setSavingContentId(contentId)
+    setFetchError(null)
+    try {
+      const { error } = await supabase
+        .from('contents')
+        .update({ status: newStatus })
+        .eq('id', contentId)
+      if (error) {
+        setFetchError(`상태 변경 실패: ${error.message}`)
+        return
+      }
+      setContents(prev =>
+        prev ? prev.map(c => c.id === contentId ? { ...c, status: newStatus } : c) : prev
+      )
+      toast.success('상태를 변경했습니다')
+    } catch (error) {
+      setFetchError(`상태 변경 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setSavingContentId(null)
     }
   }
 
@@ -196,9 +208,7 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
           )}
 
           {fetchError && (
-            <div className="rounded-lg border border-negative/20 bg-negative-soft px-4 py-3 text-sm text-negative">
-              {fetchError}
-            </div>
+            <AdminErrorBox onDismiss={() => setFetchError(null)}>{fetchError}</AdminErrorBox>
           )}
 
           {!isLoading && !fetchError && contents !== null && contents.length === 0 && (
@@ -250,11 +260,16 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
                         className="text-[11px]"
                       />
                       <div className="flex gap-0.5">
+                        {savingContentId === c.id && (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="상태 저장 중" />
+                        )}
                         {CONTENT_STATUSES.filter(s => s !== c.status).map(s => (
                           <button
                             key={s}
+                            type="button"
+                            disabled={savingContentId === c.id}
                             onClick={() => handleStatusChange(c.id, s)}
-                            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                             title={`${CONTENT_STATUS_CONFIG[s].label}으로 변경`}
                           >
                             → {CONTENT_STATUS_CONFIG[s].label}
@@ -277,9 +292,15 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
 
 interface CrawlLogsTableProps {
   logs: CrawlLogRow[]
+  state: AdminTableState
+  errorMessage?: string
+  page: number
+  pageSize: number
+  total: number | null
 }
 
-export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
+export default function CrawlLogsTable({ logs, state, errorMessage, page, pageSize, total }: CrawlLogsTableProps) {
+  const table = useAdminTable({ defaultSort: { key: 'created_at', dir: 'desc' }, pageSize })
   const [drillLog, setDrillLog] = useState<CrawlLogRow | null>(null)
   const [drillPending, setDrillPending] = useState(false)
 
@@ -288,139 +309,33 @@ export default function CrawlLogsTable({ logs }: CrawlLogsTableProps) {
     setDrillPending(pending)
   }
 
+  const columns: AdminTableColumn<CrawlLogRow>[] = [
+    { key: 'createdAt', header: '실행 시각 (KST)', nowrap: true, cell: (log) => <span className="text-xs text-muted-foreground">{formatKST(log.created_at)}</span> },
+    { key: 'source', header: '소스', cell: (log) => { const sourceType = log.sources?.type; const typeLabel = sourceType ? SOURCE_TYPE_LABELS[sourceType] : null; return <div className="flex items-center gap-1.5"><span className="text-xs font-medium text-foreground">{log.sources?.name ?? '—'}</span>{typeLabel && <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{typeLabel}</span>}</div> } },
+    { key: 'status', header: '상태', cell: (log) => <StatusBadge tone={CRAWL_STATUS_TONE[log.status]} label={(STATUS_BADGE[log.status] ?? STATUS_BADGE.failed).label} className="text-[11px]" /> },
+    { key: 'fetched', header: '가져옴', numeric: true, cell: (log) => log.fetched_count },
+    { key: 'inserted', header: '신규', align: 'right', cell: (log) => log.inserted_count > 0 && log.source_id ? <button onClick={() => openDrill(log, false)} className="font-medium text-positive underline decoration-dotted hover:opacity-80">+{log.inserted_count}</button> : <span className="text-muted-foreground">0</span> },
+    { key: 'duplicate', header: '중복', align: 'right', cell: (log) => <span className="text-xs tabular-nums text-muted-foreground">{log.duplicate_count.toLocaleString()}</span> },
+    { key: 'held', header: '보류', align: 'right', cell: (log) => log.held_count > 0 && log.source_id ? <button onClick={() => openDrill(log, true)} className="font-medium text-yellow-700 underline decoration-dotted hover:text-yellow-800">{log.held_count}</button> : <span className="text-muted-foreground">{log.held_count.toLocaleString()}</span> },
+    { key: 'rejected', header: '제외', align: 'right', cell: (log) => log.rejected_count == null ? '—' : <span className="text-xs tabular-nums text-muted-foreground" title={rejectedByTooltip(log.rejected_by) || undefined}>{log.rejected_count.toLocaleString()}</span> },
+    { key: 'elapsed', header: '소요', align: 'right', nowrap: true, cell: (log) => <span className="text-xs text-muted-foreground">{elapsedSec(log.started_at, log.finished_at)}</span> },
+    { key: 'error', header: '에러', width: 'max-w-[200px]', cell: (log) => log.error_message ? <span className="line-clamp-2 text-[11px] text-negative" title={log.error_message}>{log.error_message}</span> : null },
+  ]
+
   return (
     <>
-      {logs.length === 0 ? (
-        <AdminEmptyState
-          message="아직 수집 기록이 없습니다."
-          hint="소스를 등록하고 수집을 실행하면 기록이 쌓입니다."
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[780px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">실행 시각 (KST)</th>
-                <th className="px-4 py-3">소스</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3 text-right">가져옴</th>
-                <th className="px-4 py-3 text-right">신규</th>
-                <th className="px-4 py-3 text-right">중복</th>
-                <th className="px-4 py-3 text-right">보류</th>
-                <th className="px-4 py-3 text-right">제외</th>
-                <th className="px-4 py-3 text-right">소요</th>
-                <th className="px-4 py-3">에러</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {logs.map((log) => {
-                const badge = STATUS_BADGE[log.status] ?? STATUS_BADGE.failed
-                const sourceType = log.sources?.type
-                const typeLabel = sourceType ? SOURCE_TYPE_LABELS[sourceType] : null
-                const canDrill = !!log.source_id
-
-                return (
-                  <tr key={log.id} className="transition-colors hover:bg-accent/50">
-                    {/* 실행 시각 */}
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
-                      {formatKST(log.created_at)}
-                    </td>
-
-                    {/* 소스명 + 대구분 배지 */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-foreground">
-                          {log.sources?.name ?? '—'}
-                        </span>
-                        {typeLabel && (
-                          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                            {typeLabel}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* 상태 배지 */}
-                    <td className="px-4 py-3">
-                      <StatusBadge
-                        tone={CRAWL_STATUS_TONE[log.status]}
-                        label={badge.label}
-                        className="text-[11px]"
-                      />
-                    </td>
-
-                    {/* 가져옴 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums text-foreground">
-                      {log.fetched_count.toLocaleString()}
-                    </td>
-
-                    {/* 신규 — 클릭 가능 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums">
-                      {log.inserted_count > 0 && canDrill ? (
-                        <button
-                          onClick={() => openDrill(log, false)}
-                          className="font-medium text-positive underline decoration-dotted hover:opacity-80"
-                        >
-                          +{log.inserted_count}
-                        </button>
-                      ) : (
-                        <span className="text-muted-foreground">0</span>
-                      )}
-                    </td>
-
-                    {/* 중복 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums text-muted-foreground">
-                      {log.duplicate_count.toLocaleString()}
-                    </td>
-
-                    {/* 보류 — 클릭 가능 */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums">
-                      {log.held_count > 0 && canDrill ? (
-                        <button
-                          onClick={() => openDrill(log, true)}
-                          className="font-medium text-yellow-700 underline decoration-dotted hover:text-yellow-800"
-                        >
-                          {log.held_count}
-                        </button>
-                      ) : (
-                        <span className="text-muted-foreground">{log.held_count.toLocaleString()}</span>
-                      )}
-                    </td>
-
-                    {/* 제외 — 사유 분해(312), rejected_count 없으면 '—'(SQL 미적용) */}
-                    <td className="px-4 py-3 text-right text-xs tabular-nums text-muted-foreground">
-                      {log.rejected_count == null ? (
-                        '—'
-                      ) : (
-                        <span title={rejectedByTooltip(log.rejected_by) || undefined}>
-                          {log.rejected_count.toLocaleString()}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* 소요 */}
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
-                      {elapsedSec(log.started_at, log.finished_at)}
-                    </td>
-
-                    {/* 에러 */}
-                    <td className="admin-cell-wrap max-w-[200px] px-4 py-3">
-                      {log.error_message ? (
-                        <span
-                          className="line-clamp-2 text-[11px] text-negative"
-                          title={log.error_message}
-                        >
-                          {log.error_message}
-                        </span>
-                      ) : null}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <AdminTable
+        columns={columns}
+        rows={logs}
+        rowKey={(log) => log.id}
+        minWidth="min-w-[780px]"
+        state={state}
+        emptyMessage="아직 수집 기록이 없습니다."
+        emptyHint="소스를 등록하고 수집을 실행하면 기록이 쌓입니다."
+        errorMessage={errorMessage}
+        pagination={{ page, pageSize, total }}
+        onPageChange={table.setPage}
+      />
 
       {drillLog && (
         <DrillDialog

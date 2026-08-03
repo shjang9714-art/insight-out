@@ -1,6 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
+import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { summarizeKo } from '@/lib/crawler/summarize'
 import { stripMarkdown } from '@/lib/contents/clean-body'
 
@@ -26,32 +25,11 @@ function cleanHtml(raw: string): string {
 export async function POST(request: NextRequest) {
   // ─── 인증 + 관리자 확인 ──────────────────────────────────────────────────
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cs) { cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
-    return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
-  }
+  const gate = await verifyAdminRequest()
+  if (!gate.ok) return gate.response
+  // 485: 인증 통합으로 데이터 경로가 service_role 로 승격됨(기존 사용자 스코프).
+  //      492 에서 is_admin() 을 능력 기반으로 조일 때 이 경로를 함께 검토할 것.
+  const supabase = gate.admin
 
   // ─── 요청 파싱 ───────────────────────────────────────────────────────────
 
@@ -65,7 +43,6 @@ export async function POST(request: NextRequest) {
     author?: string | null
     publishedAt?: string | null
     sourceId?: string | null
-    serviceIds?: string[]
     keywords?: string[]
   }
 
@@ -75,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 })
   }
 
-  const { category, title, bodyText, bodyMarkdown, originalUrl, summary, author, publishedAt, sourceId, serviceIds = [], keywords = [] } = body
+  const { category, title, bodyText, bodyMarkdown, originalUrl, summary, author, publishedAt, sourceId, keywords = [] } = body
 
   if (!title?.trim()) {
     return NextResponse.json({ error: '제목을 입력해주세요.' }, { status: 400 })
@@ -139,16 +116,6 @@ export async function POST(request: NextRequest) {
   }
 
   const contentId = contentRow.id
-
-  // ─── content_services insert ─────────────────────────────────────────────
-
-  if (serviceIds.length > 0) {
-    const rows = serviceIds.map((sid: string) => ({ content_id: contentId, service_id: sid }))
-    const { error: svcErr } = await supabase.from('content_services').insert(rows)
-    if (svcErr) {
-      console.error('[api/admin/paste] content_services insert 실패:', svcErr)
-    }
-  }
 
   // ─── keywords: 조회/생성 → content_keywords ──────────────────────────────
 

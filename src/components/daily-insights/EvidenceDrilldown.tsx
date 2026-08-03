@@ -19,7 +19,7 @@ interface EvidenceDrilldownProps {
 
 const SOURCES_WINDOW_LABEL = '· 지난 7일 이내 발행'
 
-const LENS_META = {
+export const LENS_META = {
   opportunity: { label: '기회', icon: Rocket, cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' },
   risk: { label: '리스크', icon: ShieldAlert, cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
   action: { label: '실행 제안', icon: ListChecks, cls: 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300' },
@@ -28,7 +28,7 @@ const LENS_META = {
 
 /**
  * §2.5② 3C 근거 드릴다운 — 문장별 매핑 대신 인사이트 단위 근거 목록으로 폴백(기존
- * InsightCardNewsList.tsx의 "근거 N건 더보기" 패턴 재사용). 시장/경쟁사 동향과
+ * InsightCardNewsList.tsx의 "근거 N건 더보기" 패턴 재사용). 경쟁사 동향(있을 때)과
  * 자사 시사점(4갈래 또는 폴백) 아래에 근거 기사 패널이 항상 펼쳐진 상태로 표시된다.
  * 근거 0건이면 패널 자체를 렌더하지 않는다.
  */

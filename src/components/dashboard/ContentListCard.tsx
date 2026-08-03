@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { CalendarDays, ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import CoverImage from '@/components/common/CoverImage'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover from '@/components/dashboard/BrandedCover'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
@@ -68,17 +69,13 @@ export default function ContentListCard({
     <div className="flex h-full flex-col">
       {/* 표지 — 썸네일 없으면 BrandedCover 폴백(229) */}
       <div className="aspect-[16/9] overflow-hidden rounded-t-2xl bg-muted">
-        {thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnailUrl}
-            alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-            loading="lazy"
-          />
-        ) : (
-          <BrandedCover category={category} title={title} sourceName={sourceName ?? null} />
-        )}
+        <CoverImage
+          src={thumbnailUrl}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          loading="lazy"
+          fallback={<BrandedCover category={category} title={title} sourceName={sourceName ?? null} />}
+        />
       </div>
       <div className="flex flex-1 flex-col p-5">
         {/* 상단: 카테고리 배지 + 해시태그 + 에디터픽 */}
@@ -120,10 +117,16 @@ export default function ContentListCard({
 
         {/* 풋터: 메타 + 액션 */}
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-          <p className="truncate text-[11px] text-muted-foreground">
-            {[sourceName ?? author, dateStr ? `발행 ${dateStr}` : '발행일 미상']
-              .filter(Boolean)
-              .join(' · ')}
+          <p className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-muted-foreground">
+            {(sourceName ?? author) && (
+              <>
+                <span className="truncate">{sourceName ?? author}</span>
+                <span className="shrink-0" aria-hidden>·</span>
+              </>
+            )}
+            <span className="shrink-0 whitespace-nowrap">
+              {dateStr ? `발행 ${dateStr}` : '발행일 미상'}
+            </span>
           </p>
           {originalUrl && (
             <a
@@ -192,9 +195,15 @@ export default function ContentListCard({
   const cardClass =
     'group flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
 
-  // 252 — 유튜브도 인앱 상세로(새 탭 이탈 방지). "원문" 버튼은 위 풋터에서 별도 제공.
+  // 252 — 유튜브도 인앱 상세로. "원문" 버튼은 위 풋터에서 별도 제공.
   return (
-    <Link href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`} prefetch={false} className={cardClass}>
+    <Link
+      href={`/dashboard/contents/${id}?category=${encodeURIComponent(category)}`}
+      prefetch={false}
+      target="_blank"
+      rel="noopener"
+      className={cardClass}
+    >
       <article className="h-full">{inner}</article>
     </Link>
   )
