@@ -22,6 +22,7 @@ import { Progress } from '@/components/ui/progress'
 import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 
@@ -137,6 +138,7 @@ function AliasChipInput({ chips, onAdd, onRemove, placeholder }: AliasChipInputP
 // ─── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function EntityManager() {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
 
   // 목록 상태
@@ -386,10 +388,7 @@ export default function EntityManager() {
   // ── 삭제 ─────────────────────────────────────────────────────────────────
 
   const handleDelete = async (entity: EntityRow) => {
-    const confirmed = window.confirm(
-      `"${entity.canonical_name}" 엔티티를 삭제하시겠습니까?\n\n` +
-      `⚠️ 삭제 시 동의어와 콘텐츠 연결도 함께 삭제됩니다.`
-    )
+    const confirmed = await confirm({ title: '엔티티 삭제', description: '삭제 시 동의어와 콘텐츠 연결도 함께 삭제됩니다.', targets: [entity.canonical_name], confirmLabel: '삭제', destructive: true })
     if (!confirmed) return
     const { error: err } = await supabase
       .from('entities')

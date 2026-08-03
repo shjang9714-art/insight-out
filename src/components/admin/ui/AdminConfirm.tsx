@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 
 export type ConfirmOptions = {
@@ -37,10 +37,10 @@ export function AdminConfirmHost({ children }: { children: ReactNode }) {
     }
   })
 
-  const close = (result: boolean) => {
+  const close = useCallback((result: boolean) => {
     request?.resolve(result)
     setRequest(null)
-  }
+  }, [request])
 
   const load = () => {
     if (!request?.loadCount) return
@@ -56,7 +56,7 @@ export function AdminConfirmHost({ children }: { children: ReactNode }) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [request])
+  }, [request, close])
 
   return (
     <AdminConfirmContext.Provider value={confirm}>
