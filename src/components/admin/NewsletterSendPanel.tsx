@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { sendNewsletterNow, getPreviewHtml } from '@/app/admin/newsletter/actions'
+import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 export default function NewsletterSendPanel() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
@@ -11,12 +12,13 @@ export default function NewsletterSendPanel() {
 
   const [sendStatus, setSendStatus] = useState<'idle' | 'sending'>('idle')
   const [sendResult, setSendResult] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const handlePreview = async () => {
     setPreviewLoading(true)
     const result = await getPreviewHtml()
     if ('error' in result && result.error) {
-      alert(result.error)
+      setPreviewError(result.error)
     } else if ('html' in result) {
       setPreviewHtml(result.html ?? null)
     }
@@ -69,6 +71,7 @@ export default function NewsletterSendPanel() {
           {sendResult}
         </p>
       )}
+      {previewError && <AdminErrorBox onDismiss={() => setPreviewError(null)}>{previewError}</AdminErrorBox>}
 
       {previewHtml && (
         <div className="mt-4">

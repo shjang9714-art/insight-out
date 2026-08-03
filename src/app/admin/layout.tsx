@@ -6,6 +6,7 @@ import { AdminThemeScope } from '@/components/admin/AdminThemeScope'
 import EnrichJobsProvider from '@/components/admin/EnrichJobsProvider'
 import EnrichJobsDock from '@/components/admin/EnrichJobsDock'
 import { createClient } from '@/lib/supabase/server'
+import { AdminConfirmHost } from '@/components/admin/ui/AdminConfirm'
 
 export const metadata: Metadata = {
   title: '어드민 | Insight Out',
@@ -33,6 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <AdminThemeScope>
+      <AdminConfirmHost>
       <EnrichJobsProvider>
         <Suspense fallback={null}>
           <AdminSidebar />
@@ -42,6 +44,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </main>
         <EnrichJobsDock />
       </EnrichJobsProvider>
+      </AdminConfirmHost>
     </AdminThemeScope>
   )
 }
