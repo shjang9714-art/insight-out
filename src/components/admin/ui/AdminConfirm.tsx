@@ -1,9 +1,9 @@
 'use client'
 
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 
-type ConfirmOptions = {
+export type ConfirmOptions = {
   title: string
   description?: string
   targets?: string[]
@@ -26,6 +26,7 @@ export function AdminConfirmHost({ children }: { children: ReactNode }) {
   const [request, setRequest] = useState<Request | null>(null)
   const [count, setCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const confirm = (options: ConfirmOptions) => new Promise<boolean>((resolve) => {
     setRequest({ ...options, resolve })
@@ -41,6 +42,22 @@ export function AdminConfirmHost({ children }: { children: ReactNode }) {
     setRequest(null)
   }
 
+  const load = () => {
+    if (!request?.loadCount) return
+    setLoading(true)
+    request.loadCount().then(setCount).catch(() => setCount(null)).finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    if (!request) return
+    cancelRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [request])
+
   return (
     <AdminConfirmContext.Provider value={confirm}>
       {children}
@@ -53,15 +70,18 @@ export function AdminConfirmHost({ children }: { children: ReactNode }) {
               <div className="mt-3 rounded-lg bg-muted/50 p-3 text-sm">
                 <p className="font-medium">대상</p>
                 <ul className="mt-1 list-inside list-disc">
-                  {request.targets.slice(0, 10).map((target) => <li key={target}>{target}</li>)}
+                  {request.targets.slice(0, 10).map((target, index) => <li key={index}>{target}</li>)}
                 </ul>
                 {request.targets.length > 10 && <p className="mt-1 text-muted-foreground">외 {request.targets.length - 10}건</p>}
               </div>
             )}
             {request.loadCount && <p className="mt-3 text-sm">삭제 대상: {loading ? '조회 중...' : count === null ? '확인할 수 없습니다.' : `${count.toLocaleString()}건`}</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => close(false)} disabled={loading}>취소</Button>
-              <Button type="button" variant={request.destructive ? 'destructive' : 'default'} onClick={() => close(true)} disabled={loading}>
+              <Button ref={cancelRef} type="button" variant="outline" onClick={() => close(false)}>취소</Button>
+              {request.loadCount && count === null && !loading && (
+                <Button type="button" variant="outline" onClick={load}>다시 시도</Button>
+              )}
+              <Button type="button" variant={request.destructive ? 'destructive' : 'default'} onClick={() => close(true)} disabled={loading || (Boolean(request.loadCount) && count === null)}>
                 {request.confirmLabel ?? '확인'}
               </Button>
             </div>
