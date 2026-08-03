@@ -15,12 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { Ban, CheckCircle2, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
 import type { SourceType } from '@/lib/types'
@@ -36,7 +30,8 @@ import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
 import type { SourceQualityStat, SourceQualityResponse } from '@/app/api/admin/source-quality/route'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
-import { REVIEW_REASON_LABEL, type Tone } from '@/lib/admin/status-style'
+import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
+import { type Tone } from '@/lib/admin/status-style'
 
 const QUALITY_DAYS_OPTIONS = [7, 14, 30] as const
 type QualityDays = typeof QUALITY_DAYS_OPTIONS[number]
@@ -104,6 +99,13 @@ interface SourceLite {
   rss_url: string | null
   is_active: boolean
   last_crawled_at: string | null
+}
+
+interface SourceDisplayRow {
+  src: SourceLite
+  status: SourceStatusInfo | undefined
+  quality: SourceQualityStat | undefined
+  tier: HealthTier
 }
 
 interface SourceCrawlState {
@@ -539,6 +541,15 @@ export default function SourceQualityManager() {
     ? [...filteredRows].sort((a, b) => HEALTH_TIER_ORDER[a.tier] - HEALTH_TIER_ORDER[b.tier])
     : filteredRows
 
+  const sourceColumns: AdminTableColumn<SourceDisplayRow>[] = [
+    { key: 'name', header: '이름', cell: ({ src }) => src.name, truncate: true },
+    { key: 'type', header: '유형', cell: ({ src }) => <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{SOURCE_TYPE_LABELS[src.type]}</span> },
+    { key: 'status', header: '수집 상태', nowrap: true, cell: ({ status: s, tier }) => { if (!s) return <span className="text-muted-foreground">—</span>; if (tier === 'broken') return <div><StatusBadge tone="negative" label={s.consecutiveFailures >= BROKEN_MIN_CONSECUTIVE_FAILURES ? `🔴 연속실패 ${s.consecutiveFailures}` : '🔴 마지막 성공 3일 초과'} />{s.lastError && <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>{s.lastError}</p>}</div>; if (tier === 'low') { const reason = lowActivityReason(s); return <div><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">⚠️ 저활성(7일 신규 0)</span>{reason && <p className="mt-0.5 max-w-[220px] truncate text-[11px] text-muted-foreground" title={reason}>{reason}</p>}</div> } return <span className="text-muted-foreground">✅ {s.inserted7d}건/7일</span> } },
+    { key: 'quality', header: '수집 품질', nowrap: true, cell: ({ quality: q }) => { if (qualityUnavailable) return <span className="text-[11px] font-medium text-negative">품질 지표를 계산할 수 없습니다 (SQL 186 미적용)</span>; if (!q || q.total === 0) return <span className="text-muted-foreground/40">—</span>; const pendingPct=Math.round(q.pendingRate*100); const bodyFullPct=Math.round(q.bodyFullRate*100); return <div className="space-y-0.5"><div className="flex items-center gap-1.5"><span className="text-muted-foreground">{q.total.toLocaleString()}건</span><StatusBadge tone={qualityTone(q.pendingRate)} label={`불량 ${pendingPct}%`} /></div><p className="text-[11px] text-muted-foreground">본문확보 {bodyFullPct}%</p></div> } },
+    { key: 'lastCrawled', header: '마지막 수집 (KST)', nowrap: true, cell: ({ src }) => formatKst(src.last_crawled_at) },
+    { key: 'actions', header: '작업', align: 'right', cell: ({ src, quality: q }) => { const isLowQuality=Boolean(q && q.total>0 && qualityTone(q.pendingRate)!=='positive'); const sourceCrawlState=sourceCrawlStates[src.id]; const isCrawling=sourceCrawlState?.status==='running'; return <div className="flex flex-col items-end gap-1"><button type="button" onClick={()=>void handleCrawlSource(src)} disabled={!src.is_active||isCrawling} className="inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent disabled:opacity-40" aria-label={`${src.name} 소스만 수집`}>{isCrawling?<Loader2 className="h-3.5 w-3.5 animate-spin"/>:<RefreshCw className="h-3.5 w-3.5"/>}{isCrawling?'수집 중':'수집'}</button>{isLowQuality&&<button type="button" onClick={()=>void handleExcludeDomain(src)} disabled={excludingId===src.id} className="rounded p-1.5 text-risk disabled:opacity-40" title="이 소스 도메인을 제외 규칙(검토 대기)에 추가">{excludingId===src.id?<Loader2 className="h-3.5 w-3.5 animate-spin"/>:<Ban className="h-3.5 w-3.5"/>}</button>}{sourceCrawlState?.status==='completed'&&<p className="text-[11px] text-positive">수집 완료</p>}{sourceCrawlState?.status==='failed'&&<p className="max-w-56 text-right text-[11px] text-negative">{sourceCrawlState.message ?? '수집에 실패했습니다.'}</p>}</div> } },
+  ]
+
   return (
     <div className="space-y-6">
       {error && (
@@ -667,175 +678,15 @@ export default function SourceQualityManager() {
           고장 상태인 소스가 없습니다.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[700px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">유형</th>
-                <th className="px-4 py-3 whitespace-nowrap">수집 상태</th>
-                <th className="px-4 py-3 whitespace-nowrap">수집 품질</th>
-                <th className="px-4 py-3 whitespace-nowrap">마지막 수집 (KST)</th>
-                <th className="px-4 py-3 text-right">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {displayRows.map(({ src, status: s, quality: q, tier }) => {
-                const isLowQuality = Boolean(q && q.total > 0 && qualityTone(q.pendingRate) !== 'positive')
-                const sourceCrawlState = sourceCrawlStates[src.id]
-                const isCrawling = sourceCrawlState?.status === 'running'
-                return (
-                <tr key={src.id} className="hover:bg-accent/50 transition-colors">
-                  <td className="max-w-[220px] truncate px-4 py-3 font-medium text-foreground" title={src.name}>{src.name}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-                      {SOURCE_TYPE_LABELS[src.type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {(() => {
-                      if (!s) return <span className="text-muted-foreground">—</span>
-                      if (tier === 'broken') {
-                        return (
-                          <div>
-                            <StatusBadge
-                              tone="negative"
-                              label={
-                                s.consecutiveFailures >= BROKEN_MIN_CONSECUTIVE_FAILURES
-                                  ? `🔴 연속실패 ${s.consecutiveFailures}`
-                                  : '🔴 마지막 성공 3일 초과'
-                              }
-                            />
-                            {s.lastError && (
-                              <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
-                                {s.lastError}
-                              </p>
-                            )}
-                          </div>
-                        )
-                      }
-                      if (tier === 'low') {
-                        const reason = lowActivityReason(s)
-                        return (
-                          <div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                              ⚠️ 저활성(7일 신규 0)
-                            </span>
-                            {reason && (
-                              <p className="mt-0.5 max-w-[220px] truncate text-[11px] text-muted-foreground" title={reason}>
-                                {reason}
-                              </p>
-                            )}
-                          </div>
-                        )
-                      }
-                      return (
-                        <span className="text-muted-foreground">
-                          ✅ {s.inserted7d}건/7일
-                        </span>
-                      )
-                    })()}
-                  </td>
-                  <td className="admin-cell-wrap px-4 py-3 text-xs">
-                    {(() => {
-                      if (qualityUnavailable) {
-                        return (
-                          <span className="text-[11px] font-medium text-negative">
-                            품질 지표를 계산할 수 없습니다 (SQL 186 미적용)
-                          </span>
-                        )
-                      }
-                      if (!q || q.total === 0) return <span className="text-muted-foreground/40">—</span>
-                      const pendingPct = Math.round(q.pendingRate * 100)
-                      const bodyFullPct = Math.round(q.bodyFullRate * 100)
-                      const deadLinkPct = Math.round(q.deadLinkRate * 100)
-                      const topReasonLabel = q.topReason ? REVIEW_REASON_LABEL[q.topReason] ?? q.topReason : '없음'
-                      const tooltip =
-                        `발행률 ${Math.round(q.publishRate * 100)}% · 본문확보율 ${bodyFullPct}% · ` +
-                        `dead-link율 ${deadLinkPct}% · 대표 불량사유 ${topReasonLabel} · 북마크 ${q.bookmarks.toLocaleString()}건`
-                      return (
-                        <div className="space-y-0.5" title={tooltip}>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-muted-foreground">{q.total.toLocaleString()}건</span>
-                            <StatusBadge tone={qualityTone(q.pendingRate)} label={`불량 ${pendingPct}%`} />
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">
-                            본문확보 {bodyFullPct}%
-                          </p>
-                        </div>
-                      )
-                    })()}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
-                    {formatKst(src.last_crawled_at)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-center justify-end gap-0.5">
-                        <TooltipProvider delayDuration={200}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-flex" tabIndex={src.is_active ? undefined : 0}>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleCrawlSource(src)}
-                                  disabled={!src.is_active || isCrawling}
-                                  className="inline-flex items-center gap-1 rounded px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                                  aria-label={`${src.name} 소스만 수집`}
-                                >
-                                  {isCrawling
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    : <RefreshCw className="h-3.5 w-3.5" />
-                                  }
-                                  {isCrawling ? '수집 중' : '수집'}
-                                </button>
-                              </span>
-                            </TooltipTrigger>
-                            {!src.is_active && (
-                              <TooltipContent side="top">
-                                비활성 소스는 수집할 수 없습니다.
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
-                        </TooltipProvider>
-                        {isLowQuality && (
-                          <button
-                            type="button"
-                            onClick={() => void handleExcludeDomain(src)}
-                            disabled={excludingId === src.id}
-                            className="rounded p-1.5 text-risk transition-colors hover:bg-risk-soft disabled:cursor-not-allowed disabled:opacity-40"
-                            title="이 소스 도메인을 제외 규칙(검토 대기)에 추가"
-                          >
-                            {excludingId === src.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Ban className="h-3.5 w-3.5" />
-                            }
-                          </button>
-                        )}
-                      </div>
-                      {sourceCrawlState?.status === 'completed' && (
-                        <p className="inline-flex items-center gap-1 text-[11px] text-positive" role="status">
-                          <CheckCircle2 className="size-3" />
-                          수집 완료
-                        </p>
-                      )}
-                      {sourceCrawlState?.status === 'failed' && (
-                        <p
-                          className="max-w-56 text-right text-[11px] leading-tight text-negative"
-                          role="alert"
-                          title={sourceCrawlState.message ?? undefined}
-                        >
-                          {sourceCrawlState.message ?? '수집에 실패했습니다.'}
-                        </p>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <AdminTable
+          columns={sourceColumns}
+          rows={displayRows}
+          rowKey={(row) => row.src.id}
+          minWidth="min-w-[700px]"
+          state={isLoading ? 'loading' : error ? 'error' : displayRows.length === 0 ? 'empty' : 'idle'}
+          errorMessage={error ?? undefined}
+          emptyMessage={sources.length === 0 ? '등록된 소스가 없습니다.' : '고장 상태인 소스가 없습니다.'}
+        />
       )}
 
       {crawlJob && crawlProgress && (
