@@ -180,7 +180,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   const isExternalReport = ['리포트', '가트너', 'KRG'].includes(content.category)
   const isKnowledgeReport = content.category === '지식보고서'
   const listFallback = isKnowledgeReport
-    ? '/dashboard/reports?view=knowledge'
+    ? '/dashboard/reports?view=ai'
     : `/dashboard/contents?category=${encodeURIComponent(originCategory ?? content.category)}`
   const isYoutube = content.category === '유튜브'
   const youtubeVideoId = isYoutube ? extractVideoId(content.original_url) : null

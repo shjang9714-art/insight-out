@@ -70,25 +70,18 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
       { id: '뉴스', label: '뉴스', value: '뉴스' },
       { id: '유튜브', label: '유튜브', value: '유튜브' },
       { id: '웹인사이트', label: '기술 Blog', value: '웹인사이트' },
-      // 아래 2개는 자료실 소속 콘텐츠가 아니라 다른 섹션의 기존 페이지로 보내는
+      // 아래 3개는 자료실 소속 콘텐츠가 아니라 다른 섹션의 기존 페이지로 보내는
       // 링크 탭 — href가 있으면 buildL2Href가 category 파라미터 대신 이 href를 쓴다.
       // 페이지·데이터는 그대로 두고 "어디 아래 보이느냐"만 자료실로 옮긴 것(지시서
-      // 2026-08-04b). 상세페이지에서의 활성 L1/L2는 FORCED_L2 참고.
+      // 2026-08-04b/c). 상세페이지에서의 활성 L1/L2는 FORCED_L2 참고.
+      //
+      // "AI 리포트"는 전략보고서(ai_reports)와 지식보고서(contents category='지식보고서')를
+      // 한 목록으로 병합한 화면(/dashboard/reports?view=ai, AiReportBoard)으로 연결한다 —
+      // 리포트 L1이 없어지며 그 자리를 대신한다(지시서 2026-08-04c). '/dashboard/reports'
+      // 섹션 자체는 이제 없다.
+      { id: 'ai-report', label: aiLabel('AI 리포트'), value: 'ai-report', href: '/dashboard/reports?view=ai' },
       { id: 'consulting-report', label: '컨설팅 리포트', value: 'consulting-report', href: '/dashboard/reports?view=external' },
       { id: 'disclosure', label: '공시자료', value: 'disclosure', href: '/dashboard/entities?view=documents' },
-    ],
-  },
-  '/dashboard/reports': {
-    l1Href: '/dashboard/reports',
-    basePath: '/dashboard/reports',
-    paramKey: 'view',
-    defaultId: 'ai',
-    preserveParams: false,
-    // 'external'(컨설팅 리포트) 탭은 자료실로 이관되어 여기서 제거됨(지시서
-    // 2026-08-04b). /dashboard/reports?view=external 페이지 자체는 그대로 있다.
-    tabs: [
-      { id: 'ai', label: aiLabel('AI 리포트'), value: 'ai' },
-      { id: 'knowledge', label: aiLabel('AI참고서'), value: 'knowledge' },
     ],
   },
 }
@@ -123,19 +116,19 @@ const FORCED_L2: {
     l1Href: '/dashboard/issues',
     activeId: () => 'keyword',
   },
-  // 콘텐츠 상세(/dashboard/contents/[id])가 지식보고서인 경우 — 경로는 "콘텐츠"
-  // 소속이지만 실제로는 리포트 L1의 "지식보고서" 탭이 활성이어야 한다. categoryHint는
-  // 링크의 ?category= 쿼리파라미터(첫 렌더부터 확정, 우선)이거나 그게 없을 때
-  // RecordActiveCategoryHint가 mount 시 알려주는 값(폴백)이다.
+  // 콘텐츠 상세(/dashboard/contents/[id])가 지식보고서인 경우 — 자료실 L1의
+  // "AI 리포트" 탭이 활성이어야 한다(지시서 2026-08-04c, 이전엔 리포트 L1의
+  // "지식보고서/AI참고서" 탭이었음). categoryHint는 링크의 ?category= 쿼리파라미터
+  // (첫 렌더부터 확정, 우선)이거나 그게 없을 때 RecordActiveCategoryHint가 mount
+  // 시 알려주는 값(폴백)이다.
   {
     test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && cat === '지식보고서',
-    l1Href: '/dashboard/reports',
-    activeId: () => 'knowledge',
+    l1Href: '/dashboard/contents',
+    activeId: () => 'ai-report',
   },
   // 콘텐츠 상세가 외부 리포트(리포트/가트너/KRG)인 경우 — 자료실 L1의 "컨설팅 리포트"
-  // 탭이 활성이어야 한다(지시서 2026-08-04b, 이전엔 리포트 L1의 "외부 리포트" 탭이었음).
-  // l1Href가 '/dashboard/contents'라 DashboardHeader의 기본 매칭(경로 접두사)과도
-  // 일치해 REPORT_TYPE_CATEGORIES에서 이 3개를 뺀 것과 짝이 맞는다.
+  // 탭이 활성이어야 한다(지시서 2026-08-04b). l1Href가 '/dashboard/contents'라
+  // DashboardHeader의 기본 매칭(경로 접두사)과도 일치한다.
   {
     test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && ['리포트', '가트너', 'KRG'].includes(cat ?? ''),
     l1Href: '/dashboard/contents',
@@ -148,6 +141,17 @@ const FORCED_L2: {
     test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && cat === '기업자료',
     l1Href: '/dashboard/contents',
     activeId: () => 'disclosure',
+  },
+  // 전략보고서 목록·상세(/dashboard/reports, /dashboard/reports/[id]) — 리포트 L1이
+  // 없어져 NAV_ALIAS_PREFIXES로 자료실 L1에 편입됐다(DashboardHeader.tsx). 여기서는
+  // 그 안의 L2를 정한다: view=external로 들어오면(자료실의 "컨설팅 리포트" 탭에서
+  // 온 경우) "컨설팅 리포트"를, 그 외(기본 view=ai 목록·상세 페이지 전부)는
+  // "AI 리포트"를 활성으로 — 상세 페이지엔 view 파라미터가 없어 자연히 AI 리포트로
+  // 떨어진다(지시서 2026-08-04c).
+  {
+    test: (p) => p.startsWith('/dashboard/reports'),
+    l1Href: '/dashboard/contents',
+    activeId: (sp) => sp.get('view') === 'external' ? 'consulting-report' : 'ai-report',
   },
 ]
 
