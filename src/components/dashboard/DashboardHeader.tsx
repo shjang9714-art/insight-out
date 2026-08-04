@@ -37,11 +37,15 @@ const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   '/dashboard/entities': ['/dashboard/insights'],
 }
 
-// 콘텐츠 상세(/dashboard/contents/[id])인데 실제 category가 리포트류(지식보고서/
-// 리포트/가트너/KRG)면 경로는 "콘텐츠" 소속이라도 "리포트" L1이 활성이어야 한다.
+// 콘텐츠 상세(/dashboard/contents/[id])인데 실제 category가 지식보고서면 경로는
+// "자료실" 소속이라도 "리포트" L1이 활성이어야 한다(Stage 4에서 지식보고서도 옮기기
+// 전까지는 유지). 리포트/가트너/KRG(외부 리포트류)·기업자료는 지시서 2026-08-04b로
+// 자료실로 이관되어 더 이상 여기서 오버라이드하지 않는다 — 경로가 이미
+// /dashboard/contents/[id]라 기본 매칭만으로 자료실 L1이 active된다(대신
+// taxonomy.tsx FORCED_L2가 자료실 안의 L2 탭을 강제한다).
 // RecordActiveCategoryHint → ActiveCategoryProvider로 전달된 category로 판정한다.
 const CONTENT_DETAIL_PATTERN = /^\/dashboard\/contents\/[^/]+$/
-const REPORT_TYPE_CATEGORIES = ['지식보고서', '리포트', '가트너', 'KRG']
+const REPORT_TYPE_CATEGORIES = ['지식보고서']
 
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
