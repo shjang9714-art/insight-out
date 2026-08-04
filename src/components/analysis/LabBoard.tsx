@@ -13,9 +13,21 @@ import type { TopicTrend } from '@/components/analysis/AiInsightBoard'
 import InsightViewTabs from '@/components/analysis/InsightViewTabs'
 import CouncilWorkspace from '@/components/dashboard/CouncilWorkspace'
 import { LAB_TABS, LAB_VIEW_IDS, type LabViewId } from '@/lib/lab/tabs'
+import LguImpactBadge from '@/components/contents/LguImpactBadge'
+import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
+import CompetitorWeeklyList from '@/components/entities/CompetitorWeeklyList'
+import CompetitorWeeklyTimeline from '@/components/entities/CompetitorWeeklyTimeline'
+import EntitySectionHeader from '@/components/entities/EntitySectionHeader'
+import type { CompetitorNewsData } from '@/lib/entities/competitor-news'
+import type {
+  CompetitorWeeklyCardRow,
+  CompetitorWeeklyTimelineEntry,
+} from '@/lib/competitor-weekly/query'
 
 // 실험실(관리자 전용) 페이지 — 숨김 처리된 하위탭을 모아 확인하는 곳.
-// 현재: 헤드라인 분석/뜨는 토픽/이슈 타임라인 (AiInsightBoard.tsx 의 LAB_TABS 이관).
+// 현재: 헤드라인 분석/뜨는 토픽/이슈 타임라인(AiInsightBoard.tsx 의 LAB_TABS 이관) +
+// 경쟁사 최근 뉴스/경쟁사 주간 브리핑(기업동향 L2에서 이관, entities/page.tsx의
+// CompetitorView·CompetitorTrendView와 동일 컴포넌트·데이터 소스 재사용).
 // 앞으로 생길 실험 탭은 LAB_TABS 배열에 추가 + 아래 렌더 분기만 추가하면 됨.
 
 export interface LabBoardProps {
@@ -26,6 +38,9 @@ export interface LabBoardProps {
   trendingTopics: TopicTrend[]
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
+  competitorNews: CompetitorNewsData
+  weeklyReports: CompetitorWeeklyCardRow[]
+  weeklyTimeline: CompetitorWeeklyTimelineEntry[]
   error?: string
 }
 
@@ -37,6 +52,9 @@ export default function LabBoard({
   trendingTopics,
   kwStrip,
   issueCards,
+  competitorNews,
+  weeklyReports,
+  weeklyTimeline,
   error,
 }: LabBoardProps) {
   const view: LabViewId = LAB_VIEW_IDS.includes(initialView) ? initialView : 'headline'
@@ -56,6 +74,16 @@ export default function LabBoard({
     ...card,
     topKeywords: Array.isArray(card.topKeywords) ? card.topKeywords : [],
   }))
+  const safeCompetitorNews: CompetitorNewsData = competitorNews ?? {
+    competitorCount: 0,
+    groups: [],
+    overallImpactDist: { 위기: 0, 기회: 0, 관망: 0 },
+  }
+  const safeWeeklyReports = Array.isArray(weeklyReports) ? weeklyReports : []
+  const safeWeeklyTimeline = Array.isArray(weeklyTimeline) ? weeklyTimeline : []
+  const COMPETITOR_SUMMARY_CAP = 6
+  const hasImpactSignal =
+    safeCompetitorNews.overallImpactDist['위기'] + safeCompetitorNews.overallImpactDist['기회'] > 0
 
   return (
     <div className="space-y-6">
@@ -177,6 +205,76 @@ export default function LabBoard({
             베타 — MI 관점의 페르소나와 토론하는 AI 협의체(COUNCIL)를 임베드합니다
           </p>
           <CouncilWorkspace />
+        </section>
+      )}
+
+      {/* 경쟁사 최근 뉴스 — entities/page.tsx CompetitorView와 동일 데이터·컴포넌트 */}
+      {view === 'competitor' && (
+        <section>
+          {safeCompetitorNews.competitorCount === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              경쟁사 키워드를 등록하면 동향을 모아 보여줍니다.
+            </div>
+          ) : safeCompetitorNews.groups.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              최근 14일 경쟁사 관련 기사가 없습니다.
+            </div>
+          ) : (
+            <div>
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[13px] text-muted-foreground">
+                <p>최근 14일 · 경쟁사 관련 뉴스</p>
+                <div className="flex items-center gap-2">
+                  {hasImpactSignal && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">LG U+ 관점</span>
+                      <LguImpactBadge impact="위기" count={safeCompetitorNews.overallImpactDist['위기']} />
+                      <LguImpactBadge impact="기회" count={safeCompetitorNews.overallImpactDist['기회']} />
+                    </div>
+                  )}
+                  {hasImpactSignal && <span aria-hidden className="text-border">·</span>}
+                  <Link
+                    href="/dashboard/entities/competitor-news"
+                    prefetch={false}
+                    className="font-medium text-foreground/70 transition-colors hover:text-brand-600"
+                  >
+                    전체 보기 →
+                  </Link>
+                </div>
+              </div>
+
+              <CompetitorNewsGroups
+                groups={safeCompetitorNews.groups}
+                capPerGroup={COMPETITOR_SUMMARY_CAP}
+                seeAllHref="/dashboard/entities/competitor-news"
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 경쟁사 주간 브리핑 — entities/page.tsx CompetitorTrendView와 동일 데이터·컴포넌트 */}
+      {view === 'trend' && (
+        <section className="space-y-11">
+          <CompetitorWeeklyTimeline entries={safeWeeklyTimeline} />
+
+          <section>
+            <EntitySectionHeader
+              title="경쟁사 주간 브리핑"
+              subtitle="매주 경쟁사(통신 3사 중심) 동향을 사업영역별로 종합한 브리핑"
+              meta={safeWeeklyReports.length > 0 ? `브리핑 ${safeWeeklyReports.length}건` : undefined}
+            />
+
+            {safeWeeklyReports.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
+                <p className="text-sm font-medium text-foreground">발행된 경쟁사 주간 브리핑이 아직 없습니다.</p>
+                <p className="text-xs text-muted-foreground">
+                  AI 생성·발행 후 이곳에 표시됩니다.
+                </p>
+              </div>
+            ) : (
+              <CompetitorWeeklyList reports={safeWeeklyReports} />
+            )}
+          </section>
         </section>
       )}
     </div>

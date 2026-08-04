@@ -56,10 +56,12 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     paramKey: 'view',
     defaultId: 'watchlist',
     preserveParams: false,
+    // '경쟁사 최근 뉴스'(competitor)·'경쟁사 주간 브리핑'(trend) 탭은 공개 네비에서
+    // 제거해 실험실(/dashboard/lab, 관리자 전용)로 이관했다(LAB_TABS 참고). 페이지·
+    // 라우트(/dashboard/entities?view=competitor|trend)는 그대로 남아 있어 직접 URL
+    // 접근은 계속 동작한다 — 여기서는 공개 L2 탭 목록에서만 뺀다.
     tabs: [
       { id: 'watchlist', label: '주요 기업', value: 'watchlist' },
-      { id: 'competitor', label: '경쟁사 최근 뉴스', value: 'competitor' },
-      { id: 'trend', label: aiLabel('경쟁사 주간 브리핑'), value: 'trend' },
       { id: 'documents', label: '기업·기술 자료', value: 'documents' },
     ],
   },
@@ -96,7 +98,10 @@ const FORCED_L2: {
   l1Href: string
   activeId: (searchParams: URLSearchParams, categoryHint?: string | null) => string
 }[] = [
-  // 경쟁사 주간 브리핑 상세 — CompetitorWeeklyDetailPage의 <EntityTabs value="trend" />
+  // 경쟁사 주간 브리핑 상세 — 'trend' 탭은 실험실로 이관되어 entities L2에 더 이상
+  // 없다. activeId 'trend'는 이제 어떤 탭과도 매칭되지 않아 L2 행에 활성 탭 없이
+  // 렌더되는데(에러 아님, DashboardHeader가 tab.id===activeId 매칭 실패 시 단순
+  // 비활성 처리), 라우트 자체는 계속 살아있으므로 깨지지 않는다.
   {
     test: (p) => p.startsWith('/dashboard/entities/competitor-weekly'),
     l1Href: '/dashboard/entities',

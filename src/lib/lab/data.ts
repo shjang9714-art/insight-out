@@ -10,6 +10,13 @@ import {
 } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
 import type { TopicTrend } from '@/components/analysis/AiInsightBoard'
+import { getCompetitorNewsData, type CompetitorNewsData } from '@/lib/entities/competitor-news'
+import {
+  getPublishedCompetitorWeeklyReports,
+  getCompetitorWeeklyTimeline,
+  type CompetitorWeeklyCardRow,
+  type CompetitorWeeklyTimelineEntry,
+} from '@/lib/competitor-weekly/query'
 
 // 실험실(관리자 전용) 페이지 전용 데이터 헬퍼.
 // AiInsightsView.tsx 의 헤드라인/뜨는 토픽/이슈 타임라인 3개 탭에 필요한 부분만
@@ -72,6 +79,11 @@ export interface LabData {
   trendingTopics: TopicTrend[]
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
+  /** 경쟁사 최근 뉴스 탭(기업동향에서 이관) — entities/page.tsx CompetitorView와 동일 소스 */
+  competitorNews: CompetitorNewsData
+  /** 경쟁사 주간 브리핑 탭(기업동향에서 이관) — entities/page.tsx CompetitorTrendView와 동일 소스 */
+  weeklyReports: CompetitorWeeklyCardRow[]
+  weeklyTimeline: CompetitorWeeklyTimelineEntry[]
   error?: string
 }
 
@@ -97,6 +109,9 @@ function createEmptyLabData(error?: string): LabData {
     trendingTopics: [],
     kwStrip: [],
     issueCards: [],
+    competitorNews: { competitorCount: 0, groups: [], overallImpactDist: { 위기: 0, 기회: 0, 관망: 0 } },
+    weeklyReports: [],
+    weeklyTimeline: [],
     ...(error ? { error } : {}),
   }
 }
@@ -116,7 +131,7 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
   }
   type KgRow = { name: string; tag_type: string; include_patterns: string[] | null }
 
-  const [cards, trendRows, keywordGroups, issueCards] = await Promise.all([
+  const [cards, trendRows, keywordGroups, issueCards, competitorNews, weeklyReports, weeklyTimeline] = await Promise.all([
     (async (): Promise<InsightCard[]> => {
       try {
         const { data, error } = await supabase
@@ -193,6 +208,30 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
       } catch (error) {
         recordLabError(errors, 'issue_contents', error)
         return computeIssueActivity(issues, [])
+      }
+    })(),
+    (async (): Promise<CompetitorNewsData> => {
+      try {
+        return await getCompetitorNewsData(supabase)
+      } catch (error) {
+        recordLabError(errors, 'competitor news', error)
+        return { competitorCount: 0, groups: [], overallImpactDist: { 위기: 0, 기회: 0, 관망: 0 } }
+      }
+    })(),
+    (async (): Promise<CompetitorWeeklyCardRow[]> => {
+      try {
+        return await getPublishedCompetitorWeeklyReports(supabase, 12)
+      } catch (error) {
+        recordLabError(errors, 'competitor weekly reports', error)
+        return []
+      }
+    })(),
+    (async (): Promise<CompetitorWeeklyTimelineEntry[]> => {
+      try {
+        return await getCompetitorWeeklyTimeline(supabase, 12)
+      } catch (error) {
+        recordLabError(errors, 'competitor weekly timeline', error)
+        return []
       }
     })(),
   ])
@@ -350,6 +389,9 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
     trendingTopics,
     kwStrip,
     issueCards: issueCards ?? [],
+    competitorNews: competitorNews ?? { competitorCount: 0, groups: [], overallImpactDist: { 위기: 0, 기회: 0, 관망: 0 } },
+    weeklyReports: weeklyReports ?? [],
+    weeklyTimeline: weeklyTimeline ?? [],
     ...(errors.length > 0 ? { error: errors.join(' / ') } : {}),
   }
   } catch (error) {
