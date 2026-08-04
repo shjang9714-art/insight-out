@@ -16,11 +16,17 @@ import { useActiveCategoryContext } from '@/lib/nav/active-category-context'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
+// 'AI 인사이트' L1은 제거됨(지시서 2026-08-04d) — 그 아래 있던 핵심 인사이트·
+// 키워드 분석·관계지도 3개 L2 탭을 각각 L1로 승격했다. 셋 다 같은 경로
+// (/dashboard/issues)를 view= 쿼리파라미터로만 구분해 쓰므로, href에 쿼리를
+// 그대로 박아두고 issuesL1HrefForView()가 view 값으로 활성 탭을 가른다(아래).
 export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: LucideIcon }[] = [
-  { label: '홈',        href: '/dashboard',          exact: true  },
-  { label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
-  { label: '기업동향',   href: '/dashboard/entities', exact: false },
-  { label: '자료실',     href: '/dashboard/contents', exact: false },
+  { label: '홈',         href: '/dashboard',                     exact: true  },
+  { label: '핵심 인사이트', href: '/dashboard/issues',              exact: false },
+  { label: '키워드 분석',  href: '/dashboard/issues?view=keyword', exact: false },
+  { label: '기업동향',    href: '/dashboard/entities',            exact: false },
+  { label: '관계지도',    href: '/dashboard/issues?view=graph',   exact: false },
+  { label: '자료실',      href: '/dashboard/contents',            exact: false },
 ]
 // '리포트' L1 탭은 제거됨(지시서 2026-08-04c) — 전략보고서(/dashboard/reports)와
 // 지식보고서(콘텐츠 category='지식보고서')를 자료실의 "AI 리포트" 탭 하나로 합쳤다.
@@ -34,6 +40,10 @@ export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: Luc
 // 하위가 아님) — href 접두사 매칭만으로는 이런 라우트에서 어떤 탭도 active가 안 돼
 // #l1-active-label이 아예 없어지고, NavGroupAlign이 marginLeft:0으로 폴백해 Lv.2 탭
 // 위치가 어긋난다(§지시서 20260713-Lv2탭-위치일관성). 여기에 별칭 경로를 등록해 보정.
+// '/dashboard/issues' 키는 이제 데스크톱 DashboardHeader에서는 안 쓴다(핵심
+// 인사이트·키워드 분석·관계지도 3탭으로 쪼개져 issuesL1HrefForView가 대신 판정,
+// 아래) — 아직 하나의 'AI 인사이트' 탭으로 남아있는 MobileBottomNav.tsx(다음
+// 단계에서 정리 예정)가 isTabActive를 통해 계속 참조하므로 지우지 않는다.
 const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   '/dashboard/issues':   ['/dashboard/daily-insights', '/dashboard/keywords'],
   '/dashboard/entities': ['/dashboard/insights'],
@@ -41,6 +51,23 @@ const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   // 없어진 뒤로 자료실 소속이다(지시서 2026-08-04c) — 페이지 경로는 그대로 두고
   // L1만 자료실로 편입.
   '/dashboard/contents': ['/dashboard/reports'],
+}
+
+// 핵심 인사이트·키워드 분석·관계지도 3개 L1이 전부 /dashboard/issues를 공유하므로
+// (지시서 2026-08-04d) NAV_TABS의 href 문자열(쿼리 포함)을 그대로 활성 판정 값으로
+// 쓴다 — 아래서 pathname·view 쿼리로 이 셋 중 하나를 정확히 골라 activeL1Href에 넣는다.
+const ISSUES_L1_HREFS = {
+  brief: '/dashboard/issues',
+  keyword: '/dashboard/issues?view=keyword',
+  graph: '/dashboard/issues?view=graph',
+} as const
+
+function issuesL1HrefForView(
+  view: string | null,
+  fallback: keyof typeof ISSUES_L1_HREFS
+): string {
+  if (view === 'keyword' || view === 'graph' || view === 'brief') return ISSUES_L1_HREFS[view]
+  return ISSUES_L1_HREFS[fallback]
 }
 
 // 콘텐츠 상세(/dashboard/contents/[id])의 실제 category를 자료실 L2 강제 매핑에
@@ -84,13 +111,24 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
     month: 'long', day: 'numeric', weekday: 'short',
   })
 
-  // entities/[id]는 경로상 기업동향 소속이지만, AI인사이트 키워드 탭에서 진입한
-  // 경우(origin=issues)엔 AI인사이트가 active여야 L2도 맞게 뜬다.
+  // entities/[id]는 경로상 기업동향 소속이지만, 키워드 분석 탭에서 진입한
+  // 경우(origin=issues)엔 그 탭(기본값)이나 view= 쿼리가 가리키는 탭이 active여야
+  // 한다 — 옛 FORCED_L2의 `sp.get('view') ?? 'keyword'`와 동일 기본값.
   const isEntityDetailFromIssues =
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
-  const activeL1Href = isEntityDetailFromIssues
-    ? '/dashboard/issues'
-    : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
+  // 일간 인사이트 상세(daily-insights/[id])·키워드 상세(keywords/[name])는 최상위
+  // 경로 세그먼트가 /dashboard/issues가 아니지만 각각 핵심 인사이트·키워드 분석
+  // 소속이다(옛 FORCED_L2와 동일 매핑). /dashboard/issues 자체(및 그 하위)는 view=
+  // 쿼리로 판정.
+  const activeL1Href = pathname.startsWith('/dashboard/daily-insights')
+    ? ISSUES_L1_HREFS.brief
+    : pathname.startsWith('/dashboard/keywords')
+      ? ISSUES_L1_HREFS.keyword
+      : pathname === '/dashboard/issues' || pathname.startsWith('/dashboard/issues/')
+        ? issuesL1HrefForView(searchParams.get('view'), 'brief')
+        : isEntityDetailFromIssues
+          ? issuesL1HrefForView(searchParams.get('view'), 'keyword')
+          : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
 
   useEffect(() => {
     const supabase = createClient()

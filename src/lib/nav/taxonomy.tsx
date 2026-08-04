@@ -41,18 +41,11 @@ export interface L2Section {
 }
 
 export const NAV_SECTIONS: Record<string, L2Section> = {
-  '/dashboard/issues': {
-    l1Href: '/dashboard/issues',
-    basePath: '/dashboard/issues',
-    paramKey: 'view',
-    defaultId: 'brief',
-    preserveParams: true,
-    tabs: [
-      { id: 'brief', label: aiLabel('핵심 인사이트'), value: 'brief' },
-      { id: 'keyword', label: '키워드 분석', value: 'keyword' },
-      { id: 'graph', label: '관계지도', value: 'graph' },
-    ],
-  },
+  // '/dashboard/issues' 섹션은 제거됨(지시서 2026-08-04d) — brief·keyword·graph
+  // 3개 L2 탭이 전부 L1로 승격되어(핵심 인사이트·키워드 분석·관계지도, DashboardHeader
+  // NAV_TABS) L2 행이 통째로 중복이 됐다. 활성 L1 판정(3탭 중 어느 게 눌렸는지)은
+  // DashboardHeader.tsx의 issuesL1HrefForView가 view= 쿼리파라미터로 직접 계산한다 —
+  // 페이지·라우트(/dashboard/issues?view=brief|keyword|graph)는 그대로 남아 있다.
   // '/dashboard/entities' 섹션은 제거됨(지시서 2026-08-04b) — 'documents'(기업·기술
   // 자료)는 자료실의 '공시자료'로, 'competitor'·'trend'는 실험실로 각각 이관되어
   // 남는 탭이 'watchlist' 하나뿐이라 L2 행 자체를 없앴다. getL2ForSection이 이
@@ -93,29 +86,14 @@ const FORCED_L2: {
   l1Href: string
   activeId: (searchParams: URLSearchParams, categoryHint?: string | null) => string
 }[] = [
-  // '/dashboard/entities' 섹션 자체가 NAV_SECTIONS에서 제거되어(위 참고) 이
-  // l1Href를 향한 항목은 이제 전부 무의미하다(getL2ForSection이 section을 못 찾아
-  // 바로 null 반환 — activeId까지 도달 안 함). 경쟁사 주간 브리핑 상세·기업
-  // 상세(단건)에 대한 옛 entities L2 강제 매핑은 그래서 제거했다.
+  // '/dashboard/entities'·'/dashboard/issues' 섹션 자체가 NAV_SECTIONS에서
+  // 제거되어(위 참고) 이 l1Href들을 향한 항목은 이제 전부 무의미하다
+  // (getL2ForSection이 section을 못 찾아 바로 null 반환 — activeId까지 도달 안
+  // 함). 경쟁사 주간 브리핑 상세·기업 상세(단건)에 대한 옛 entities L2 강제
+  // 매핑, 기업 상세(origin=issues)·일간 인사이트 상세·키워드 상세에 대한 옛
+  // issues L2 강제 매핑은 그래서 전부 제거했다 — 이 라우트들의 L1 판정은 이제
+  // DashboardHeader.tsx가 직접 한다.
   //
-  // 기업 상세를 AI인사이트 키워드 탭에서 진입(origin=issues) — <AiInsightTabs value={view ?? 'keyword'} />
-  {
-    test: (p) => /^\/dashboard\/entities\/[^/]+$/.test(p),
-    l1Href: '/dashboard/issues',
-    activeId: (sp) => sp.get('view') ?? 'keyword',
-  },
-  // 일간 인사이트 상세 — <AiInsightTabs value="brief" />
-  {
-    test: (p) => p.startsWith('/dashboard/daily-insights/'),
-    l1Href: '/dashboard/issues',
-    activeId: () => 'brief',
-  },
-  // 키워드 상세 — <AiInsightTabs value="keyword" />
-  {
-    test: (p) => p.startsWith('/dashboard/keywords/'),
-    l1Href: '/dashboard/issues',
-    activeId: () => 'keyword',
-  },
   // 콘텐츠 상세(/dashboard/contents/[id])가 지식보고서인 경우 — 자료실 L1의
   // "AI 리포트" 탭이 활성이어야 한다(지시서 2026-08-04c, 이전엔 리포트 L1의
   // "지식보고서/AI참고서" 탭이었음). categoryHint는 링크의 ?category= 쿼리파라미터
