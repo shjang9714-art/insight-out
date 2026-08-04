@@ -1,19 +1,20 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
-import ReportCard from '@/components/reports/ReportCard'
+import AiReportBoardCard from '@/components/reports/AiReportBoardCard'
 import type { ReportViewId } from '@/components/reports/ReportTabs'
 import ContentsBoard from '@/components/contents/ContentsBoard'
-import { getPublishedReports } from '@/lib/reports/query'
+import { getAiReportBoardItems } from '@/lib/reports/ai-report-board'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '리포트 | Insight Out',
-  description: 'AI가 분석한 시장동향·경쟁사 분석 리포트와 컨설팅 리포트',
+  title: 'AI 리포트 | Insight Out',
+  description: 'AI가 분석한 전략보고서와 지식보고서를 한곳에서 확인합니다.',
 }
 
 type SearchParams = Promise<{ view?: string }>
@@ -37,7 +38,11 @@ function ReportGridSkeleton() {
   )
 }
 
-async function ReportsContent() {
+// 지시서 2026-08-04c — 자료실 "AI 리포트" 탭. 전략보고서(ai_reports)와 지식보고서
+// (contents category='지식보고서')를 getAiReportBoardItems가 한 목록으로 병합해
+// 발행일순으로 넘겨준다. 탭은 쪼개지 않고 카드마다 종류 배지로만 구분한다
+// (AiReportBoardCard). 리포트 L1이 있던 자리를 자료실의 이 탭이 대신한다.
+async function AiReportBoard() {
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,9 +59,9 @@ async function ReportsContent() {
     }
   )
 
-  const reports = await getPublishedReports(supabase)
+  const items = await getAiReportBoardItems(supabase)
 
-  if (reports.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="rounded-xl border border-dashed p-16 text-center">
         <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
@@ -67,18 +72,8 @@ async function ReportsContent() {
 
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {reports.map((r) => (
-        <ReportCard
-          key={r.id}
-          id={r.id}
-          title={r.title}
-          summary={r.summary}
-          coverImageUrl={r.cover_image_url}
-          publisher={r.publisher}
-          publishedAt={r.published_at}
-          type={r.type}
-          keywords={r.keywords}
-        />
+      {items.map((item) => (
+        <AiReportBoardCard key={`${item.kind}-${item.id}`} item={item} />
       ))}
     </div>
   )
@@ -91,30 +86,27 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     ? rawView as ReportViewId
     : 'ai'
 
+  // 'knowledge'는 자료실 "AI 리포트"로 흡수됐다(지시서 2026-08-04c) — 옛 URL
+  // (/dashboard/reports?view=knowledge)로 들어와도 404 대신 병합 화면으로 보낸다.
+  if (view === 'knowledge') {
+    redirect('/dashboard/reports?view=ai')
+  }
+
   return (
     <PageContainer>
       {view === 'ai' && (
         <>
           <p className="mb-8 text-sm text-muted-foreground">
-            시장동향과 경쟁사를 분석한 AI 리포트 모음
+            전략보고서·지식보고서를 함께 모은 AI 리포트
           </p>
           <Suspense fallback={<ReportGridSkeleton />}>
-            <ReportsContent />
+            <AiReportBoard />
           </Suspense>
         </>
       )}
       {view === 'external' && (
         <Suspense fallback={<ReportGridSkeleton />}>
           <ContentsBoard fixedCategory="리서치" title="컨설팅 리포트" />
-        </Suspense>
-      )}
-      {view === 'knowledge' && (
-        <Suspense fallback={<ReportGridSkeleton />}>
-          <ContentsBoard
-            fixedCategory="지식보고서"
-            title="AI참고서"
-            schemaPendingMessage="AI참고서 카테고리를 준비하고 있습니다. SQL 적용 후 목록이 표시됩니다."
-          />
         </Suspense>
       )}
     </PageContainer>

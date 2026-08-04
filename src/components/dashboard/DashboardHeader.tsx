@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { FileText, FlaskConical, Menu, Search } from 'lucide-react'
+import { FlaskConical, Menu, Search } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -21,8 +21,10 @@ export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: Luc
   { label: 'AI 인사이트', href: '/dashboard/issues',   exact: false },
   { label: '기업동향',   href: '/dashboard/entities', exact: false },
   { label: '자료실',     href: '/dashboard/contents', exact: false },
-  { label: '리포트',     href: '/dashboard/reports',  exact: false, icon: FileText },
 ]
+// '리포트' L1 탭은 제거됨(지시서 2026-08-04c) — 전략보고서(/dashboard/reports)와
+// 지식보고서(콘텐츠 category='지식보고서')를 자료실의 "AI 리포트" 탭 하나로 합쳤다.
+// /dashboard/reports* 라우트는 그대로 남아 NAV_ALIAS_PREFIXES로 자료실 L1에 편입된다.
 
 // 관리자 전용 '실험실' 퀵링크 — 숨김 처리된 하위 카테고리를 모아 보는 별도 페이지
 // (/dashboard/lab, LabBoard.tsx) 하나로 이동. 현재/향후 실험 탭은 그 페이지 안에서 관리.
@@ -35,17 +37,18 @@ export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: Luc
 const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   '/dashboard/issues':   ['/dashboard/daily-insights', '/dashboard/keywords'],
   '/dashboard/entities': ['/dashboard/insights'],
+  // 전략보고서 목록·상세(/dashboard/reports, /dashboard/reports/[id])는 리포트 L1이
+  // 없어진 뒤로 자료실 소속이다(지시서 2026-08-04c) — 페이지 경로는 그대로 두고
+  // L1만 자료실로 편입.
+  '/dashboard/contents': ['/dashboard/reports'],
 }
 
-// 콘텐츠 상세(/dashboard/contents/[id])인데 실제 category가 지식보고서면 경로는
-// "자료실" 소속이라도 "리포트" L1이 활성이어야 한다(Stage 4에서 지식보고서도 옮기기
-// 전까지는 유지). 리포트/가트너/KRG(외부 리포트류)·기업자료는 지시서 2026-08-04b로
-// 자료실로 이관되어 더 이상 여기서 오버라이드하지 않는다 — 경로가 이미
-// /dashboard/contents/[id]라 기본 매칭만으로 자료실 L1이 active된다(대신
-// taxonomy.tsx FORCED_L2가 자료실 안의 L2 탭을 강제한다).
-// RecordActiveCategoryHint → ActiveCategoryProvider로 전달된 category로 판정한다.
+// 콘텐츠 상세(/dashboard/contents/[id])의 실제 category를 자료실 L2 강제 매핑에
+// 쓰기 위해 RecordActiveCategoryHint → ActiveCategoryProvider로 전달된 값을 읽는다
+// (taxonomy.tsx FORCED_L2가 이 categoryHint로 "컨설팅 리포트"·"공시자료"·"AI 리포트"
+// 중 어느 L2가 활성인지 정한다). L1 자체는 더 이상 여기서 오버라이드하지 않는다 —
+// /dashboard/contents/[id] 경로가 이미 기본 매칭으로 자료실이다.
 const CONTENT_DETAIL_PATTERN = /^\/dashboard\/contents\/[^/]+$/
-const REPORT_TYPE_CATEGORIES = ['지식보고서']
 
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
@@ -72,7 +75,6 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   // 깜빡임이 없다 — 없으면(인용 링크 등 category 미포함 진입) activeContentCategory
   // 컨텍스트로 폴백(RecordActiveCategoryHint가 mount 시 알려줌, 여전히 약간의 지연 가능).
   const contentDetailCategoryHint = isContentDetail ? (category || activeContentCategory) : null
-  const isReportTypeContentDetail = REPORT_TYPE_CATEGORIES.includes(contentDetailCategoryHint ?? '')
 
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
@@ -88,9 +90,7 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
   const activeL1Href = isEntityDetailFromIssues
     ? '/dashboard/issues'
-    : isReportTypeContentDetail
-      ? '/dashboard/reports'
-      : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
+    : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
 
   useEffect(() => {
     const supabase = createClient()
