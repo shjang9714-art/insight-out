@@ -11,7 +11,6 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import SearchBar from '@/components/dashboard/SearchBar'
 import { cn } from '@/lib/utils'
 import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
-import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import { useActiveCategoryContext } from '@/lib/nav/active-category-context'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
@@ -150,6 +149,7 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   }, [])
 
   return (
+    <>
     <header className={cn('sticky top-0 z-20 bg-card/90 backdrop-blur-sm', className)}>
 
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
@@ -277,24 +277,30 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
           )}
         </div>
       </nav>
-
-      {/* ── L2 하위 탭 (md+, sticky 헤더에 통합·상시노출) ──────────────────────── */}
-      <L2Row
-        activeL1Href={activeL1Href}
-        pathname={pathname}
-        searchParams={searchParams}
-        categoryHint={contentDetailCategoryHint}
-      />
     </header>
+
+    {/* ── L2 하위 탭 (md+, 비고정) ─────────────────────────────────────────────
+        header 밖(형제)에 렌더 — sticky가 아니라 페이지 콘텐츠와 함께 스크롤되고,
+        콘텐츠 상단(예: ContentsBoard의 "뉴스 · 총 N건" 제목) 바로 위에 온다
+        (지시서 2026-08-04e). 이전엔 sticky header 안에 통합해 상시노출했었다(372). */}
+    <L2Row
+      activeL1Href={activeL1Href}
+      pathname={pathname}
+      searchParams={searchParams}
+      categoryHint={contentDetailCategoryHint}
+    />
+    </>
   )
 }
 
 // ─── L2 행 ──────────────────────────────────────────────────────────────────
-// L1 sticky 헤더 안에 통합해 스크롤해도 함께 고정되고 항상 노출된다(372).
 // 마우스 위치와 무관하게 항상 실제 활성 라우트(activeL1Href)의 하위 탭만 보여준다
 // — 호버로 내용/위치가 바뀌는 "프리뷰" 기능은 제거됨(§지시서 20260718). 이유:
 // 사용자가 요청한 적 없는 기능이었고, 마우스만 올려도 L2 내용·위치가 바뀌어
 // 실제 활성 상태를 오인하게 만드는 버그로 이어졌다(§지시서 20260716b/20260718).
+// 왼쪽 정렬 + 밑줄 텍스트형(지시서 2026-08-04e) — 예전엔 활성 L1 라벨의 x좌표에
+// 맞추려 NavGroupAlign으로 밀었지만, header 밖(비고정)으로 옮기며 그 이유가
+// 없어져 헤더와 같은 컨테이너(mx-auto max-w-6xl px-4 sm:px-5)로 왼쪽 정렬만 한다.
 function L2Row({
   activeL1Href,
   pathname,
@@ -307,33 +313,30 @@ function L2Row({
   categoryHint: string | null
 }) {
   const l2 = activeL1Href ? getL2ForSection(activeL1Href, pathname, searchParams, categoryHint) : null
+  // 하위 탭이 없는 L1(현재는 자료실 외 전부)에서는 공간도 차지하지 않는다.
+  if (!l2 || l2.section.tabs.length === 0) return null
 
   return (
-    <nav className="hidden min-h-[30px] md:flex" aria-label="하위 메뉴">
-      <div className="mx-auto flex w-full max-w-6xl items-center px-4 pt-1 pb-1 sm:px-5">
-        {/* Lv.2 탭 그룹은 항상 활성 Lv.1 라벨(#l1-active-label)의 텍스트 시작
-            x좌표에서 시작해야 한다(§지시서 20260712/20260713/20260716) —
-            372에서 헤더 sticky 통합 후에도 이 규칙은 유지 */}
-        {/* remeasureKey=activeL1Href — 실제 라우트가 바뀔 때마다 재측정(§지시서 20260716b) */}
-        <NavGroupAlign className="flex items-center gap-6 tracking-[-0.01em]" remeasureKey={activeL1Href}>
-          {l2 && l2.section.tabs.map((tab) => {
-            const active = tab.id === l2.activeId
-            return (
-              // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
-              <Link
-                key={tab.id}
-                href={buildL2Href(l2.section, tab, pathname, searchParams)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 whitespace-nowrap pt-1 pb-1 text-[15px] transition-colors',
-                  active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <span className={cn('h-1 w-1 shrink-0 rounded-full', active ? 'bg-brand-600' : 'bg-transparent')} />
-                {tab.label}
-              </Link>
-            )
-          })}
-        </NavGroupAlign>
+    <nav className="hidden border-b border-border md:flex print:hidden" aria-label="하위 메뉴">
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 pt-3 pb-2 sm:px-5 tracking-[-0.01em]">
+        {l2.section.tabs.map((tab) => {
+          const active = tab.id === l2.activeId
+          return (
+            // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
+            <Link
+              key={tab.id}
+              href={buildL2Href(l2.section, tab, pathname, searchParams)}
+              className={cn(
+                'whitespace-nowrap border-b-2 pb-1.5 text-[15px] transition-colors',
+                active
+                  ? 'border-brand-600 font-medium text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {tab.label}
+            </Link>
+          )
+        })}
       </div>
     </nav>
   )
