@@ -595,6 +595,7 @@ export default function AdminContentManager() {
 
   function confirmDiscardEdit(): boolean {
     if (!hasUnsavedEdit()) return true
+    // 동기 컨텍스트라 window.confirm 유지
     return window.confirm('저장하지 않은 변경사항이 있습니다. 계속하면 변경사항이 사라집니다.')
   }
 

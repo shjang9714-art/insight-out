@@ -447,9 +447,7 @@ export default function EntityManager() {
     setAliasError(null)
     const entity = entities.find(e => e.id === aliasEntityId)
     if (entity && aliasRow.alias.toLowerCase() === entity.canonical_name.toLowerCase()) {
-      const confirmed = window.confirm(
-        `"${aliasRow.alias}"는 대표 이름과 동일한 동의어입니다.\n삭제하면 검색 매핑이 끊어질 수 있습니다.\n그래도 삭제하시겠습니까?`
-      )
+      const confirmed = await confirm({ title: '동의어 삭제', description: '대표 이름과 동일해 삭제하면 검색 매핑이 끊어질 수 있습니다.', targets: [aliasRow.alias], confirmLabel: '삭제', destructive: true })
       if (!confirmed) return
     }
     const { error: err } = await supabase
@@ -492,10 +490,7 @@ export default function EntityManager() {
     const target = entities.find(e => e.id === mergeTargetId)
     if (!source || !target) return
 
-    const confirmed = window.confirm(
-      `"${source.canonical_name}"을(를) "${target.canonical_name}"으로 병합합니다.\n\n` +
-      `⚠️ 모든 기사 연결·동의어가 이전되며 되돌릴 수 없습니다.`
-    )
+    const confirmed = await confirm({ title: '엔티티 병합', description: '모든 기사 연결·동의어가 이전되며 되돌릴 수 없습니다.', targets: [source.canonical_name, target.canonical_name], confirmLabel: '병합', destructive: true })
     if (!confirmed) return
 
     setIsMerging(true)
@@ -566,10 +561,7 @@ export default function EntityManager() {
   }
 
   const handleApplyNorm = async (group: NormalizationGroup) => {
-    const confirmed = window.confirm(
-      `"${group.canonicalName}"으로 ${group.mergeIds.length}개 엔티티를 병합합니다.\n\n` +
-      `⚠️ 같은 회사가 여러 이름으로 쪼개진 걸 합칩니다. 적용하면 되돌릴 수 없어요.`
-    )
+    const confirmed = await confirm({ title: '엔티티 정규화 적용', description: '같은 회사가 여러 이름으로 쪼개진 걸 합칩니다. 적용하면 되돌릴 수 없습니다.', targets: [group.canonicalName], confirmLabel: '적용', destructive: true })
     if (!confirmed) return
 
     setApplyNormError(null)
@@ -593,10 +585,7 @@ export default function EntityManager() {
   const handleApplyAllNorm = async () => {
     const pending = normGroups.filter(g => !dismissedNormIds.has(g.canonicalId))
     if (pending.length === 0) return
-    const confirmed = window.confirm(
-      `제안된 ${pending.length}개 그룹을 모두 병합합니다.\n\n` +
-      `⚠️ 되돌릴 수 없습니다. 계속하시겠습니까?`
-    )
+    const confirmed = await confirm({ title: '엔티티 정규화 일괄 적용', description: '제안된 그룹을 모두 병합하며 되돌릴 수 없습니다.', targets: pending.map((group) => group.canonicalName), confirmLabel: '모두 적용', destructive: true })
     if (!confirmed) return
 
     setApplyNormError(null)
