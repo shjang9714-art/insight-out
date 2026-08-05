@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { FlaskConical, Menu, Search } from 'lucide-react'
+import { FlaskConical, FolderOpen, Menu, Search, Waypoints } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -39,10 +39,11 @@ export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: Luc
 // 하위가 아님) — href 접두사 매칭만으로는 이런 라우트에서 어떤 탭도 active가 안 돼
 // #l1-active-label이 아예 없어지고, NavGroupAlign이 marginLeft:0으로 폴백해 Lv.2 탭
 // 위치가 어긋난다(§지시서 20260713-Lv2탭-위치일관성). 여기에 별칭 경로를 등록해 보정.
-// '/dashboard/issues' 키는 이제 데스크톱 DashboardHeader에서는 안 쓴다(핵심
-// 인사이트·키워드 분석·관계지도 3탭으로 쪼개져 issuesL1HrefForView가 대신 판정,
-// 아래) — 아직 하나의 'AI 인사이트' 탭으로 남아있는 MobileBottomNav.tsx(다음
-// 단계에서 정리 예정)가 isTabActive를 통해 계속 참조하므로 지우지 않는다.
+// '/dashboard/issues' 키는 DashboardHeader의 activeL1Href·MobileBottomNav(둘 다
+// resolveIssuesActiveHref로 판정, 위)에서는 이제 안 쓴다 — DashboardShell.tsx의
+// 모바일 드로어가 NAV_TABS(6개 L1)를 isTabActive로만 판정하며 아직 참조하므로
+// 지우지 않는다(드로어는 지시서 2026-08-05 Stage 6에서 의도적으로 손대지 않음 —
+// 핵심 인사이트·키워드 분석이 동시에 active로 보이는 기존 한계가 드로어엔 남아있음).
 const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   '/dashboard/issues':   ['/dashboard/daily-insights', '/dashboard/keywords'],
   '/dashboard/entities': ['/dashboard/insights'],
@@ -55,7 +56,9 @@ const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
 // 핵심 인사이트·키워드 분석·관계지도 3개 L1이 전부 /dashboard/issues를 공유하므로
 // (지시서 2026-08-04d) NAV_TABS의 href 문자열(쿼리 포함)을 그대로 활성 판정 값으로
 // 쓴다 — 아래서 pathname·view 쿼리로 이 셋 중 하나를 정확히 골라 activeL1Href에 넣는다.
-const ISSUES_L1_HREFS = {
+// export: MobileBottomNav·모바일 전용 아이콘(자료실 우측 액션 영역)이 데스크톱과
+// 정확히 같은 값으로 비교하기 위해 재사용한다(지시서 2026-08-05, Stage 6).
+export const ISSUES_L1_HREFS = {
   brief: '/dashboard/issues',
   keyword: '/dashboard/issues?view=keyword',
   graph: '/dashboard/issues?view=graph',
@@ -67,6 +70,19 @@ function issuesL1HrefForView(
 ): string {
   if (view === 'keyword' || view === 'graph' || view === 'brief') return ISSUES_L1_HREFS[view]
   return ISSUES_L1_HREFS[fallback]
+}
+
+// daily-insights 상세→핵심 인사이트, keywords 상세→키워드 분석, /dashboard/issues
+// 자체(및 하위)는 view= 쿼리로 판정. 그 외 경로면 null(이 라우트들과 무관).
+// DashboardHeader의 activeL1Href·MobileBottomNav·모바일 전용 관계지도 아이콘이
+// 전부 이 함수 하나로 판정해 셋이 어긋나지 않는다(지시서 2026-08-05, Stage 6).
+export function resolveIssuesActiveHref(pathname: string, searchParams: URLSearchParams): string | null {
+  if (pathname.startsWith('/dashboard/daily-insights')) return ISSUES_L1_HREFS.brief
+  if (pathname.startsWith('/dashboard/keywords')) return ISSUES_L1_HREFS.keyword
+  if (pathname === '/dashboard/issues' || pathname.startsWith('/dashboard/issues/')) {
+    return issuesL1HrefForView(searchParams.get('view'), 'brief')
+  }
+  return null
 }
 
 // 콘텐츠 상세(/dashboard/contents/[id])의 실제 category를 자료실 L2 강제 매핑에
@@ -86,12 +102,16 @@ export function isTabActive(href: string, exact: boolean, pathname: string): boo
 
 interface Props {
   onMenuClick?: () => void
+  /** 있으면 모바일 검색 아이콘이 /dashboard/search로 이동하는 대신 이걸 호출한다
+   *  (SearchOverlay를 여는 용도 — 지시서 2026-08-05, 하단바 FAB 제거로 대체). 없으면
+   *  기존처럼 /dashboard/search로 이동하는 링크로 폴백. */
+  onSearchClick?: () => void
   className?: string
 }
 
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
-export default function DashboardHeader({ onMenuClick, className }: Props) {
+export default function DashboardHeader({ onMenuClick, onSearchClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const category     = searchParams.get('category') ?? ''
@@ -115,19 +135,15 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   // 한다 — 옛 FORCED_L2의 `sp.get('view') ?? 'keyword'`와 동일 기본값.
   const isEntityDetailFromIssues =
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
-  // 일간 인사이트 상세(daily-insights/[id])·키워드 상세(keywords/[name])는 최상위
-  // 경로 세그먼트가 /dashboard/issues가 아니지만 각각 핵심 인사이트·키워드 분석
-  // 소속이다(옛 FORCED_L2와 동일 매핑). /dashboard/issues 자체(및 그 하위)는 view=
-  // 쿼리로 판정.
-  const activeL1Href = pathname.startsWith('/dashboard/daily-insights')
-    ? ISSUES_L1_HREFS.brief
-    : pathname.startsWith('/dashboard/keywords')
-      ? ISSUES_L1_HREFS.keyword
-      : pathname === '/dashboard/issues' || pathname.startsWith('/dashboard/issues/')
-        ? issuesL1HrefForView(searchParams.get('view'), 'brief')
-        : isEntityDetailFromIssues
-          ? issuesL1HrefForView(searchParams.get('view'), 'keyword')
-          : (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
+  const activeL1Href =
+    resolveIssuesActiveHref(pathname, searchParams)
+    ?? (isEntityDetailFromIssues ? issuesL1HrefForView(searchParams.get('view'), 'keyword') : null)
+    ?? (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
+
+  // 모바일 전용 관계지도·자료실 아이콘(우측 액션 영역, 지시서 2026-08-05 Stage 6)의
+  // 활성 판정 — 데스크톱 L1과 정확히 같은 기준(resolveIssuesActiveHref·isTabActive)을 쓴다.
+  const isGraphActive = resolveIssuesActiveHref(pathname, searchParams) === ISSUES_L1_HREFS.graph
+  const isContentsActive = isTabActive('/dashboard/contents', false, pathname)
 
   useEffect(() => {
     const supabase = createClient()
@@ -186,13 +202,51 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
 
         {/* 우측: 액션 */}
         <div className="ml-auto flex shrink-0 items-center gap-3 md:ml-0">
+          {/* 모바일 전용 — 관계지도·자료실은 데스크톱에선 이미 L1 탭이라 md:hidden 필수
+              (중복 노출 금지). 하단바가 4탭(홈·핵심 인사이트·키워드 분석·기업동향)으로
+              줄면서(지시서 2026-08-05 Stage 6) 나머지 2개 L1의 모바일 진입점을 여기로
+              옮겼다 — 검색 아이콘 좌측에 배치. */}
           <Link
-            href="/dashboard/search"
-            className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
-            aria-label="검색"
+            href="/dashboard/issues?view=graph"
+            className={cn(
+              'rounded-lg p-2 transition-colors hover:bg-accent md:hidden',
+              isGraphActive ? 'text-brand-600' : 'text-muted-foreground'
+            )}
+            aria-label="관계지도"
+            aria-current={isGraphActive ? 'page' : undefined}
           >
-            <Search className="h-5 w-5 text-muted-foreground" />
+            <Waypoints className="h-5 w-5" />
           </Link>
+          <Link
+            href="/dashboard/contents"
+            className={cn(
+              'rounded-lg p-2 transition-colors hover:bg-accent md:hidden',
+              isContentsActive ? 'text-brand-600' : 'text-muted-foreground'
+            )}
+            aria-label="자료실"
+            aria-current={isContentsActive ? 'page' : undefined}
+          >
+            <FolderOpen className="h-5 w-5" />
+          </Link>
+
+          {onSearchClick ? (
+            <button
+              type="button"
+              onClick={onSearchClick}
+              className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
+              aria-label="검색"
+            >
+              <Search className="h-5 w-5 text-muted-foreground" />
+            </button>
+          ) : (
+            <Link
+              href="/dashboard/search"
+              className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
+              aria-label="검색"
+            >
+              <Search className="h-5 w-5 text-muted-foreground" />
+            </Link>
+          )}
 
           <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
@@ -313,31 +367,63 @@ function L2Row({
   categoryHint: string | null
 }) {
   const l2 = activeL1Href ? getL2ForSection(activeL1Href, pathname, searchParams, categoryHint) : null
-  // 하위 탭이 없는 L1(현재는 자료실 외 전부)에서는 공간도 차지하지 않는다.
+  // 하위 탭이 없는 L1(현재는 자료실 외 전부)에서는 공간도 차지하지 않는다 —
+  // 데스크톱 밑줄 줄·모바일 칩 줄 둘 다.
   if (!l2 || l2.section.tabs.length === 0) return null
 
   return (
-    <nav className="hidden border-b border-border md:flex print:hidden" aria-label="하위 메뉴">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 pt-3 pb-2 sm:px-5 tracking-[-0.01em]">
-        {l2.section.tabs.map((tab) => {
-          const active = tab.id === l2.activeId
-          return (
-            // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
-            <Link
-              key={tab.id}
-              href={buildL2Href(l2.section, tab, pathname, searchParams)}
-              className={cn(
-                'whitespace-nowrap border-b-2 pb-1.5 text-[15px] transition-colors',
-                active
-                  ? 'border-brand-600 font-medium text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {tab.label}
-            </Link>
-          )
-        })}
-      </div>
-    </nav>
+    <>
+      <nav className="hidden border-b border-border md:flex print:hidden" aria-label="하위 메뉴">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 pt-3 pb-2 sm:px-5 tracking-[-0.01em]">
+          {l2.section.tabs.map((tab) => {
+            const active = tab.id === l2.activeId
+            return (
+              // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
+              <Link
+                key={tab.id}
+                href={buildL2Href(l2.section, tab, pathname, searchParams)}
+                className={cn(
+                  'whitespace-nowrap border-b-2 pb-1.5 text-[15px] transition-colors',
+                  active
+                    ? 'border-brand-600 font-medium text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {tab.label}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+
+      {/* 모바일 전용 — 가로 스크롤 칩 필터(지시서 2026-08-05 Stage 6). 데스크톱 밑줄
+          줄과 같은 l2.section.tabs를 쓰므로 id·value·href는 동일, 표시만 다르다.
+          스크롤바 숨김은 FeedCarousel.tsx와 동일 패턴. */}
+      <nav
+        className="flex overflow-x-auto border-b border-border px-4 py-2.5 md:hidden print:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="하위 메뉴(모바일)"
+      >
+        <div className="flex shrink-0 items-center gap-2">
+          {l2.section.tabs.map((tab) => {
+            const active = tab.id === l2.activeId
+            return (
+              // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
+              <Link
+                key={tab.id}
+                href={buildL2Href(l2.section, tab, pathname, searchParams)}
+                className={cn(
+                  'shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+                  active
+                    ? 'bg-brand-600 text-white'
+                    : 'border border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'
+                )}
+              >
+                {tab.label}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+    </>
   )
 }
