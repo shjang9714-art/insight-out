@@ -131,6 +131,15 @@ const FORCED_L2: {
     l1Href: '/dashboard/contents',
     activeId: (sp) => sp.get('view') === 'external' ? 'consulting-report' : 'ai-report',
   },
+  // /dashboard/entities?view=documents(기업·기술 자료 목록) — 자료실의 "공시자료"
+  // 탭으로 이관된 화면(지시서 2026-08-04b). DashboardHeader.tsx가 이 경로+view일 때만
+  // l1Href를 '/dashboard/contents'로 강제하므로(isDocumentsViewFromEntities), 여기
+  // 도달 시점엔 항상 documents 뷰라 pathname만으로 판정해도 안전하다.
+  {
+    test: (p) => p === '/dashboard/entities',
+    l1Href: '/dashboard/contents',
+    activeId: () => 'disclosure',
+  },
 ]
 
 export interface ActiveL2 {

@@ -30,12 +30,25 @@ import { COMPANY_DOC_TYPES } from '@/lib/company-docs/constants'
 
 export const dynamic = 'force-dynamic'
 
-export const metadata: Metadata = {
-  title: '기업동향 | Insight Out',
-  description: '관심기업·경쟁사 동향 및 엔티티 관계 탐색 — 기업·기술·이슈를 한눈에 확인합니다.',
-}
-
 type SearchParams = Promise<{ view?: string; entity?: string; docType?: string; week?: string }>
+
+// view=documents(기업·기술 자료 목록)는 자료실의 "공시자료" 탭으로 이관됐다(지시서
+// 2026-08-04b) — 탭을 눌러 들어왔을 때 브라우저 탭 제목이 "기업동향"으로 뜨면
+// 상단 L1 활성 탭(자료실)과 어긋나 혼란을 준다(2026-08-05 버그 리포트). view별로
+// 분기해 이 화면에 맞는 제목을 낸다.
+export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
+  const params = await searchParams
+  if (params.view === 'documents') {
+    return {
+      title: '공시자료 | Insight Out',
+      description: '공시·IR·기술자료 등 기업 공식 문서를 한곳에서 확인합니다.',
+    }
+  }
+  return {
+    title: '기업동향 | Insight Out',
+    description: '관심기업·경쟁사 동향 및 엔티티 관계 탐색 — 기업·기술·이슈를 한눈에 확인합니다.',
+  }
+}
 
 const VALID_VIEWS = ['watchlist', 'competitor', 'trend', 'documents'] as const
 
@@ -229,7 +242,7 @@ async function DocumentsView({ entityId, docType }: { entityId?: string; docType
   return (
     <div>
       <EntitySectionHeader
-        title="기업·기술 자료"
+        title="공시자료"
         subtitle="공시·IR·기술자료 등 공식 문서를 한곳에서 확인합니다"
         meta={`총 ${stats.total}건 · 이번주 신규 ${stats.newThisWeek}건`}
       />

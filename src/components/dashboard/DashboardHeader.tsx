@@ -131,15 +131,24 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   // 한다 — 옛 FORCED_L2의 `sp.get('view') ?? 'keyword'`와 동일 기본값.
   const isEntityDetailFromIssues =
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
+  // /dashboard/entities?view=documents(기업·기술 자료 목록)는 경로 접두사가
+  // /dashboard/entities라 isTabActive가 기본적으로 "기업동향"을 골라버리지만,
+  // 이 뷰는 자료실의 "공시자료" 탭으로 이관됐다(taxonomy.tsx disclosure 항목,
+  // 지시서 2026-08-04b). 상단 L1이 기업동향으로 잘못 켜지는 버그(2026-08-05
+  // 리포트)를 막기 위해 여기서 자료실로 강제한다 — L2 활성 탭은
+  // taxonomy.tsx의 FORCED_L2(pathname==='/dashboard/entities') 항목이 맞춘다.
+  const isDocumentsViewFromEntities =
+    pathname === '/dashboard/entities' && searchParams.get('view') === 'documents'
   const activeL1Href =
     resolveIssuesActiveHref(pathname, searchParams)
     ?? (isEntityDetailFromIssues ? issuesL1HrefForView(searchParams.get('view'), 'keyword') : null)
+    ?? (isDocumentsViewFromEntities ? '/dashboard/contents' : null)
     ?? (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
 
   // 모바일 전용 관계지도·자료실 아이콘(우측 액션 영역, 지시서 2026-08-05 Stage 6)의
   // 활성 판정 — 데스크톱 L1과 정확히 같은 기준(resolveIssuesActiveHref·isTabActive)을 쓴다.
   const isGraphActive = resolveIssuesActiveHref(pathname, searchParams) === ISSUES_L1_HREFS.graph
-  const isContentsActive = isTabActive('/dashboard/contents', false, pathname)
+  const isContentsActive = isTabActive('/dashboard/contents', false, pathname) || isDocumentsViewFromEntities
 
   useEffect(() => {
     const supabase = createClient()
