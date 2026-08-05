@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import { useState } from 'react'
 import AdminReportBodyEditor from '@/components/admin/reports/AdminReportBodyEditor'
@@ -73,6 +74,7 @@ interface ReportRowProps {
 }
 
 export default function ReportRow({ report, onChanged, onDeleted }: ReportRowProps) {
+  const confirm = useAdminConfirm()
   const [expanded, setExpanded] = useState(false)
   const [detail, setDetail] = useState<ReportDetailResponse | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
@@ -216,7 +218,7 @@ export default function ReportRow({ report, onChanged, onDeleted }: ReportRowPro
   }
 
   const handleDelete = async () => {
-    if (!confirm(`"${report.title}" 보고서를 삭제할까요? 되돌릴 수 없습니다.`)) return
+    if (!(await confirm({ title: '보고서 삭제', description: '되돌릴 수 없습니다.', targets: [report.title], confirmLabel: '삭제', destructive: true }))) return
     setIsDeleting(true)
     setError(null)
     try {

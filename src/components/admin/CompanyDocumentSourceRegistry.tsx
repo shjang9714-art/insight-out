@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import { useEffect, useState } from 'react'
 import { Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
@@ -65,6 +66,7 @@ function formatKst(iso: string | null): string {
 }
 
 export default function CompanyDocumentSourceRegistry() {
+  const confirm = useAdminConfirm()
   const [sources, setSources] = useState<SourceRow[]>([])
   const [tableState, setTableState] = useState<AdminTableState>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -191,7 +193,7 @@ export default function CompanyDocumentSourceRegistry() {
   }
 
   async function handleDelete(src: SourceRow) {
-    const confirmed = window.confirm(`"${src.name}" 소스를 삭제하시겠습니까?\n\n이미 적재된 문서는 보존됩니다.`)
+    const confirmed = await confirm({ title: '문서 소스 삭제', description: '이미 적재된 문서는 보존됩니다.', targets: [src.name], confirmLabel: '삭제', destructive: true })
     if (!confirmed) return
     const res = await fetch(`/api/admin/company-documents/sources/${src.id}`, { method: 'DELETE' })
     if (!res.ok) {

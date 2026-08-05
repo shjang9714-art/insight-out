@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import { startTransition, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -55,6 +56,7 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
 })
 
 export default function BriefingManager() {
+  const confirm = useAdminConfirm()
   const router = useRouter()
   const { runs, startJob } = useEnrichJobs()
   const [period, setPeriod] = useState('')
@@ -157,7 +159,7 @@ export default function BriefingManager() {
       nextStatus === 'archived' ? 'archive' : 'revert'
 
     if (nextStatus === 'published' && !briefing.audio_url) {
-      const confirmed = window.confirm('오디오 없이 공개하면 스크립트만 재생됩니다. 공개할까요?')
+      const confirmed = await confirm({ title: '브리핑 공개', description: '오디오 없이 공개하면 스크립트만 재생됩니다.', confirmLabel: '공개' })
       if (!confirmed) return
     }
 

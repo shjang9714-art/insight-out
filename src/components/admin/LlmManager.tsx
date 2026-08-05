@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { Loader2, CheckCircle2, XCircle, FlaskConical, TriangleAlert } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import {
@@ -121,6 +122,7 @@ const ROUTING_COLUMNS: AdminTableColumn<RoutingRow>[] = [
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function LlmManager() {
+  const confirm = useAdminConfirm()
   const [data, setData]           = useState<LlmData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError]         = useState<string | null>(null)
@@ -184,7 +186,7 @@ export default function LlmManager() {
   }
 
   const handleTest = async () => {
-    if (!window.confirm('LLM classify 호출 1회가 소모됩니다. 계속하시겠습니까?')) return
+    if (!(await confirm({ title: 'LLM 분류 테스트', description: 'LLM classify 호출 1회가 소모됩니다.', confirmLabel: '계속' }))) return
     setIsTesting(true)
     setTestResult(null)
     try {

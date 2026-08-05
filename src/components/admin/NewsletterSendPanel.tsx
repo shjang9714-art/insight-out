@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -7,6 +8,7 @@ import { sendNewsletterNow, getPreviewHtml } from '@/app/admin/newsletter/action
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 
 export default function NewsletterSendPanel() {
+  const confirm = useAdminConfirm()
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
@@ -26,7 +28,7 @@ export default function NewsletterSendPanel() {
   }
 
   const handleSendNow = async () => {
-    if (!window.confirm('지금 바로 뉴스레터를 발송하시겠습니까?')) return
+    if (!(await confirm({ title: '뉴스레터 즉시 발송', description: '수신자에게 즉시 발송되며 되돌릴 수 없습니다.', confirmLabel: '발송', destructive: true }))) return
     setSendStatus('sending')
     setSendResult(null)
 

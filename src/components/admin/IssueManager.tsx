@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import { BrainCircuit, CheckCircle, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2, X, XCircle } from 'lucide-react'
 import type { IssueStatus } from '@/lib/types'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
@@ -132,6 +133,7 @@ function ChipInput({ chips, onChange, placeholder }: ChipInputProps) {
 // ─── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function IssueManager() {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
   const table = useAdminTable({ defaultSort: { key: 'created_at', dir: 'desc' }, pageSize: PAGE_SIZE })
 
@@ -328,9 +330,7 @@ export default function IssueManager() {
   // ── 삭제 ─────────────────────────────────────────────────────────────────
 
   const handleDelete = async (issue: IssueRow) => {
-    const confirmed = window.confirm(
-      `"${issue.title}" 이슈를 삭제하시겠습니까?\n\n⚠️ 배정된 콘텐츠 연결도 함께 삭제됩니다.`
-    )
+    const confirmed = await confirm({ title: '이슈 삭제', description: '배정된 콘텐츠 연결도 함께 삭제됩니다.', targets: [issue.title], confirmLabel: '삭제', destructive: true })
     if (!confirmed) return
     const { error: err } = await supabase
       .from('issues')

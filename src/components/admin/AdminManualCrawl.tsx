@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
@@ -58,8 +59,10 @@ function apiErrorMessage(data: unknown, fallback: string): string {
 }
 
 export default function AdminManualCrawl({
+  
   onComplete,
 }: AdminManualCrawlProps) {
+  const confirm = useAdminConfirm()
   const [crawlDays, setCrawlDays] = useState<CrawlDays>(0)
   const [isStarting, setIsStarting] = useState(false)
   const [crawlJob, setCrawlJob] = useState<CrawlJob | null>(null)
@@ -150,7 +153,7 @@ export default function AdminManualCrawl({
 
   const handleStart = async () => {
     const rangeLabel = crawlDays === 0 ? '오늘 발행분을' : `최근 ${crawlDays}일치를`
-    if (!window.confirm(`모든 활성 소스의 ${rangeLabel} 지금 수집하시겠습니까?`)) return
+    if (!(await confirm({ title: '수동 수집 실행', description: `모든 활성 소스의 ${rangeLabel} 지금 수집합니다.`, confirmLabel: '수집' }))) return
 
     setIsStarting(true)
     setCrawlProgress(null)

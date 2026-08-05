@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -22,6 +23,7 @@ interface EditDraft {
 }
 
 export default function KnowledgeReportList({ reports, onUpdated, onDeleted }: KnowledgeReportListProps) {
+  const confirm = useAdminConfirm()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<EditDraft>({ title: '', summary: '', keywords: '' })
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -62,7 +64,7 @@ export default function KnowledgeReportList({ reports, onUpdated, onDeleted }: K
   }
 
   const remove = async (report: KnowledgeReportAdminItem) => {
-    if (!window.confirm(`“${report.title}”을 목록에서 삭제할까요? 파일은 보관됩니다.`)) return
+    if (!(await confirm({ title: '지식 보고서 삭제', description: '파일은 보관됩니다.', targets: [report.title], confirmLabel: '삭제', destructive: true }))) return
     setPendingId(report.id)
     setError(null)
     try {
