@@ -1,55 +1,43 @@
 'use client'
 
 import Link from 'next/link'
-import { Building2, FileText, Home, Layers, Search } from 'lucide-react'
-import { usePathname } from 'next/navigation'
-import { isTabActive } from '@/components/dashboard/DashboardHeader'
+import { Building2, Hash, Home, Layers } from 'lucide-react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { isTabActive, resolveIssuesActiveHref, ISSUES_L1_HREFS } from '@/components/dashboard/DashboardHeader'
 import { cn } from '@/lib/utils'
 
+// 지시서 2026-08-05(Stage 6) — 5탭(검색 FAB 포함) → 4탭 균등으로 재구성. 관계지도·
+// 자료실(옛 '리포트')은 DashboardHeader 우측 액션 영역의 모바일 전용 아이콘으로,
+// 검색은 헤더 검색 아이콘(SearchOverlay 연결)으로 이동했다. 핵심 인사이트·키워드
+// 분석은 같은 /dashboard/issues 경로를 공유하므로 href만으로는 활성 탭을 못 가른다
+// — DashboardHeader.resolveIssuesActiveHref로 view= 쿼리까지 함께 판정해 데스크톱
+// L1과 어긋나지 않게 한다.
 const MOBILE_TABS = [
-  { label: '홈', href: '/dashboard', exact: true, icon: Home, isFab: false },
-  { label: 'AI 인사이트', href: '/dashboard/issues', exact: false, icon: Layers, isFab: false },
-  { label: '검색', href: '/dashboard/search', exact: false, icon: Search, isFab: true },
-  { label: '기업동향', href: '/dashboard/entities', exact: false, icon: Building2, isFab: false },
-  { label: '리포트', href: '/dashboard/reports', exact: false, icon: FileText, isFab: false },
+  { label: '홈', href: '/dashboard', exact: true, icon: Home },
+  { label: '핵심 인사이트', href: ISSUES_L1_HREFS.brief, exact: false, icon: Layers },
+  { label: '키워드 분석', href: ISSUES_L1_HREFS.keyword, exact: false, icon: Hash },
+  { label: '기업동향', href: '/dashboard/entities', exact: false, icon: Building2 },
 ] as const
 
-export function MobileBottomNav({ onSearchClick }: { onSearchClick: () => void }) {
+export function MobileBottomNav() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // /dashboard/issues 계열이 아니거나 view=graph면 null 또는 관계지도 href가 되어
+  // 아래 두 탭 어느 것과도 일치하지 않는다 — 자연히 둘 다 비활성(관계지도는 하단바에 없음).
+  const issuesActiveHref = resolveIssuesActiveHref(pathname, searchParams)
 
   return (
     <nav
       aria-label="모바일 주 메뉴"
       className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur md:hidden print:hidden"
     >
-      <div className="mx-auto grid h-16 max-w-md grid-cols-5 px-2">
+      <div className="mx-auto grid h-16 max-w-md grid-cols-4 px-2">
         {MOBILE_TABS.map((tab) => {
-          const active = isTabActive(tab.href, tab.exact, pathname)
+          const active =
+            tab.href === ISSUES_L1_HREFS.brief || tab.href === ISSUES_L1_HREFS.keyword
+              ? issuesActiveHref === tab.href
+              : isTabActive(tab.href, tab.exact, pathname)
           const Icon = tab.icon
-
-          if (tab.isFab) {
-            return (
-              <button
-                key={tab.href}
-                type="button"
-                onClick={onSearchClick}
-                aria-label="검색 열기"
-                className="relative -top-3 flex min-w-0 flex-col items-center justify-start gap-1"
-              >
-                <span
-                  className={cn(
-                    'flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg ring-4 ring-background transition-colors',
-                    active ? 'bg-brand-700' : 'hover:bg-brand-700'
-                  )}
-                >
-                  <Icon className="h-5 w-5" aria-hidden />
-                </span>
-                <span className={cn('text-[10px] font-semibold', active ? 'text-brand-600' : 'text-foreground')}>
-                  {tab.label}
-                </span>
-              </button>
-            )
-          }
 
           return (
             // prefetch-ok: 모바일 주 네비 — 개수 고정, 이동 잦음

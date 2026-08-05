@@ -33,14 +33,18 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader className="print:hidden" onMenuClick={() => setSidebarOpen(true)} />
+      <DashboardHeader
+        className="print:hidden"
+        onMenuClick={() => setSidebarOpen(true)}
+        onSearchClick={() => setSearchOpen(true)}
+      />
 
       {/* 풀폭 본문 */}
       <main className="mx-auto w-full max-w-6xl pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 print:max-w-none print:pb-0">
         {children}
       </main>
 
-      <MobileBottomNav onSearchClick={() => setSearchOpen(true)} />
+      <MobileBottomNav />
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* 모바일 드로어 (md 미만에서만) */}
