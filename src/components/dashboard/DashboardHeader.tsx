@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { FlaskConical, FolderOpen, Menu, Search, Waypoints } from 'lucide-react'
+import { FlaskConical, FolderOpen, Menu, Waypoints } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -102,16 +102,12 @@ export function isTabActive(href: string, exact: boolean, pathname: string): boo
 
 interface Props {
   onMenuClick?: () => void
-  /** 있으면 모바일 검색 아이콘이 /dashboard/search로 이동하는 대신 이걸 호출한다
-   *  (SearchOverlay를 여는 용도 — 지시서 2026-08-05, 하단바 FAB 제거로 대체). 없으면
-   *  기존처럼 /dashboard/search로 이동하는 링크로 폴백. */
-  onSearchClick?: () => void
   className?: string
 }
 
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
-export default function DashboardHeader({ onMenuClick, onSearchClick, className }: Props) {
+export default function DashboardHeader({ onMenuClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const category     = searchParams.get('category') ?? ''
@@ -228,25 +224,9 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
           >
             <FolderOpen className="h-5 w-5" />
           </Link>
-
-          {onSearchClick ? (
-            <button
-              type="button"
-              onClick={onSearchClick}
-              className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
-              aria-label="검색"
-            >
-              <Search className="h-5 w-5 text-muted-foreground" />
-            </button>
-          ) : (
-            <Link
-              href="/dashboard/search"
-              className="rounded-lg p-2 transition-colors hover:bg-accent md:hidden"
-              aria-label="검색"
-            >
-              <Search className="h-5 w-5 text-muted-foreground" />
-            </Link>
-          )}
+          {/* 모바일 검색은 하단바 중앙 원형 FAB로 되돌아감(지시서 Stage 6-1) — 좁은
+              화면에서 우측 액션이 관계지도·자료실·돋보기·다크모드 4개로 붐볐던 것을
+              완화. MobileBottomNav.tsx의 SearchFab 참고. */}
 
           <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
