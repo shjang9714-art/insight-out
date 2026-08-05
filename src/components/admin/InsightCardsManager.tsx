@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import type { InsightCard, InsightCardStatus } from '@/lib/types'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import InfoHelp from '@/components/admin/ui/InfoHelp'
 import { INSIGHT_STATUS_TONE } from '@/lib/admin/status-style'
 import { INSIGHT_GENERATION_HELP, COMPANY_INSIGHT_HELP } from '@/lib/admin/help'
@@ -42,6 +43,7 @@ function formatDate(dateStr: string | null | undefined): string {
 // 경쟁사 주간 리포트는 /admin/competitor-weekly 로 이동됨.
 
 export default function InsightCardsManager() {
+  const confirm = useAdminConfirm()
   const [cards, setCards] = useState<InsightCard[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -78,7 +80,7 @@ export default function InsightCardsManager() {
   }
 
   const handleGenerate = async () => {
-    if (!window.confirm(`최근 ${generateDays}일 콘텐츠로 AI 인사이트를 생성하시겠습니까?`)) return
+    if (!(await confirm({ title: 'AI 인사이트 생성', description: `최근 ${generateDays}일 콘텐츠로 생성합니다.`, confirmLabel: '생성' }))) return
     setIsGenerating(true)
     setGenerateResult(null)
     setError(null)
@@ -100,7 +102,7 @@ export default function InsightCardsManager() {
   }
 
   const handleGenerateCompany = async () => {
-    if (!window.confirm('워치리스트 업체별 AI 동향 카드를 생성하시겠습니까? (LLM 호출)')) return
+    if (!(await confirm({ title: '업체별 AI 동향 생성', description: '워치리스트 업체별로 생성합니다. LLM을 호출합니다.', confirmLabel: '생성' }))) return
     setIsGeneratingCompany(true)
     setCompanyResult(null)
     setError(null)
@@ -142,7 +144,7 @@ export default function InsightCardsManager() {
   }
 
   const handleDelete = async (id: string, topic: string) => {
-    if (!window.confirm(`"${topic}" 카드를 삭제하시겠습니까?`)) return
+    if (!(await confirm({ title: '인사이트 카드 삭제', targets: [topic], confirmLabel: '삭제', destructive: true }))) return
     setUpdatingId(id)
     try {
       const res = await fetch(`/api/admin/insights/${id}`, { method: 'DELETE' })

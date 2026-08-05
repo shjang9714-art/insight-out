@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { TagType } from '@/lib/types'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
 
@@ -171,6 +172,7 @@ function ChipInput({ id, label, hint, chips, onChange }: ChipInputProps) {
 // ─── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
 export default function KeywordGroupManager() {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
   const table = useAdminTable({ defaultSort: { key: 'kind', dir: 'asc' }, pageSize: PAGE_SIZE })
 
@@ -331,11 +333,7 @@ export default function KeywordGroupManager() {
   // ── 삭제 ─────────────────────────────────────────────────────────────────
 
   const handleDelete = async (group: GroupRow) => {
-    const confirmed = window.confirm(
-      `"${group.name}" 그룹을 삭제하시겠습니까?\n\n` +
-      `⚠️ 삭제 시 이 그룹의 관련도·태그·검색 시드가 사라집니다.\n` +
-      `중단만 원한다면 비활성화를 권장합니다.`
-    )
+    const confirmed = await confirm({ title: '키워드 그룹 삭제', description: '관련도·태그·검색 시드가 사라집니다. 중단만 원한다면 비활성화를 권장합니다.', targets: [group.name], confirmLabel: '삭제', destructive: true })
     if (!confirmed) return
 
     const { error: err } = await supabase
