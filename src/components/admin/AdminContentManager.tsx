@@ -61,6 +61,7 @@ import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { stripMarkdown, cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import ContentCard from '@/components/dashboard/ContentCard'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
+import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
 
 interface AdminContentRow {
   id: string
@@ -2097,9 +2098,7 @@ export default function AdminContentManager() {
 
       {/* ── 선택 작업 바 (205 — 1개 이상 선택 시에만 sticky 등장) ── */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-0 z-30 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-accent px-4 py-2.5 text-sm shadow-sm">
-          <span className="font-medium text-foreground">{selectedIds.size}건 선택</span>
-          <div className="flex gap-2">
+        <AdminSelectionBar count={selectedIds.size}>
             <Button
               size="sm"
               variant="outline"
@@ -2139,7 +2138,6 @@ export default function AdminContentManager() {
               {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               삭제
             </Button>
-          </div>
           {selectedBackfillHint && (
             <span className="text-xs font-medium text-muted-foreground">
               {selectedBackfillHint}
@@ -2150,7 +2148,7 @@ export default function AdminContentManager() {
               {bulkBodyBackfillNotice.message}
             </span>
           )}
-        </div>
+        </AdminSelectionBar>
       )}
 
       {!isLoading && contents.length === 0 ? (

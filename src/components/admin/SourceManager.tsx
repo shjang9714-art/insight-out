@@ -32,6 +32,7 @@ import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 import AdminManualCrawl from '@/components/admin/AdminManualCrawl'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
 
@@ -181,6 +182,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
   const [sourceStatus, setSourceStatus] = useState<Record<string, SourceStatusInfo> | null>(null)
   const [runningSourceIds, setRunningSourceIds] = useState<Set<string>>(new Set())
   const [crawlMessage, setCrawlMessage] = useState<string | null>(null)
+  const [isBulkWorking, setIsBulkWorking] = useState(false)
 
   // 유형 필터 상태 (§A) — 단일 탭
   const [selectedType, setSelectedType] = useState<SourceType | 'all'>(initialSelectedType)
@@ -392,6 +394,38 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       setError(err instanceof Error ? err.message : '재수집 요청에 실패했습니다.')
     } finally {
       window.setTimeout(() => { void loadSources() }, 5000)
+    }
+  }
+
+  async function handleBulkToggle(next: boolean) {
+    const selected = sources.filter((source) => table.selected.has(source.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: next ? '소스 일괄 활성화' : '소스 일괄 비활성화', description: `${selected.length}개 소스의 활성 상태를 변경합니다.`, targets: selected.map((source) => source.name), confirmLabel: '변경', destructive: false })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      const { error: updateError } = await supabase.from('sources').update({ is_active: next }).in('id', selected.map((source) => source.id))
+      if (updateError) throw updateError
+      table.resetSelection()
+      await loadSources()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '일괄 상태 변경에 실패했습니다.')
+    } finally {
+      setIsBulkWorking(false)
+    }
+  }
+
+  async function handleBulkRecrawl() {
+    const selected = sources.filter((source) => table.selected.has(source.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: '소스 일괄 재수집', description: '선택한 소스의 재수집을 시작합니다.', targets: selected.map((source) => source.name), confirmLabel: '재수집' })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      for (const source of selected) await handleRecrawl(source)
+      table.resetSelection()
+    } finally {
+      setIsBulkWorking(false)
     }
   }
 
@@ -758,6 +792,11 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       </div>
 
       {/* ── 목록 테이블 ── */}
+      {table.selected.size > 0 && <AdminSelectionBar count={table.selected.size}>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkToggle(true) }}>활성화</Button>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkToggle(false) }}>비활성화</Button>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkRecrawl() }}>재수집</Button>
+      </AdminSelectionBar>}
       <AdminTable
         columns={columns}
         rows={sources}
@@ -769,6 +808,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
         onRetry={loadSources}
         pagination={{ page: table.page, pageSize: PAGE_SIZE, total: filteredTotal }}
         onPageChange={table.setPage}
+        selection={{ selected: table.selected, onChange: table.setSelected }}
       />
 
       <SourceImportDialog
