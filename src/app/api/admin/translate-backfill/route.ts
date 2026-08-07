@@ -4,7 +4,7 @@ import {
   TRANSLATION_SEPARATOR,
   translateToKorean,
 } from '@/lib/translate'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -115,10 +115,11 @@ export async function POST(request: NextRequest) {
         skipped,
         remaining: remaining ?? 0,
       }
-    })
+    }, { rejectIfRunning: true })
 
     return NextResponse.json(result)
   } catch (err) {
+    if (err instanceof JobAlreadyRunningError) return NextResponse.json({ error: err.message }, { status: 409 })
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: message }, { status: 500 })
   }

@@ -7,7 +7,7 @@ import {
   type BulkReviewFilters,
 } from '@/lib/admin/bulk-review'
 import { getKstTodayStartIso } from '@/lib/date'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  try {
   const result = await runJob(
     admin,
     {
@@ -120,7 +121,11 @@ export async function POST(request: NextRequest) {
       if (updateError) throw new Error(`조건 일괄 반려 실패: ${updateError.message}`)
       return { processed: processed ?? 0 }
     },
+    { rejectIfRunning: true },
   )
-
   return NextResponse.json(result)
+  } catch (error) {
+    if (error instanceof JobAlreadyRunningError) return NextResponse.json({ error: error.message }, { status: 409 })
+    throw error
+  }
 }

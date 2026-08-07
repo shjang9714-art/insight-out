@@ -1,7 +1,7 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateCompetitorWeeklyReport } from '@/lib/competitor-weekly/generate'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,10 +27,10 @@ export async function POST(request: NextRequest) {
     const admin = gate.admin
     const deadline = Date.now() + 270_000
     const result = await runJob(admin, { key: 'admin:competitor-weekly', trigger: 'admin', startedBy: gate.userId }, () =>
-      generateCompetitorWeeklyReport(admin, { weekStart, deadline })
-    )
+      generateCompetitorWeeklyReport(admin, { weekStart, deadline }), { rejectIfRunning: true })
     return NextResponse.json(result)
   } catch (err) {
+    if (err instanceof JobAlreadyRunningError) return NextResponse.json({ error: err.message }, { status: 409 })
     console.error('[POST /api/admin/competitor-weekly] 오류:', err)
     return NextResponse.json(
       { error: '주간 경쟁 리포트 생성에 실패했습니다.' },

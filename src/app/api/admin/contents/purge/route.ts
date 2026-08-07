@@ -30,9 +30,13 @@ export async function GET() {
 
 /** POST — 크롤링 기사 전체 삭제 (original_url IS NOT NULL). FK cascade로 연관행 자동 정리. */
 export async function POST(request: Request) {
+  let auditAdmin: Parameters<typeof completeAudit>[0] | undefined
+  let auditId: Parameters<typeof completeAudit>[1] | undefined
   try {
     const gate = await verifyAdminRequest({ capability: 'reset_data' })
     if (!gate.ok) return gate.response
+    auditAdmin = gate.admin
+    auditId = gate.auditId
 
     const admin = gate.admin
     const body = await request.json().catch(() => ({})) as { expectedCount?: number }
@@ -47,7 +51,7 @@ export async function POST(request: Request) {
     const [bookmarks, archiveItems] = targetIds.length > 0
       ? await Promise.all([
           admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', targetIds),
-          admin.from('archive_items').select('id', { count: 'exact', head: true }).in('content_id', targetIds),
+          admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', targetIds),
         ])
       : [{ count: 0 }, { count: 0 }]
     const { error, count } = await admin
@@ -65,11 +69,14 @@ export async function POST(request: Request) {
     })
     if (error) throw error
     return { deleted: count ?? 0 }
-    })
+    }, { rejectIfRunning: true })
     if ('mismatch' in result && result.mismatch) return NextResponse.json({ error: `대상 건수가 변경되었습니다(확인 시 ${result.expected}건 → 현재 ${result.current}건). 다시 확인해주세요.` }, { status: 409 })
     return NextResponse.json(result)
   } catch (err) {
-    if (err instanceof JobAlreadyRunningError) return NextResponse.json({ error: err.message }, { status: 409 })
+    if (err instanceof JobAlreadyRunningError) {
+      if (auditAdmin && auditId) await completeAudit(auditAdmin, auditId, { action: 'data.purge', targetType: 'contents', targetCount: 0, outcome: 'failed', error: err.message })
+      return NextResponse.json({ error: err.message }, { status: 409 })
+    }
     console.error('[/api/admin/contents/purge] POST 오류:', err)
     return NextResponse.json({ error: '삭제 중 오류가 발생했습니다.' }, { status: 500 })
   }

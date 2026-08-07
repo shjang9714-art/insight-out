@@ -1,7 +1,7 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse, type NextRequest } from 'next/server'
 import { drainThumbnailBackfill } from '@/lib/contents/thumbnail-backfill'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,8 +26,12 @@ export async function POST(request: NextRequest) {
   const mode = sp.get('mode') === 'retry' ? 'retry' : 'fresh'
 
   const admin = gate.admin
-  const result = await runJob(admin, { key: 'admin:thumbnail-backfill', trigger: 'admin', mode, startedBy: gate.userId }, () =>
-    drainThumbnailBackfill(admin, { limit, from, to, mode })
-  )
-  return NextResponse.json(result)
+  try {
+    const result = await runJob(admin, { key: 'admin:thumbnail-backfill', trigger: 'admin', mode, startedBy: gate.userId }, () =>
+      drainThumbnailBackfill(admin, { limit, from, to, mode }), { rejectIfRunning: true })
+    return NextResponse.json(result)
+  } catch (error) {
+    if (error instanceof JobAlreadyRunningError) return NextResponse.json({ error: error.message }, { status: 409 })
+    throw error
+  }
 }

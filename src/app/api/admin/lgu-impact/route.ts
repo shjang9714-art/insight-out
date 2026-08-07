@@ -1,7 +1,7 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { backfillLguImpact } from '@/lib/insight/lgu-impact-backfill'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,10 +27,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = gate.admin
     const result = await runJob(supabase, { key: 'admin:lgu-impact', trigger: 'admin', startedBy: gate.userId }, () =>
-      backfillLguImpact(supabase, { days, max })
-    )
+      backfillLguImpact(supabase, { days, max }), { rejectIfRunning: true })
     return NextResponse.json(result)
   } catch (err) {
+    if (err instanceof JobAlreadyRunningError) return NextResponse.json({ error: err.message }, { status: 409 })
     console.error('[lgu-impact backfill]', err)
     return NextResponse.json({ error: '위기·기회 분석 중 오류가 발생했습니다.' }, { status: 500 })
   }
