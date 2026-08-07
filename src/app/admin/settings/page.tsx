@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import SystemSettingsHub from '@/components/admin/SystemSettingsHub'
+import OpsSettingsPanel from '@/components/admin/OpsSettingsPanel'
 
 export const metadata: Metadata = {
   title: '시스템 설정 | 어드민 | Insight Out',
@@ -11,6 +12,7 @@ export default function AdminSettingsPage() {
   return (
     <Suspense fallback={null}>
       <SystemSettingsHub />
+      <OpsSettingsPanel />
     </Suspense>
   )
 }
