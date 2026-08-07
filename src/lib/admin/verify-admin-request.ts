@@ -32,14 +32,7 @@ export async function verifyAdminRequest(
     .single()
 
   const role = profile?.role
-  if (role !== 'admin' && role !== 'super_admin' && role !== 'viewer') {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: AUTH_MESSAGES.adminRequired }, { status: 403 }),
-    }
-  }
-
-  if (opts?.capability && !hasCapability(role, opts.capability)) {
+  if (!hasCapability(role, opts?.capability)) {
     return {
       ok: false,
       response: NextResponse.json({ error: AUTH_MESSAGES.capabilityRequired }, { status: 403 }),

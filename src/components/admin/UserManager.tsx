@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, ShieldCheck, ShieldOff, CheckCircle, XCircle, Clock, Pencil } from 'lucide-react'
+import { Loader2, ShieldCheck, CheckCircle, XCircle, Clock, Pencil } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
@@ -35,7 +35,6 @@ import {
 } from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { DEPARTMENT_DISPLAY_LABEL, FIXED_DEPARTMENT, isOrgGroup, ORG_GROUPS } from '@/lib/org'
-import { cn } from '@/lib/utils'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
 

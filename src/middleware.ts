@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { ADMIN_ROLES } from '@/lib/admin/capabilities'
 import {
   PROFILE_COOKIE_NAME,
   PROFILE_COOKIE_TTL_SECONDS,
@@ -189,7 +190,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    if (pathname.startsWith('/admin') && gate.role !== 'admin') {
+    if (pathname.startsWith('/admin') && !ADMIN_ROLES.includes(gate.role as typeof ADMIN_ROLES[number])) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 

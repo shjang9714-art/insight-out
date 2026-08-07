@@ -7,6 +7,7 @@ import EnrichJobsProvider from '@/components/admin/EnrichJobsProvider'
 import EnrichJobsDock from '@/components/admin/EnrichJobsDock'
 import { createClient } from '@/lib/supabase/server'
 import { AdminConfirmHost } from '@/components/admin/ui/AdminConfirm'
+import { ADMIN_ROLES } from '@/lib/admin/capabilities'
 
 export const metadata: Metadata = {
   title: '어드민 | Insight Out',
@@ -30,7 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') redirect('/dashboard')
+  if (!ADMIN_ROLES.includes(profile?.role as typeof ADMIN_ROLES[number])) redirect('/dashboard')
 
   return (
     <AdminThemeScope>
