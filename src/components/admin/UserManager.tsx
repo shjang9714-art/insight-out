@@ -86,9 +86,9 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
 
   // ── role 토글 ──────────────────────────────────────────────────────────────
 
-  const handleToggleRole = async (user: UserRow) => {
-    const newRole: UserRole = user.role === 'admin' ? 'user' : 'admin'
-    const label = newRole === 'admin' ? 'admin으로 승격' : '일반 user로 변경'
+  const handleToggleRole = async (user: UserRow, requestedRole?: UserRole) => {
+    const newRole: UserRole = requestedRole ?? (user.role === 'admin' ? 'user' : 'admin')
+    const label = `${newRole} 권한으로 변경`
     const targetLabel = `${user.name || '이름 미입력'} (${user.email})${user.id === currentUserId ? ' · 본인 계정' : ''}`
     if (!(await confirm({ title: label, description: '사용자 권한을 변경하시겠습니까?', targets: [targetLabel], destructive: newRole === 'user', confirmLabel: '변경' }))) return
 
@@ -239,11 +239,9 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
     { key: 'approval', header: '승인', sortKey: 'approval_status', cell: (user) => user.approval_status === 'approved' ? <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge> : user.approval_status === 'rejected' ? <StatusBadge tone="negative" label="거절" /> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge> },
     { key: 'created_at', header: '가입일', sortKey: 'created_at', nowrap: true, cell: (user) => <span className="text-xs text-muted-foreground">{new Date(user.created_at).toLocaleDateString('ko-KR')}</span> },
     { key: 'actions', header: '작업', align: 'right', nowrap: true, cell: (user) => {
-      const roleChangeDisabledReason = user.id === currentUserId
-        ? '본인의 관리자 권한은 직접 변경할 수 없습니다.'
-        : user.role === 'admin' && adminCount === 1
-          ? '마지막 관리자를 변경하려면 다른 관리자를 먼저 지정하세요.'
-          : null
+      const roleChangeDisabledReason = user.id === currentUserId && user.role === 'super_admin'
+        ? '본인의 super_admin 권한은 직접 변경할 수 없습니다.'
+        : null
 
       return (
         <div className="flex flex-col items-end gap-1">
@@ -251,16 +249,10 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
             {user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}
             {user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}
             <button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button>
-            <span title={roleChangeDisabledReason ?? undefined}>
-              <button
-                type="button"
-                onClick={() => handleToggleRole(user)}
-                disabled={roleChangeDisabledReason !== null || togglingId === user.id || isPending}
-                className={cn('inline-flex items-center gap-1 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40', user.role === 'admin' ? 'bg-destructive/10 text-destructive' : 'bg-positive-soft text-positive')}
-              >
-                {togglingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : user.role === 'admin' ? <><ShieldOff className="h-3 w-3" />user로 변경</> : <><ShieldCheck className="h-3 w-3" />admin으로 승격</>}
-              </button>
-            </span>
+            <Select value={user.role} onValueChange={(value) => { void handleToggleRole(user, value as UserRole) }} disabled={roleChangeDisabledReason !== null || togglingId === user.id || isPending}>
+              <SelectTrigger className="h-8 w-[125px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="user">user</SelectItem><SelectItem value="viewer">viewer</SelectItem><SelectItem value="admin">admin</SelectItem><SelectItem value="super_admin">super_admin</SelectItem></SelectContent>
+            </Select>
           </div>
           {roleChangeDisabledReason && (
             <span className="text-[11px] text-muted-foreground">{roleChangeDisabledReason}</span>
