@@ -23,6 +23,7 @@ import AdminTabs from '@/components/admin/ui/AdminTabs'
 import { ISSUE_STATUS_TONE } from '@/lib/admin/status-style'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
@@ -153,6 +154,7 @@ export default function IssueManager() {
   const [form,      setForm]      = useState<IssueForm>(FORM_INIT)
   const [formError, setFormError] = useState<string | null>(null)
   const [isSaving,  setIsSaving]  = useState(false)
+  const [isBulkWorking, setIsBulkWorking] = useState(false)
 
   // 재배정 상태
   const [rematchingId,  setRematchingId]  = useState<string | null>(null)
@@ -443,6 +445,21 @@ export default function IssueManager() {
     } finally {
       setTransitioningId(null)
     }
+  }
+
+  const handleBulkStatus = async (nextStatus: IssueStatus) => {
+    const selected = issues.filter((issue) => table.selected.has(issue.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: '이슈 일괄 상태 변경', description: `선택한 이슈를 ${STATUS_LABEL[nextStatus]} 상태로 변경합니다.`, targets: selected.map((issue) => issue.title), confirmLabel: '변경' })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      const { error: updateError } = await supabase.from('issues').update({ status: nextStatus }).in('id', selected.map((issue) => issue.id))
+      if (updateError) throw updateError
+      table.resetSelection()
+      await loadIssues()
+    } catch (err) { setError(err instanceof Error ? err.message : '일괄 상태 변경에 실패했습니다.') }
+    finally { setIsBulkWorking(false) }
   }
 
   const columns: AdminTableColumn<IssueRow>[] = [
@@ -754,6 +771,9 @@ export default function IssueManager() {
       </p>
 
       {/* ── 목록 테이블 ── */}
+      {table.selected.size > 0 && <AdminSelectionBar count={table.selected.size}>
+        {(['draft', 'published', 'archived'] as IssueStatus[]).map((status) => <Button key={status} size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkStatus(status) }}>{STATUS_LABEL[status]}</Button>)}
+      </AdminSelectionBar>}
       <AdminTable
         columns={columns}
         rows={visibleIssues}
@@ -765,6 +785,7 @@ export default function IssueManager() {
         onRetry={loadIssues}
         pagination={{ page: table.page, pageSize: PAGE_SIZE, total }}
         onPageChange={table.setPage}
+        selection={{ selected: table.selected, onChange: table.setSelected }}
       />
     </div>
   )

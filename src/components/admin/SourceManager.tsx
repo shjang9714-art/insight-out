@@ -32,6 +32,7 @@ import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 import AdminManualCrawl from '@/components/admin/AdminManualCrawl'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
 
@@ -92,6 +93,10 @@ interface FeedValidationResponse {
   latestPublishedAt: string | null
   sampleTitles: string[]
   error: string | null
+}
+
+interface SourceStatusInfo {
+  lastError: string | null
 }
 
 const FORM_INIT: SourceForm = {
@@ -174,6 +179,10 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
   const [feedValidation, setFeedValidation] = useState<FeedValidationResponse | null>(null)
   const [feedValidationUrl, setFeedValidationUrl] = useState('')
   const [isValidatingFeed, setIsValidatingFeed] = useState(false)
+  const [sourceStatus, setSourceStatus] = useState<Record<string, SourceStatusInfo> | null>(null)
+  const [runningSourceIds, setRunningSourceIds] = useState<Set<string>>(new Set())
+  const [crawlMessage, setCrawlMessage] = useState<string | null>(null)
+  const [isBulkWorking, setIsBulkWorking] = useState(false)
 
   // 유형 필터 상태 (§A) — 단일 탭
   const [selectedType, setSelectedType] = useState<SourceType | 'all'>(initialSelectedType)
@@ -204,6 +213,16 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       setFilteredTotal(count ?? 0)
       setTotal(totalResult.count ?? 0)
       setTypeCounts(Object.fromEntries(SOURCE_TYPES.map((type, index) => [type, typeResults[index].count ?? 0])) as Record<SourceType, number>)
+      const statusResponse = await fetch('/api/admin/source-status')
+      const statusData = await statusResponse.json() as Record<string, SourceStatusInfo> | { error?: string }
+      setSourceStatus(statusResponse.ok ? statusData as Record<string, SourceStatusInfo> : null)
+      const ids = (data ?? []).map((source) => source.id)
+      if (ids.length > 0) {
+        const { data: running } = await supabase.from('job_runs').select('job_key').eq('status', 'running').in('job_key', ids.map((id) => `admin:crawl-now:${id}`))
+        setRunningSourceIds(new Set((running ?? []).map((row) => row.job_key.replace('admin:crawl-now:', ''))))
+      } else {
+        setRunningSourceIds(new Set())
+      }
     }
     setIsLoading(false)
   }
@@ -212,6 +231,12 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
     const init = async () => { await loadSources() }
     void init()
   }, [selectedType, table.page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (runningSourceIds.size === 0) return
+    const timer = window.setInterval(() => { void loadSources() }, 5000)
+    return () => window.clearInterval(timer)
+  }, [runningSourceIds.size]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 폼 열기/닫기 ──────────────────────────────────────────────────────────
 
@@ -352,6 +377,58 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
     }
   }
 
+  async function handleRecrawl(src: SourceRow) {
+    if (runningSourceIds.has(src.id)) return
+    setCrawlMessage(null)
+    setRunningSourceIds((prev) => new Set(prev).add(src.id))
+    try {
+      const response = await fetch('/api/admin/crawl-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: src.id }) })
+      const data = await response.json() as { error?: string }
+      if (response.status === 409) {
+        setCrawlMessage(data.error ?? '이미 실행 중입니다.')
+        return
+      }
+      if (!response.ok) throw new Error(data.error ?? '재수집 요청에 실패했습니다.')
+      setCrawlMessage(`${src.name} 재수집을 시작했습니다.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '재수집 요청에 실패했습니다.')
+    } finally {
+      window.setTimeout(() => { void loadSources() }, 5000)
+    }
+  }
+
+  async function handleBulkToggle(next: boolean) {
+    const selected = sources.filter((source) => table.selected.has(source.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: next ? '소스 일괄 활성화' : '소스 일괄 비활성화', description: `${selected.length}개 소스의 활성 상태를 변경합니다.`, targets: selected.map((source) => source.name), confirmLabel: '변경', destructive: false })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      const { error: updateError } = await supabase.from('sources').update({ is_active: next }).in('id', selected.map((source) => source.id))
+      if (updateError) throw updateError
+      table.resetSelection()
+      await loadSources()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '일괄 상태 변경에 실패했습니다.')
+    } finally {
+      setIsBulkWorking(false)
+    }
+  }
+
+  async function handleBulkRecrawl() {
+    const selected = sources.filter((source) => table.selected.has(source.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: '소스 일괄 재수집', description: '선택한 소스의 재수집을 시작합니다.', targets: selected.map((source) => source.name), confirmLabel: '재수집' })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      for (const source of selected) await handleRecrawl(source)
+      table.resetSelection()
+    } finally {
+      setIsBulkWorking(false)
+    }
+  }
+
   // ── 삭제 ──────────────────────────────────────────────────────────────────
 
   const handleDelete = async (src: SourceRow) => {
@@ -388,8 +465,8 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
     { key: 'rss', header: 'RSS URL', width: 'max-w-[200px]', cell: (source) => source.rss_url ? <span className="block max-w-[180px] truncate text-xs text-muted-foreground" title={source.rss_url}>{source.rss_url}</span> : <span className="text-xs text-muted-foreground/40">—</span> },
     { key: 'active', header: '활성', nowrap: true, cell: (source) => <button onClick={() => handleToggle(source)} className={cn('whitespace-nowrap text-xs font-medium transition-colors', source.is_active ? 'text-positive hover:opacity-80' : 'text-muted-foreground hover:text-foreground')}>{source.is_active ? '활성' : '비활성'}</button> },
     { key: 'interval', header: '주기(분)', cell: (source) => <span className="text-xs text-muted-foreground">{source.crawl_interval_minutes ?? '—'}</span> },
-    { key: 'lastCrawled', header: '마지막 수집 (KST)', nowrap: true, cell: (source) => <span className="text-xs text-muted-foreground">{formatKst(source.last_crawled_at)}</span> },
-    { key: 'actions', header: '작업', align: 'right', cell: (source) => <div className="flex items-center justify-end gap-0.5"><button onClick={() => openEdit(source)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => handleDelete(source)} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button></div> },
+    { key: 'lastCrawled', header: '마지막 수집 (KST)', nowrap: true, cell: (source) => <div className="text-xs text-muted-foreground"><div>{formatKst(source.last_crawled_at)}</div><div className="text-negative">최근 실패: {sourceStatus ? (sourceStatus[source.id]?.lastError ?? '없음') : '확인 실패'}</div></div> },
+    { key: 'actions', header: '작업', align: 'right', cell: (source) => <div className="flex items-center justify-end gap-0.5"><button onClick={() => handleRecrawl(source)} disabled={runningSourceIds.has(source.id)} className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50" title="재수집">{runningSourceIds.has(source.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '재수집'}</button><button onClick={() => openEdit(source)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => handleDelete(source)} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button></div> },
   ]
 
   const tableState: AdminTableState = isLoading ? 'loading' : fetchError ? 'error' : filteredTotal === 0 ? 'empty' : 'idle'
@@ -404,6 +481,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
           {error}
         </AdminErrorBox>
       )}
+      {crawlMessage && <div className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">{crawlMessage}</div>}
 
       {/* ── 추가/수정 폼 ── */}
       {showForm && (
@@ -714,6 +792,11 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       </div>
 
       {/* ── 목록 테이블 ── */}
+      {table.selected.size > 0 && <AdminSelectionBar count={table.selected.size}>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkToggle(true) }}>활성화</Button>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkToggle(false) }}>비활성화</Button>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkRecrawl() }}>재수집</Button>
+      </AdminSelectionBar>}
       <AdminTable
         columns={columns}
         rows={sources}
@@ -725,6 +808,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
         onRetry={loadSources}
         pagination={{ page: table.page, pageSize: PAGE_SIZE, total: filteredTotal }}
         onPageChange={table.setPage}
+        selection={{ selected: table.selected, onChange: table.setSelected }}
       />
 
       <SourceImportDialog

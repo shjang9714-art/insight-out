@@ -48,7 +48,10 @@ export async function POST(request: NextRequest) {
 
     const startedAt = new Date().toISOString()
 
-    const result = await runJob(admin, { key: 'admin:crawl-now', trigger: 'admin', startedBy: gate.userId }, async () => {
+    // 전체 수집 키는 유지하고, 개별 소스는 서로 막지 않도록 소스별 키를 사용한다.
+    // 전체 수집 중 개별 수집이 통과하는 트레이드오프는 운영상 의도된 동작이다.
+    const jobKey = sourceId ? `admin:crawl-now:${sourceId}` : 'admin:crawl-now'
+    const result = await runJob(admin, { key: jobKey, trigger: 'admin', startedBy: gate.userId }, async () => {
       after(async () => {
         try {
           await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined, backfillDays })

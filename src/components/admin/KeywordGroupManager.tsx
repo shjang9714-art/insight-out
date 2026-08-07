@@ -19,6 +19,7 @@ import type { TagType } from '@/lib/types'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
+import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
@@ -187,6 +188,7 @@ export default function KeywordGroupManager() {
   const [form,      setForm]      = useState<GroupForm>(FORM_INIT)
   const [formError, setFormError] = useState<string | null>(null)
   const [isSaving,  setIsSaving]  = useState(false)
+  const [isBulkWorking, setIsBulkWorking] = useState(false)
 
   // ── 목록 로드 ────────────────────────────────────────────────────────────
 
@@ -328,6 +330,21 @@ export default function KeywordGroupManager() {
       setGroups(prev => prev.map(g => g.id === group.id ? { ...g, is_active: group.is_active } : g))
       setError(`활성 상태 변경 실패: ${err.message}`)
     }
+  }
+
+  const handleBulkToggle = async (next: boolean) => {
+    const selected = groups.filter((group) => table.selected.has(group.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: next ? '키워드 그룹 일괄 활성화' : '키워드 그룹 일괄 비활성화', description: '선택한 그룹의 활성 상태를 변경합니다.', targets: selected.map((group) => group.name), confirmLabel: '변경' })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      const { error: updateError } = await supabase.from('keyword_groups').update({ is_active: next }).in('id', selected.map((group) => group.id))
+      if (updateError) throw updateError
+      table.resetSelection()
+      await loadGroups()
+    } catch (err) { setError(err instanceof Error ? err.message : '일괄 상태 변경에 실패했습니다.') }
+    finally { setIsBulkWorking(false) }
   }
 
   // ── 삭제 ─────────────────────────────────────────────────────────────────
@@ -557,6 +574,10 @@ export default function KeywordGroupManager() {
       </div>
 
       {/* ── 목록 테이블 ── */}
+      {table.selected.size > 0 && <AdminSelectionBar count={table.selected.size}>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkToggle(true) }}>활성화</Button>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkToggle(false) }}>비활성화</Button>
+      </AdminSelectionBar>}
       <AdminTable
         columns={columns}
         rows={groups}
@@ -568,6 +589,7 @@ export default function KeywordGroupManager() {
         onRetry={loadGroups}
         pagination={{ page: table.page, pageSize: PAGE_SIZE, total }}
         onPageChange={table.setPage}
+        selection={{ selected: table.selected, onChange: table.setSelected }}
       />
     </div>
   )
