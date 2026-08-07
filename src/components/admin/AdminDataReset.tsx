@@ -97,7 +97,7 @@ export default function AdminDataReset() {
   const executeDelete = async (item: ResetItemConfig) => {
     setStates((prev) => ({ ...prev, [item.key]: { ...prev[item.key], phase: 'working', error: null } }))
     try {
-      const res = await fetch(item.purgeUrl, { method: 'POST' })
+      const res = await fetch(item.purgeUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedCount: states[item.key].count ?? 0 }) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '삭제에 실패했습니다.')
 

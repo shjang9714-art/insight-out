@@ -10,6 +10,17 @@ export interface JobContext {
   startedBy?: string
 }
 
+export interface RunJobOptions { rejectIfRunning?: boolean }
+
+export class JobAlreadyRunningError extends Error {
+  readonly startedAt: string
+  constructor(startedAt: string) {
+    super(`이미 실행 중입니다. (시작: ${new Date(startedAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })})`)
+    this.name = 'JobAlreadyRunningError'
+    this.startedAt = startedAt
+  }
+}
+
 interface CommonCounts {
   processed: number | null
   filled: number | null
@@ -132,8 +143,20 @@ export async function runJob<T>(
   admin: SupabaseClient,
   ctx: JobContext,
   fn: () => Promise<T>,
+  opts: RunJobOptions = {},
 ): Promise<T> {
   await reapStaleRunningJobs(admin)
+
+  if (opts.rejectIfRunning) {
+    try {
+      const { data, error } = await admin.from('job_runs').select('started_at').eq('job_key', ctx.key).eq('status', 'running').order('started_at', { ascending: true }).limit(1).maybeSingle()
+      if (!error && data?.started_at) throw new JobAlreadyRunningError(data.started_at)
+      if (error && error.code !== '42P01') console.error(`[runJob] 중복 실행 조회 실패(${ctx.key}):`, error.message)
+    } catch (error) {
+      if (error instanceof JobAlreadyRunningError) throw error
+      console.error(`[runJob] 중복 실행 가드 오류(${ctx.key}):`, toErrorMessage(error))
+    }
+  }
 
   const startedAt = Date.now()
   let runId: string | null = null
