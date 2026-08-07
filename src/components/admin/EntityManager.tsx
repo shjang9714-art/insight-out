@@ -25,6 +25,8 @@ import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
+import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
+import { useAdminTable } from '@/lib/admin/use-admin-table'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -140,6 +142,7 @@ function AliasChipInput({ chips, onAdd, onRemove, placeholder }: AliasChipInputP
 export default function EntityManager() {
   const confirm = useAdminConfirm()
   const supabase = createClient()
+  const table = useAdminTable({ defaultSort: { key: 'canonical_name', dir: 'asc' }, pageSize: 50 })
 
   // 목록 상태
   const [entities,      setEntities]      = useState<EntityRow[]>([])
@@ -158,6 +161,7 @@ export default function EntityManager() {
   const [form,      setForm]      = useState<EntityForm>(FORM_INIT)
   const [formError, setFormError] = useState<string | null>(null)
   const [isSaving,  setIsSaving]  = useState(false)
+  const [isBulkWorking, setIsBulkWorking] = useState(false)
 
   // 동의어 패널 상태
   const [aliasEntityId,    setAliasEntityId]    = useState<string | null>(null)
@@ -262,6 +266,21 @@ export default function EntityManager() {
   const visibleEntities = filterType === 'all'
     ? baseList
     : baseList.filter(e => e.entity_type === filterType)
+
+  const handleBulkCompetitor = async (next: boolean) => {
+    const selected = visibleEntities.filter((entity) => table.selected.has(entity.id))
+    if (selected.length === 0) return
+    const confirmed = await confirm({ title: next ? '엔티티 일괄 경쟁사 지정' : '엔티티 일괄 경쟁사 해제', description: '선택한 엔티티의 경쟁사 상태를 변경합니다.', targets: selected.map((entity) => entity.canonical_name), confirmLabel: '변경' })
+    if (!confirmed) return
+    setIsBulkWorking(true)
+    try {
+      const { error: updateError } = await supabase.from('entities').update({ is_competitor: next }).in('id', selected.map((entity) => entity.id))
+      if (updateError) throw updateError
+      table.resetSelection()
+      await loadEntities()
+    } catch (err) { setError(err instanceof Error ? err.message : '일괄 상태 변경에 실패했습니다.') }
+    finally { setIsBulkWorking(false) }
+  }
 
   const entityColumns: AdminTableColumn<EntityRow>[] = [
     {
@@ -1099,6 +1118,10 @@ export default function EntityManager() {
       </p>
 
       {/* ── 목록 테이블 ── */}
+      {table.selected.size > 0 && <AdminSelectionBar count={table.selected.size}>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkCompetitor(true) }}>경쟁사 지정</Button>
+        <Button size="sm" variant="outline" disabled={isBulkWorking} onClick={() => { void handleBulkCompetitor(false) }}>경쟁사 해제</Button>
+      </AdminSelectionBar>}
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />불러오는 중…
@@ -1116,6 +1139,7 @@ export default function EntityManager() {
           state={isLoading ? 'loading' : error ? 'error' : visibleEntities.length === 0 ? 'empty' : 'idle'}
           errorMessage={error ?? undefined}
           emptyMessage={searchQuery ? '검색 결과가 없습니다.' : '등록된 엔티티가 없습니다.'}
+          selection={{ selected: table.selected, onChange: table.setSelected }}
         />
       )}
     </div>
