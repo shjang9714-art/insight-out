@@ -26,7 +26,7 @@ export async function requireAdminAction(
     .single()
 
   const role = profile?.role
-  if (role !== 'admin') {
+  if (role !== 'admin' && role !== 'super_admin' && role !== 'viewer') {
     return { ok: false, error: AUTH_MESSAGES.adminRequired }
   }
 
