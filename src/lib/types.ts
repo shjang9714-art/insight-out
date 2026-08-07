@@ -1,6 +1,6 @@
 import type { LensKey } from './lens'
 
-export type UserRole = 'user' | 'admin'
+export type UserRole = 'user' | 'admin' | 'super_admin' | 'viewer'
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 

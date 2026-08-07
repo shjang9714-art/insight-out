@@ -47,12 +47,12 @@ export async function updateUserProfileByAdmin(
 }
 
 export async function updateUserRole(userId: string, newRole: UserRole) {
-  const gate = await requireAdminAction({ action: 'user.role.update' })
+  const gate = await requireAdminAction({ action: 'user.role.update', capability: 'manage_admins' })
   if (!gate.ok) return { error: gate.error }
 
   const svc = serviceClient()
 
-  if (userId === gate.userId && newRole !== 'admin') {
+  if (userId === gate.userId && newRole !== 'super_admin') {
     const error = '본인의 관리자 권한은 스스로 해제할 수 없습니다. 다른 관리자에게 요청하세요.'
     await completeAudit(svc, gate.auditId, {
       targetType: 'users',
@@ -66,15 +66,15 @@ export async function updateUserRole(userId: string, newRole: UserRole) {
 
   const { data: previous } = await svc.from('users').select('role').eq('id', userId).single()
 
-  if (previous?.role === 'admin' && newRole !== 'admin') {
+  if (previous?.role === 'super_admin' && newRole !== 'super_admin') {
     // 관리자 수 확인과 권한 변경은 원자적이지 않다. 동시 강등의 완전한 차단은 492의 DB 트리거에서 처리한다.
     const { count: adminCount } = await svc
       .from('users')
       .select('id', { count: 'exact', head: true })
-      .eq('role', 'admin')
+      .eq('role', 'super_admin')
 
     if (adminCount === 1) {
-      const error = '마지막 관리자입니다. 다른 관리자를 먼저 지정한 뒤 변경하세요.'
+      const error = '마지막 super_admin입니다. 다른 super_admin을 먼저 지정한 뒤 변경하세요.'
       await completeAudit(svc, gate.auditId, {
         targetType: 'users',
         targetId: userId,
@@ -98,7 +98,7 @@ export async function updateUserRole(userId: string, newRole: UserRole) {
 }
 
 export async function promoteByEmail(email: string) {
-  const gate = await requireAdminAction({ action: 'user.role.update' })
+  const gate = await requireAdminAction({ action: 'user.role.update', capability: 'manage_admins' })
   if (!gate.ok) return { error: gate.error }
 
   const svc = serviceClient()
