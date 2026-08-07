@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Loader2, ShieldCheck, ShieldOff, CheckCircle, XCircle, Clock, Pencil } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import {
   updateUserRole,
@@ -63,6 +64,7 @@ interface Props {
 }
 
 export default function UserManager({ initialUsers, currentUserId, initialAdminCount, tableState, page, pageSize, total, sort }: Props) {
+  const confirm = useAdminConfirm()
   const table = useAdminTable({ defaultSort: sort, pageSize })
   const [users, setUsers] = useState<UserRow[]>(initialUsers)
   const [adminCount, setAdminCount] = useState(initialAdminCount)
@@ -84,11 +86,11 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
 
   // ── role 토글 ──────────────────────────────────────────────────────────────
 
-  const handleToggleRole = (user: UserRow) => {
+  const handleToggleRole = async (user: UserRow) => {
     const newRole: UserRole = user.role === 'admin' ? 'user' : 'admin'
     const label = newRole === 'admin' ? 'admin으로 승격' : '일반 user로 변경'
     const targetLabel = `${user.name || '이름 미입력'} (${user.email})${user.id === currentUserId ? ' · 본인 계정' : ''}`
-    if (!window.confirm(`${targetLabel}\n\n${label}하시겠습니까?`)) return
+    if (!(await confirm({ title: label, description: '사용자 권한을 변경하시겠습니까?', targets: [targetLabel], destructive: newRole === 'user', confirmLabel: '변경' }))) return
 
     setTogglingId(user.id)
     startTransition(async () => {
@@ -142,8 +144,8 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
   // ── 승인/거절 ──────────────────────────────────────────────────────────────
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
-  const handleApprove = (user: UserRow) => {
-    if (!window.confirm(`${user.email}\n\n가입을 승인하시겠습니까?`)) return
+  const handleApprove = async (user: UserRow) => {
+    if (!(await confirm({ title: '가입 승인', targets: [user.email], confirmLabel: '승인' }))) return
     setApprovingId(user.id)
     startTransition(async () => {
       const { error: err } = await approveUser(user.id)
@@ -156,8 +158,8 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
     })
   }
 
-  const handleReject = (user: UserRow) => {
-    if (!window.confirm(`${user.email}\n\n가입을 거절하시겠습니까?`)) return
+  const handleReject = async (user: UserRow) => {
+    if (!(await confirm({ title: '가입 거절', targets: [user.email], confirmLabel: '거절', destructive: true }))) return
     setApprovingId(user.id)
     startTransition(async () => {
       const { error: err } = await rejectUser(user.id)

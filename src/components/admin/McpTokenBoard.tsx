@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 // 190 — MCP 토큰 발급/폐기 보드
 // 평문 토큰은 발급 직후 한 번만 보여준다. 화면을 벗어나면 다시 볼 수 없다.
@@ -29,6 +30,7 @@ interface TeamUser {
 const DEFAULT_SCOPES: McpScope[] = ['read', 'ops', 'reports']
 
 export default function McpTokenBoard() {
+  const confirm = useAdminConfirm()
   const [tokens, setTokens] = useState<TokenRow[]>([])
   const [users, setUsers] = useState<TeamUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -93,7 +95,7 @@ export default function McpTokenBoard() {
   }
 
   async function revoke(id: string) {
-    if (!confirm('이 토큰을 폐기하시겠습니까? 해당 Claude 연결이 즉시 끊깁니다.')) return
+    if (!(await confirm({ title: 'MCP 토큰 폐기', description: '해당 Claude 연결이 즉시 끊깁니다.', confirmLabel: '폐기', destructive: true }))) return
     try {
       const res = await fetch('/api/admin/mcp-tokens', {
         method: 'PATCH',

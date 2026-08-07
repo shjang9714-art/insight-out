@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import type { SourceType, CollectionMethod } from '@/lib/types'
 import { SOURCE_TYPE_LABELS } from '@/lib/admin/source-types'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import { SourceImportDialog } from '@/components/admin/SourceImportDialog'
 import AdminManualCrawl from '@/components/admin/AdminManualCrawl'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
@@ -151,6 +152,7 @@ interface SourceManagerProps {
 }
 
 export default function SourceManager({ initialSelectedType = 'all' }: SourceManagerProps) {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
   const table = useAdminTable({ defaultSort: { key: 'order', dir: 'asc' }, pageSize: PAGE_SIZE })
 
@@ -265,9 +267,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
       feedValidation &&
       !feedValidation.ok
     ) {
-      const confirmed = window.confirm(
-        `방금 검증한 RSS 피드가 실패했습니다.\n\n${feedErrorMessage(feedValidation)}\n\n그래도 저장하시겠습니까?`
-      )
+      const confirmed = await confirm({ title: 'RSS 피드 저장 확인', description: feedErrorMessage(feedValidation), confirmLabel: '그래도 저장' })
       if (!confirmed) return
     }
 
@@ -355,11 +355,7 @@ export default function SourceManager({ initialSelectedType = 'all' }: SourceMan
   // ── 삭제 ──────────────────────────────────────────────────────────────────
 
   const handleDelete = async (src: SourceRow) => {
-    const confirmed = window.confirm(
-      `"${src.name}"을(를) 삭제하시겠습니까?\n\n` +
-      `⚠️ 단순 수집 중단이 목적이라면 비활성화를 권장합니다.\n` +
-      `삭제해도 기존 콘텐츠·크롤링 로그는 보존됩니다.`
-    )
+    const confirmed = await confirm({ title: '소스 삭제', description: '단순 수집 중단이 목적이라면 비활성화를 권장합니다. 기존 콘텐츠·크롤링 로그는 보존됩니다.', targets: [src.name], confirmLabel: '삭제', destructive: true })
     if (!confirmed) return
 
     const { error: err } = await supabase

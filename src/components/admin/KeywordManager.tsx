@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 
@@ -33,6 +34,7 @@ const FORM_INIT: KeywordForm = {
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function KeywordManager() {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
 
   const [keywords,  setKeywords]  = useState<KeywordRow[]>([])
@@ -152,10 +154,7 @@ export default function KeywordManager() {
   // ── 삭제 ──────────────────────────────────────────────────────────────────
 
   const handleDelete = async (kw: KeywordRow) => {
-    const confirmed = window.confirm(
-      `"${kw.name}"을(를) 삭제하시겠습니까?\n\n` +
-      `⚠️ 이 키워드로 태깅된 콘텐츠 연결(content_keywords)도 함께 삭제됩니다.`
-    )
+    const confirmed = await confirm({ title: '키워드 삭제', description: '이 키워드로 태깅된 콘텐츠 연결도 함께 삭제됩니다.', targets: [kw.name], confirmLabel: '삭제', destructive: true })
     if (!confirmed) return
 
     const { error: err } = await supabase

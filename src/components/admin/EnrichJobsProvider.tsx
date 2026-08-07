@@ -1,4 +1,5 @@
 'use client'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 import {
   createContext,
@@ -119,6 +120,7 @@ export function useEnrichJobs(): EnrichJobsContextValue {
 }
 
 export default function EnrichJobsProvider({ children }: { children: React.ReactNode }) {
+  const confirm = useAdminConfirm()
   const [runs, setRuns] = useState<Map<EnrichJobRunId, RunState>>(new Map())
   const [isRestored, setIsRestored] = useState(false)
   const stopKeysRef = useRef(new Set<EnrichJobRunId>())
@@ -274,11 +276,11 @@ export default function EnrichJobsProvider({ children }: { children: React.React
     }
   }
 
-  const startJob = (key: EnrichJobKey, params?: EnrichJobParams, itemId?: string, itemLabel?: string) => {
+  const startJob = async (key: EnrichJobKey, params?: EnrichJobParams, itemId?: string, itemLabel?: string) => {
     const job = getEnrichJob(key)
     const runId = buildEnrichRunId(key, itemId)
     if (runs.get(runId)?.status === 'running') return
-    if (job.confirm && !window.confirm(job.confirm)) return
+    if (job.confirm && !(await confirm({ title: '관리 작업 실행 확인', description: job.confirm, confirmLabel: '실행' }))) return
 
     const initial: RunState = {
       key,

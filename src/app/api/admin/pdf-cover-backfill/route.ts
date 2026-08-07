@@ -1,7 +1,7 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse, type NextRequest } from 'next/server'
 import { drainPdfCoverBackfill } from '@/lib/contents/pdf-cover-backfill'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 // 네이티브 canvas(@napi-rs/canvas) 렌더 — edge 런타임 금지(285).
 export const runtime = 'nodejs'
@@ -26,8 +26,12 @@ export async function POST(request: NextRequest) {
   const mode = sp.get('mode') === 'retry' ? 'retry' : 'fresh'
 
   const admin = gate.admin
-  const result = await runJob(admin, { key: 'admin:pdf-cover-backfill', trigger: 'admin', mode, startedBy: gate.userId }, () =>
-    drainPdfCoverBackfill(admin, { limit, mode })
-  )
-  return NextResponse.json(result)
+  try {
+    const result = await runJob(admin, { key: 'admin:pdf-cover-backfill', trigger: 'admin', mode, startedBy: gate.userId }, () =>
+      drainPdfCoverBackfill(admin, { limit, mode }), { rejectIfRunning: true })
+    return NextResponse.json(result)
+  } catch (error) {
+    if (error instanceof JobAlreadyRunningError) return NextResponse.json({ error: error.message }, { status: 409 })
+    throw error
+  }
 }

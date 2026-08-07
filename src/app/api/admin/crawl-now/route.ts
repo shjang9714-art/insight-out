@@ -1,6 +1,7 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { after, NextResponse, type NextRequest } from 'next/server'
 import { runCrawl } from '@/lib/crawler/orchestrator'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 import {
   summarizeCrawlProgress,
   type CrawlProgressLog,
@@ -47,19 +48,23 @@ export async function POST(request: NextRequest) {
 
     const startedAt = new Date().toISOString()
 
-    after(async () => {
-      try {
-        await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined, backfillDays })
-      } catch (error) {
-        console.error('[/api/admin/crawl-now] 백그라운드 수집 오류:', error)
-      }
-    })
+    const result = await runJob(admin, { key: 'admin:crawl-now', trigger: 'admin', startedBy: gate.userId }, async () => {
+      after(async () => {
+        try {
+          await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined, backfillDays })
+        } catch (error) {
+          console.error('[/api/admin/crawl-now] 백그라운드 수집 오류:', error)
+        }
+      })
+      return { jobId: startedAt, startedAt, sourcesTotal }
+    }, { rejectIfRunning: true })
 
     return NextResponse.json(
-      { jobId: startedAt, startedAt, sourcesTotal },
+      result,
       { status: 202 }
     )
   } catch (err) {
+    if (err instanceof JobAlreadyRunningError) return NextResponse.json({ error: err.message }, { status: 409 })
     console.error('[/api/admin/crawl-now] 오류:', err)
     return NextResponse.json(
       { error: '수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.' },

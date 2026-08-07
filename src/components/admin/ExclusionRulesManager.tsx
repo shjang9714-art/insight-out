@@ -22,6 +22,7 @@ import {
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import { cn } from '@/lib/utils'
 import {
   type ExclusionRuleRow,
@@ -60,6 +61,7 @@ const FORM_INIT = {
 }
 
 export default function ExclusionRulesManager() {
+  const confirm = useAdminConfirm()
   const [rules, setRules] = useState<ExclusionRuleRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [rulesState, setRulesState] = useState<AdminTableState>('loading')
@@ -103,7 +105,7 @@ export default function ExclusionRulesManager() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleAddRuleFromCandidate(candidate: ExclusionCandidate) {
-    if (!window.confirm(`"${candidate.domain}" 도메인을 제외 규칙(검토 대기)으로 추가하시겠습니까?`)) return
+    if (!(await confirm({ title: '도메인 제외 규칙 추가', targets: [candidate.domain], confirmLabel: '추가' }))) return
     setWorkingDomain(candidate.domain)
     try {
       const res = await fetch('/api/admin/exclusion-rules', {
@@ -232,7 +234,7 @@ export default function ExclusionRulesManager() {
   }
 
   async function handleDelete(rule: ExclusionRuleRow) {
-    if (!window.confirm(`"${rule.value}" 규칙을 삭제하시겠습니까?`)) return
+    if (!(await confirm({ title: '제외 규칙 삭제', targets: [rule.value], confirmLabel: '삭제', destructive: true }))) return
     setWorkingId(rule.id)
     try {
       const res = await fetch(`/api/admin/exclusion-rules?id=${rule.id}`, { method: 'DELETE' })

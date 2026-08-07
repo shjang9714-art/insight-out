@@ -8,6 +8,7 @@ import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
 import AdminTabs from '@/components/admin/ui/AdminTabs'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import { CONTENT_STATUS_TONE, CONTENT_STATUS_LABEL, REVIEW_REASON_LABEL } from '@/lib/admin/status-style'
 import { Button } from '@/components/ui/button'
@@ -500,6 +501,7 @@ function KeywordChipInput({
 }
 
 export default function AdminContentManager() {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
   const searchParams = useSearchParams()
 
@@ -593,6 +595,7 @@ export default function AdminContentManager() {
 
   function confirmDiscardEdit(): boolean {
     if (!hasUnsavedEdit()) return true
+    // 동기 컨텍스트라 window.confirm 유지
     return window.confirm('저장하지 않은 변경사항이 있습니다. 계속하면 변경사항이 사라집니다.')
   }
 
@@ -927,7 +930,7 @@ export default function AdminContentManager() {
   }
 
   const handleDelete = async (content: AdminContentRow) => {
-    if (!window.confirm(`"${content.title}" 콘텐츠를 삭제하시겠습니까?`)) return
+    if (!(await confirm({ title: '콘텐츠 삭제', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
     setWorkingId(content.id)
     setError(null)
     const response = await fetch('/api/admin/contents/delete', {
@@ -1141,7 +1144,7 @@ export default function AdminContentManager() {
   // 이 버튼만은 thumbnail_url이 있어도 강제로 덮어쓴다(사용자가 명시적으로 누름).
   const handleRefetchPdfCover = async () => {
     if (!edit) return
-    if (!window.confirm('1페이지를 다시 가져오면 현재 표지(수동 등록분 포함)가 새 이미지로 교체됩니다. 계속할까요?')) {
+    if (!(await confirm({ title: '표지 다시 추출', description: '현재 표지가 새 이미지로 교체됩니다.', confirmLabel: '계속' }))) {
       return
     }
 
@@ -1254,7 +1257,15 @@ export default function AdminContentManager() {
   const handleBulkDelete = async () => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
-    if (!window.confirm(`${ids.length}건을 삭제하시겠습니까? 되돌릴 수 없습니다.`)) return
+    const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
+    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '연쇄 삭제되는 북마크·아카이브 항목도 함께 확인해주세요.', targets: titles, countLabel: '함께 삭제되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: async () => {
+      const [bookmarks, archives] = await Promise.all([
+        supabase.from('bookmarks').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
+        supabase.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
+      ])
+      if (bookmarks.error || archives.error) throw new Error('연쇄 삭제 건수를 확인할 수 없습니다.')
+      return (bookmarks.count ?? 0) + (archives.count ?? 0)
+    } }))) return
 
     setIsBulkWorking(true)
     setError(null)

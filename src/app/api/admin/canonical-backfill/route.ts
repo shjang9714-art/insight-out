@@ -2,7 +2,7 @@ import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse, type NextRequest } from 'next/server'
 import { resolveCanonical } from '@/lib/crawler/resolve-url'
 import { mergeByCanonical } from '@/lib/crawler/orchestrator'
-import { runJob } from '@/lib/jobs/run-job'
+import { JobAlreadyRunningError, runJob } from '@/lib/jobs/run-job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -73,10 +73,11 @@ export async function GET(request: NextRequest) {
         .not('original_url', 'is', null)
 
       return { processed, resolved, deduped, remaining: count ?? 0, ready: true }
-    })
+    }, { rejectIfRunning: true })
 
     return NextResponse.json(result)
   } catch (err) {
+    if (err instanceof JobAlreadyRunningError) return NextResponse.json({ error: err.message }, { status: 409 })
     console.error('[/api/admin/canonical-backfill GET] 오류(graceful):', err)
     return NextResponse.json({ processed: 0, resolved: 0, deduped: 0, remaining: 0, ready: false })
   }

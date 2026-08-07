@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 
 interface ResetItemConfig {
   key: string
@@ -58,6 +59,7 @@ function initialItemState(): ItemState {
 }
 
 export default function AdminDataReset() {
+  const confirm = useAdminConfirm()
   const [states, setStates] = useState<Record<string, ItemState>>(() =>
     Object.fromEntries(RESET_ITEMS.map((item) => [item.key, initialItemState()]))
   )
@@ -92,18 +94,10 @@ export default function AdminDataReset() {
     }
   }, [])
 
-  const requestConfirm = (key: string) => {
-    setStates((prev) => ({ ...prev, [key]: { ...prev[key], phase: 'confirming', error: null } }))
-  }
-
-  const cancelConfirm = (key: string) => {
-    setStates((prev) => ({ ...prev, [key]: { ...prev[key], phase: 'idle' } }))
-  }
-
   const executeDelete = async (item: ResetItemConfig) => {
     setStates((prev) => ({ ...prev, [item.key]: { ...prev[item.key], phase: 'working', error: null } }))
     try {
-      const res = await fetch(item.purgeUrl, { method: 'POST' })
+      const res = await fetch(item.purgeUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedCount: states[item.key].count ?? 0 }) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '삭제에 실패했습니다.')
 
@@ -129,6 +123,20 @@ export default function AdminDataReset() {
     }
   }
 
+  const requestConfirm = async (item: ResetItemConfig, state: ItemState) => {
+    setStates((prev) => ({ ...prev, [item.key]: { ...prev[item.key], phase: 'confirming', error: null } }))
+    const accepted = await confirm({
+      title: item.title,
+      description: item.description,
+      targets: [item.title],
+      loadCount: async () => state.count ?? 0,
+      confirmLabel: '정말 삭제',
+      destructive: true,
+    })
+    if (accepted) await executeDelete(item)
+    else setStates((prev) => ({ ...prev, [item.key]: { ...prev[item.key], phase: 'idle' } }))
+  }
+
   return (
     <div className="space-y-4">
       {RESET_ITEMS.map((item) => {
@@ -148,33 +156,13 @@ export default function AdminDataReset() {
                 </p>
               </div>
 
-              {state.phase === 'confirming' ? (
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <p className="admin-caption whitespace-pre-line text-right text-destructive">
-                    {item.confirmLabel(state.count ?? 0)}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={() => cancelConfirm(item.key)}>
-                      취소
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => executeDelete(item)}
-                      className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
-                    >
-                      정말 삭제
-                    </Button>
-                  </div>
-                </div>
-              ) : (
+              {(
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   disabled={state.phase === 'working' || !state.count}
-                  onClick={() => requestConfirm(item.key)}
+                  onClick={() => requestConfirm(item, state)}
                   className="shrink-0 border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
                 >
                   {state.phase === 'working'

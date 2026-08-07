@@ -30,6 +30,7 @@ import type { SourceStatusInfo } from '@/app/api/admin/source-status/route'
 import type { SourceQualityStat, SourceQualityResponse } from '@/app/api/admin/source-quality/route'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import { type Tone } from '@/lib/admin/status-style'
 
@@ -126,6 +127,7 @@ function formatKst(iso: string | null): string {
 }
 
 export default function SourceQualityManager() {
+  const confirm = useAdminConfirm()
   const supabase = createClient()
 
   const [sources,   setSources]   = useState<SourceLite[]>([])
@@ -165,10 +167,7 @@ export default function SourceQualityManager() {
       return
     }
 
-    const confirmed = window.confirm(
-      `"${domain}" 도메인을 제외 규칙(검토 대기)에 추가하시겠습니까?\n\n` +
-      `이후 이 도메인에서 수집되는 콘텐츠는 자동으로 검토 대기 처리됩니다(즉시 삭제 아님).`
-    )
+    const confirmed = await confirm({ title: '도메인 제외 규칙 추가', description: '이후 이 도메인에서 수집되는 콘텐츠는 자동으로 검토 대기 처리됩니다(즉시 삭제 아님).', targets: [domain], confirmLabel: '추가' })
     if (!confirmed) return
 
     setExcludingId(src.id)
@@ -450,7 +449,7 @@ export default function SourceQualityManager() {
 
   const handleCrawlNow = async () => {
     const rangeLabel = crawlDays === 0 ? '오늘 발행분을' : `최근 ${crawlDays}일치를`
-    if (!window.confirm(`모든 활성 소스의 ${rangeLabel} 지금 수집하시겠습니까?`)) return
+    if (!(await confirm({ title: '소스 재수집', description: `모든 활성 소스의 ${rangeLabel} 지금 수집합니다.`, confirmLabel: '수집' }))) return
 
     setIsStartingCrawl(true)
     setCrawlProgress(null)
