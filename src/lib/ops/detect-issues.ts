@@ -5,6 +5,7 @@ import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
   effectiveTokenLimit,
 } from '@/lib/llm/token-limit'
+import { getOpsSettings } from '@/lib/ops/settings'
 
 interface Signal { fingerprint: string; category: string; severity: 'critical' | 'warning'; title: string; suspected_cause: string; recommended_action: string; impact: string; count: number }
 
@@ -13,6 +14,7 @@ const since24h = () => new Date(Date.now() - 86_400_000).toISOString()
 export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: number; resolved: number }> {
   const since = since24h()
   const signals: Signal[] = []
+  const opsSettings = await getOpsSettings()
   const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors] = await Promise.all([
     admin.from('job_runs').select('job_key').eq('status', 'failed').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
@@ -39,8 +41,9 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     const percent = limit > 0 ? used / limit * 100 : 0
     if (percent >= 80) signals.push({ fingerprint: `usage:limit:${provider}`, category: 'usage', severity: percent >= 95 ? 'critical' : 'warning', title: 'AI 사용량 한도 임박', suspected_cause: `${provider} 월 사용량이 ${Math.round(percent)}%에 도달`, recommended_action: '키 수와 월 한도를 확인하고 사용량을 조정하세요.', impact: 'AI 작업 중단 가능성', count: 1 })
   }
-  const caps = [{ key: 'translation', used: (translation.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(process.env.TRANSLATION_MONTHLY_CHAR_CAP ?? 1_000_000) }, { key: 'tts', used: (tts.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 1_000_000) }]
-  for (const c of caps) if (c.used / c.cap >= 0.8) signals.push({ fingerprint: `usage:limit:${c.key}`, category: 'usage', severity: c.used / c.cap >= 0.95 ? 'critical' : 'warning', title: `${c.key === 'tts' ? 'TTS' : '번역'} 사용량 한도 임박`, suspected_cause: `월 사용량이 ${Math.round(c.used / c.cap * 100)}%에 도달`, recommended_action: '월 한도와 사용 추세를 확인하세요.', impact: '해당 기능 중단 가능성', count: 1 })
+  const caps = [{ key: 'translation', used: (translation.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(opsSettings.translation_monthly_char_cap) }, { key: 'tts', used: (tts.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(opsSettings.tts_monthly_char_cap) }]
+  // 한도를 못 읽었거나(0·NaN) 비정상이면 그 신호는 건너뛴다 — 0 으로 나누면 즉시 오탐한다.
+  for (const c of caps) if (Number.isFinite(c.cap) && c.cap > 0 && c.used / c.cap >= 0.8) signals.push({ fingerprint: `usage:limit:${c.key}`, category: 'usage', severity: c.used / c.cap >= 0.95 ? 'critical' : 'warning', title: `${c.key === 'tts' ? 'TTS' : '번역'} 사용량 한도 임박`, suspected_cause: `월 사용량이 ${Math.round(c.used / c.cap * 100)}%에 도달`, recommended_action: '월 한도와 사용 추세를 확인하세요.', impact: '해당 기능 중단 가능성', count: 1 })
   if ((backlog.count ?? 0) > 100) signals.push({ fingerprint: 'enrichment:backlog', category: 'enrichment', severity: 'warning', title: '본문 보강 지연', suspected_cause: '원문 서버 응답 지연 추정', recommended_action: '실패 로그 확인 또는 해당 소스를 일시 중지하세요.', impact: `대기 콘텐츠 ${backlog.count ?? 0}건`, count: backlog.count ?? 0 })
   if (routingModelErrors.error) {
     console.error('[운영이슈] LLM 라우팅 모델 오류 조회 실패:', routingModelErrors.error.message)

@@ -6,14 +6,15 @@ import { isBriefingRelevant } from '@/lib/feed-blocklist'
 import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { generateHighlights } from '@/lib/briefing/highlights'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { getOpsSettings } from '@/lib/ops/settings'
 
-// ─── 환경변수 기본값 ─────────────────────────────────────────────────────────
-// 윈도우 48h: 일일 크롤이 배치로 들어와 24h 창은 후보가 한 자릿수까지 떨어진다(라이브 확인: h24=7, h48=128).
-const WINDOW_HOURS = Number(process.env.BRIEFING_WINDOW_HOURS ?? 48)
-const TOP_N = Number(process.env.BRIEFING_TOP_N ?? 5)
-const MIN_ARTICLES = Number(process.env.BRIEFING_MIN_ARTICLES ?? 3)
-// 진행자 이름: 미설정 시 '김유쁠'. Vercel 환경변수로 코드 수정 없이 교체 가능.
-const HOST_NAME = process.env.BRIEFING_HOST_NAME?.trim() || '김유쁠'
+// ─── 기본값 ───────────────────────────────────────────────────────────────
+// ops_settings 에 값이 없을 때만 쓰는 기본값. 윈도우 48h: 일일 크롤이 배치로 들어와
+// 24h 창은 후보가 한 자릿수까지 떨어진다(라이브 확인: h24=7, h48=128).
+const DEFAULT_WINDOW_HOURS = 48
+const DEFAULT_TOP_N = 5
+const DEFAULT_MIN_ARTICLES = 3
+const DEFAULT_HOST_NAME = '김유쁠'
 
 // ─── 복합 점수 가중치 (한 곳에 모아 튜닝 용이) ──────────────────────────────
 
@@ -100,9 +101,10 @@ function getKstDateParts(date?: Date): { year: number; month: number; day: numbe
 
 // ─── 시스템 프롬프트 ─────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT =
+function buildSystemPrompt(hostName: string): string {
+  return (
   '당신은 LG유플러스 임직원을 위한 1인 모닝 라디오 \'모닝브리핑\'의 진행자이자 산업 애널리스트다.\n' +
-  `진행자 이름은 '${HOST_NAME}'이다. 도입부 인사에서 이 이름으로 자신을 소개하고, 다른 이름을 지어내지 마라.\n` +
+  `진행자 이름은 '${hostName}'이다. 도입부 인사에서 이 이름으로 자신을 소개하고, 다른 이름을 지어내지 마라.\n` +
   '입력으로 오늘 선정된 통신·테크·AI 산업 기사 3~5건(산업영역·태그·제목·요약·본문)이 주어진다.\n' +
   '단순 요약 낭독이 아니라, 시장을 다각도로 읽어 주는 인사이트 있는 한국어 팟캐스트 스크립트를 작성하라.\n\n' +
   '대상·목적:\n' +
@@ -134,6 +136,8 @@ const SYSTEM_PROMPT =
   '- 사실만. 입력에 없는 수치·사건 추측·창작 금지. 다만 입력된 사실에 근거한 해석·시사점은 적극적으로 제시하라. 회사명·출처는 입력대로.\n' +
   '- 전체 분량 1,500~2,200자(약 4~5분 낭독). 문장은 짧고 끊어 읽기 쉽게.\n' +
   '- 출력은 스크립트 본문만. 제목·머리말·설명 없이.'
+  )
+}
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -192,10 +196,10 @@ function getTopicBucket(matchedGroups: string[]): string | null {
 
 // ─── 복합 점수 계산 ──────────────────────────────────────────────────────────
 
-function computeScore(c: ContentCandidate, now: Date): number {
+function computeScore(c: ContentCandidate, now: Date, windowHours: number): number {
   const pubDate = c.published_at ? new Date(c.published_at) : new Date(c.collected_at)
   const hoursAgo = Math.max(0, (now.getTime() - pubDate.getTime()) / 3_600_000)
-  const recencyBonus = Math.max(0, (1 - hoursAgo / WINDOW_HOURS)) * W_RECENCY
+  const recencyBonus = Math.max(0, (1 - hoursAgo / windowHours)) * W_RECENCY
 
   const catWeight = CATEGORY_WEIGHT[c.category] ?? 2
   const editorBonus = c.is_editor_pick ? W_EDITOR : 0
@@ -211,9 +215,9 @@ function computeScore(c: ContentCandidate, now: Date): number {
 // ─── 선정 로직 (중복 제거 + 토픽 다양성 우선 2패스) ──────────────────────────
 // 라이브 후보는 'AI 기술/IT 동향' 토픽이 압도적이라(72h 53건), 점수순으로만 뽑으면 AI 일색이 된다.
 // 패스1: 각 토픽 버킷에서 최고점 1건씩(시장 앵글 분산 보장) → 패스2: 점수순으로 빈 슬롯 채움.
-function selectArticles(candidates: ContentCandidate[], now: Date): ContentCandidate[] {
+function selectArticles(candidates: ContentCandidate[], now: Date, windowHours: number, topN: number): ContentCandidate[] {
   const scored = candidates
-    .map(c => ({ c, score: computeScore(c, now), topic: getTopicBucket(c.matched_groups) ?? 'other' }))
+    .map(c => ({ c, score: computeScore(c, now, windowHours), topic: getTopicBucket(c.matched_groups) ?? 'other' }))
     .sort((a, b) => b.score - a.score)
 
   const selected: ContentCandidate[] = []
@@ -235,7 +239,7 @@ function selectArticles(candidates: ContentCandidate[], now: Date): ContentCandi
   // 패스 1: 버킷별 최고점 1건씩 (다양성 보장, 'other' 제외)
   const seenBucket = new Set<string>()
   for (const entry of scored) {
-    if (selected.length >= TOP_N) break
+    if (selected.length >= topN) break
     if (entry.topic === 'other' || seenBucket.has(entry.topic)) continue
     if (isBlocked(entry)) continue
     seenBucket.add(entry.topic)
@@ -244,7 +248,7 @@ function selectArticles(candidates: ContentCandidate[], now: Date): ContentCandi
 
   // 패스 2: 점수순으로 빈 슬롯 채움 (버킷당 MAX_PER_TOPIC 까지)
   for (const entry of scored) {
-    if (selected.length >= TOP_N) break
+    if (selected.length >= topN) break
     if (isBlocked(entry)) continue
     const count = topicCounts[entry.topic] ?? 0
     if (entry.topic !== 'other' && count >= MAX_PER_TOPIC) continue
@@ -319,6 +323,12 @@ export async function generateBriefing(
   const admin = createAdminClient()
   const now = new Date()
 
+  const settings = await getOpsSettings()
+  const windowHours = settings.briefing_window_hours ?? DEFAULT_WINDOW_HOURS
+  const topN = settings.briefing_top_n ?? DEFAULT_TOP_N
+  const minArticles = settings.briefing_min_articles ?? DEFAULT_MIN_ARTICLES
+  const hostName = settings.briefing_host_name?.trim() || DEFAULT_HOST_NAME
+
   // 1. 대상 날짜 결정 (KST)
   const briefingDate = opts?.date ?? getKstDate(now)
   const dateParts = getKstDateParts(opts?.date ? new Date(opts.date + 'T00:00:00+09:00') : now)
@@ -342,7 +352,7 @@ export async function generateBriefing(
   }
 
   // 3. 후보 조회
-  const windowMs = WINDOW_HOURS * 3_600_000
+  const windowMs = windowHours * 3_600_000
   const windowStart = new Date(now.getTime() - windowMs).toISOString()
 
   const { data: rawCandidates, error: fetchError } = await admin
@@ -368,7 +378,7 @@ export async function generateBriefing(
   // 알맹이 가드: 본문·요약이 빈약한 stub 기사 제외(인사이트 꼭지 작성 불가).
   // 단, 가드가 후보를 최소치 아래로 깎으면 짧은 기사도 살려 브리핑 자체는 성립시킨다.
   const substantial = relevant.filter(hasSubstance)
-  const candidates = substantial.length >= MIN_ARTICLES ? substantial : relevant
+  const candidates = substantial.length >= minArticles ? substantial : relevant
 
   console.log(
     `[브리핑] 후보 ${rawCandidates?.length ?? 0}건 → 관련 ${relevant.length}건 → 알맹이 ${substantial.length}건 → 사용 ${candidates.length}건`
@@ -380,18 +390,18 @@ export async function generateBriefing(
   }
 
   // 4. 선정
-  const selected = selectArticles(candidates as ContentCandidate[], now)
+  const selected = selectArticles(candidates as ContentCandidate[], now, windowHours, topN)
   const sourceContentIds = selected.map(a => a.id)
 
   console.log(`[브리핑] 선정 ${selected.length}건: ${selected.map(a => a.title.slice(0, 30)).join(' | ')}`)
 
-  if (selected.length < MIN_ARTICLES) {
-    console.log(`[브리핑] 선정 ${selected.length}건 < 최소 ${MIN_ARTICLES}건 — 짧은 브리핑으로 진행`)
+  if (selected.length < minArticles) {
+    console.log(`[브리핑] 선정 ${selected.length}건 < 최소 ${minArticles}건 — 짧은 브리핑으로 진행`)
   }
 
   // 5. LLM 스크립트 생성
   const userPrompt = buildUserPrompt(selected, dateParts)
-  const { text: scriptRaw, errorReason } = await llmCompleteDetailed('briefing', SYSTEM_PROMPT, userPrompt)
+  const { text: scriptRaw, errorReason } = await llmCompleteDetailed('briefing', buildSystemPrompt(hostName), userPrompt)
 
   if (!scriptRaw?.trim()) {
     console.error('[브리핑] 스크립트 생성 실패:', errorReason)
@@ -419,7 +429,7 @@ export async function generateBriefing(
   console.log(`[브리핑] 핵심 인사이트 ${highlights.length}줄 생성`)
 
   // 6. upsert
-  const publish = (opts?.autoPublish ?? false) && selected.length >= MIN_ARTICLES
+  const publish = (opts?.autoPublish ?? false) && selected.length >= minArticles
   const { data: upserted, error: upsertError } = await admin
     .from('briefings')
     .upsert({

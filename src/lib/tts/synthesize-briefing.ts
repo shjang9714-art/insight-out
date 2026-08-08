@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { getOpsSettings } from '@/lib/ops/settings'
 
 // ─── 기간 헬퍼 (translate/index.ts 와 동일 로직) ────────────────────────────
 
@@ -321,7 +322,8 @@ export async function synthesizeBriefingAudio(briefingId: string): Promise<Synth
   }
 
   const period = getKstPeriod()
-  const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 900_000)
+  const opsSettings = await getOpsSettings()
+  const cap = Number(opsSettings.tts_monthly_char_cap ?? 900_000)
 
   // 2. 캡 체크 (합성 전) — provider='gemini' 버킷 기준(교체 후 사용량은 여기 누적)
   const { data: usageRows, error: usageError } = await admin
