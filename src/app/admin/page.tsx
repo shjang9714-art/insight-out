@@ -10,6 +10,7 @@ import { getKstPeriod } from '@/lib/translate'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import { effectiveTokenLimit } from '@/lib/llm/token-limit'
+import { getOpsSettings } from '@/lib/ops/settings'
 import AdminTodoBlock from '@/components/admin/AdminTodoBlock'
 import AdminOpsSignals, { type LlmProviderUsage } from '@/components/admin/AdminOpsSignals'
 import AdminContentHealth, { type ContentHealth } from '@/components/admin/AdminContentHealth'
@@ -324,9 +325,10 @@ export default async function AdminPage() {
     }
   })
 
+  const opsSettings = await getOpsSettings()
   const translationChars = ((transUsageRes.data ?? []) as { chars: number }[]).reduce((sum, r) => sum + (r.chars ?? 0), 0)
   const ttsChars         = ((ttsUsageRes.data ?? []) as { chars: number }[]).reduce((sum, r) => sum + (r.chars ?? 0), 0)
-  const ttsMonthlyCap    = process.env.TTS_MONTHLY_CHAR_CAP ? Number(process.env.TTS_MONTHLY_CHAR_CAP) : null
+  const ttsMonthlyCap    = opsSettings.tts_monthly_char_cap ?? null
 
   // ── 콘텐츠 건강 집계 ──────────────────────────────────────────────────────
   const contentHealth: ContentHealth = {

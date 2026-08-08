@@ -6,6 +6,7 @@ import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
   effectiveTokenLimit,
 } from '@/lib/llm/token-limit'
+import { getOpsSettings } from '@/lib/ops/settings'
 
 export type BriefSeverity = 'critical' | 'warning' | 'notice'
 export type DataStatus = 'normal' | 'warning' | 'critical' | 'unavailable'
@@ -607,10 +608,11 @@ export async function gatherDailyBrief(
       return { provider, used, limit, percent: pct(used, limit) }
     }),
   }
+  const opsSettings = await getOpsSettings()
   const translationUsed = translationRows.value.reduce((sum, row) => sum + Number(row.chars ?? 0), 0)
   const ttsUsed = ttsRows.value.reduce((sum, row) => sum + Number(row.chars ?? 0), 0)
-  const translationLimit = Number(process.env.TRANSLATION_MONTHLY_CHAR_CAP ?? 1_000_000)
-  const ttsLimit = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 1_000_000)
+  const translationLimit = Number(opsSettings.translation_monthly_char_cap ?? 1_000_000)
+  const ttsLimit = Number(opsSettings.tts_monthly_char_cap ?? 1_000_000)
   const translation = {
     available: translationRows.available && options.forceUnavailableSection !== 'usage',
     value: { used: translationUsed, limit: translationLimit, percent: pct(translationUsed, translationLimit) },

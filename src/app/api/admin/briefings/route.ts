@@ -2,6 +2,7 @@ import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { resolveBriefingAudioUrl } from '@/lib/briefing/audio-url'
+import { getOpsSettings } from '@/lib/ops/settings'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -69,7 +70,8 @@ export async function GET() {
     const admin = gate.admin
     const period = getKstPeriod()
     // WaveNet 무료 한도 100만/월 → 보수적으로 90만. (synthesize-briefing.ts 기본값과 일치)
-    const cap = Number(process.env.TTS_MONTHLY_CHAR_CAP ?? 900_000)
+    const opsSettings = await getOpsSettings()
+    const cap = Number(opsSettings.tts_monthly_char_cap ?? 900_000)
 
     const [briefingsResult, usageResult] = await Promise.all([
       admin
