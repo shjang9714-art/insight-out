@@ -6,6 +6,7 @@ import { ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { toExcerpt } from '@/lib/contents/excerpt'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
+import { highlightMatches } from '@/lib/search/highlight'
 
 const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
   '뉴스':      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
@@ -51,6 +52,8 @@ interface Props {
   clusterMembers?: ClusterMember[]
   /** LG U+ 관점 위기/기회(313) — '관망'·null 은 배지 없음 */
   lguImpact?: string | null
+  /** 있으면 title에서 이 검색어와 일치하는 부분을 <mark>로 강조(통합검색 오버레이 전용) */
+  highlightQuery?: string
 }
 
 export default function ContentRow({
@@ -68,6 +71,7 @@ export default function ContentRow({
   keywords,
   lguImpact,
   clusterMembers,
+  highlightQuery,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const catStyle    = CATEGORY_STYLE[category] ?? 'bg-muted text-muted-foreground'
@@ -98,7 +102,7 @@ export default function ContentRow({
 
       {/* 제목 */}
       <p className="line-clamp-1 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-        {title}
+        {highlightQuery ? highlightMatches(title, highlightQuery) : title}
       </p>
 
       {/* 요약 */}

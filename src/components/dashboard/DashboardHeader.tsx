@@ -1,14 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, startTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { FlaskConical, FolderOpen, Menu, Waypoints } from 'lucide-react'
+import { FlaskConical, FolderOpen, Menu, Search, Waypoints } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
-import SearchBar from '@/components/dashboard/SearchBar'
 import { cn } from '@/lib/utils'
 import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
 import { useActiveCategoryContext } from '@/lib/nav/active-category-context'
@@ -102,12 +101,13 @@ export function isTabActive(href: string, exact: boolean, pathname: string): boo
 
 interface Props {
   onMenuClick?: () => void
+  onSearchClick?: () => void
   className?: string
 }
 
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
-export default function DashboardHeader({ onMenuClick, className }: Props) {
+export default function DashboardHeader({ onMenuClick, onSearchClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const category     = searchParams.get('category') ?? ''
@@ -121,6 +121,13 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
   const [isAdmin, setIsAdmin]       = useState(false)
+  // 검색 버튼의 단축키 힌트 배지 — 서버 렌더는 항상 '⌘K'로 고정해 하이드레이션 불일치를
+  // 막고, mount 후에만(클라이언트 전용 navigator 값) Windows/Linux면 'Ctrl+K'로 갱신한다.
+  const [kbdHint, setKbdHint] = useState('⌘K')
+  useEffect(() => {
+    const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
+    startTransition(() => setKbdHint(isMac ? '⌘K' : 'Ctrl+K'))
+  }, [])
 
   const today = new Date().toLocaleDateString('ko-KR', {
     month: 'long', day: 'numeric', weekday: 'short',
@@ -198,12 +205,9 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
           </Link>
         </div>
 
-        {/* 중앙: 검색 (md+) */}
-        <div className="mx-4 hidden flex-1 md:block">
-          <div className="mx-auto max-w-2xl">
-            <SearchBar />
-          </div>
-        </div>
+        {/* 중앙: 기존 검색창 자리 — 검색은 우측 액션의 작은 버튼으로 이동(A 스펙).
+            hidden md:block으로 이전과 동일하게 모바일에서는 폭을 차지하지 않는다. */}
+        <div className="mx-4 hidden flex-1 md:block" />
 
         {/* 우측: 액션 */}
         <div className="ml-auto flex shrink-0 items-center gap-3 md:ml-0">
@@ -240,6 +244,22 @@ export default function DashboardHeader({ onMenuClick, className }: Props) {
           <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
           </div>
+
+          {/* 검색 버튼 — 헤더 상단 줄의 넓은 검색창·종류 드롭다운을 대체(A 스펙).
+              돋보기 아이콘 + "검색" 글자 + 흐린 단축키 배지로 발견성을 높인다.
+              모바일은 하단바 중앙 FAB(MobileBottomNav.tsx)가 같은 오버레이를 열므로 여기선 숨김. */}
+          <button
+            type="button"
+            onClick={onSearchClick}
+            className="hidden items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-brand-200 hover:text-foreground md:inline-flex"
+            aria-label="검색 열기"
+          >
+            <Search className="h-4 w-4" />
+            <span className="font-medium">검색</span>
+            <span className="rounded border border-border/60 px-1 py-0.5 text-[10px] font-medium text-muted-foreground/60">
+              {kbdHint}
+            </span>
+          </button>
 
           <ThemeToggle />
 
