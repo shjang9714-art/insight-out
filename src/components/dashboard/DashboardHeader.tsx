@@ -241,25 +241,23 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
               화면에서 우측 액션이 관계지도·자료실·돋보기·다크모드 4개로 붐볐던 것을
               완화. MobileBottomNav.tsx의 SearchFab 참고. */}
 
-          <div className="hidden flex-col items-end lg:flex">
-            <span className="text-xs font-medium text-foreground">{today}</span>
-          </div>
-
-          {/* 검색 버튼 — 헤더 상단 줄의 넓은 검색창·종류 드롭다운을 대체(A 스펙).
-              돋보기 아이콘 + "검색" 글자 + 흐린 단축키 배지로 발견성을 높인다.
+          {/* 검색 버튼 — 돋보기 아이콘만(후속 개편 2026-08-09b, 글자·⌘K 배지 제거).
+              단축키 힌트는 hover title 툴팁으로만 남김. 날짜 표시 왼쪽에 둬서
+              [돋보기][날짜][다크모드][프로필] 순서가 되게 한다.
               모바일은 하단바 중앙 FAB(MobileBottomNav.tsx)가 같은 오버레이를 열므로 여기선 숨김. */}
           <button
             type="button"
             onClick={onSearchClick}
-            className="hidden items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-brand-200 hover:text-foreground md:inline-flex"
-            aria-label="검색 열기"
+            title={`검색 (${kbdHint})`}
+            className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:inline-flex"
+            aria-label="검색"
           >
-            <Search className="h-4 w-4" />
-            <span className="font-medium">검색</span>
-            <span className="rounded border border-border/60 px-1 py-0.5 text-[10px] font-medium text-muted-foreground/60">
-              {kbdHint}
-            </span>
+            <Search className="h-5 w-5" />
           </button>
+
+          <div className="hidden flex-col items-end lg:flex">
+            <span className="text-xs font-medium text-foreground">{today}</span>
+          </div>
 
           <ThemeToggle />
 
