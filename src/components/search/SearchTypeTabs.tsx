@@ -19,8 +19,9 @@ interface Props {
   onSortChange: (mode: SearchSortMode) => void
 }
 
-/** 결과 상단 "종류 버튼 줄" + 정렬 토글(B 스펙) — 오버레이 스크롤 시 sticky로 고정된다
- * (부모가 sticky top-0 컨테이너로 감싼다, SearchOverlay.tsx 참고). 버튼 칩 스타일은
+/** 결과 상단 "종류 버튼 줄" + 정렬 토글 — 스크롤 시 sticky로 고정된다(부모가 sticky
+ * 컨테이너로 감싼다, SearchResultsPanel.tsx 참고. 2026-08-09b 후속 개편으로 /dashboard/search
+ * 전체 페이지 전용이 됨 — 팝업은 더 이상 결과를 그리지 않는다). 버튼 칩 스타일은
  * DashboardHeader.tsx L2Row 모바일 칩과 동일한 톤(선택=브랜드색 채움, 나머지=테두리)을 재사용. */
 export default function SearchTypeTabs({ types, activeType, onTypeChange, sortMode, onSortChange }: Props) {
   return (

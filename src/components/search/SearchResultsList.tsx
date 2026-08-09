@@ -4,14 +4,15 @@ import ContentRow from '@/components/dashboard/ContentRow'
 import SearchResultCard from '@/components/dashboard/SearchResultCard'
 import { tagsOf } from '@/lib/contents/excerpt'
 import { SEARCH_FILTER_DEFS } from '@/lib/search/search-filters'
-import type { ContentSearchRow, SearchSection, UnifiedResult } from '@/lib/search/use-unified-search'
+import type { ContentSearchRow, UnifiedResult } from '@/lib/search/use-unified-search'
 
 function getKeywords(item: ContentSearchRow): string[] {
   return item.content_keywords.map(ck => ck.keywords?.name).filter((name): name is string => Boolean(name))
 }
 
-/** sections(SearchSection[]) 안 한 항목을 카드로 렌더. highlightQuery를 주면 제목에서
- * 일치 부분을 강조한다(통합검색 오버레이의 "전체" 병합 목록에서도 재사용, SearchOverlay.tsx 참고). */
+/** UnifiedResult 한 항목을 카드로 렌더. highlightQuery를 주면 제목에서 일치 부분을
+ * 강조한다. SearchResultsPanel.tsx(팝업이 아닌 /dashboard/search 전체 페이지의 결과 목록,
+ * 2026-08-09b 후속 개편)가 이 함수로 종류 무관 병합/단일 종류 목록을 그린다. */
 export function renderSearchResultItem(item: UnifiedResult, highlightQuery?: string) {
   if (item.source === 'content' && item.content) {
     const content = item.content
@@ -39,25 +40,4 @@ export function renderSearchResultItem(item: UnifiedResult, highlightQuery?: str
     return <SearchResultCard key={item.key} href={`/dashboard/keywords/${encodeURIComponent(keyword.name)}`} title={keyword.name} excerpt={`연결된 기사 ${keyword.linkedCount}건`} publishedAt={keyword.latestPublishedAt} typeBadge={{ label: def.label, className: def.badgeClass }} highlightQuery={highlightQuery} />
   }
   return null
-}
-
-export default function SearchResultsList({ sections, highlightQuery }: { sections: SearchSection[]; highlightQuery?: string }) {
-  return (
-    <div className="space-y-8">
-      {sections.map(section => {
-        const def = SEARCH_FILTER_DEFS.find(d => d.key === section.key)!
-        return (
-          <section key={section.key}>
-            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              {def.label}
-              <span className="font-normal text-muted-foreground">({section.items.length})</span>
-            </h2>
-            <div className="space-y-2">
-              {section.items.map(item => renderSearchResultItem(item, highlightQuery))}
-            </div>
-          </section>
-        )
-      })}
-    </div>
-  )
 }
