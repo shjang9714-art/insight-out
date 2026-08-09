@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { X } from 'lucide-react'
@@ -21,6 +21,20 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   // 인터셉트 모달(@modal/(.)contents/[id])은 이 컴포넌트를 거치지 않는 별도 슬롯이라 영향 없음.
   const isContentDetail = CONTENT_DETAIL_PATTERN.test(pathname)
 
+  // ⌘K(mac)/Ctrl+K(win) — 어디에 포커스가 있든 통합검색 오버레이를 열기/닫기 토글(A 스펙).
+  // 오버레이 안 입력창에 포커스가 있어도 동일하게 토글되고, 닫기는 Radix Dialog의
+  // 기본 ESC 처리(포커스 트랩 내부 어디서든 동작)에 맡긴다 — 별도 ESC 핸들러 불필요.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setSearchOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   if (isContentDetail) {
     return (
       <div className="min-h-screen bg-background">
@@ -36,6 +50,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <DashboardHeader
         className="print:hidden"
         onMenuClick={() => setSidebarOpen(true)}
+        onSearchClick={() => setSearchOpen(true)}
       />
 
       {/* 풀폭 본문 */}

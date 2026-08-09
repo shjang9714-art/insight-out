@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { highlightMatches } from '@/lib/search/highlight'
 
 function formatDate(d: string | null) {
   if (!d) return null
@@ -15,9 +16,11 @@ interface Props {
   excerpt: string | null
   publishedAt: string | null
   typeBadge: { label: string; className: string }
+  /** 있으면 title에서 이 검색어와 일치하는 부분을 <mark>로 강조(통합검색 오버레이 전용) */
+  highlightQuery?: string
 }
 
-export default function SearchResultCard({ href, title, excerpt, publishedAt, typeBadge }: Props) {
+export default function SearchResultCard({ href, title, excerpt, publishedAt, typeBadge, highlightQuery }: Props) {
   const dateStr = formatDate(publishedAt)
 
   return (
@@ -31,7 +34,7 @@ export default function SearchResultCard({ href, title, excerpt, publishedAt, ty
           </div>
 
           <p className="line-clamp-1 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-brand-600">
-            {title}
+            {highlightQuery ? highlightMatches(title, highlightQuery) : title}
           </p>
 
           {excerpt && (
