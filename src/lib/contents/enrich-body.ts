@@ -257,6 +257,7 @@ export async function enrichByIds(
     .select('id, title, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
     .in('id', limitedIds)
     .not('original_url', 'is', null)
+    .is('deleted_at', null)
 
   let processed = 0, improved = 0, skipped = 0
 
@@ -291,6 +292,7 @@ export async function pendingCount(
       .select('id', { count: 'exact', head: true })
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
+      .is('deleted_at', null)
     if (from) q = q.gte('collected_at', from)
     if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
     return q
@@ -329,6 +331,7 @@ export async function drainBackfill(
       .select('id, title, original_url, body_original, thumbnail_url, status, review_reason, source_id, matched_groups, body_retry_count')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
+      .is('deleted_at', null)
     if (from) q = q.gte('collected_at', from)
     if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
     return q

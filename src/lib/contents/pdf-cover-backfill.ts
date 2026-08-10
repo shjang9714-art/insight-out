@@ -40,6 +40,7 @@ export async function pendingCount(admin: SupabaseClient, mode: 'fresh' | 'retry
     .not('file_path', 'is', null)
     .ilike('file_path', '%.pdf')
     .is('thumbnail_url', null)
+    .is('deleted_at', null)
     .or(mode === 'retry' ? 'thumbnail_fetched_at.not.is.null' : 'thumbnail_fetched_at.is.null')
   const { count } = await q
   return count ?? 0
@@ -103,6 +104,7 @@ export async function drainPdfCoverBackfill(
       .not('file_path', 'is', null)
       .ilike('file_path', '%.pdf')
       .is('thumbnail_url', null)
+      .is('deleted_at', null)
       .or(mode === 'retry' ? 'thumbnail_fetched_at.not.is.null' : 'thumbnail_fetched_at.is.null')
 
     const { data: targets, error } = await targetQ

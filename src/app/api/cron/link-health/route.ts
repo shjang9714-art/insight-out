@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       .from('contents')
       .select('id, original_url, link_checked_at')
       .eq('status', 'published')
+      .is('deleted_at', null)
       .not('original_url', 'is', null)
       .order('link_checked_at', { ascending: true, nullsFirst: true })
       .limit(BATCH)

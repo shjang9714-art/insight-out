@@ -137,6 +137,7 @@ function DrillDialog({ log, filterPending, onClose }: DrillDialogProps) {
           .eq('source_id', log.source_id)
           .gte('collected_at', start)
           .lte('collected_at', end)
+          .is('deleted_at', null)
           .order('collected_at', { ascending: false })
           .limit(100)
 

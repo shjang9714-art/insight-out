@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { completeAudit } from '@/lib/admin/audit'
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 
+/** POST /api/admin/contents/restore — 휴지통(소프트 삭제)에서 복원. */
 export async function POST(request: NextRequest) {
   const gate = await verifyAdminRequest()
   if (!gate.ok) return gate.response
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
       : []
   } catch {
     await completeAudit(gate.admin, gate.auditId, {
-      action: 'content.soft_delete',
+      action: 'content.restore',
       targetType: 'contents',
       outcome: 'failed',
       error: '요청 본문이 올바른 JSON이 아닙니다.',
@@ -23,37 +24,29 @@ export async function POST(request: NextRequest) {
   }
   if (ids.length === 0) {
     await completeAudit(gate.admin, gate.auditId, {
-      action: 'content.soft_delete',
+      action: 'content.restore',
       targetType: 'contents',
       outcome: 'failed',
-      error: '삭제할 콘텐츠가 없습니다.',
+      error: '복원할 콘텐츠가 없습니다.',
     })
-    return NextResponse.json({ error: '삭제할 콘텐츠가 없습니다.' }, { status: 400 })
+    return NextResponse.json({ error: '복원할 콘텐츠가 없습니다.' }, { status: 400 })
   }
 
-  const [bookmarks, archiveItems] = await Promise.all([
-    gate.admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
-    gate.admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-  ])
-  // 492 — 하드 delete 대신 소프트 삭제. CASCADE 가 발화하지 않으므로 북마크·아카이브는 보존된다.
   const { error, count } = await gate.admin
     .from('contents')
-    .update({ deleted_at: new Date().toISOString(), deleted_by: gate.userId }, { count: 'exact' })
+    .update({ deleted_at: null, deleted_by: null }, { count: 'exact' })
     .in('id', ids)
-    .is('deleted_at', null)
+    .not('deleted_at', 'is', null)
+
   await completeAudit(gate.admin, gate.auditId, {
-    action: 'content.soft_delete',
+    action: 'content.restore',
     targetType: 'contents',
     targetId: ids.length === 1 ? ids[0] : undefined,
     targetCount: count ?? 0,
-    payload: {
-      ids: ids.slice(0, 50),
-      bookmarkPreservedCount: bookmarks.error ? null : bookmarks.count ?? 0,
-      archiveItemPreservedCount: archiveItems.error ? null : archiveItems.count ?? 0,
-    },
+    payload: { ids: ids.slice(0, 50) },
     outcome: error ? 'failed' : 'ok',
     error: error?.message,
   })
-  if (error) return NextResponse.json({ error: '콘텐츠 삭제에 실패했습니다.' }, { status: 500 })
-  return NextResponse.json({ deleted: count ?? 0 })
+  if (error) return NextResponse.json({ error: '복원에 실패했습니다.' }, { status: 500 })
+  return NextResponse.json({ restored: count ?? 0 })
 }

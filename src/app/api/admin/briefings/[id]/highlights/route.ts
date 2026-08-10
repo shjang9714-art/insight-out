@@ -46,6 +46,7 @@ export async function POST(
       .from('contents')
       .select('id, title, summary_ko')
       .in('id', ids)
+      .is('deleted_at', null)
 
     const byId = new Map((contents ?? []).map(c => [c.id, c]))
     // source 순서 보존

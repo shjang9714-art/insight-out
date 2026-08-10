@@ -40,6 +40,7 @@ export async function POST(
       .from('contents')
       .select('id, title, summary_ko')
       .eq('status', 'published')
+      .is('deleted_at', null)
       .or(`title.ilike.%${safe}%,summary_ko.ilike.%${safe}%`)
       .limit(300)
     for (const row of (data ?? []) as SemanticCandidate[]) {

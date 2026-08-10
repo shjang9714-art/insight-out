@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
         .select('id, title, body_original')
         .eq('original_language', 'en')
         .is('body_translated_ko', null)
+        .is('deleted_at', null)
         .order('collected_at', { ascending: false })
         .limit(limit)
 
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
           .select('id', { count: 'exact', head: true })
           .eq('original_language', 'en')
           .is('body_translated_ko', null)
+          .is('deleted_at', null)
 
         return { processed: 0, translated: 0, skipped: 0, remaining: count ?? 0 }
       }
@@ -108,6 +110,7 @@ export async function POST(request: NextRequest) {
         .select('id', { count: 'exact', head: true })
         .eq('original_language', 'en')
         .is('body_translated_ko', null)
+        .is('deleted_at', null)
 
       return {
         processed: targets.length,

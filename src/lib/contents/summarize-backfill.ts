@@ -56,6 +56,7 @@ async function runPendingSummaryCount(
     .eq('status', 'published')
     .is('summary_ko', null)
     .is('summary_attempted_at', null)
+    .is('deleted_at', null)
   if (useReadinessFilter) query = query.or(SUMMARY_READY_OR)
 
   const { count, error } = await query
@@ -83,6 +84,7 @@ async function fetchSummaryTargets(
     .eq('status', 'published')
     .is('summary_ko', null)
     .is('summary_attempted_at', null)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(limit)
   if (useReadinessFilter) query = query.or(SUMMARY_READY_OR)

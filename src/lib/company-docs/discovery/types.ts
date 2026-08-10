@@ -123,6 +123,7 @@ export async function saveCandidates(
       .from('contents')
       .select('id')
       .eq('original_url', candidate.url)
+      .is('deleted_at', null)
       .maybeSingle()
     if (existing) {
       result.duplicateCount += 1

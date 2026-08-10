@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactElement } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, ImageIcon, Loader2, Pencil, RotateCcw, Search, Trash2, Upload, X } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import AdminFilterChip from '@/components/admin/ui/AdminFilterChip'
@@ -77,6 +78,9 @@ interface AdminContentRow {
   sources: { name: string } | null
   matched_keywords?: string[] | null
   thumbnail_url?: string | null
+  deleted_at?: string | null
+  deleted_by?: string | null
+  deleted_by_user?: { name: string | null; email: string | null } | null
 }
 
 interface SourceOption {
@@ -236,14 +240,15 @@ const EMPTY_REVIEW_REASON_COUNTS = Object.fromEntries(
 ) as Record<ReviewReason, number>
 
 const CONTENT_ROW_BASE_SELECT =
-  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, matched_groups, thumbnail_url'
+  'id, title, category, status, collected_at, bookmark_count, body_fetched_at, matched_keywords, matched_groups, thumbnail_url, deleted_at, deleted_by'
 
-function contentRowSelect(len: boolean, reason: boolean): string {
+function contentRowSelect(len: boolean, reason: boolean, trash: boolean = false): string {
   return [
     CONTENT_ROW_BASE_SELECT,
     len ? 'body_len' : null,
     reason ? 'review_reason' : null,
     'sources(name)',
+    trash ? 'deleted_by_user:users!contents_deleted_by_fkey(name, email)' : null,
   ]
     .filter(Boolean)
     .join(', ')
@@ -268,6 +273,15 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   }
 }
 
+/** 492-E — 연쇄/보존 건수는 service_role 로만 정확하다. RLS 클라이언트로 세면 본인 것만 잡혀 0으로 위장된다. */
+async function fetchCascadeCount(ids: string[]): Promise<number> {
+  const res = await fetch(`/api/admin/contents/purge?ids=${encodeURIComponent(ids.join(','))}`)
+  if (!res.ok) throw new Error('연쇄 건수를 확인할 수 없습니다.')
+  const data = await res.json() as { bookmarks: number | null; archiveItems: number | null }
+  if (data.bookmarks === null || data.archiveItems === null) throw new Error('연쇄 건수를 확인할 수 없습니다.')
+  return data.bookmarks + data.archiveItems
+}
+
 /** 348 — 테이블 셀용 짧은 KST 표기: 2026.07.14 15:12 (전체 표기는 title 속성으로) */
 function formatKstCompact(iso: string): string {
   const parts = new Intl.DateTimeFormat('ko-KR', {
@@ -279,6 +293,14 @@ function formatKstCompact(iso: string): string {
   const get = (t: Intl.DateTimeFormatPart['type']) => parts.find((p) => p.type === t)?.value ?? ''
   const hour = get('hour') === '24' ? '00' : get('hour')
   return `${get('year')}.${get('month')}.${get('day')} ${hour}:${get('minute')}`
+}
+
+/** 492 — 휴지통 뷰의 삭제자 표시. deleted_by 는 있는데 조인 실패(조회 안 됨)면 "확인 실패"로 — 빈칸/0 위장 금지. */
+function trashDeletedByLabel(content: AdminContentRow): string {
+  if (!content.deleted_by) return '-'
+  const user = content.deleted_by_user
+  if (!user) return '확인 실패'
+  return user.name?.trim() || user.email || '확인 실패'
 }
 
 /** 348 — 본문 길이(글자 수). body_len 컬럼이 없거나 미수집이면 null */
@@ -522,6 +544,8 @@ export default function AdminContentManager() {
     return s === 'null' ? SOURCE_NULL : (s ?? SOURCE_ALL)
   })
   const [status,        setStatus]        = useState(() => searchParams.get('status') ?? 'all')
+  // 492 — '휴지통' 은 ContentStatus 가 아니라 status select 의 특수값(소프트 삭제 뷰 전환용).
+  const isTrashView = status === 'deleted'
   const [reviewReason,  setReviewReason]  = useState<ReviewReason | typeof REVIEW_REASON_ALL>(() => {
     const reason = searchParams.get('review_reason')
     return reason && (REVIEW_REASONS as readonly string[]).includes(reason)
@@ -643,6 +667,7 @@ export default function AdminContentManager() {
       .from('contents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .is('deleted_at', null)
       .then(({ count }) => setPendingCount(count ?? 0))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -673,6 +698,7 @@ export default function AdminContentManager() {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'pending')
           .eq('review_reason', reason)
+          .is('deleted_at', null)
 
         if (category !== 'all') {
           const dbCats = adminTabDbCategories(category) ?? toDbCategories(category as ContentCategory)
@@ -738,9 +764,13 @@ export default function AdminContentManager() {
         let q = supabase
           .from('contents')
           .select(sel, { count: 'exact' })
-          .order('collected_at', { ascending: false })
-        if (status !== 'all')             q = q.eq('status', status as ContentStatus)
-        if (reason && reviewReason !== REVIEW_REASON_ALL) q = q.eq('review_reason', reviewReason)
+        if (isTrashView) {
+          q = q.not('deleted_at', 'is', null).order('deleted_at', { ascending: false })
+        } else {
+          q = q.is('deleted_at', null).order('collected_at', { ascending: false })
+          if (status !== 'all')             q = q.eq('status', status as ContentStatus)
+          if (reason && reviewReason !== REVIEW_REASON_ALL) q = q.eq('review_reason', reviewReason)
+        }
         if (category !== 'all') {
           const dbCats = adminTabDbCategories(category) ?? toDbCategories(category as ContentCategory)
           if (dbCats.length === 1)        q = q.eq('category', dbCats[0])
@@ -750,9 +780,11 @@ export default function AdminContentManager() {
         if (sourceId === SOURCE_NULL)     q = q.is('source_id', null)
         else if (sourceId !== SOURCE_ALL) q = q.eq('source_id', sourceId)
         if (debouncedTerm.trim())         q = q.ilike('title', `%${debouncedTerm.trim()}%`)
-        if (todayOnly)                    q = q.gte('collected_at', getKstTodayStartIso())
-        if (bookmarkedOnly)               q = q.gt('bookmark_count', 0)
-        if (coverFilter === 'missing')    q = q.is('thumbnail_url', null)
+        if (!isTrashView) {
+          if (todayOnly)                  q = q.gte('collected_at', getKstTodayStartIso())
+          if (bookmarkedOnly)             q = q.gt('bookmark_count', 0)
+          if (coverFilter === 'missing')  q = q.is('thumbnail_url', null)
+        }
         return q
       }
 
@@ -764,7 +796,8 @@ export default function AdminContentManager() {
       }
 
       const runQuery = async (len: boolean, reason: boolean) => {
-        let q = applyBodyFilter(buildBase(contentRowSelect(len, reason), reason), len)
+        let q = buildBase(contentRowSelect(len, reason, isTrashView), reason)
+        if (!isTrashView) q = applyBodyFilter(q, len)
         q = q.range((page - 1) * pageSize, page * pageSize - 1)
         return q
       }
@@ -807,6 +840,7 @@ export default function AdminContentManager() {
       .from('contents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .is('deleted_at', null)
     setPendingCount(count ?? 0)
   }
 
@@ -931,7 +965,7 @@ export default function AdminContentManager() {
   }
 
   const handleDelete = async (content: AdminContentRow) => {
-    if (!(await confirm({ title: '콘텐츠 삭제', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
+    if (!(await confirm({ title: '콘텐츠 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
     setWorkingId(content.id)
     setError(null)
     const response = await fetch('/api/admin/contents/delete', {
@@ -1248,25 +1282,18 @@ export default function AdminContentManager() {
       ))
       setSelectedIds(new Set())
       const { count } = await supabase
-        .from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+        .from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null)
       setPendingCount(count ?? 0)
     }
     setIsBulkWorking(false)
   }
 
-  // 207 — 선택 바 삭제(벌크). 단건 handleDelete·비우기(206)와 동일 경로(supabase delete, FK cascade).
+  // 207 — 선택 바 삭제(벌크). 492 — 소프트 삭제(휴지통행)로 전환, 북마크·아카이브는 보존된다.
   const handleBulkDelete = async () => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
     const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
-    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '연쇄 삭제되는 북마크·아카이브 항목도 함께 확인해주세요.', targets: titles, countLabel: '함께 삭제되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: async () => {
-      const [bookmarks, archives] = await Promise.all([
-        supabase.from('bookmarks').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-        supabase.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-      ])
-      if (bookmarks.error || archives.error) throw new Error('연쇄 삭제 건수를 확인할 수 없습니다.')
-      return (bookmarks.count ?? 0) + (archives.count ?? 0)
-    } }))) return
+    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: titles, countLabel: '보존되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: () => fetchCascadeCount(ids) }))) return
 
     setIsBulkWorking(true)
     setError(null)
@@ -1286,6 +1313,71 @@ export default function AdminContentManager() {
       setTotalCount((c) => Math.max(0, c - ids.length))
       setPendingCount((c) => (c !== null ? Math.max(0, c - deletedPendingCount) : c))
       setSelectedIds(new Set())
+    }
+    setIsBulkWorking(false)
+  }
+
+  // 492 · 3단계 — 휴지통 복원.
+  const handleRestoreSelected = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
+    if (!(await confirm({ title: '콘텐츠 복원', description: '선택한 콘텐츠를 일반 목록으로 되돌립니다.', targets: titles, confirmLabel: '복원' }))) return
+
+    setIsBulkWorking(true)
+    setError(null)
+
+    const response = await fetch('/api/admin/contents/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+
+    if (!response.ok) {
+      const data = await readJsonSafe(response) as { error?: string } | null
+      setError(data?.error ?? '복원에 실패했습니다.')
+    } else {
+      setContents((prev) => prev.filter((item) => !selectedIds.has(item.id)))
+      setTotalCount((c) => Math.max(0, c - ids.length))
+      setSelectedIds(new Set())
+      await refreshPendingCount()
+      toast.success(`${ids.length}건을 복원했습니다.`)
+    }
+    setIsBulkWorking(false)
+  }
+
+  // 492 · 3단계 — 휴지통 영구 삭제. 여기서만 실제 delete(CASCADE)가 발화한다.
+  const handlePurgeSelected = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
+    if (!(await confirm({
+      title: '콘텐츠 영구 삭제',
+      description: '휴지통에서 완전히 삭제합니다. 연결된 북마크·아카이브 항목도 함께 사라집니다. 되돌릴 수 없습니다.',
+      targets: titles,
+      countLabel: '함께 삭제되는 북마크·아카이브',
+      confirmLabel: '영구 삭제',
+      destructive: true,
+      loadCount: () => fetchCascadeCount(ids),
+    }))) return
+
+    setIsBulkWorking(true)
+    setError(null)
+
+    const response = await fetch('/api/admin/contents/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, expectedCount: ids.length }),
+    })
+
+    if (!response.ok) {
+      const data = await readJsonSafe(response) as { error?: string } | null
+      setError(data?.error ?? '영구 삭제에 실패했습니다.')
+    } else {
+      setContents((prev) => prev.filter((item) => !selectedIds.has(item.id)))
+      setTotalCount((c) => Math.max(0, c - ids.length))
+      setSelectedIds(new Set())
+      toast.success(`${ids.length}건을 영구 삭제했습니다.`)
     }
     setIsBulkWorking(false)
   }
@@ -1389,6 +1481,7 @@ export default function AdminContentManager() {
       .from('contents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .is('deleted_at', null)
 
     if (filters.category) {
       const dbCats = adminTabDbCategories(filters.category)
@@ -1511,6 +1604,15 @@ export default function AdminContentManager() {
     { key: 'body', header: '본문 길이', cell: (content) => { const bodyState=getBodyState(content); const len=bodyLength(content); const bodyText=bodyState==='none'?'미시도':len!=null?`${len.toLocaleString()}자`:'처리됨'; const canBackfillBody=bodyState!=='full'; const disabled=workingId===content.id || bodyBackfillId===content.id || isBulkWorking; return <div><div className="flex items-center gap-1"><span className={cn('text-xs font-medium tabular-nums', BODY_STATE_CLASS[bodyState])}>{bodyText}</span>{canBackfillBody&&<button type="button" disabled={disabled} title="본문 보강" aria-label={`${content.title} 본문 보강`} onClick={()=>{void handleBodyBackfill(content)}} className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">{bodyBackfillId===content.id?<Loader2 className="h-3 w-3 animate-spin"/>:<RotateCcw className="h-3 w-3"/>}</button>}</div>{bodyBackfillNotices[content.id]&&<p className={cn('mt-1 text-[11px] font-medium leading-tight', BODY_BACKFILL_NOTICE_CLASS[bodyBackfillNotices[content.id].tone])}>{bodyBackfillNotices[content.id].message}</p>}</div> } },
     { key: 'collected', header: '수집일 (KST)', cell: (content) => formatKstCompact(content.collected_at), nowrap: true },
     { key: 'actions', header: '관리', align: 'right', cell: (content) => <RowActions content={content} disabled={workingId===content.id || bodyBackfillId===content.id || isBulkWorking} isWorking={workingId===content.id} onStatusChange={handleStatusChange} onEdit={openEdit} onDelete={handleDelete} /> },
+  ]
+
+  // 492 — 휴지통 뷰 컬럼: 제목 · 카테고리 · 삭제 시각 · 삭제자 · 원본 수집일. 복원·영구삭제는 선택 바에서.
+  const trashTableColumns: AdminTableColumn<AdminContentRow>[] = [
+    { key: 'title', header: '제목', cell: (content) => <span className="line-clamp-2 block font-medium text-foreground">{content.title}</span>, truncate: 2 },
+    { key: 'category', header: '카테고리', cell: (content) => CONTENT_CATEGORY_LABEL[content.category], nowrap: true },
+    { key: 'deletedAt', header: '삭제 시각', cell: (content) => content.deleted_at ? formatKstCompact(content.deleted_at) : '-', nowrap: true },
+    { key: 'deletedBy', header: '삭제자', cell: (content) => trashDeletedByLabel(content), nowrap: true },
+    { key: 'collected', header: '원본 수집일', cell: (content) => formatKstCompact(content.collected_at), nowrap: true },
   ]
 
   const bulkReviewFilters = currentBulkReviewFilters()
@@ -1904,6 +2006,7 @@ export default function AdminContentManager() {
             {CONTENT_STATUSES.map((value) => (
               <SelectItem key={value} value={value}>{CONTENT_STATUS_LABEL[value]}</SelectItem>
             ))}
+            <SelectItem value="deleted">휴지통</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -2099,45 +2202,72 @@ export default function AdminContentManager() {
       {/* ── 선택 작업 바 (205 — 1개 이상 선택 시에만 sticky 등장) ── */}
       {selectedIds.size > 0 && (
         <AdminSelectionBar count={selectedIds.size}>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking}
-              onClick={() => handleBulkStatus('published')}
-              className="text-positive"
-            >
-              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              노출
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking}
-              onClick={() => handleBulkStatus('rejected')}
-              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
-            >
-              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              숨김
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking || selectedBackfillCount === 0}
-              onClick={() => { void handleBulkBodyBackfill() }}
-            >
-              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-              본문 보강
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isBulkWorking}
-              onClick={handleBulkDelete}
-              className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
-            >
-              {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              삭제
-            </Button>
+          {isTrashView ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkWorking}
+                onClick={handleRestoreSelected}
+                className="text-positive"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                복원
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkWorking}
+                onClick={handlePurgeSelected}
+                className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                영구 삭제
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkWorking}
+                onClick={() => handleBulkStatus('published')}
+                className="text-positive"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                노출
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkWorking}
+                onClick={() => handleBulkStatus('rejected')}
+                className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                숨김
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkWorking || selectedBackfillCount === 0}
+                onClick={() => { void handleBulkBodyBackfill() }}
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                본문 보강
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkWorking}
+                onClick={handleBulkDelete}
+                className="border-destructive/40 text-destructive hover:border-destructive/60 hover:bg-destructive/10"
+              >
+                {isBulkWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                삭제
+              </Button>
+            </>
+          )}
           {selectedBackfillHint && (
             <span className="text-xs font-medium text-muted-foreground">
               {selectedBackfillHint}
@@ -2153,9 +2283,63 @@ export default function AdminContentManager() {
 
       {!isLoading && contents.length === 0 ? (
         <AdminEmptyState
-          message="조건에 맞는 콘텐츠가 없습니다."
-          hint="필터를 바꾸거나 수집을 실행해보세요."
+          message={isTrashView ? '휴지통이 비어 있습니다.' : '조건에 맞는 콘텐츠가 없습니다.'}
+          hint={isTrashView ? undefined : '필터를 바꾸거나 수집을 실행해보세요.'}
         />
+      ) : isTrashView ? (
+        <>
+          {/* ── 휴지통 데스크톱 테이블 ── */}
+          <div className="hidden md:block">
+            <AdminTable
+              columns={trashTableColumns}
+              rows={contents}
+              rowKey={(content) => content.id}
+              minWidth="min-w-[900px]"
+              state={isLoading ? 'loading' : error ? 'error' : contents.length === 0 ? 'empty' : 'idle'}
+              errorMessage={error ?? undefined}
+              selection={{ selected: selectedIds, onChange: setSelectedIds }}
+              pagination={{ page, pageSize, total: totalCount }}
+              onPageChange={setPage}
+              emptyMessage="휴지통이 비어 있습니다."
+            />
+          </div>
+
+          {/* ── 휴지통 모바일 카드 ── */}
+          <ul className="space-y-3 md:hidden">
+            {contents.map((content) => {
+              const isSelected = selectedIds.has(content.id)
+              return (
+                <li
+                  key={content.id}
+                  className={cn(
+                    'rounded-xl border border-border bg-card p-3',
+                    isSelected && 'ring-1 ring-brand-600/40'
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleRow(content.id)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[--color-brand-600]"
+                      aria-label={`${content.title} 선택`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 font-medium text-foreground">{content.title}</p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span>{CONTENT_CATEGORY_LABEL[content.category]}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span>삭제: {content.deleted_at ? formatKstCompact(content.deleted_at) : '-'}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span>{trashDeletedByLabel(content)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </>
       ) : (
         <>
           {/* ── 데스크톱: 단일 테이블 그리드 (348 — sticky 관리 열 제거, 행 배경·hover가 관리까지 이어짐) ── */}

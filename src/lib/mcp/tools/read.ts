@@ -76,6 +76,7 @@ export function registerReadTools(server: McpServer) {
           .select('id, title, summary_ko, category, author, original_url, published_at, matched_groups, importance_score')
           .eq('status', 'published')
           .gte('published_at', since)
+          .is('deleted_at', null)
           .order('published_at', { ascending: false })
           .limit(limit ?? 10)
 
@@ -120,6 +121,7 @@ export function registerReadTools(server: McpServer) {
           .select('id, title, summary_ko, body_original, body_translated_ko, transcript_ko, category, author, original_url, published_at, matched_groups, sentiment, lgu_impact, matched_keywords')
           .eq('id', id)
           .eq('status', 'published')
+          .is('deleted_at', null)
           .single()
 
         if (error) return dbError(error, 'contents')

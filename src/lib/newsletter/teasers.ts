@@ -33,6 +33,7 @@ export async function getKnowledgeReportTeasers(
     .select('id, title, summary_ko, category, matched_groups, published_at, collected_at')
     .eq('status', 'published')
     .in('category', KNOWLEDGE_REPORT_CATEGORIES as unknown as string[])
+    .is('deleted_at', null)
     .order('published_at', { ascending: false, nullsFirst: false })
     .order('collected_at', { ascending: false })
     .limit(20)

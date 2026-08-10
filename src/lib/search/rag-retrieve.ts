@@ -106,6 +106,7 @@ export async function retrieveForQuestion(
     .select('id, title, summary_ko, body_original, published_at, sources(name)')
     .or(orFilter)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(limit)
 
@@ -142,6 +143,7 @@ export async function retrieveForQuestion(
           .select('id, title, summary_ko, body_original, published_at, sources(name)')
           .in('id', extraIds)
           .eq('status', 'published')
+          .is('deleted_at', null)
           .order('published_at', { ascending: false, nullsFirst: false })
 
         if (extraRows) {

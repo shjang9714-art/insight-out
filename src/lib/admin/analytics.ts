@@ -39,17 +39,20 @@ export async function gatherContentAnalytics(admin: SupabaseClient, windowDays: 
       .from('contents')
       .select('collected_at, category, status', { count: 'exact' })
       .gte('collected_at', windowStart)
+      .is('deleted_at', null)
       .limit(DAILY_SAMPLE_LIMIT),
     admin
       .from('contents')
       .select('source_id, sources(name)')
       .gte('collected_at', windowStart)
       .not('source_id', 'is', null)
+      .is('deleted_at', null)
       .limit(SOURCE_SAMPLE_LIMIT),
     admin
       .from('contents')
       .select('id, title, bookmark_count')
       .gt('bookmark_count', 0)
+      .is('deleted_at', null)
       .order('bookmark_count', { ascending: false })
       .limit(10),
   ])

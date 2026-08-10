@@ -98,6 +98,7 @@ async function pendingSignalsCount(admin: SupabaseClient): Promise<number> {
     .select('id', { count: 'exact', head: true })
     .eq('status', 'published')
     .is('signals_classified_at', null)
+    .is('deleted_at', null)
   return count ?? 0
 }
 
@@ -123,6 +124,7 @@ export async function drainSignals(
       .select('id, title, summary_ko')
       .eq('status', 'published')
       .is('signals_classified_at', null)
+      .is('deleted_at', null)
       .order('collected_at', { ascending: false })
       .limit(limit)
 

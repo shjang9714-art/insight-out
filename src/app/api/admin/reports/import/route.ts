@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
         .from('contents')
         .select('id')
         .ilike('title', `%${t.trim().slice(0, 40)}%`)
+        .is('deleted_at', null)
         .limit(1)
       const id = (data ?? [])[0]?.id as string | undefined
       if (id) contentIds.add(id)

@@ -75,6 +75,9 @@ export interface DailyBrief {
     crawlPartial: DataPoint<number>
     backlog: DataPoint<number>
     failedJobs: DataPoint<number>
+    /** 492 — 휴지통 30일 초과분 자동 정리 결과. gatherDailyBrief 는 채우지 않는다(순수 조회 함수) —
+     *  ops-brief 크론이 cleanupExpiredTrash 실행 후 이 필드를 직접 채워 넣는다. */
+    trashCleanup?: DataPoint<{ deleted: number; capped: boolean }>
   }
   collection: {
     collected: TrendMetric
@@ -380,6 +383,7 @@ async function gatherSourceCollection(
         .select('id, category, source_id, sources(name, type)')
         .gte('collected_at', report.startIso)
         .lt('collected_at', report.endIso)
+        .is('deleted_at', null)
         .order('id')
         .range(from, from + pageSize - 1)
     )
@@ -515,9 +519,9 @@ export async function gatherDailyBrief(
     gatherDateTrend(admin, history, 'daily_insights', 'day_of', '일일 핵심 발행'),
     safeCount('수집 실패', admin.from('crawl_logs').select('id', { count: 'exact', head: true }).gte('started_at', report.startIso).lt('started_at', report.endIso).eq('status', 'failed')),
     safeCount('수집 부분 실패', admin.from('crawl_logs').select('id', { count: 'exact', head: true }).gte('started_at', report.startIso).lt('started_at', report.endIso).eq('status', 'partial')),
-    safeCount('본문 보강 대기', admin.from('contents').select('id', { count: 'exact', head: true }).is('body_fetched_at', null).not('original_url', 'is', null)),
-    safeCount('거절 콘텐츠', admin.from('contents').select('id', { count: 'exact', head: true }).gte('collected_at', report.startIso).lt('collected_at', report.endIso).eq('status', 'rejected')),
-    safeCount('검토 대기', admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending')),
+    safeCount('본문 보강 대기', admin.from('contents').select('id', { count: 'exact', head: true }).is('body_fetched_at', null).not('original_url', 'is', null).is('deleted_at', null)),
+    safeCount('거절 콘텐츠', admin.from('contents').select('id', { count: 'exact', head: true }).gte('collected_at', report.startIso).lt('collected_at', report.endIso).eq('status', 'rejected').is('deleted_at', null)),
+    safeCount('검토 대기', admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null)),
     safeCount('활성 소스', admin.from('sources').select('id', { count: 'exact', head: true }).eq('is_active', true)),
     safeCount('실패 작업', admin.from('job_runs').select('id', { count: 'exact', head: true }).gte('started_at', report.startIso).lt('started_at', report.endIso).eq('status', 'failed')),
     safeCount('전체 사용자', admin.from('users').select('id', { count: 'exact', head: true })),
@@ -550,7 +554,7 @@ export async function gatherDailyBrief(
   const reviewReasonPoints = await Promise.all(REVIEW_REASONS.map(async ([reason, label]) => {
     const result = await safeCount(
       `검토 사유 ${reason}`,
-      admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('review_reason', reason)
+      admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('review_reason', reason).is('deleted_at', null)
     )
     return { ...result, reason, label }
   }))
@@ -991,6 +995,13 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
             ${dataRow('수집 실패', pointText(brief.system.crawlFailed), brief.system.crawlFailed.available ? (brief.system.crawlFailed.value ? 'critical' : 'normal') : 'unavailable')}
             ${dataRow('수집 부분 실패', pointText(brief.system.crawlPartial), brief.system.crawlPartial.available ? (brief.system.crawlPartial.value ? 'warning' : 'normal') : 'unavailable')}
             ${dataRow('본문 보강 대기', pointText(brief.system.backlog), brief.system.backlog.available ? (brief.system.backlog.value > 100 ? 'warning' : 'normal') : 'unavailable')}
+            ${brief.system.trashCleanup ? dataRow(
+              '휴지통 정리(30일 초과)',
+              brief.system.trashCleanup.available
+                ? `${brief.system.trashCleanup.value.deleted.toLocaleString()}건${brief.system.trashCleanup.value.capped ? ' (상한 도달 — 다음 실행에 계속)' : ''}`
+                : '조회 불가',
+              brief.system.trashCleanup.available ? (brief.system.trashCleanup.value.capped ? 'warning' : 'normal') : 'unavailable'
+            ) : ''}
             ${reviewRows}
           </table>
           <div style="padding:14px 0 0;color:#374151;font-size:12px;font-weight:700">수집량 14일 추이</div>

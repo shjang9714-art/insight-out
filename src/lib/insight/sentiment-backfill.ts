@@ -50,6 +50,7 @@ export async function backfillSentiment(
     .is('sentiment', null)
     .gte('collected_at', since)
     .overlaps('matched_keywords', names)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(max)
 

@@ -1148,6 +1148,7 @@ export async function mergeByCanonical(admin: SupabaseClient, rowId: string, can
     .select('id, cluster_id')
     .eq('canonical_url', canonical)
     .neq('id', rowId)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: true })
     .limit(1)
 
@@ -1161,6 +1162,7 @@ export async function mergeByCanonical(admin: SupabaseClient, rowId: string, can
       .select('id, cluster_id')
       .eq('original_url', canonical)
       .neq('id', rowId)
+      .is('deleted_at', null)
       .order('collected_at', { ascending: true })
       .limit(1)
     found = byOriginal.data?.[0] as { id: string; cluster_id: string | null } | undefined
@@ -1196,6 +1198,7 @@ async function enrichRecentContents(
       .select('id, original_url, body_original, status, review_reason, source_id, matched_groups, body_retry_count')
       .is('body_fetched_at', null)
       .not('original_url', 'is', null)
+      .is('deleted_at', null)
       .gte('collected_at', runStartedAt)
       .order('collected_at', { ascending: false })
       .limit(MAX_ENRICH_PER_CRAWL)

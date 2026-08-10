@@ -17,12 +17,12 @@ interface ResetItemConfig {
 const RESET_ITEMS: ResetItemConfig[] = [
   {
     key: 'contents',
-    title: '수집 기사 삭제',
-    description: '크롤링으로 수집한 기사만 삭제합니다. 업로드한 리포트·AI 보고서·유튜브 영상은 보존됩니다.',
+    title: '휴지통 비우기',
+    description: '휴지통(소프트 삭제된 콘텐츠)만 영구 삭제합니다. 살아있는 콘텐츠는 삭제되지 않습니다.',
     purgeUrl: '/api/admin/contents/purge',
     confirmLabel: (count) =>
-      `크롤링 기사 ${count.toLocaleString()}건을 삭제합니다.\n업로드한 리포트·AI보고서·유튜브는 보존됩니다.\n되돌릴 수 없습니다.`,
-    resultLabel: (deleted) => `${deleted.toLocaleString()}건 삭제 완료`,
+      `휴지통의 콘텐츠 ${count.toLocaleString()}건을 영구 삭제합니다.\n살아있는 콘텐츠는 삭제되지 않습니다.\n되돌릴 수 없습니다.`,
+    resultLabel: (deleted) => `${deleted.toLocaleString()}건 영구 삭제 완료`,
   },
   {
     key: 'youtube',

@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
           'id, title, summary_ko, category, author, original_url, published_at, matched_groups, importance_score',
         )
         .eq('status', 'published')
+        .is('deleted_at', null)
         .gte('published_at', since)
         .order('published_at', { ascending: false })
         .limit(limit)
@@ -94,6 +95,7 @@ export async function GET(req: NextRequest) {
           'id, title, summary_ko, body_original, body_translated_ko, transcript_ko, category, author, original_url, published_at, matched_groups',
         )
         .eq('id', id)
+        .is('deleted_at', null)
         .single()
 
       if (error) return jsonError(404, '해당 id 의 콘텐츠를 찾을 수 없습니다.')

@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     .from('contents')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'pending')
+    .is('deleted_at', null)
   const countQuery = applyBulkReviewFilters(
     countBase as unknown as FilterBuilder,
     parsed.value,

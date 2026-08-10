@@ -1237,6 +1237,8 @@ CREATE TABLE IF NOT EXISTS "public"."contents" (
     "transcript_lang" "text",
     "transcript_fetched_at" timestamp with time zone,
     "summary_attempted_at" timestamp with time zone,
+    "deleted_at" timestamp with time zone,
+    "deleted_by" "uuid",
     CONSTRAINT "contents_lgu_impact_check" CHECK ((("lgu_impact" IS NULL) OR ("lgu_impact" = ANY (ARRAY['위기'::"text", '기회'::"text", '관망'::"text"])))),
     CONSTRAINT "contents_sentiment_check" CHECK ((("sentiment" IS NULL) OR ("sentiment" = ANY (ARRAY['긍정'::"text", '중립'::"text", '부정'::"text"]))))
 );
@@ -1247,6 +1249,13 @@ CREATE TABLE IF NOT EXISTS "public"."contents" (
 --
 
 COMMENT ON COLUMN "public"."contents"."sentiment" IS '경쟁사 기사 논조(LLM 분석) — 긍정/중립/부정, null = 미분석. 시장 톤 기준(LGU+ 위협도 아님).';
+
+
+--
+-- Name: COLUMN "contents"."deleted_at"; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN "public"."contents"."deleted_at" IS '492: 소프트 삭제 시각. null 이면 정상. 30일 후 자동 영구 삭제.';
 
 
 --
@@ -3073,6 +3082,13 @@ CREATE INDEX "content_views_user_viewed_idx" ON "public"."content_views" USING "
 
 
 --
+-- Name: contents_alive_collected_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "contents_alive_collected_idx" ON "public"."contents" USING "btree" ("collected_at" DESC) WHERE ("deleted_at" IS NULL);
+
+
+--
 -- Name: contents_body_hash_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3112,6 +3128,13 @@ CREATE INDEX "contents_cluster_idx" ON "public"."contents" USING "btree" ("clust
 --
 
 CREATE INDEX "contents_collected_at_idx" ON "public"."contents" USING "btree" ("collected_at" DESC);
+
+
+--
+-- Name: contents_deleted_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "contents_deleted_at_idx" ON "public"."contents" USING "btree" ("deleted_at") WHERE ("deleted_at" IS NOT NULL);
 
 
 --
@@ -4052,6 +4075,14 @@ ALTER TABLE ONLY "public"."content_views"
 
 ALTER TABLE ONLY "public"."contents"
     ADD CONSTRAINT "contents_cluster_id_fkey" FOREIGN KEY ("cluster_id") REFERENCES "public"."contents"("id") ON DELETE SET NULL;
+
+
+--
+-- Name: contents contents_deleted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."contents"
+    ADD CONSTRAINT "contents_deleted_by_fkey" FOREIGN KEY ("deleted_by") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 
 
 --

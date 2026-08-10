@@ -167,31 +167,31 @@ export default async function AdminPage() {
     searchProviderRunRes, searchSeedsRes,
   ] = await Promise.all([
     // KPI head counts
-    supabase.from('contents').select('*', { count: 'exact', head: true }),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).gte('collected_at', todayStart),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).gte('collected_at', todayStart).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'rejected').is('deleted_at', null),
     supabase.from('sources').select('*', { count: 'exact', head: true }).eq('is_active', true),
     supabase.from('sources').select('*', { count: 'exact', head: true }),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).gt('bookmark_count', 0),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).gt('bookmark_count', 0).is('deleted_at', null),
     supabase.from('ai_report_sources').select('*', { count: 'exact', head: true }).not('content_id', 'is', null),
     // 카테고리 전체 분포
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '뉴스'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '리포트'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '웹인사이트'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '유튜브'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', 'AI보고서'),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '뉴스').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '리포트').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '웹인사이트').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '유튜브').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', 'AI보고서').is('deleted_at', null),
     // 카테고리 오늘 분포
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '뉴스').gte('collected_at', todayStart),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '리포트').gte('collected_at', todayStart),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '웹인사이트').gte('collected_at', todayStart),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '유튜브').gte('collected_at', todayStart),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', 'AI보고서').gte('collected_at', todayStart),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '뉴스').gte('collected_at', todayStart).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '리포트').gte('collected_at', todayStart).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '웹인사이트').gte('collected_at', todayStart).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', '유튜브').gte('collected_at', todayStart).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('category', 'AI보고서').gte('collected_at', todayStart).is('deleted_at', null),
     // 14일 추이 (바운디드)
-    supabase.from('contents').select('category, collected_at').gte('collected_at', fourteenDaysStart),
+    supabase.from('contents').select('category, collected_at').gte('collected_at', fourteenDaysStart).is('deleted_at', null),
     // 소스 Top 10 (바운디드 30일)
-    supabase.from('contents').select('source_id, sources(name)').gte('collected_at', thirtyDaysStart).not('source_id', 'is', null),
+    supabase.from('contents').select('source_id, sources(name)').gte('collected_at', thirtyDaysStart).not('source_id', 'is', null).is('deleted_at', null),
     // 오늘 크롤 실패 건수
     supabase.from('crawl_logs').select('*', { count: 'exact', head: true }).in('status', ['failed', 'partial']).gte('started_at', todayStart),
     // 최근 24h 실패 소스 목록 (distinct source_id 집계용)
@@ -209,13 +209,13 @@ export default async function AdminPage() {
     // TTS usage
     admin ? admin.from('tts_usage').select('chars').eq('period', period) : Promise.resolve({ data: [], error: null }),
     // 콘텐츠 건강 집계 (8개)
-    supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).gte('body_len', 400),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).lt('body_len', 400),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).is('body_fetched_at', null),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').is('sentiment', null),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).is('matched_groups', null),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').ilike('original_url', '%news.google.com%'),
-    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').eq('link_ok', false),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).gte('body_len', 400).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).not('body_fetched_at', 'is', null).lt('body_len', 400).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).is('body_fetched_at', null).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').is('sentiment', null).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).is('matched_groups', null).is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').ilike('original_url', '%news.google.com%').is('deleted_at', null),
+    supabase.from('contents').select('*', { count: 'exact', head: true }).eq('status', 'published').eq('link_ok', false).is('deleted_at', null),
     // 최근 24시간 내 실패한 작업(job_runs, 289) — 테이블 미적용(42P01) 시 error → 카드 숨김(graceful)
     admin
       ? admin.from('job_runs').select('id, job_key, error, started_at').eq('status', 'failed').gte('started_at', yesterday).order('started_at', { ascending: false }).limit(20)

@@ -51,6 +51,7 @@ export async function backfillLguImpact(
     .is('lgu_impact', null)
     .gte('collected_at', since)
     .overlaps('matched_keywords', names)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(max)
 

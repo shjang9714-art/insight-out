@@ -74,6 +74,7 @@ async function collectContext(
       .from('contents')
       .select('title, summary_ko')
       .in('id', contentIds)
+      .is('deleted_at', null)
     for (const row of (data ?? []) as { title: string; summary_ko: string | null }[]) {
       parts.push(`[콘텐츠] ${row.title}${row.summary_ko ? `\n${row.summary_ko}` : ''}`)
     }
