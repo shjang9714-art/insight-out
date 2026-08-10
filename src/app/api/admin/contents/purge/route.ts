@@ -1,5 +1,5 @@
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { completeAudit } from '@/lib/admin/audit'
 import { runJob, JobAlreadyRunningError } from '@/lib/jobs/run-job'
 
@@ -15,20 +15,41 @@ export const maxDuration = 60
 // ids 를 지정하면 그중 소프트 삭제된 것만(휴지통 화면의 선택 영구삭제), 지정하지 않으면
 // 휴지통 전체(AdminDataReset의 "휴지통 비우기" 버튼)를 대상으로 한다.
 
-/** GET — 휴지통(소프트 삭제된 콘텐츠) 건수 미리보기 */
-export async function GET() {
+/**
+ * GET — 휴지통(소프트 삭제된 콘텐츠) 건수 미리보기.
+ * `?ids=a,b,c` 가 오면 그 대상의 연쇄 건수(북마크·아카이브)도 함께 돌려준다(492-E).
+ * 브라우저 RLS 클라이언트로는 bookmarks/archive_items 가 본인 것만 잡혀 0으로 위장되므로,
+ * 여기서 service_role 로 정확히 세서 확인 다이얼로그에 내려준다.
+ */
+export async function GET(request: NextRequest) {
   try {
     const gate = await verifyAdminRequest({ capability: 'reset_data' })
     if (!gate.ok) return gate.response
 
     const admin = gate.admin
-    const { count, error } = await admin
-      .from('contents')
-      .select('id', { count: 'exact', head: true })
-      .not('deleted_at', 'is', null)
+    const idsParam = request.nextUrl.searchParams.get('ids')
+    const ids = idsParam
+      ? [...new Set(idsParam.split(',').map((id) => id.trim()).filter((id) => id.length > 0))]
+      : null
 
+    let contentsQuery = admin.from('contents').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null)
+    if (ids) contentsQuery = contentsQuery.in('id', ids)
+    const { count, error } = await contentsQuery
     if (error) throw error
-    return NextResponse.json({ count: count ?? 0 })
+
+    if (!ids) return NextResponse.json({ count: count ?? 0 })
+
+    const [bookmarks, archiveItems] = await Promise.all([
+      admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
+      // archive_items 는 id 컬럼이 없다 — content_id 로 count
+      admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
+    ])
+
+    return NextResponse.json({
+      count: count ?? 0,
+      bookmarks: bookmarks.error ? null : bookmarks.count ?? 0,
+      archiveItems: archiveItems.error ? null : archiveItems.count ?? 0,
+    })
   } catch (err) {
     console.error('[/api/admin/contents/purge] GET 오류:', err)
     return NextResponse.json({ error: '건수 조회 중 오류가 발생했습니다.' }, { status: 500 })

@@ -273,6 +273,15 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   }
 }
 
+/** 492-E — 연쇄/보존 건수는 service_role 로만 정확하다. RLS 클라이언트로 세면 본인 것만 잡혀 0으로 위장된다. */
+async function fetchCascadeCount(ids: string[]): Promise<number> {
+  const res = await fetch(`/api/admin/contents/purge?ids=${encodeURIComponent(ids.join(','))}`)
+  if (!res.ok) throw new Error('연쇄 건수를 확인할 수 없습니다.')
+  const data = await res.json() as { bookmarks: number | null; archiveItems: number | null }
+  if (data.bookmarks === null || data.archiveItems === null) throw new Error('연쇄 건수를 확인할 수 없습니다.')
+  return data.bookmarks + data.archiveItems
+}
+
 /** 348 — 테이블 셀용 짧은 KST 표기: 2026.07.14 15:12 (전체 표기는 title 속성으로) */
 function formatKstCompact(iso: string): string {
   const parts = new Intl.DateTimeFormat('ko-KR', {
@@ -1284,14 +1293,7 @@ export default function AdminContentManager() {
     const ids = [...selectedIds]
     if (ids.length === 0) return
     const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
-    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: titles, countLabel: '보존되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: async () => {
-      const [bookmarks, archives] = await Promise.all([
-        supabase.from('bookmarks').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-        supabase.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-      ])
-      if (bookmarks.error || archives.error) throw new Error('보존 항목 건수를 확인할 수 없습니다.')
-      return (bookmarks.count ?? 0) + (archives.count ?? 0)
-    } }))) return
+    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: titles, countLabel: '보존되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: () => fetchCascadeCount(ids) }))) return
 
     setIsBulkWorking(true)
     setError(null)
@@ -1356,15 +1358,7 @@ export default function AdminContentManager() {
       countLabel: '함께 삭제되는 북마크·아카이브',
       confirmLabel: '영구 삭제',
       destructive: true,
-      loadCount: async () => {
-        const [bookmarks, archives] = await Promise.all([
-          supabase.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
-          // archive_items 는 id 컬럼이 없다 — content_id 로 count
-          supabase.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-        ])
-        if (bookmarks.error || archives.error) throw new Error('연쇄 삭제 건수를 확인할 수 없습니다.')
-        return (bookmarks.count ?? 0) + (archives.count ?? 0)
-      },
+      loadCount: () => fetchCascadeCount(ids),
     }))) return
 
     setIsBulkWorking(true)
