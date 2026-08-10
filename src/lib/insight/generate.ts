@@ -160,6 +160,7 @@ export async function generateIndustryInsightCards(
     .eq('status', 'published')
     .gte('collected_at', sinceIso)
     .not('matched_groups', 'is', null)
+    .is('deleted_at', null)
     .limit(400)
 
   if (contentsError) {
@@ -414,6 +415,7 @@ export async function generateCompanyInsightCards(
         .eq('status', 'published')
         .gte('collected_at', sinceIso)
         .or(orClause)
+        .is('deleted_at', null)
         .limit(articlesPerCompany * 3)
 
       const articles = (rawArticles ?? []) as CompanyArticleRow[]

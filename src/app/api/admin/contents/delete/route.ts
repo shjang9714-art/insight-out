@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       : []
   } catch {
     await completeAudit(gate.admin, gate.auditId, {
-      action: 'content.delete',
+      action: 'content.soft_delete',
       targetType: 'contents',
       outcome: 'failed',
       error: '요청 본문이 올바른 JSON이 아닙니다.',
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   }
   if (ids.length === 0) {
     await completeAudit(gate.admin, gate.auditId, {
-      action: 'content.delete',
+      action: 'content.soft_delete',
       targetType: 'contents',
       outcome: 'failed',
       error: '삭제할 콘텐츠가 없습니다.',
@@ -35,16 +35,21 @@ export async function POST(request: NextRequest) {
     gate.admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
     gate.admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
   ])
-  const { error, count } = await gate.admin.from('contents').delete({ count: 'exact' }).in('id', ids)
+  // 492 — 하드 delete 대신 소프트 삭제. CASCADE 가 발화하지 않으므로 북마크·아카이브는 보존된다.
+  const { error, count } = await gate.admin
+    .from('contents')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: gate.userId }, { count: 'exact' })
+    .in('id', ids)
+    .is('deleted_at', null)
   await completeAudit(gate.admin, gate.auditId, {
-    action: 'content.delete',
+    action: 'content.soft_delete',
     targetType: 'contents',
     targetId: ids.length === 1 ? ids[0] : undefined,
     targetCount: count ?? 0,
     payload: {
       ids: ids.slice(0, 50),
-      bookmarkCascadeCount: bookmarks.error ? null : bookmarks.count ?? 0,
-      archiveItemCascadeCount: archiveItems.error ? null : archiveItems.count ?? 0,
+      bookmarkPreservedCount: bookmarks.error ? null : bookmarks.count ?? 0,
+      archiveItemPreservedCount: archiveItems.error ? null : archiveItems.count ?? 0,
     },
     outcome: error ? 'failed' : 'ok',
     error: error?.message,

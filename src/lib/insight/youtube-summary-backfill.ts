@@ -36,6 +36,7 @@ export async function backfillYoutubeSummary(
     .eq('category', '유튜브')
     .eq('status', 'published')
     .is('summary_ko', null)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(max)
 

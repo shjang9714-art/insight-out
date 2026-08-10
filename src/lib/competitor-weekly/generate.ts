@@ -138,6 +138,7 @@ async function loadWeekContents(
       .gte('collected_at', sinceIso)
       .lt('collected_at', untilIso)
       .not('matched_groups', 'is', null)
+      .is('deleted_at', null)
       .limit(600)
 
   const res = await baseQuery()
@@ -150,6 +151,7 @@ async function loadWeekContents(
       .gte('collected_at', sinceIso)
       .lt('collected_at', untilIso)
       .not('matched_groups', 'is', null)
+      .is('deleted_at', null)
       .limit(600)
     if (retry.error) return { rows: [], error: retry.error.message }
     return {

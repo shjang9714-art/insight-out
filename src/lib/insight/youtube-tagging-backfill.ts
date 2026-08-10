@@ -65,6 +65,7 @@ export async function backfillYoutubeTagging(
     .select('id, title, matched_groups, matched_keywords')
     .eq('category', '유튜브')
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(max * 3)
 

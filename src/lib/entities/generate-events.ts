@@ -183,6 +183,7 @@ export async function generateEntityEvents(
       .in('id', allContentIds)
       .eq('status', 'published')
       .gte('published_at', since)
+      .is('deleted_at', null)
       .order('published_at', { ascending: false })
       .limit(80)
 

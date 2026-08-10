@@ -21,6 +21,7 @@ export default async function KnowledgeReportsAdminPage() {
     .select('id, title, summary_ko, file_path, matched_keywords, status, created_at, updated_at')
     .eq('category', '지식보고서')
     .neq('status', 'rejected')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   const schemaReady = !isKnowledgeReportSchemaMissing(error)

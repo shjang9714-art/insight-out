@@ -153,6 +153,7 @@ export async function generateIssueCandidates(
       .eq('status', 'published')
       .gte('collected_at', since)
       .not('matched_groups', 'is', null)
+      .is('deleted_at', null)
       .limit(400)
 
     if (contentsError) {

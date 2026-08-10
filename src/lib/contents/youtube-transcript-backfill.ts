@@ -47,6 +47,7 @@ export async function pendingCount(admin: SupabaseClient, mode: 'fresh' | 'retry
     .from('contents')
     .select('id', { count: 'exact', head: true })
     .eq('category', '유튜브')
+    .is('deleted_at', null)
   q = mode === 'retry'
     ? q.not('transcript_fetched_at', 'is', null).or('transcript.is.null,transcript_ko.is.null')
     : q.is('transcript_fetched_at', null)
@@ -105,6 +106,7 @@ export async function drainYoutubeTranscriptBackfill(
       .from('contents')
       .select('id, original_url, transcript, transcript_lang')
       .eq('category', '유튜브')
+      .is('deleted_at', null)
     targetQ = mode === 'retry'
       ? targetQ.not('transcript_fetched_at', 'is', null).or('transcript.is.null,transcript_ko.is.null')
       : targetQ.is('transcript_fetched_at', null)

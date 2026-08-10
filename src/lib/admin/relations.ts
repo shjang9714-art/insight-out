@@ -159,6 +159,7 @@ export async function getRelationEvidence(admin: SupabaseClient, aId: string, bI
     .from('contents')
     .select('id, title, category, published_at')
     .in('id', shared)
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .limit(EVIDENCE_LIMIT)
 

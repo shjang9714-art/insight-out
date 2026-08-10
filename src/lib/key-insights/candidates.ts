@@ -119,6 +119,7 @@ export async function buildCandidatePool(opts?: { windowDays?: number }): Promis
     .select('id, title, summary_ko, category, matched_groups, published_at, collected_at, original_url, importance_score, source_id')
     .eq('status', 'published')
     .or(`published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`)
+    .is('deleted_at', null)
     .limit(3000)
 
   if (error) throw new Error(`후보 조회 실패: ${error.message}`)
@@ -274,6 +275,7 @@ export async function buildCandidatePool(opts?: { windowDays?: number }): Promis
             .select('id, title, published_at, collected_at, original_url, source_id')
             .in('id', chunk)
             .lt('published_at', windowStart)
+            .is('deleted_at', null)
             .order('published_at', { ascending: false })
         )
       : ([] as { id: string; title: string; published_at: string | null; collected_at: string; original_url: string | null; source_id: string }[])

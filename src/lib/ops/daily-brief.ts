@@ -380,6 +380,7 @@ async function gatherSourceCollection(
         .select('id, category, source_id, sources(name, type)')
         .gte('collected_at', report.startIso)
         .lt('collected_at', report.endIso)
+        .is('deleted_at', null)
         .order('id')
         .range(from, from + pageSize - 1)
     )
@@ -515,9 +516,9 @@ export async function gatherDailyBrief(
     gatherDateTrend(admin, history, 'daily_insights', 'day_of', '일일 핵심 발행'),
     safeCount('수집 실패', admin.from('crawl_logs').select('id', { count: 'exact', head: true }).gte('started_at', report.startIso).lt('started_at', report.endIso).eq('status', 'failed')),
     safeCount('수집 부분 실패', admin.from('crawl_logs').select('id', { count: 'exact', head: true }).gte('started_at', report.startIso).lt('started_at', report.endIso).eq('status', 'partial')),
-    safeCount('본문 보강 대기', admin.from('contents').select('id', { count: 'exact', head: true }).is('body_fetched_at', null).not('original_url', 'is', null)),
-    safeCount('거절 콘텐츠', admin.from('contents').select('id', { count: 'exact', head: true }).gte('collected_at', report.startIso).lt('collected_at', report.endIso).eq('status', 'rejected')),
-    safeCount('검토 대기', admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending')),
+    safeCount('본문 보강 대기', admin.from('contents').select('id', { count: 'exact', head: true }).is('body_fetched_at', null).not('original_url', 'is', null).is('deleted_at', null)),
+    safeCount('거절 콘텐츠', admin.from('contents').select('id', { count: 'exact', head: true }).gte('collected_at', report.startIso).lt('collected_at', report.endIso).eq('status', 'rejected').is('deleted_at', null)),
+    safeCount('검토 대기', admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null)),
     safeCount('활성 소스', admin.from('sources').select('id', { count: 'exact', head: true }).eq('is_active', true)),
     safeCount('실패 작업', admin.from('job_runs').select('id', { count: 'exact', head: true }).gte('started_at', report.startIso).lt('started_at', report.endIso).eq('status', 'failed')),
     safeCount('전체 사용자', admin.from('users').select('id', { count: 'exact', head: true })),
@@ -550,7 +551,7 @@ export async function gatherDailyBrief(
   const reviewReasonPoints = await Promise.all(REVIEW_REASONS.map(async ([reason, label]) => {
     const result = await safeCount(
       `검토 사유 ${reason}`,
-      admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('review_reason', reason)
+      admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('review_reason', reason).is('deleted_at', null)
     )
     return { ...result, reason, label }
   }))

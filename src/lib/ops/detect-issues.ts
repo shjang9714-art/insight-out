@@ -18,7 +18,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors] = await Promise.all([
     admin.from('job_runs').select('job_key').eq('status', 'failed').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
-    admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null),
+    admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
     admin.from('llm_usage').select('provider, tokens').eq('period', new Date().toISOString().slice(0, 7)),
     admin.from('llm_settings').select('provider, monthly_token_limit').eq('enabled', true),
     admin.from('translation_usage').select('chars').eq('period', new Date().toISOString().slice(0, 7)),

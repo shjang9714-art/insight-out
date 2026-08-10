@@ -70,6 +70,7 @@ export async function pendingCount(
     .eq('category', '뉴스')
     .is('cluster_checked_at', null)
     .not('body_fetched_at', 'is', null)
+    .is('deleted_at', null)
   if (from) q = q.gte('collected_at', from)
   if (to)   q = q.lte('collected_at', to + 'T23:59:59.999Z')
   const { count } = await q
@@ -96,8 +97,8 @@ async function recheckOneCluster(
     const repIds = [...new Set([repOf(row), ...directMatches.map(repOf)])]
 
     const [{ data: repRows }, { data: memberRows }] = await Promise.all([
-      admin.from('contents').select(MEMBER_SELECT).in('id', repIds),
-      admin.from('contents').select(MEMBER_SELECT).in('cluster_id', repIds),
+      admin.from('contents').select(MEMBER_SELECT).in('id', repIds).is('deleted_at', null),
+      admin.from('contents').select(MEMBER_SELECT).in('cluster_id', repIds).is('deleted_at', null),
     ])
 
     const allRaw = [...(repRows ?? []), ...(memberRows ?? [])] as unknown as RawMemberRow[]
@@ -149,6 +150,7 @@ export async function drainClusterBackfill(
       .eq('category', '뉴스')
       .is('cluster_checked_at', null)
       .not('body_fetched_at', 'is', null)
+      .is('deleted_at', null)
     if (from) targetQ = targetQ.gte('collected_at', from)
     if (to)   targetQ = targetQ.lte('collected_at', to + 'T23:59:59.999Z')
 

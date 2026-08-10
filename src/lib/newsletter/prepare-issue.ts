@@ -91,7 +91,7 @@ interface OverlapFilter {
 async function queryTopContents(supabase: SupabaseClient, overlap: OverlapFilter | null, limit: number): Promise<RawContentRow[]> {
   if (overlap && overlap.values.length === 0) return []
 
-  let query = supabase.from('contents').select(CONTENT_SELECT).eq('status', 'published')
+  let query = supabase.from('contents').select(CONTENT_SELECT).eq('status', 'published').is('deleted_at', null)
   if (overlap) query = query.overlaps(overlap.column, overlap.values)
 
   const { data, error } = await query

@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         .from('contents')
         .select('id, original_url')
         .is('canonical_url', null)
+        .is('deleted_at', null)
         .not('original_url', 'is', null)
         .order('collected_at', { ascending: false })
         .limit(limit)
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
         .from('contents')
         .select('id', { count: 'exact', head: true })
         .is('canonical_url', null)
+        .is('deleted_at', null)
         .not('original_url', 'is', null)
 
       return { processed, resolved, deduped, remaining: count ?? 0, ready: true }

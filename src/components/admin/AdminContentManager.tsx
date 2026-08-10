@@ -643,6 +643,7 @@ export default function AdminContentManager() {
       .from('contents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .is('deleted_at', null)
       .then(({ count }) => setPendingCount(count ?? 0))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -673,6 +674,7 @@ export default function AdminContentManager() {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'pending')
           .eq('review_reason', reason)
+          .is('deleted_at', null)
 
         if (category !== 'all') {
           const dbCats = adminTabDbCategories(category) ?? toDbCategories(category as ContentCategory)
@@ -738,6 +740,7 @@ export default function AdminContentManager() {
         let q = supabase
           .from('contents')
           .select(sel, { count: 'exact' })
+          .is('deleted_at', null)
           .order('collected_at', { ascending: false })
         if (status !== 'all')             q = q.eq('status', status as ContentStatus)
         if (reason && reviewReason !== REVIEW_REASON_ALL) q = q.eq('review_reason', reviewReason)
@@ -807,6 +810,7 @@ export default function AdminContentManager() {
       .from('contents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .is('deleted_at', null)
     setPendingCount(count ?? 0)
   }
 
@@ -931,7 +935,7 @@ export default function AdminContentManager() {
   }
 
   const handleDelete = async (content: AdminContentRow) => {
-    if (!(await confirm({ title: '콘텐츠 삭제', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
+    if (!(await confirm({ title: '콘텐츠 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
     setWorkingId(content.id)
     setError(null)
     const response = await fetch('/api/admin/contents/delete', {
@@ -1248,23 +1252,23 @@ export default function AdminContentManager() {
       ))
       setSelectedIds(new Set())
       const { count } = await supabase
-        .from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+        .from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null)
       setPendingCount(count ?? 0)
     }
     setIsBulkWorking(false)
   }
 
-  // 207 — 선택 바 삭제(벌크). 단건 handleDelete·비우기(206)와 동일 경로(supabase delete, FK cascade).
+  // 207 — 선택 바 삭제(벌크). 492 — 소프트 삭제(휴지통행)로 전환, 북마크·아카이브는 보존된다.
   const handleBulkDelete = async () => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
     const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
-    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '연쇄 삭제되는 북마크·아카이브 항목도 함께 확인해주세요.', targets: titles, countLabel: '함께 삭제되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: async () => {
+    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: titles, countLabel: '보존되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: async () => {
       const [bookmarks, archives] = await Promise.all([
         supabase.from('bookmarks').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
         supabase.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
       ])
-      if (bookmarks.error || archives.error) throw new Error('연쇄 삭제 건수를 확인할 수 없습니다.')
+      if (bookmarks.error || archives.error) throw new Error('보존 항목 건수를 확인할 수 없습니다.')
       return (bookmarks.count ?? 0) + (archives.count ?? 0)
     } }))) return
 
@@ -1389,6 +1393,7 @@ export default function AdminContentManager() {
       .from('contents')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .is('deleted_at', null)
 
     if (filters.category) {
       const dbCats = adminTabDbCategories(filters.category)

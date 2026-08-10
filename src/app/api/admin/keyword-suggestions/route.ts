@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
       .from('contents')
       .select('matched_keywords')
       .not('matched_keywords', 'is', null)
+      .is('deleted_at', null)
       .limit(CONTENT_FETCH_LIMIT),
     auth.admin
       .from('keyword_groups')

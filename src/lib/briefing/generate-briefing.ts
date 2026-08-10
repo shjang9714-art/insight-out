@@ -360,6 +360,7 @@ export async function generateBriefing(
     .select('id, title, summary_ko, body_translated_ko, body_original, category, importance_score, view_count, bookmark_count, is_editor_pick, cluster_id, matched_groups, published_at, collected_at')
     .eq('status', 'published')
     .neq('category', '유튜브')
+    .is('deleted_at', null)
     .or(`published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`)
     .order('importance_score', { ascending: false })
     .limit(200)

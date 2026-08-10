@@ -41,7 +41,7 @@ async function getContentCounts(): Promise<Record<string, number | null>> {
     const admin = createAdminClient()
     const results = await Promise.allSettled(
       DB_CONTENT_CATEGORIES.map((category) =>
-        admin.from('contents').select('id', { count: 'exact', head: true }).eq('category', category)
+        admin.from('contents').select('id', { count: 'exact', head: true }).eq('category', category).is('deleted_at', null)
       )
     )
     DB_CONTENT_CATEGORIES.forEach((category, i) => {

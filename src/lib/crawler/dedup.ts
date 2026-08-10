@@ -9,6 +9,13 @@ export interface SimilarityCandidate {
   cluster_id: string | null
 }
 
+// 492 판단② — 아래 세 함수(findByUrl·findByTitleHash·findByBodyHash)는 의도적으로
+// deleted_at 필터를 걸지 않는다. 이 값들은 "이미 존재하는지" 멱등 판정용이라,
+// 소프트 삭제된 행도 "이미 있었다"로 잡아야 한다. 여기서 필터를 걸어 살아있는 행만
+// 보게 하면, 관리자가 스팸 기사를 지운 뒤 다음 크롤에서 같은 URL/제목/본문이 다시
+// "신규"로 들어와 무한히 되살아난다. 잘못 지운 것의 복구 경로는 재수집이 아니라
+// 휴지통 복원이다 — 30일 뒤 영구 삭제되면 그 시점부터는 자연스럽게 재수집된다.
+
 /**
  * 원문 URL 존재 여부(멱등 1차 — 가장 신뢰).
  * insert 가 사용하는 original_url 과 동일 값으로 select → 결정적 중복 판정.
@@ -84,6 +91,7 @@ export async function findSimilarCandidates(
     .select('id, title, published_at, collected_at, cluster_id')
     .eq('category', '뉴스')
     .gte('collected_at', sinceIso)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(500)
 
@@ -123,6 +131,7 @@ export async function findSimilarCandidatesWithBody(
     .select('id, title, published_at, collected_at, cluster_id, body_original, source_id, importance_score, thumbnail_url, sources(trust_tier)')
     .eq('category', '뉴스')
     .gte('collected_at', sinceIso)
+    .is('deleted_at', null)
     .order('collected_at', { ascending: false })
     .limit(limit)
 

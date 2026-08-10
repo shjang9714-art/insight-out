@@ -60,6 +60,7 @@ export default function ReportSourcePicker({
       .select('id, title, category')
       .ilike('title', `%${q.trim()}%`)
       .eq('status', 'published')
+      .is('deleted_at', null)
       .order('collected_at', { ascending: false })
       .limit(20)
     setContentResults((data ?? []) as ContentRow[])
