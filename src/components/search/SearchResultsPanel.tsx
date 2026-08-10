@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, type ReactNode } from 'react'
+import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SearchTypeTabs, { type SearchSortMode, type SearchTypeOption } from '@/components/search/SearchTypeTabs'
 import { renderSearchResultItem } from '@/components/search/SearchResultsList'
@@ -103,13 +104,25 @@ export default function SearchResultsPanel({
         )}
 
         {showEmpty && (
-          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card py-16 text-center">
-            <span className="text-3xl">🔍</span>
-            <p className="text-sm font-medium text-foreground">
-              <span className="text-brand-600">&lsquo;{q}&rsquo;</span>에 대한 결과가 없어요
-            </p>
-            <p className="text-xs text-muted-foreground">철자를 확인하거나 다른 키워드로 다시 검색해보세요</p>
-            {emptyStateExtra}
+          <div className="rounded-2xl border border-border bg-card px-6 py-8">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-muted">
+                <Search className="h-6 w-6 text-muted-foreground" />
+              </span>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">
+                  <span className="text-brand-600">&lsquo;{q}&rsquo;</span>과 일치하는 결과가 없어요
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  긴 문장보다 짧은 핵심 키워드로 검색하면 더 잘 찾아져요. 예: &lsquo;삼성전자&rsquo;, &lsquo;AI 규제&rsquo;
+                </p>
+              </div>
+            </div>
+            {emptyStateExtra && (
+              <div className="mt-6 border-t border-border pt-5">
+                {emptyStateExtra}
+              </div>
+            )}
           </div>
         )}
 
