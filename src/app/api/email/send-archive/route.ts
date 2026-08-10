@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
         id, name,
         archive_items(
           content_id, youtube_video_id, ai_report_id,
-          contents(id, title, category, summary_ko, original_url, file_path, published_at, sources(name)),
+          contents(id, title, category, summary_ko, original_url, file_path, published_at, deleted_at, sources(name)),
           ai_reports(id, title, type, published_at)
         )
       `)
@@ -145,6 +145,7 @@ export async function POST(req: NextRequest) {
         original_url: string | null
         file_path: string | null
         published_at: string | null
+        deleted_at: string | null
         sources: { name: string } | null
       } | null
       ai_reports: {
@@ -154,7 +155,8 @@ export async function POST(req: NextRequest) {
         published_at: string | null
       } | null
     }[]) {
-      const content = archiveItem.contents
+      // 492 · 3단계 D — SQL B(RLS) 적용 전에는 소프트 삭제된 콘텐츠도 그대로 조회될 수 있어 명시적으로 건너뛴다.
+      const content = archiveItem.contents && !archiveItem.contents.deleted_at ? archiveItem.contents : null
 
       if (!content) {
         // 리포트 항목 — 본문(contents)이 없으므로 제목+링크만으로 카드 구성

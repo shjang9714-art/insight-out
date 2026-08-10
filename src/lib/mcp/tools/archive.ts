@@ -75,18 +75,26 @@ export function registerArchiveTools(server: McpServer) {
       const output: unknown[] = []
       for (const archive of archives ?? []) {
         const { data: items, error: itemsError } = await admin.from('archive_items')
-          .select('content_id, ai_report_id, note, added_at, order, contents(title, original_url, published_at), ai_reports(title, type, published_at)')
+          // 492 · 3단계 D — service_role 조회라 RLS(SQL B)로 안 덮인다. contents.deleted_at 을
+          // 함께 받아 소프트 삭제된 콘텐츠 항목은 아래에서 명시적으로 걸러낸다.
+          .select('content_id, ai_report_id, note, added_at, order, contents(title, original_url, published_at, deleted_at), ai_reports(title, type, published_at)')
           .eq('archive_id', archive.id).order('order', { ascending: true }).order('added_at', { ascending: false }).limit(limit ?? 100)
         if (itemsError) return dbError(itemsError, 'archive_items')
         // 리포트 항목은 contents 조인이 없어 빈 엔트리로 보이므로 타입 표기와 함께 별도 형태로 반환한다.
-        const normalizedItems = (items ?? []).map((item) => {
+        const normalizedItems = (items ?? [])
+          .filter((item) => {
+            const row = item as unknown as { content_id: string | null; contents: { deleted_at: string | null } | null }
+            if (!row.content_id) return true // ai_report 항목은 무관
+            return Boolean(row.contents) && !row.contents!.deleted_at
+          })
+          .map((item) => {
           const row = item as unknown as {
             content_id: string | null
             ai_report_id: string | null
             note: string | null
             added_at: string
             order: number
-            contents: { title: string; original_url: string | null; published_at: string | null } | null
+            contents: { title: string; original_url: string | null; published_at: string | null; deleted_at: string | null } | null
             ai_reports: { title: string; type: string; published_at: string | null } | null
           }
           if (row.ai_report_id && row.ai_reports) {
@@ -107,7 +115,7 @@ export function registerArchiveTools(server: McpServer) {
             note: row.note,
             added_at: row.added_at,
             order: row.order,
-            contents: row.contents,
+            contents: row.contents ? { title: row.contents.title, original_url: row.contents.original_url, published_at: row.contents.published_at } : null,
           }
         })
         output.push({ id: archive.id, name: archive.name, description: archive.description, items: normalizedItems })
