@@ -243,7 +243,8 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
 
           {/* 검색 버튼 — 돋보기 아이콘만(후속 개편 2026-08-09b, 글자·⌘K 배지 제거).
               단축키 힌트는 hover title 툴팁으로만 남김. 날짜 표시 왼쪽에 둬서
-              [돋보기][날짜][다크모드][프로필] 순서가 되게 한다.
+              [돋보기][다크모드][날짜][프로필] 순서가 되게 한다(2026-08-10, 다크모드를
+              날짜 왼쪽으로 재배치 — 돋보기는 이미 날짜 왼쪽이라 그대로 둠).
               모바일은 하단바 중앙 FAB(MobileBottomNav.tsx)가 같은 오버레이를 열므로 여기선 숨김. */}
           <button
             type="button"
@@ -255,11 +256,11 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
             <Search className="h-5 w-5" />
           </button>
 
+          <ThemeToggle />
+
           <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
           </div>
-
-          <ThemeToggle />
 
           {/* 사용자 */}
           <Link
