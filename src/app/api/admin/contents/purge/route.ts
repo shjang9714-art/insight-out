@@ -23,14 +23,20 @@ export const maxDuration = 60
  */
 export async function GET(request: NextRequest) {
   try {
-    const gate = await verifyAdminRequest({ capability: 'reset_data' })
-    if (!gate.ok) return gate.response
-
-    const admin = gate.admin
     const idsParam = request.nextUrl.searchParams.get('ids')
     const ids = idsParam
       ? [...new Set(idsParam.split(',').map((id) => id.trim()).filter((id) => id.length > 0))]
       : null
+
+    // 492-F — 용도가 둘이라 권한도 둘이다.
+    //   ids 있음 = 선택 대상의 연쇄 건수 미리보기. 일괄 삭제(delete_content)와
+    //              영구 삭제(reset_data) 양쪽이 쓴다 → 약한 쪽 delete_content 로 잠근다.
+    //              super_admin 은 hasCapability 가 무조건 true 라 그대로 통과한다.
+    //   ids 없음 = 휴지통 전체 건수. AdminDataReset "휴지통 비우기" 전용 → reset_data 유지.
+    const gate = await verifyAdminRequest({ capability: ids ? 'delete_content' : 'reset_data' })
+    if (!gate.ok) return gate.response
+
+    const admin = gate.admin
 
     let contentsQuery = admin.from('contents').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null)
     if (ids) contentsQuery = contentsQuery.in('id', ids)
