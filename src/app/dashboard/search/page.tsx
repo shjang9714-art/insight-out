@@ -4,10 +4,8 @@ import { Suspense, useEffect, useState, startTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Search, X } from 'lucide-react'
-import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 import RecentSearchesPanel from '@/components/search/RecentSearchesPanel'
 import SearchResultsPanel from '@/components/search/SearchResultsPanel'
-import AiSearchAnswer from '@/components/search/AiSearchAnswer'
 import type { SearchSortMode } from '@/components/search/SearchTypeTabs'
 import { isSearchFilterKey, type SearchFilterKey } from '@/lib/search/search-filters'
 import { getRecentSearches, addRecentSearch, removeRecentSearch, clearRecentSearches } from '@/lib/search/recent-searches'
@@ -105,7 +103,7 @@ function SearchContent() {
         </div>
       </form>
 
-      {/* 검색어 없음 — 최근 검색어 + 추천 질문 */}
+      {/* 검색어 없음 — 최근 검색어만(추천 질문 칩은 후속 개편 2026-08-10에서 제거) */}
       {!q && (
         <>
           <RecentSearchesPanel
@@ -115,7 +113,6 @@ function SearchContent() {
             onClearAll={handleClearRecent}
             className="mb-6"
           />
-          <SuggestedQuestions className="mb-6" onSelect={runSearch} />
           {recent.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border py-24 text-center">
               <Search className="h-8 w-8 text-muted-foreground/40" />
@@ -125,10 +122,9 @@ function SearchContent() {
         </>
       )}
 
-      {/* AI 답변 — 활성화된 경우 검색 결과보다 먼저 자동 노출 */}
-      {q && <AiSearchAnswer key={q} question={q} />}
-
-      {/* 결과 — 종류 버튼줄+건수, 정렬 토글, 하이라이트, 빈 상태(SearchResultsPanel, 팝업과 공유) */}
+      {/* 결과 — 종류 버튼줄+건수, 정렬 토글, 하이라이트, 빈 상태(SearchResultsPanel, 팝업과 공유).
+          AI 답변 블록(AiSearchAnswer)은 후속 개편(2026-08-10)에서 제거 — 컴포넌트·전용 API
+          라우트(/api/search/rag, /api/search/rag/status)는 이 페이지 외 사용처가 없어 삭제. */}
       {q && (
         <SearchResultsPanel
           q={q}

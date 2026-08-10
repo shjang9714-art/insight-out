@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, startTransition } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { ArrowLeft, Search, X } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
-import SuggestedQuestions from '@/components/search/SuggestedQuestions'
 import RecentSearchesPanel from '@/components/search/RecentSearchesPanel'
 import { getRecentSearches, addRecentSearch, removeRecentSearch, clearRecentSearches } from '@/lib/search/recent-searches'
 
@@ -100,7 +99,8 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
             </div>
           </form>
 
-          {/* 입력이 비어있을 때만 최근 검색어·추천 칩을 보여준다 — 결과 목록은 여기서 안 그림 */}
+          {/* 입력이 비어있을 때만 최근 검색어를 보여준다(추천 질문 칩은 후속 개편 2026-08-10에서
+              제거) — 결과 목록은 여기서 안 그림 */}
           {!hasTyped && (
             <div className="flex-1 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:px-6 md:rounded-b-2xl">
               <RecentSearchesPanel
@@ -110,7 +110,6 @@ export default function SearchOverlay({ open, onOpenChange }: { open: boolean; o
                 onClearAll={handleClearRecent}
                 className="mb-6"
               />
-              <SuggestedQuestions onSelect={runSearch} />
               {recent.length === 0 && (
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border py-16 text-center">
                   <Search className="h-8 w-8 text-muted-foreground/40" />

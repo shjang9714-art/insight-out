@@ -23,11 +23,9 @@ export function renderSearchResultItem(item: UnifiedResult, highlightQuery?: str
     const def = SEARCH_FILTER_DEFS.find(d => d.key === 'insight')!
     return <SearchResultCard key={item.key} href={`/dashboard/daily-insights/${insight.id}`} title={insight.headline} excerpt={insight.summary_ko} publishedAt={insight.day_of} typeBadge={{ label: def.label, className: def.badgeClass }} highlightQuery={highlightQuery} />
   }
-  if (item.source === 'issues' && item.issue) {
-    const issue = item.issue
-    const def = SEARCH_FILTER_DEFS.find(d => d.key === 'issue')!
-    return <SearchResultCard key={item.key} href={`/dashboard/issues/${issue.id}`} title={issue.title} excerpt={issue.summary} publishedAt={issue.created_at} typeBadge={{ label: def.label, className: def.badgeClass }} highlightQuery={highlightQuery} />
-  }
+  // source === 'issues' 분기는 없음 — '이슈 브리핑' 버킷을 검색 종류 목록에서 제외했고
+  // (search-filters.ts, 2026-08-10) SEARCH_SECTION_ORDER에 그 def가 없어 fetchSection이
+  // 절대 source:'issues' 결과를 반환하지 않는다. issues 테이블·fetchIssues 자체는 그대로 둠.
   if (item.source === 'entities' && item.entity) {
     const entity = item.entity
     const def = SEARCH_FILTER_DEFS.find(d => d.key === 'company')!
