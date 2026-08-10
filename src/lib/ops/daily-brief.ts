@@ -75,6 +75,9 @@ export interface DailyBrief {
     crawlPartial: DataPoint<number>
     backlog: DataPoint<number>
     failedJobs: DataPoint<number>
+    /** 492 — 휴지통 30일 초과분 자동 정리 결과. gatherDailyBrief 는 채우지 않는다(순수 조회 함수) —
+     *  ops-brief 크론이 cleanupExpiredTrash 실행 후 이 필드를 직접 채워 넣는다. */
+    trashCleanup?: DataPoint<{ deleted: number; capped: boolean }>
   }
   collection: {
     collected: TrendMetric
@@ -992,6 +995,13 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
             ${dataRow('수집 실패', pointText(brief.system.crawlFailed), brief.system.crawlFailed.available ? (brief.system.crawlFailed.value ? 'critical' : 'normal') : 'unavailable')}
             ${dataRow('수집 부분 실패', pointText(brief.system.crawlPartial), brief.system.crawlPartial.available ? (brief.system.crawlPartial.value ? 'warning' : 'normal') : 'unavailable')}
             ${dataRow('본문 보강 대기', pointText(brief.system.backlog), brief.system.backlog.available ? (brief.system.backlog.value > 100 ? 'warning' : 'normal') : 'unavailable')}
+            ${brief.system.trashCleanup ? dataRow(
+              '휴지통 정리(30일 초과)',
+              brief.system.trashCleanup.available
+                ? `${brief.system.trashCleanup.value.deleted.toLocaleString()}건${brief.system.trashCleanup.value.capped ? ' (상한 도달 — 다음 실행에 계속)' : ''}`
+                : '조회 불가',
+              brief.system.trashCleanup.available ? (brief.system.trashCleanup.value.capped ? 'warning' : 'normal') : 'unavailable'
+            ) : ''}
             ${reviewRows}
           </table>
           <div style="padding:14px 0 0;color:#374151;font-size:12px;font-weight:700">수집량 14일 추이</div>
