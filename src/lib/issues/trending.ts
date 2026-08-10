@@ -572,7 +572,7 @@ const ISSUE_ARTICLES_MAX_PAGES = 10 // 안전장치: 최대 10 * 1000 = 10000건
 async function fetchAllIssueArticles(
   supabase: ReturnType<typeof createPublicClient>,
   issueIds: string[],
-): Promise<{ rows: IssueArticleRow[]; error: boolean }> {
+): Promise<{ rows: IssueArticleRow[]; error: boolean; message?: string }> {
   const rows: IssueArticleRow[] = []
 
   for (let page = 0; page < ISSUE_ARTICLES_MAX_PAGES; page++) {
@@ -586,7 +586,7 @@ async function fetchAllIssueArticles(
       .order('collected_at', { ascending: false })
       .range(from, to)
 
-    if (error || !data) return { rows, error: true }
+    if (error || !data) return { rows, error: true, message: error?.message }
     rows.push(...(data as IssueArticleRow[]))
 
     if (data.length < ISSUE_ARTICLES_PAGE_SIZE) return { rows, error: false }
@@ -601,27 +601,37 @@ async function fetchAllIssueArticles(
   return { rows, error: false }
 }
 
+export type TrendingComputeResult =
+  | { ok: true; value: TrendingEventsResult }
+  | { ok: false; stage: 'trending_keywords' | 'trending_issue_articles'; error: string }
+
 /**
  * 캐시를 거치지 않는 원본 계산. cron:trending-snapshot(1일 1회 스냅샷)이 이걸 직접 호출해
  * fetchTrendingEvents()의 unstable_cache SWR 지연(아래 참고)에 영향받지 않도록 한다.
  */
-export async function computeTrendingEvents(): Promise<TrendingEventsResult | null> {
+export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   const supabase = createPublicClient()
 
   const { data: candidateData, error: viewErr } = await supabase
     .from('trending_keywords')
     .select('issue_id, title, recent_count, prev_count')
 
-  if (viewErr) return null
+  if (viewErr) {
+    return { ok: false, stage: 'trending_keywords', error: viewErr.message }
+  }
   const candidates = (candidateData ?? []) as TrendingIssueRow[]
-  if (candidates.length === 0) return { events: [], asOfDateKst: getKstDateString() }
+  if (candidates.length === 0) {
+    return { ok: true, value: { events: [], asOfDateKst: getKstDateString() } }
+  }
 
   const issueIds = candidates.map(c => c.issue_id)
 
   // trending_issue_articles 뷰는 이미 status='published' & 72h 창으로 필터링됨(2026-07-08c/10 SQL).
-  const { rows, error: rowsErr } = await fetchAllIssueArticles(supabase, issueIds)
+  const { rows, error: rowsErr, message: rowsErrMessage } = await fetchAllIssueArticles(supabase, issueIds)
 
-  if (rowsErr) return null
+  if (rowsErr) {
+    return { ok: false, stage: 'trending_issue_articles', error: rowsErrMessage ?? '원인 미상' }
+  }
 
   // 기준일(basisDateKst) 결정 — 2026-07-14 재설계. "오늘(KST)에 후보 풀 기사가 있으면
   // 오늘, 없으면(당일 크론 05:00 KST 전 새벽 등) 데이터가 있는 가장 최근 직전 날짜"로
@@ -815,7 +825,7 @@ export async function computeTrendingEvents(): Promise<TrendingEventsResult | nu
   const deduped = collapseDuplicateEvents(final)
   deduped.sort(compareByRecentCountDesc)
 
-  return { events: deduped, asOfDateKst: basisDateKst }
+  return { ok: true, value: { events: deduped, asOfDateKst: basisDateKst } }
 }
 
 /**
@@ -841,8 +851,17 @@ export async function computeTrendingEvents(): Promise<TrendingEventsResult | nu
  *    걸린다), trending-snapshot 크론 자체는 이 캐시를 아예 안 거치고 computeTrendingEvents()를
  *    직접 호출해 캐시 상태와 무관하게 항상 그 시점 실측값을 저장한다 — 이게 실질적 고정 조치.
  */
+async function computeTrendingEventsOrNull(): Promise<TrendingEventsResult | null> {
+  const result = await computeTrendingEvents()
+  if (!result.ok) {
+    console.error(`[trending] ${result.stage} 조회 실패: ${result.error}`)
+    return null
+  }
+  return result.value
+}
+
 export const fetchTrendingEvents = unstable_cache(
-  computeTrendingEvents,
+  computeTrendingEventsOrNull,
   ['trending-events-v8'],
   { revalidate: CACHE_REVALIDATE_SECONDS, tags: ['trending-events'] },
 )
