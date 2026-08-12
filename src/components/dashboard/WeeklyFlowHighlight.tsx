@@ -1,6 +1,7 @@
 import { Milestone } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { getKstWeekMondayString } from '@/lib/date'
 import type { WeeklyFlowRow, WeeklyFlowStep } from '@/lib/daily-insights/types'
 import { formatWeekLabel } from '@/lib/daily-insights/weeks'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
@@ -8,8 +9,9 @@ import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 // 홈 "이번 주 한눈에 보는 흐름"(§5-A, 지시서 20260716/20260721) — weekly_flows(주차당
 // 최대 3행, rank 오름차순) 소스. ★ 핵심 인사이트와 시각적으로 완전히 별개인 독립 모듈
-// (자체 컨테이너·제목·점선 테두리로 구분). 최신 week_of의 행을 전부 읽어 흐름마다
-// headline + 원인~시장반응 세로 타임라인. 데이터 없으면 숨김.
+// (자체 컨테이너·제목·점선 테두리로 구분). 현재 KST 주 월요일(week_of) 행만 읽어 흐름마다
+// headline + 원인~시장반응 세로 타임라인. 지난주 데이터로 폴백하지 않는다 — 이번 주에 행이
+// 없으면 그냥 숨김(§5-A 지시서 20260812 fast-follow: 지난주 흐름을 "이번 주"로 잘못 노출하던 버그 수정).
 
 const MMDD_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul',
@@ -93,29 +95,27 @@ function FlowBlock({ row }: { row: WeeklyFlowRow }) {
 
 export default async function WeeklyFlowHighlight() {
   const supabase = await createClient()
+  const currentWeekOf = getKstWeekMondayString(new Date())
 
   const { data } = await supabase
     .from('weekly_flows')
     .select('*')
-    .order('week_of', { ascending: false })
+    .eq('week_of', currentWeekOf)
+    .order('rank', { ascending: true })
     .limit(3)
 
   const rows = (data ?? []) as WeeklyFlowRow[]
   if (rows.length === 0) return null
 
-  const weekOf = rows[0].week_of
-  const weekRows = rows.filter((r) => r.week_of === weekOf).sort((a, b) => a.rank - b.rank)
-  if (weekRows.length === 0) return null
-
   return (
     <div className="mb-8 rounded-2xl border border-dashed border-brand-600/30 bg-muted/20 p-6">
       <div className="mb-4 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
         <Milestone className="h-3.5 w-3.5" />
-        이번 주 한눈에 보는 흐름 · {formatWeekLabel(weekOf)}
+        이번 주 한눈에 보는 흐름 · {formatWeekLabel(currentWeekOf)}
       </div>
 
       <div className="space-y-6">
-        {weekRows.map((row, i) => (
+        {rows.map((row, i) => (
           <div key={row.rank} className={i > 0 ? 'border-t border-border/60 pt-6' : ''}>
             <FlowBlock row={row} />
           </div>
