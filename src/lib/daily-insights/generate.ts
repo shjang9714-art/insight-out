@@ -546,8 +546,32 @@ function categoryTierRank(category: string | null): number {
   return 2
 }
 
+// 헤드라인 토큰 유사도(제목 근접중복) 또는 근거기사 절반 이상 겹침이면 "같은 주제"로 보고
+// 이미 채택된 winner와 중복이라 건너뛴다 — MAX_WEEKLY_FLOWS건 중 같은 이슈가 두 번 뜨는 것 방지.
+const FLOW_DUP_HEADLINE_JACCARD_THRESHOLD = 0.5
+const FLOW_DUP_SOURCE_OVERLAP_RATIO = 0.5
+
+function isSameTopicFlowWinner(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const aHeadline = (a.headline as string | null) ?? ''
+  const bHeadline = (b.headline as string | null) ?? ''
+  if (aHeadline && bHeadline) {
+    const sim = jaccardSimilarity(titleTokens(aHeadline), titleTokens(bHeadline))
+    if (sim >= FLOW_DUP_HEADLINE_JACCARD_THRESHOLD) return true
+  }
+
+  const aSources = (a.source_articles as DailyInsightSourceArticle[] | null) ?? []
+  const bSources = (b.source_articles as DailyInsightSourceArticle[] | null) ?? []
+  if (aSources.length === 0 || bSources.length === 0) return false
+  const bIds = new Set(bSources.map((s) => s.content_id))
+  const overlap = aSources.filter((s) => bIds.has(s.content_id)).length
+  const minCount = Math.min(aSources.length, bSources.length)
+  return minCount > 0 && overlap / minCount >= FLOW_DUP_SOURCE_OVERLAP_RATIO
+}
+
 /** 근거기사 수 → 카테고리 Tier → 최신성 순으로 그 주 가장 중요한 이슈 상위 max건을 고른다.
- * rows는 이미 서로 다른 이슈(daily_insights 각 행)라 별도 중복 제거는 필요 없다. */
+ * 점수 정렬 후 그리디로 채택하되, 이미 채택된 winner와 같은 주제(헤드라인 유사 또는 근거기사
+ * 절반 이상 겹침)면 건너뛴다 — daily_insights 각 행이 별개 클러스터로 생성돼도 실질적으로
+ * 같은 사건을 다루는 경우가 있어 그대로 두면 "이번 주 흐름"에 같은 주제가 중복 노출된다. */
 function pickFlowWinners(rows: Record<string, unknown>[], max: number): Record<string, unknown>[] {
   if (rows.length === 0) return []
   const scored = rows.map((r) => {
@@ -564,7 +588,14 @@ function pickFlowWinners(rows: Record<string, unknown>[], max: number): Record<s
     if (a.sourceCount !== b.sourceCount) return b.sourceCount - a.sourceCount
     return b.latestMs - a.latestMs
   })
-  return scored.slice(0, max).map((s) => s.row)
+
+  const winners: Record<string, unknown>[] = []
+  for (const s of scored) {
+    if (winners.length >= max) break
+    if (winners.some((w) => isSameTopicFlowWinner(w, s.row))) continue
+    winners.push(s.row)
+  }
+  return winners
 }
 
 function buildFlowSystemPrompt(): string {
@@ -577,7 +608,8 @@ function buildFlowSystemPrompt(): string {
     '2. articleIndex는 그 단계 문장의 근거가 된 "근거 기사" 목록의 번호(1부터 시작) 하나만 적는다. ' +
     '여러 기사에 걸쳐 있거나 특정 기사 하나로 못 좁히면 articleIndex 필드 자체를 생략한다(번호 추측·창작 금지).\n' +
     '3. 근거로 확인 안 되는 단계는 통째로 생략한다 — 5단계를 억지로 다 채우지 않는다. ' +
-    '흐름을 그릴 근거가 부족하면 flow를 빈 배열 []로 둔다.\n' +
+    '흐름을 그릴 근거가 부족하면 flow를 빈 배열 []로 둔다. 근거 기사(articleIndex)로 뒷받침되지 ' +
+    '않는 단계는 반드시 제외한다. 시장 전망·추측 문장은 단계로 넣지 않는다.\n' +
     '4. 각 text는 1~2문장, 짧고 명확하게.\n' +
     '5. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
     '6. headline: 이번 주 이 이슈를 대표하는 한 줄.\n' +
@@ -588,12 +620,12 @@ function buildFlowSystemPrompt(): string {
   )
 }
 
+// market_trend·competitor_trend·implication은 의도적으로 프롬프트에 넣지 않는다 — 이 필드들은
+// 추측성 서술(시장 전망 등)을 포함할 수 있어, 흐름 생성 LLM에 재료로 주면 근거 기사 없는 "전망"
+// 단계를 만들어낼 위험이 있다. 헤드라인·요약·근거 기사 목록만으로 시간순 사실 흐름만 재구성한다.
 function buildFlowUserPrompt(winner: Record<string, unknown>): string {
   const headline = winner.headline as string
   const summary = winner.summary_ko as string
-  const marketTrend = winner.market_trend as string | null
-  const competitorTrend = winner.competitor_trend as string | null
-  const implication = winner.implication as string | null
   const sourceArticles = (winner.source_articles as DailyInsightSourceArticle[] | null) ?? []
   const sourcesText = sourceArticles
     .map((a, i) => `${i + 1}. ${a.title} (${a.source}${a.published_at ? `, ${a.published_at}` : ''})`)
@@ -601,9 +633,6 @@ function buildFlowUserPrompt(winner: Record<string, unknown>): string {
 
   return (
     `이슈 헤드라인: ${headline}\n요약: ${summary}\n` +
-    (marketTrend ? `시장 동향: ${marketTrend}\n` : '') +
-    (competitorTrend ? `경쟁사 동향: ${competitorTrend}\n` : '') +
-    (implication ? `자사 시사점: ${implication}\n` : '') +
     `근거 기사(${sourceArticles.length}건, articleIndex는 아래 번호를 그대로 사용):\n${sourcesText}`
   )
 }
@@ -633,6 +662,8 @@ async function generateWeeklyFlow(winner: Record<string, unknown>): Promise<Week
   const headline = typeof p.headline === 'string' ? p.headline.trim() : ''
   if (!headline) return null
 
+  // 근거 기사(articleIndex)로 뒷받침되지 않는 단계는 추측성 서술일 위험이 커 제외한다 —
+  // 모든 단계가 실제 기사에 연결돼 있어야 "흐름"으로 채택한다(§ 추측성 단계 제거).
   const flowRaw = Array.isArray(p.flow) ? p.flow : []
   const flow: WeeklyFlowStep[] = flowRaw
     .map((entry): WeeklyFlowStep | null => {
@@ -646,8 +677,9 @@ async function generateWeeklyFlow(winner: Record<string, unknown>): Promise<Week
       const idx = typeof idxRaw === 'number' ? idxRaw : typeof idxRaw === 'string' ? Number(idxRaw) : NaN
       const article =
         Number.isInteger(idx) && idx >= 1 && idx <= sourceArticles.length ? sourceArticles[idx - 1] : undefined
+      if (!article) return null
 
-      return article ? { phase, text, article } : { phase, text }
+      return { phase, text, article }
     })
     .filter((s): s is WeeklyFlowStep => s !== null)
 
@@ -669,10 +701,23 @@ export interface WeeklyFlowGenEntry {
   flow: WeeklyFlowStep[]
 }
 
+/** flow의 근거 기사가 붙은 단계들의 published_at을 KST 날짜로 셌을 때 서로 다른 날짜 수.
+ * 2 미만이면 진짜 시간 진행 없는 단일 사건을 억지로 단계 나눈 "가짜 흐름"이다. */
+function countDistinctKstDates(flow: WeeklyFlowStep[]): number {
+  const dates = new Set<string>()
+  for (const step of flow) {
+    if (!step.article?.published_at) continue
+    const d = new Date(step.article.published_at)
+    if (Number.isNaN(d.getTime())) continue
+    dates.add(getKstDateString(d))
+  }
+  return dates.size
+}
+
 /** 그 주 상위 max(기본 3)개 이슈 각각의 흐름을 rank(1=가장 중요) 순으로 생성. LLM 실패나
- * 단계 수 미달(MIN_FLOW_STAGES 미만)이면 그 이슈만 건너뛰고 나머지는 계속 진행(부분 실패
- * 허용) — 빠진 자리를 다른 후보로 억지로 채우지 않고 그만큼 적은 개수로 남긴다. rank는
- * 채택된 항목끼리 1부터 다시 매겨 빈틈이 생기지 않게 한다. */
+ * 단계 수 미달(MIN_FLOW_STAGES 미만), 하루짜리 가짜 흐름(서로 다른 날짜 2개 미만)이면 그
+ * 이슈만 건너뛰고 나머지는 계속 진행(부분 실패 허용) — 빠진 자리를 다른 후보로 억지로 채우지
+ * 않고 그만큼 적은 개수로 남긴다. rank는 채택된 항목끼리 1부터 다시 매겨 빈틈이 생기지 않게 한다. */
 export async function generateWeeklyFlows(
   rows: Record<string, unknown>[],
   max: number = MAX_WEEKLY_FLOWS
@@ -682,6 +727,7 @@ export async function generateWeeklyFlows(
   for (const winner of winners) {
     const result = await generateWeeklyFlow(winner)
     if (!result || result.flow.length < MIN_FLOW_STAGES) continue
+    if (countDistinctKstDates(result.flow) < 2) continue
     entries.push({ rank: entries.length + 1, headline: result.headline, flow: result.flow })
   }
   return entries
