@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
+import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
@@ -246,6 +247,12 @@ async function DocumentsView({ entityId, docType }: { entityId?: string; docType
         subtitle="공시·IR·기술자료 등 공식 문서를 한곳에서 확인합니다"
         meta={`총 ${stats.total}건 · 이번주 신규 ${stats.newThisWeek}건`}
       />
+
+      {/* 자료실 L2(자료종류) 탭 — 이 화면은 자료실 L1의 "공시자료" 탭으로 이관된
+          목록이라 다른 두 목록(콘텐츠·리포트)과 동일하게 노출한다. */}
+      <Suspense fallback={null}>
+        <ContentsL2Tabs />
+      </Suspense>
 
       <CompanyDocumentFilterBar entityOptions={entityOptions} />
 

@@ -12,6 +12,7 @@ import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
+import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
@@ -246,6 +247,8 @@ function ContentRowList({ items, sortByCollected }: {
           category={item.category}
           publishedAt={displayDate(item, sortByCollected)}
           originalUrl={item.original_url}
+          // 유튜브는 리스트 뷰에서도 상세 페이지가 아니라 원문(유튜브) 링크로 바로 연결한다.
+          externalHref={item.category === '유튜브' ? item.original_url : null}
           sourceName={item.sources?.name ?? item.author ?? null}
           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
           thumbnailUrl={coverUrls[index]}
@@ -506,7 +509,7 @@ export default function ContentsBoard({
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠')
 
-  const supportsViewToggle = category === '뉴스' || category === '웹인사이트'
+  const supportsViewToggle = category === '뉴스' || category === '웹인사이트' || category === '유튜브'
   const usesContinuousLayout =
     category === '웹인사이트'
     || category === '리서치'
@@ -558,30 +561,34 @@ export default function ContentsBoard({
         )}
       </div>
 
+      {/* ─── 자료종류(L2) 탭 — 헤더가 아니라 콘텐츠 영역 안쪽, 제목/건수 아래 목록 위 */}
+      <ContentsL2Tabs />
+
       {/* ─── 인기 키워드 ──────────────────────────────────────────────── */}
-      <div className="mb-6 space-y-3">
-        {/* 394 — 항상 렌더 + 최소 높이 예약(칩 한 줄 높이). /api/contents/keywords 응답이 늦게 와도 아래 목록이 밀리지 않는다. */}
-        <div className="flex min-h-[34px] flex-wrap items-center gap-2">
-          {keywordChips.map(({ name }) => {
-              const isSelected = selectedKeywords.includes(name)
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => toggleKeyword(name)}
-                  aria-pressed={isSelected}
-                  className={cn(
-                    'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-                    isSelected
-                      ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
-                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  #{name}
-                </button>
-              )
-            })}
-            {(searchQuery || selectedKeywords.length > 0) && (
+      {/* 검색어·선택 키워드가 있을 때만 노출(칩은 필터 상태를 보여주는 용도) —
+          평소엔 렌더 자체를 안 해 세로 공간도 차지하지 않는다. */}
+      {(searchQuery || selectedKeywords.length > 0) && (
+        <div className="mb-6 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {keywordChips.map(({ name }) => {
+                const isSelected = selectedKeywords.includes(name)
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleKeyword(name)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                      isSelected
+                        ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
+                        : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                    )}
+                  >
+                    #{name}
+                  </button>
+                )
+              })}
               <button
                 type="button"
                 onClick={clearSearchFilters}
@@ -589,9 +596,9 @@ export default function ContentsBoard({
               >
                 모두 지우기
               </button>
-            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
       {/* 394 — 원칙: 최초 로딩(목록 없음) = 정확한 스켈레톤 / 재조회(목록 있음) = 기존 목록 유지.

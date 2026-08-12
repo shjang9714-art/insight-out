@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
+import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import AiReportBoardCard from '@/components/reports/AiReportBoardCard'
 import type { ReportViewId } from '@/components/reports/ReportTabs'
 import ContentsBoard from '@/components/contents/ContentsBoard'
@@ -96,6 +97,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     <PageContainer>
       {view === 'ai' && (
         <>
+          {/* view='external'은 ContentsBoard가 자체적으로 렌더하므로 여기서는
+              view='ai'(자체 렌더, ContentsBoard 미사용)에서만 별도로 붙인다 —
+              둘 다 붙이면 external에서 중복 렌더된다. */}
+          <Suspense fallback={null}>
+            <ContentsL2Tabs />
+          </Suspense>
           <p className="mb-8 text-sm text-muted-foreground">
             전략보고서·지식보고서를 함께 모은 AI 리포트
           </p>

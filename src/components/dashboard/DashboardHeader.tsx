@@ -9,8 +9,6 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { cn } from '@/lib/utils'
-import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
-import { useActiveCategoryContext } from '@/lib/nav/active-category-context'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
 
@@ -84,13 +82,6 @@ export function resolveIssuesActiveHref(pathname: string, searchParams: URLSearc
   return null
 }
 
-// 콘텐츠 상세(/dashboard/contents/[id])의 실제 category를 자료실 L2 강제 매핑에
-// 쓰기 위해 RecordActiveCategoryHint → ActiveCategoryProvider로 전달된 값을 읽는다
-// (taxonomy.tsx FORCED_L2가 이 categoryHint로 "컨설팅 리포트"·"공시자료"·"AI 리포트"
-// 중 어느 L2가 활성인지 정한다). L1 자체는 더 이상 여기서 오버라이드하지 않는다 —
-// /dashboard/contents/[id] 경로가 이미 기본 매칭으로 자료실이다.
-const CONTENT_DETAIL_PATTERN = /^\/dashboard\/contents\/[^/]+$/
-
 export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
   if (exact) return pathname === href
   if (pathname === href || pathname.startsWith(href + '/')) return true
@@ -110,13 +101,6 @@ interface Props {
 export default function DashboardHeader({ onMenuClick, onSearchClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
-  const category     = searchParams.get('category') ?? ''
-  const { activeContentCategory } = useActiveCategoryContext()
-  const isContentDetail = CONTENT_DETAIL_PATTERN.test(pathname)
-  // category 쿼리파라미터가 있으면(카드 클릭 진입) 첫 렌더부터 바로 읽을 수 있어
-  // 깜빡임이 없다 — 없으면(인용 링크 등 category 미포함 진입) activeContentCategory
-  // 컨텍스트로 폴백(RecordActiveCategoryHint가 mount 시 알려줌, 여전히 약간의 지연 가능).
-  const contentDetailCategoryHint = isContentDetail ? (category || activeContentCategory) : null
 
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
@@ -177,7 +161,6 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
   }, [])
 
   return (
-    <>
     <header className={cn('sticky top-0 z-20 bg-card/90 backdrop-blur-sm', className)}>
 
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
@@ -340,98 +323,5 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
         </div>
       </nav>
     </header>
-
-    {/* ── L2 하위 탭 (md+, 비고정) ─────────────────────────────────────────────
-        header 밖(형제)에 렌더 — sticky가 아니라 페이지 콘텐츠와 함께 스크롤되고,
-        콘텐츠 상단(예: ContentsBoard의 "뉴스 · 총 N건" 제목) 바로 위에 온다
-        (지시서 2026-08-04e). 이전엔 sticky header 안에 통합해 상시노출했었다(372). */}
-    <L2Row
-      activeL1Href={activeL1Href}
-      pathname={pathname}
-      searchParams={searchParams}
-      categoryHint={contentDetailCategoryHint}
-    />
-    </>
-  )
-}
-
-// ─── L2 행 ──────────────────────────────────────────────────────────────────
-// 마우스 위치와 무관하게 항상 실제 활성 라우트(activeL1Href)의 하위 탭만 보여준다
-// — 호버로 내용/위치가 바뀌는 "프리뷰" 기능은 제거됨(§지시서 20260718). 이유:
-// 사용자가 요청한 적 없는 기능이었고, 마우스만 올려도 L2 내용·위치가 바뀌어
-// 실제 활성 상태를 오인하게 만드는 버그로 이어졌다(§지시서 20260716b/20260718).
-// 왼쪽 정렬 + 밑줄 텍스트형(지시서 2026-08-04e) — 예전엔 활성 L1 라벨의 x좌표에
-// 맞추려 NavGroupAlign으로 밀었지만, header 밖(비고정)으로 옮기며 그 이유가
-// 없어져 헤더와 같은 컨테이너(mx-auto max-w-6xl px-4 sm:px-5)로 왼쪽 정렬만 한다.
-function L2Row({
-  activeL1Href,
-  pathname,
-  searchParams,
-  categoryHint,
-}: {
-  activeL1Href: string | null
-  pathname: string
-  searchParams: URLSearchParams
-  categoryHint: string | null
-}) {
-  const l2 = activeL1Href ? getL2ForSection(activeL1Href, pathname, searchParams, categoryHint) : null
-  // 하위 탭이 없는 L1(현재는 자료실 외 전부)에서는 공간도 차지하지 않는다 —
-  // 데스크톱 밑줄 줄·모바일 칩 줄 둘 다.
-  if (!l2 || l2.section.tabs.length === 0) return null
-
-  return (
-    <>
-      <nav className="hidden border-b border-border md:flex print:hidden" aria-label="하위 메뉴">
-        <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 pt-3 pb-2 sm:px-5 tracking-[-0.01em]">
-          {l2.section.tabs.map((tab) => {
-            const active = tab.id === l2.activeId
-            return (
-              // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
-              <Link
-                key={tab.id}
-                href={buildL2Href(l2.section, tab, pathname, searchParams)}
-                className={cn(
-                  'whitespace-nowrap border-b-2 pb-1.5 text-[15px] transition-colors',
-                  active
-                    ? 'border-brand-600 font-medium text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {tab.label}
-              </Link>
-            )
-          })}
-        </div>
-      </nav>
-
-      {/* 모바일 전용 — 가로 스크롤 칩 필터(지시서 2026-08-05 Stage 6). 데스크톱 밑줄
-          줄과 같은 l2.section.tabs를 쓰므로 id·value·href는 동일, 표시만 다르다.
-          스크롤바 숨김은 FeedCarousel.tsx와 동일 패턴. */}
-      <nav
-        className="flex overflow-x-auto border-b border-border px-4 py-2.5 md:hidden print:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        aria-label="하위 메뉴(모바일)"
-      >
-        <div className="flex shrink-0 items-center gap-2">
-          {l2.section.tabs.map((tab) => {
-            const active = tab.id === l2.activeId
-            return (
-              // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
-              <Link
-                key={tab.id}
-                href={buildL2Href(l2.section, tab, pathname, searchParams)}
-                className={cn(
-                  'shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-                  active
-                    ? 'bg-brand-600 text-white'
-                    : 'border border-border text-muted-foreground hover:border-brand-200 hover:text-foreground'
-                )}
-              >
-                {tab.label}
-              </Link>
-            )
-          })}
-        </div>
-      </nav>
-    </>
   )
 }
