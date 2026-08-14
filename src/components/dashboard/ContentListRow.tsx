@@ -58,6 +58,7 @@ export default function ContentListRow({
 
   return (
     <article className="group flex gap-4 rounded-xl border border-border bg-card p-3 transition-all hover:border-brand-200 hover:shadow-sm sm:p-4">
+      {/* prefetch-ok: href가 내부 상세/외부 원문으로 동적 — 내부 분기는 primaryLinkProps에서 prefetch:false, 외부 분기는 새 탭 외부링크라 prefetch 무관 */}
       <Link
         {...primaryLinkProps}
         className="flex h-24 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted sm:h-28 sm:w-40"
@@ -84,6 +85,7 @@ export default function ContentListRow({
           ))}
         </div>
 
+        {/* prefetch-ok: href가 내부 상세/외부 원문으로 동적 — 내부 분기는 primaryLinkProps에서 prefetch:false, 외부 분기는 새 탭 외부링크라 prefetch 무관 */}
         <Link {...primaryLinkProps}>
           <h2 className="line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
             {title}
