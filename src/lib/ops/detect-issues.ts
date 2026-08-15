@@ -6,12 +6,7 @@ import {
   effectiveTokenLimit,
 } from '@/lib/llm/token-limit'
 import { getOpsSettings } from '@/lib/ops/settings'
-import {
-  CRON_ABSENCE_CRITICAL_MULTIPLIER,
-  CRON_ABSENCE_WARNING_MULTIPLIER,
-  CRON_EXPECTED_INTERVAL_HOURS,
-  CRON_HIGH_FREQUENCY_KEYS,
-} from '@/lib/ops/cron-registry'
+import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
 
 interface Signal { fingerprint: string; category: string; severity: 'critical' | 'warning'; title: string; suspected_cause: string; recommended_action: string; impact: string; count: number }
 
@@ -29,7 +24,7 @@ function formatKst(iso: string): string {
 }
 
 /**
- * 497 — job_key 별 "가장 최근 실행"(status 무관, skipped 포함) 1건씩.
+ * 497/499 — job_key 별 "가장 최근 실행"(status 무관, skipped 포함) 1건씩.
  *
  * 처음엔 `in(cronKeys)` 로 전체를 한 쿼리로 가져오려 했으나, 로컬 검증 중
  * 실제로 깨지는 걸 확인했다: job_runs 전체(cronKeys 대상만도 4336행)를
@@ -38,20 +33,19 @@ function formatKst(iso: string): string {
  * 주기인 ops-weekly 의 "5일 전 실제 실행" 행이 페이지 밖으로 밀려난다 —
  * 실제로 존재하는 실행 기록을 "실행 기록이 아예 없음"으로 오판했다.
  *
- * 그래서 이 둘만 최신 1행짜리 쿼리로 따로 떼고, 나머지 14개는 그중
- * 가장 긴 기대 주기의 critical 임계치만큼만 시간창을 좁혀 한 쿼리로
- * 가져온다 — 총 쿼리 수는 CRON_HIGH_FREQUENCY_KEYS.length + 1(현재 3개),
- * 잡 하나당 하나씩(16개) 방식이 아니다.
+ * 그래서 이 둘만 최신 1행짜리 쿼리로 따로 떼고(EXPECTED_CRONS 의 highFrequency),
+ * 나머지는 그중 가장 긴 maxAgeHours 의 critical 임계치(×2)만큼만 시간창을 좁혀
+ * 한 쿼리로 가져온다 — 총 쿼리 수는 highFrequency 개수 + 1, 잡 하나당 하나씩 방식이 아니다.
  */
 async function fetchCronLastRunAtByKey(admin: SupabaseClient): Promise<Map<string, string>> {
-  const cronKeys = Object.keys(CRON_EXPECTED_INTERVAL_HOURS)
-  const normalKeys = cronKeys.filter(k => !CRON_HIGH_FREQUENCY_KEYS.includes(k))
-  const maxNormalIntervalHours = Math.max(...normalKeys.map(k => CRON_EXPECTED_INTERVAL_HOURS[k]))
-  const bulkCutoff = new Date(Date.now() - maxNormalIntervalHours * CRON_ABSENCE_CRITICAL_MULTIPLIER * 3_600_000).toISOString()
+  const highFrequencyKeys = EXPECTED_CRONS.filter(c => c.highFrequency).map(c => c.key)
+  const normalCrons = EXPECTED_CRONS.filter(c => !c.highFrequency)
+  const maxNormalMaxAgeHours = Math.max(...normalCrons.map(c => c.maxAgeHours))
+  const bulkCutoff = new Date(Date.now() - maxNormalMaxAgeHours * 2 * 3_600_000).toISOString()
 
   const [bulk, ...frequent] = await Promise.all([
-    admin.from('job_runs').select('job_key, started_at').in('job_key', normalKeys).gte('started_at', bulkCutoff).order('started_at', { ascending: false }),
-    ...CRON_HIGH_FREQUENCY_KEYS.map(key =>
+    admin.from('job_runs').select('job_key, started_at').in('job_key', normalCrons.map(c => c.key)).gte('started_at', bulkCutoff).order('started_at', { ascending: false }),
+    ...highFrequencyKeys.map(key =>
       admin.from('job_runs').select('job_key, started_at').eq('job_key', key).order('started_at', { ascending: false }).limit(1),
     ),
   ])
@@ -64,14 +58,17 @@ async function fetchCronLastRunAtByKey(admin: SupabaseClient): Promise<Map<strin
 }
 
 /**
- * 497 — 크론 "부재" 신호. 관측된 job_key 가 아니라 CRON_EXPECTED_INTERVAL_HOURS
- * (기대 목록)를 순회한다 — 없는 것을 찾는 일이므로 있는 것만 봐서는 안 잡힌다.
+ * 497/499 — 크론 "부재" 신호. 관측된 job_key 가 아니라 EXPECTED_CRONS(기대 목록,
+ * 292 의 단일 진실)를 순회한다 — 없는 것을 찾는 일이므로 있는 것만 봐서는 안 잡힌다.
  * fingerprint 는 `cron:fail:*` 와 겹치지 않는 `cron:absent:*` — 같은 잡이
  * 실패도 하고(24시간 창) 멈추기도(이 함수) 해서 두 신호가 동시에 열릴 수 있다.
+ *
+ * 판정: 경과 ≤ maxAgeHours → 신호 없음 / maxAgeHours < 경과 ≤ maxAgeHours×2 → warning /
+ * 경과 > maxAgeHours×2 → critical / 실행 기록 없음 → critical.
  */
 function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: number): Signal[] {
   const out: Signal[] = []
-  for (const [jobKey, intervalHours] of Object.entries(CRON_EXPECTED_INTERVAL_HOURS)) {
+  for (const { key: jobKey, maxAgeHours } of EXPECTED_CRONS) {
     const lastRunAt = lastRunAtByKey.get(jobKey)
     if (!lastRunAt) {
       out.push({
@@ -79,7 +76,7 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
         category: 'cron',
         severity: 'critical',
         title: '크론 실행 기록 없음',
-        suspected_cause: `${jobKey} 실행 기록이 아예 없음(기대 주기 ${intervalHours}시간)`,
+        suspected_cause: `${jobKey} 실행 기록이 아예 없음(허용 ${maxAgeHours}시간)`,
         recommended_action: 'vercel.json crons 등록과 잡 배포 여부를 확인하세요.',
         impact: '자동 운영 작업이 한 번도 실행되지 않음',
         // occurrence_count 는 어드민에 "발생 횟수"로 표시된다 — 실행 기록이
@@ -91,15 +88,15 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
       continue
     }
     const elapsedHours = (now - new Date(lastRunAt).getTime()) / 3_600_000
-    if (elapsedHours <= intervalHours * CRON_ABSENCE_WARNING_MULTIPLIER) continue
-    const severity: Signal['severity'] = elapsedHours > intervalHours * CRON_ABSENCE_CRITICAL_MULTIPLIER ? 'critical' : 'warning'
+    if (elapsedHours <= maxAgeHours) continue
+    const severity: Signal['severity'] = elapsedHours > maxAgeHours * 2 ? 'critical' : 'warning'
     const roundedHours = Math.round(elapsedHours)
     out.push({
       fingerprint: `cron:absent:${jobKey}`,
       category: 'cron',
       severity,
       title: '크론 실행 부재',
-      suspected_cause: `${formatKst(lastRunAt)} 이후 ${roundedHours}시간 무실행, 기대 주기 ${intervalHours}시간`,
+      suspected_cause: `${formatKst(lastRunAt)} 이후 ${roundedHours}시간 무실행, 허용 ${maxAgeHours}시간`,
       recommended_action: 'Vercel 크론 로그와 job_runs 최근 기록을 확인하세요.',
       impact: '자동 운영 작업이 멈춘 상태일 수 있음',
       count: roundedHours,
