@@ -21,6 +21,8 @@ interface CronMeta {
 // 반대로 vercel.json 에 있는데 여기 없으면 아래에서 throw.
 const CRON_META: Record<string, CronMeta> = {
   'cron:crawl':               { label: '크롤',            maxAgeHours: 30 },
+  // 498 — 크롤 크론 분리(소스 폴링 cron:crawl / 키워드·회사 seed 검색 cron:crawl-seeds)
+  'cron:crawl-seeds':         { label: '크롤(seed 검색)',  maxAgeHours: 30 },
   'cron:summary-backfill':    { label: '요약 백필',        maxAgeHours: 30 },
   'cron:briefing':            { label: '모닝브리핑',       maxAgeHours: 30 },
   'cron:newsletter':          { label: '뉴스레터',         maxAgeHours: 30 },

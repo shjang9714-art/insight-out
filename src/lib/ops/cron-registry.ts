@@ -9,10 +9,10 @@
  *   vercel.json 을 고치면 이 파일도 같이 고쳐라 — 어긋나면 감지가 거짓말을
  *   한다(있는데 없다고 하거나, 없는데 있다고 한다).
  *
- * vercel.json 의 crons 14개 + pg_cron 전용 1개(vercel.json 에는 없이 순수
- * pg_cron 10분 주기로만 도는 ops-alert) = 총 15개. body-backfill 은
- * vercel.json 의 14개 안에 이미 포함돼 있고 pg_cron 10분 주기도 병행할
- * 뿐이라 별도 키로 늘어나지 않는다 — "14 + pg_cron 2개 = 16개"로 세면
+ * vercel.json 의 crons 15개(498 — crawl-seeds 추가로 14→15) + pg_cron 전용
+ * 1개(vercel.json 에는 없이 순수 pg_cron 10분 주기로만 도는 ops-alert) = 총 16개.
+ * body-backfill 은 vercel.json 의 15개 안에 이미 포함돼 있고 pg_cron 10분 주기도
+ * 병행할 뿐이라 별도 키로 늘어나지 않는다 — "15 + pg_cron 2개 = 17개"로 세면
  * body-backfill 을 두 번 세는 것이므로 착오다.
  *   - cron:body-backfill: vercel 일 1회(24h) + pg_cron 10분 주기 병행 —
  *     느슨한 쪽(24h)으로 잡는다(자주 도는 쪽 기준으로 잡으면 vercel 경로만
@@ -24,6 +24,7 @@
  */
 export const CRON_EXPECTED_INTERVAL_HOURS: Record<string, number> = {
   'cron:crawl': 24,
+  'cron:crawl-seeds': 24,
   'cron:summary-backfill': 24,
   'cron:briefing': 24,
   'cron:newsletter': 24,
@@ -46,7 +47,7 @@ export const CRON_ABSENCE_CRITICAL_MULTIPLIER = 4
 
 /**
  * pg_cron 으로 실제 10분 주기로 도는 잡 — job_runs 에 하루 140행 안팎이
- * 쌓인다. 이 둘을 나머지 13개와 같은 쿼리로 묶으면(항상 최신순이라) 이
+ * 쌓인다. 이 둘을 나머지 14개와 같은 쿼리로 묶으면(항상 최신순이라) 이
  * 둘의 최근 행이 결과를 채워 정작 168시간 주기인 ops-weekly 같은 잡의
  * "5일 전에 실제로 돈" 행이 페이지(기본 1000행) 밖으로 밀려난다 —
  * 497 로컬 검증 중 실제로 재현(4336행 중 최근 1000행만 오고
