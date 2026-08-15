@@ -82,9 +82,11 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
         suspected_cause: `${jobKey} 실행 기록이 아예 없음(기대 주기 ${intervalHours}시간)`,
         recommended_action: 'vercel.json crons 등록과 잡 배포 여부를 확인하세요.',
         impact: '자동 운영 작업이 한 번도 실행되지 않음',
-        // 실행 기록 자체가 없어 경과 시간을 계산할 수 없다 — 정렬상 최우선이
-        // 되도록 큰 값을 박아둔다(실제 경과 시간이 아니라 "무기록" 마커).
-        count: 999_999,
+        // occurrence_count 는 어드민에 "발생 횟수"로 표시된다 — 실행 기록이
+        // 없다는 사실은 count 가 아니라 suspected_cause 문구가 전달하고,
+        // 정렬 우선순위는 severity='critical' 이 이미 보장하므로 여기서
+        // 실제 데이터가 아닌 값을 count 인 척 박아넣지 않는다.
+        count: 0,
       })
       continue
     }
