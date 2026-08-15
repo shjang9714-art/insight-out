@@ -10,6 +10,10 @@
       "schedule": "20 20 * * *"
     },
     {
+      "path": "/api/cron/crawl-seeds",
+      "schedule": "40 20 * * *"
+    },
+    {
       "path": "/api/cron/briefing",
       "schedule": "0 21 * * *"
     },

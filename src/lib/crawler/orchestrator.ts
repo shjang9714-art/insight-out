@@ -57,7 +57,15 @@ const COMPANY_SEARCH_BUDGET_MS = 20_000
 
 // maxDuration(300초) 안에서 우아하게 멈추기 위한 크롤 전체 소프트 데드라인.
 // 하드킬(강제종료)과 달리 여기 걸리면 runJob 이 정상적으로 succeeded/partial 로 기록한다.
-const CRAWL_SOFT_DEADLINE_MS = 270_000
+// 498: 270→240초로 낮췄다. 실제 소스 수집은 9~35초(전체의 10% 미만)고 시간을 먹는 건
+// 순차 처리인 키워드/회사 seed 검색(210초 안팎)이다 — 270이면 여유가 30초뿐이었는데,
+// 성공한 5일의 실측 소요가 275.5·276.4·278.7·293.4·293.6초로 전부 270을 넘겼고 최대
+// 초과폭이 23.6초라 남은 마진 6초로는 실패가 사고가 아니라 확률이었다(8일에 3번,
+// claude/진단-cron-crawl-300초초과-2026-08-15.md). 크론을 sources/seeds phase 로
+// 분리한 뒤에도 seeds 잡은 여전히 300초 창 전체를 혼자 쓰므로, 240으로 낮추면 여유가
+// 60초(실측 최대 초과폭의 2.5배)가 된다. phase 분리로 seeds 가 창을 독점하게 되니 240으로
+// 낮춰도 실제 seed 처리량은 줄지 않는다(기존엔 소스 수집 20초를 뺀 250초 안에서 돌았다).
+const CRAWL_SOFT_DEADLINE_MS = 240_000
 
 interface TranslationBudget {
   remaining: number
@@ -226,11 +234,22 @@ export interface CrawlSummary {
    *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
    *  경고 흔적을 남긴다. */
   error?: string
+  /** 498 — 소프트 데드라인에 걸려 중간에 멈춘 단계. 비어 있으면 완주.
+   *  주의: enrichRecentContents(enrichment tail)는 이번 범위가 아니라 절단 신호를
+   *  노출하지 않는다 — 비어 있다고 완주를 보장하지 않는다. */
+  truncatedPhases?: string[]
+  /** 498 — 회사 seed 처리/전체 개수. truncatedPhases 에 'company_seed' 가 있을 때 근거로 참고. */
+  companySeedsProcessed?: number
+  companySeedsTotal?: number
 }
+
+export type CrawlPhase = 'sources' | 'seeds' | 'all'
 
 export interface RunCrawlOptions extends CrawlScheduleOptions {
   sourceIds?: string[]
   gdeltBackfill?: { from: string; to: string }
+  /** 498 — 기본 'all'(수동 실행·백필 기존 동작 보존). 크론만 'sources'/'seeds' 로 쪼개 호출한다. */
+  phase?: CrawlPhase
 }
 
 /**
@@ -1308,6 +1327,7 @@ async function enrichRecentContents(
  *  @param options.force true 이면 주기와 관계없이 활성 소스를 모두 실행.
  *  @param options.sourceIds 지정 시 해당 소스만 수집, 키워드 검색 skip. */
 export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSummary> {
+  const phase: CrawlPhase = options.phase ?? 'all'
   const runStartedAt = new Date().toISOString()
   const softDeadline = Date.now() + CRAWL_SOFT_DEADLINE_MS
   const backfillDays =
@@ -1504,27 +1524,31 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   // 각 소스에 softDeadline 전달 — 이전엔 이 구간이 무제한이라(회사/키워드 seed 검색과 달리
   // 데드라인 체크가 없었음) backfillDays 로 아이템 수가 늘면 maxDuration 하드킬까지 갈 수
   // 있었다(job_runs 가 running 에서 멈추는 근본 원인, 2026-07-27 조사).
-  const results = await Promise.allSettled(
-    dueSources.map(s =>
-      s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
-        : crawlOne(
-            admin,
-            s,
-            sinceForSource(s, since, backfillDays),
-            keywords,
-            groups,
-            translationBudget,
-            classifyBudget,
-            aliasMap,
-            issueList,
-            exclusionRules,
-            exclusionHits,
-            minBodyLength,
-            softDeadline
-          )
-    )
-  )
+  // 498: phase==='seeds' 이면 이 블록을 건너뛴다 — crawl-seeds 크론은 키워드/회사 seed
+  // 검색만 담당한다(소스 폴링은 crawl 크론이 phase='sources' 로 별도 처리).
+  const results = phase === 'seeds'
+    ? []
+    : await Promise.allSettled(
+        dueSources.map(s =>
+          s.type === 'youtube_channel'
+            ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
+            : crawlOne(
+                admin,
+                s,
+                sinceForSource(s, since, backfillDays),
+                keywords,
+                groups,
+                translationBudget,
+                classifyBudget,
+                aliasMap,
+                issueList,
+                exclusionRules,
+                exclusionHits,
+                minBodyLength,
+                softDeadline
+              )
+        )
+      )
 
   // 결과 집계
   let successCount = 0
@@ -1573,14 +1597,22 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     }
   }
 
-  // 키워드 검색 수집 — 개별 소스 수집(sourceIds 지정) 시 skip
-  if (!options.sourceIds?.length && searchSeeds.length > 0) {
+  // 498: 절단 가시화 — 비어 있으면 완주(enrichment tail 은 미포함, 위 CrawlSummary 주석 참고).
+  const truncatedPhases: string[] = []
+  let companySeedsProcessed: number | undefined
+  let companySeedsTotal: number | undefined
+
+  // 키워드 검색 수집 — 개별 소스 수집(sourceIds 지정) 시 skip. 498: phase==='sources' 시에도 skip.
+  if (!options.sourceIds?.length && phase !== 'sources' && searchSeeds.length > 0) {
     providers.keyword_phase_skipped = false
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
       admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
     )
-    if (kwResult.truncated) console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
+    if (kwResult.truncated) {
+      console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
+      truncatedPhases.push('keyword_search')
+    }
     providers.keyword_google = kwResult.providerFetched.google
     providers.keyword_naver = kwResult.providerFetched.naver
     providers.keyword_gdelt = kwResult.providerFetched.gdelt
@@ -1601,8 +1633,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     if (!kwResult.hadError) successCount++
   }
 
-  // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds 지정) 시 skip.
-  if (!options.sourceIds?.length && companySeeds.length > 0) {
+  // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds
+  // 지정) 시 skip. 498: phase==='sources' 시에도 skip.
+  if (!options.sourceIds?.length && phase !== 'sources' && companySeeds.length > 0) {
     console.log(`[크롤러] 회사 seed 수집 시작: ${companySeeds.length}개 시드(날짜 회전 적용)`)
     const companyResult = await crawlCompanySearch(
       admin, companySeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS, softDeadline
@@ -1623,6 +1656,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       error:     companyResult.firstError,
     })
     if (!companyResult.hadError) successCount++
+    companySeedsProcessed = companyResult.processedSeeds
+    companySeedsTotal = companySeeds.length
+    if (companyResult.processedSeeds < companySeeds.length) truncatedPhases.push('company_seed')
     console.log(`[크롤러] 회사 seed 수집 완료: ${companyResult.processedSeeds}/${companySeeds.length}개 시드 처리`)
   }
 
@@ -1680,5 +1716,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     details,
     providers,
     error: errorSummary,
+    truncatedPhases: truncatedPhases.length > 0 ? truncatedPhases : undefined,
+    companySeedsProcessed,
+    companySeedsTotal,
   }
 }
