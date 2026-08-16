@@ -13,6 +13,24 @@ const RESEND_COOLDOWN_SECONDS = 60
 const OTP_VALIDITY_SECONDS = 600
 
 type Step = 'password' | 'otp-send' | 'otp-verify' | 'set-password'
+type Intent = 'signup' | 'recover'
+
+const REMEMBERED_EMAIL_COOKIE = 'io_remember_email'
+const REMEMBERED_EMAIL_MAX_AGE_SECONDS = 60 * 60 * 24 * 180 // 180일
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+function writeCookie(name: string, value: string, maxAgeSeconds: number) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`
+}
+
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`
+}
 
 function GoogleIcon() {
   return (
@@ -74,12 +92,14 @@ export function LoginCard() {
   const passwordUpdated = searchParams.get('password') === 'updated'
 
   const [step, setStep] = useState<Step>('password')
+  const [intent, setIntent] = useState<Intent>('signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showRecovery, setShowRecovery] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [rememberEmail, setRememberEmail] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
   const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null)
   const [otpRemainingSeconds, setOtpRemainingSeconds] = useState(0)
@@ -105,6 +125,16 @@ export function LoginCard() {
   useEffect(() => {
     if (step === 'otp-verify') codeInputRef.current?.focus()
   }, [step])
+
+  // 아이디(이메일) 기억 — 마운트 시 1회, 쿠키에 저장된 값이 있으면 채워둔다.
+  useEffect(() => {
+    const saved = readCookie(REMEMBERED_EMAIL_COOKIE)
+    if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 1회성 마운트 초기화(허용 패턴)
+      setEmail(saved)
+      setRememberEmail(true)
+    }
+  }, [])
 
   // 비밀번호 재설정 후 /login?password=updated 로 돌아왔을 때, 이미 마운트된 카드가
   // 'set-password' 단계에 멈춰 있지 않도록 로그인 폼 상태로 초기화한다.
@@ -146,6 +176,12 @@ export function LoginCard() {
       setShowRecovery(true)
       setLoading(false)
       return
+    }
+
+    if (rememberEmail) {
+      writeCookie(REMEMBERED_EMAIL_COOKIE, normalizedEmail, REMEMBERED_EMAIL_MAX_AGE_SECONDS)
+    } else {
+      deleteCookie(REMEMBERED_EMAIL_COOKIE)
     }
 
     router.replace('/dashboard')
@@ -266,15 +302,16 @@ export function LoginCard() {
 
   const descriptions: Record<Step, string> = {
     password: '회사 이메일과 비밀번호로 로그인하세요',
-    'otp-send': '이메일 인증 후 비밀번호를 설정합니다',
+    'otp-send': intent === 'recover' ? '가입하신 이메일로 인증 코드를 보냅니다' : '회사 이메일로 인증 코드를 보내 계정을 만듭니다',
     'otp-verify': '메일로 받은 인증 코드를 입력하세요',
-    'set-password': '앞으로 사용할 비밀번호를 설정하세요',
+    'set-password': intent === 'recover' ? '새 비밀번호를 설정하세요' : '사용하실 비밀번호를 설정하세요',
   }
+  const headerTitle = step === 'password' ? '인사이트 아웃' : intent === 'recover' ? '비밀번호 재설정' : '계정 만들기'
 
   return (
     <div className="w-full rounded-[30px] border border-slate-200/70 bg-white/95 p-8 shadow-[0_40px_90px_-30px_rgba(24,39,75,0.30)] backdrop-blur-sm sm:p-10">
       <div className="mb-9 flex flex-col items-center">
-        <h1 className="text-[26px] font-extrabold tracking-tight text-slate-900">인사이트 아웃</h1>
+        <h1 className="text-[26px] font-extrabold tracking-tight text-slate-900">{headerTitle}</h1>
         <p className="mt-4 text-sm text-slate-500">{descriptions[step]}</p>
       </div>
 
@@ -296,16 +333,31 @@ export function LoginCard() {
             <Label htmlFor="password" className="text-slate-700">비밀번호</Label>
             <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={loading} className="h-12 rounded-xl border-slate-200 bg-white text-[15px] text-slate-900" />
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={rememberEmail}
+              onChange={(event) => setRememberEmail(event.target.checked)}
+              disabled={loading}
+              className="size-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+            />
+            이메일 기억하기
+          </label>
           <Button type="submit" disabled={loading} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
             {loading && <Spinner />}{loading ? '로그인 중...' : '로그인'}
           </Button>
           {!showRecovery && (
-            <button type="button" onClick={() => { setStep('otp-send'); setError(null); setShowRecovery(false) }} className="rounded text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline">
-              비밀번호를 잊으셨나요? / 처음이신가요?
-            </button>
+            <div className="flex items-center justify-between text-sm">
+              <button type="button" onClick={() => { setStep('otp-send'); setIntent('recover'); setError(null); setShowRecovery(false) }} className="rounded font-medium text-blue-600 hover:text-blue-700 hover:underline">
+                비밀번호를 잊으셨나요
+              </button>
+              <button type="button" onClick={() => { setStep('otp-send'); setIntent('signup'); setError(null); setShowRecovery(false) }} className="rounded font-medium text-blue-600 hover:text-blue-700 hover:underline">
+                처음 오셨나요? 계정 만들기
+              </button>
+            </div>
           )}
           {showRecovery && (
-            <button type="button" onClick={() => { setStep('otp-send'); setError(null); setShowRecovery(false) }} className="rounded text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline">
+            <button type="button" onClick={() => { setStep('otp-send'); setIntent('recover'); setError(null); setShowRecovery(false) }} className="rounded text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline">
               이메일로 인증 코드 받기
             </button>
           )}
@@ -318,7 +370,7 @@ export function LoginCard() {
           <Button type="submit" disabled={loading} className="mt-2 h-12 w-full gap-2 rounded-xl bg-slate-900 text-[15px] font-semibold text-white hover:bg-slate-800">
             {loading && <Spinner />}{loading ? '전송 중...' : '인증 코드 받기'}
           </Button>
-          <button type="button" onClick={() => { setStep('password'); setError(null) }} className="rounded text-sm font-medium text-slate-500 hover:text-slate-700 hover:underline">
+          <button type="button" onClick={() => { setStep('password'); setIntent('signup'); setError(null) }} className="rounded text-sm font-medium text-slate-500 hover:text-slate-700 hover:underline">
             비밀번호 로그인으로 돌아가기
           </button>
         </form>
@@ -361,7 +413,7 @@ export function LoginCard() {
       {step !== 'set-password' && (
         <div className="mt-8 flex justify-center border-t border-slate-100 pt-5">
           <button type="button" onClick={handleAdminGoogle} disabled={loading} className="inline-flex items-center gap-1.5 rounded text-xs text-slate-400 hover:text-slate-600 hover:underline">
-            <GoogleIcon />관리자는 Google로 로그인
+            <GoogleIcon />관리자 로그인
           </button>
         </div>
       )}
