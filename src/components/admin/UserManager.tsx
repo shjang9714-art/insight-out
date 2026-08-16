@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, ShieldCheck, CheckCircle, XCircle, Clock, Pencil } from 'lucide-react'
+import { Loader2, ShieldCheck, CheckCircle, XCircle, Clock, Pencil, LogOut } from 'lucide-react'
+import { toast } from 'sonner'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import StatusBadge from '@/components/admin/ui/StatusBadge'
@@ -32,6 +33,7 @@ import {
   approveUser,
   rejectUser,
   updateUserProfileByAdmin,
+  forceSignOutUser,
 } from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { DEPARTMENT_DISPLAY_LABEL, FIXED_DEPARTMENT, isOrgGroup, ORG_GROUPS } from '@/lib/org'
@@ -171,6 +173,30 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
     })
   }
 
+  // ── 세션 강제 종료 ────────────────────────────────────────────────────────
+  const [signingOutId, setSigningOutId] = useState<string | null>(null)
+
+  const handleForceSignOut = async (user: UserRow) => {
+    if (!(await confirm({
+      title: '세션 종료',
+      description: '이 사용자의 모든 기기에서 즉시 로그아웃됩니다.',
+      targets: [`${user.name || '이름 미입력'} (${user.email})`],
+      confirmLabel: '세션 종료',
+      destructive: true,
+    }))) return
+
+    setSigningOutId(user.id)
+    startTransition(async () => {
+      const { error: err } = await forceSignOutUser(user.id)
+      if (err) {
+        setError(err)
+      } else {
+        toast.success(`${user.email} 계정을 로그아웃 처리했습니다.`)
+      }
+      setSigningOutId(null)
+    })
+  }
+
   // ── 사용자 정보 편집 ──────────────────────────────────────────────────────
 
   const handleEditOpen = (user: UserRow) => {
@@ -248,6 +274,7 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
             {user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}
             {user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}
             <button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button>
+            {user.id !== currentUserId && <button type="button" onClick={() => handleForceSignOut(user)} disabled={signingOutId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{signingOutId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <LogOut className="h-3 w-3" />}세션 종료</button>}
             <Select value={user.role} onValueChange={(value) => { void handleToggleRole(user, value as UserRole) }} disabled={roleChangeDisabledReason !== null || togglingId === user.id || isPending}>
               <SelectTrigger className="h-8 w-[125px] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="user">user</SelectItem><SelectItem value="viewer">viewer</SelectItem><SelectItem value="admin">admin</SelectItem><SelectItem value="super_admin">super_admin</SelectItem></SelectContent>
