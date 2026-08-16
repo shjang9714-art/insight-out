@@ -7,11 +7,12 @@ import VisitDelta from '@/components/dashboard/VisitDelta'
 import WelcomeGreeting from '@/components/dashboard/WelcomeGreeting'
 import PageContainer from '@/components/PageContainer'
 import { getHomeSectionLayout } from '@/lib/home/layout'
+import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
 
 /** FeedSlot 카드 그리드 레이아웃에 맞춘 중립 스켈레톤(dashboard/loading.tsx 톤 재사용, 마젠타 없음). */
 function FeedSlotSkeleton() {
   return (
-    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+    <div className={CONTENT_GRID_CLASS}>
       {[0, 1, 2].map((i) => (
         <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="aspect-[16/9] bg-muted animate-pulse" />

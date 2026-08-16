@@ -1,5 +1,6 @@
 import PageContainer from '@/components/PageContainer'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
+import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
 
 export default function Loading() {
   return (
@@ -21,7 +22,7 @@ export default function Loading() {
       </div>
 
       {/* 카드 그리드 스켈레톤 — 실제 카드와 동일한 ContentCardSkeleton(394) */}
-      <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+      <div className={CONTENT_GRID_CLASS}>
         {Array.from({ length: 6 }).map((_, i) => <ContentCardSkeleton key={i} index={i} />)}
       </div>
     </PageContainer>
