@@ -128,12 +128,16 @@ async function fetchContentCategory(
     supabase.from('contents').select(
       'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name))'
     ),
-    ['title', 'summary_ko', 'body_original'],
+    // 509 — body_original 에는 pg_trgm 인덱스가 없어 OR 로 묶이는 순간 인덱스 경로가
+    // 버려지고 전량 스캔이 된다(운영 실측 8,166ms, authenticated statement_timeout 8,000ms
+    // 초과 → 57014 상시 실패). title/summary_ko 만 대상으로 한다. .select() 의
+    // body_original 은 그대로 둔다 — ContentRow 가 요약 폴백으로 쓴다.
+    ['title', 'summary_ko'],
     ilikePats,
   ).eq('status', 'published')
   if (categories) query = query.in('category', categories)
   const { data, error: err } = await query.order('published_at', { ascending: false, nullsFirst: false }).limit(Math.max(cap, FETCH_LIMIT))
-  if (err) { console.error('[search] contents 조회 오류:', err); return [] }
+  if (err) { console.error('[search] contents 조회 오류:', err); throw err }
   return ((data ?? []) as unknown as ContentSearchRow[])
     .map(row => ({ key: `content-${row.id}`, source: 'content' as const, sortDate: row.published_at ?? EPOCH, content: row }))
     .slice(0, cap)
@@ -146,7 +150,7 @@ async function fetchInsights(supabase: SupabaseClient, ilikePats: string[], cap:
     ilikePats,
   ).eq('status', 'published')
   const { data, error: err } = await query.order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
-  if (err) { console.error('[search] daily_insights 조회 오류:', err); return [] }
+  if (err) { console.error('[search] daily_insights 조회 오류:', err); throw err }
   return ((data ?? []) as DailyInsightRow[])
     .map(row => ({ key: `insight-${row.id}`, source: 'daily_insights' as const, sortDate: new Date(row.day_of).toISOString(), insight: row }))
     .slice(0, cap)
@@ -159,7 +163,7 @@ async function fetchIssues(supabase: SupabaseClient, ilikePats: string[], cap: n
     ilikePats,
   ).eq('status', 'published')
   const { data, error: err } = await query.order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
-  if (err) { console.error('[search] issues 조회 오류:', err); return [] }
+  if (err) { console.error('[search] issues 조회 오류:', err); throw err }
   return ((data ?? []) as IssueRow[])
     .map(row => ({ key: `issue-${row.id}`, source: 'issues' as const, sortDate: row.created_at, issue: row }))
     .slice(0, cap)
@@ -185,7 +189,7 @@ async function fetchEntities(supabase: SupabaseClient, ilikePats: string[], cap:
     ['canonical_name', 'description'],
     ilikePats,
   ).limit(FETCH_LIMIT)
-  if (err) { console.error('[search] entities 조회 오류:', err); return [] }
+  if (err) { console.error('[search] entities 조회 오류:', err); throw err }
   const ids = (matched ?? []).map((e) => e.id as string)
   if (ids.length === 0) return []
 
@@ -196,7 +200,7 @@ async function fetchEntities(supabase: SupabaseClient, ilikePats: string[], cap:
     .eq('contents.status', 'published')
     .order('contents(published_at)', { ascending: false })
     .limit(LINK_FETCH_CAP)
-  if (linkErr) { console.error('[search] content_entities 조회 오류:', linkErr); return [] }
+  if (linkErr) { console.error('[search] content_entities 조회 오류:', linkErr); throw linkErr }
 
   const stats = aggregateLinks(
     ((links ?? []) as unknown as { entity_id: string; contents: { published_at: string | null } }[])
@@ -221,7 +225,7 @@ async function fetchKeywords(supabase: SupabaseClient, ilikePats: string[], cap:
     ['name'],
     ilikePats,
   ).limit(FETCH_LIMIT)
-  if (err) { console.error('[search] keywords 조회 오류:', err); return [] }
+  if (err) { console.error('[search] keywords 조회 오류:', err); throw err }
   const ids = (matched ?? []).map((k) => k.id as string)
   if (ids.length === 0) return []
 
@@ -232,7 +236,7 @@ async function fetchKeywords(supabase: SupabaseClient, ilikePats: string[], cap:
     .eq('contents.status', 'published')
     .order('contents(published_at)', { ascending: false })
     .limit(LINK_FETCH_CAP)
-  if (linkErr) { console.error('[search] content_keywords 조회 오류:', linkErr); return [] }
+  if (linkErr) { console.error('[search] content_keywords 조회 오류:', linkErr); throw linkErr }
 
   const stats = aggregateLinks(
     ((links ?? []) as unknown as { keyword_id: string; contents: { published_at: string | null } }[])
@@ -282,37 +286,63 @@ export function useUnifiedSearch(
     let cancelled = false
     startTransition(() => { setLoading(true); setError(null) })
 
-    const fetchResults = async () => {
-      const supabase = createClient()
-      const ilikePats = buildIlikePatterns(q)
+    // 509 — 타건마다 최대 8개 쿼리가 동시 발사되던 것을 300ms 디바운스로 묶는다.
+    // q/filter 가 다시 바뀌면 클린업이 이 타이머를 지우므로 실제 요청은 타이핑이
+    // 멈춘 뒤 1회만 나간다.
+    const timer = setTimeout(() => {
+      const fetchResults = async () => {
+        const supabase = createClient()
+        const ilikePats = buildIlikePatterns(q)
 
-      // 특정 카테고리 선택 시: 그 종류 하나만 조회, 표시 상한도 60(무회귀 — 기존 단독 필터와 동일)
-      const keysToFetch = filter ? [filter] : SEARCH_SECTION_ORDER
-      const capFor = (key: SearchFilterKey) => (filter ? FETCH_LIMIT : SEARCH_SECTION_DISPLAY_CAP[key])
+        // 특정 카테고리 선택 시: 그 종류 하나만 조회, 표시 상한도 60(무회귀 — 기존 단독 필터와 동일)
+        const keysToFetch = filter ? [filter] : SEARCH_SECTION_ORDER
+        const capFor = (key: SearchFilterKey) => (filter ? FETCH_LIMIT : SEARCH_SECTION_DISPLAY_CAP[key])
 
-      const fetched = await Promise.all(
-        keysToFetch.map(async (key): Promise<SearchSection> => ({
-          key,
-          items: await fetchSection(supabase, key, ilikePats, capFor(key)),
-        }))
-      )
+        // 509 — 소스별 fetch 함수가 이제 실패 시 throw 하므로 Promise.all 대신
+        // allSettled 로 받는다. 한 소스(예: 타임아웃)가 실패해도 나머지 fulfilled
+        // 섹션은 그대로 렌더해야 한다 — 전체를 지우면 안 됨.
+        const settled = await Promise.allSettled(
+          keysToFetch.map(async (key): Promise<SearchSection> => ({
+            key,
+            items: await fetchSection(supabase, key, ilikePats, capFor(key)),
+          }))
+        )
 
-      if (!cancelled) {
-        // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
-        const nonEmpty = fetched.filter((s) => s.items.length > 0)
-        setSections(nonEmpty)
-        setLoading(false)
+        if (!cancelled) {
+          const fulfilled = settled
+            .filter((r): r is PromiseFulfilledResult<SearchSection> => r.status === 'fulfilled')
+            .map((r) => r.value)
+          const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+
+          // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
+          const nonEmpty = fulfilled.filter((s) => s.items.length > 0)
+          setSections(nonEmpty)
+
+          if (rejected.length > 0) {
+            rejected.forEach((r) => console.error('[search] 일부 검색 실패:', r.reason))
+            const isTimeout = rejected.some((r) => (r.reason as { code?: string } | null)?.code === '57014')
+            setError(
+              isTimeout
+                ? '검색이 오래 걸려 중단되었습니다. 검색어를 좁혀서 다시 시도해주세요.'
+                : '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+            )
+          } else {
+            setError(null)
+          }
+          setLoading(false)
+        }
       }
-    }
 
-    fetchResults().catch(errorValue => {
-      if (!cancelled) {
-        console.error('[search] 검색 중 오류:', errorValue)
-        setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
-        setLoading(false)
-      }
-    })
-    return () => { cancelled = true }
+      fetchResults().catch(errorValue => {
+        if (!cancelled) {
+          console.error('[search] 검색 중 오류:', errorValue)
+          setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+          setLoading(false)
+        }
+      })
+    }, 300)
+
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [q, filter])
 
   return { sections, isLoading, error }
