@@ -108,7 +108,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       // 504A — "이슈 관리"에서 개명. 실제 소비처는 홈의 "오늘의 급상승 뉴스"
       // (IssueSignals → trending_keywords 뷰 → issues + issue_contents 조인)라 옛 이름이
       // 역할을 가렸다. 홈 화면 구성 옆(발행 그룹)으로 옮긴다. 경로(/admin/issues)는 그대로.
-      { href: '/admin/issues', label: '실시간 급상승', description: '홈 화면 "오늘의 급상승 뉴스"에 노출되는 이슈 생성·발행·키워드 매칭·콘텐츠 배정을 관리합니다.', icon: TrendingUp },
+      { href: '/admin/issues', label: '급상승 뉴스', description: '홈 화면 "오늘의 급상승 뉴스"에 노출되는 이슈 생성·발행·키워드 매칭·콘텐츠 배정을 관리합니다.', icon: TrendingUp },
     ],
   },
   {
