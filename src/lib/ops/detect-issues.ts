@@ -96,7 +96,7 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
       category: 'cron',
       severity,
       title: '크론 실행 부재',
-      suspected_cause: `${formatKst(lastRunAt)} 이후 ${roundedHours}시간 무실행, 허용 ${maxAgeHours}시간`,
+      suspected_cause: `${jobKey} — ${formatKst(lastRunAt)} 이후 ${roundedHours}시간 무실행, 허용 ${maxAgeHours}시간`,
       recommended_action: 'Vercel 크론 로그와 job_runs 최근 기록을 확인하세요.',
       impact: '자동 운영 작업이 멈춘 상태일 수 있음',
       count: roundedHours,
