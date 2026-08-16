@@ -27,6 +27,7 @@ import {
 } from '@/lib/company-docs/query'
 import type { CompanyDocumentType } from '@/lib/types'
 import { COMPANY_DOC_TYPES } from '@/lib/company-docs/constants'
+import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +81,7 @@ function EntityPanelSkeleton() {
         <div className="h-3 w-full rounded bg-muted animate-pulse" />
         <div className="h-3 w-5/6 rounded bg-muted animate-pulse" />
       </div>
-      <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+      <div className={CONTENT_GRID_CLASS}>
         {[0, 1, 2].map((i) => (
           <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="space-y-3 p-4">

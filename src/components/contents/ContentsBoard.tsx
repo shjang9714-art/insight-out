@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
@@ -15,6 +15,7 @@ import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
 import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
+import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -171,60 +172,92 @@ function useLoadingPhase(isLoading: boolean): LoadingPhase {
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
+/** 510 — 카드 렌더링만 담당(격자 wrapper는 안 만듦). 날짜별로 격자를 새로 여는 대신
+ *  하나의 격자 안에 날짜 헤더+카드를 함께 넣어야 해서(작업 1) 격자 wrapper와 분리했다. */
+function renderContentCards(
+  items: ClusteredItem[],
+  category: ContentCategory | '',
+  sortByCollected: boolean,
+) {
+  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
+  return items.map(({ item, members }, index) => (
+    category === '유튜브' || category === '뉴스' ? (
+      <ContentCard
+        key={item.id}
+        id={item.id}
+        title={item.title}
+        summaryKo={item.summary_ko ?? null}
+        category={item.category}
+        sourceName={item.sources?.name ?? item.author ?? null}
+        publishedAt={displayDate(item, sortByCollected)}
+        thumbnailUrl={coverUrls[index]}
+        externalHref={category === '유튜브' ? item.original_url : null}
+        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+        lguImpact={item.lgu_impact ?? null}
+      />
+    ) : category === '리서치' || category === '지식보고서' ? (
+      <ContentReportCard
+        key={item.id}
+        id={item.id}
+        title={item.title}
+        summary={toExcerpt(item.summary_ko, item.body_original)}
+        category={item.category}
+        sourceName={item.sources?.name ?? item.author ?? null}
+        publishedAt={displayDate(item, sortByCollected)}
+        coverImageUrl={coverUrls[index]}
+        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+      />
+    ) : (
+      <ContentListCard
+        key={item.id}
+        id={item.id}
+        title={item.title}
+        excerpt={toExcerpt(item.summary_ko, item.body_original)}
+        category={item.category}
+        publishedAt={displayDate(item, sortByCollected)}
+        originalUrl={item.original_url}
+        filePath={item.file_path}
+        isEditorPick={item.is_editor_pick}
+        author={item.author}
+        sourceName={item.sources?.name ?? null}
+        tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+        clusterMembers={members.length > 0 ? members : undefined}
+        thumbnailUrl={coverUrls[index]}
+        lguImpact={item.lgu_impact ?? null}
+      />
+    )
+  ))
+}
+
 function ContentCardGrid({ items, category, sortByCollected }: {
   items: ClusteredItem[]
   category: ContentCategory | ''
   sortByCollected: boolean
 }) {
-  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
-    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-      {items.map(({ item, members }, index) => (
-        category === '유튜브' || category === '뉴스' ? (
-          <ContentCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            summaryKo={item.summary_ko ?? null}
-            category={item.category}
-            sourceName={item.sources?.name ?? item.author ?? null}
-            publishedAt={displayDate(item, sortByCollected)}
-            thumbnailUrl={coverUrls[index]}
-            externalHref={category === '유튜브' ? item.original_url : null}
-            keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-            lguImpact={item.lgu_impact ?? null}
-          />
-        ) : category === '리서치' || category === '지식보고서' ? (
-          <ContentReportCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            summary={toExcerpt(item.summary_ko, item.body_original)}
-            category={item.category}
-            sourceName={item.sources?.name ?? item.author ?? null}
-            publishedAt={displayDate(item, sortByCollected)}
-            coverImageUrl={coverUrls[index]}
-            keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-          />
-        ) : (
-          <ContentListCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            excerpt={toExcerpt(item.summary_ko, item.body_original)}
-            category={item.category}
-            publishedAt={displayDate(item, sortByCollected)}
-            originalUrl={item.original_url}
-            filePath={item.file_path}
-            isEditorPick={item.is_editor_pick}
-            author={item.author}
-            sourceName={item.sources?.name ?? null}
-            tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-            clusterMembers={members.length > 0 ? members : undefined}
-            thumbnailUrl={coverUrls[index]}
-            lguImpact={item.lgu_impact ?? null}
-          />
-        )
+    <div className={CONTENT_GRID_CLASS}>
+      {renderContentCards(items, category, sortByCollected)}
+    </div>
+  )
+}
+
+/** 510 — 작업 1: 날짜별로 <section>마다 격자를 새로 열던 것을 격자 하나로 합친다.
+ *  날짜 헤더는 그 격자의 자식(col-span-full)으로 들어가 열이 날짜 경계를 넘어서도
+ *  정렬된다. sticky/backdrop-blur 등 기존 헤더 스타일·동작은 그대로 유지. */
+function GroupedContentCardGrid({ items, category, sortByCollected }: {
+  items: ClusteredItem[]
+  category: ContentCategory | ''
+  sortByCollected: boolean
+}) {
+  return (
+    <div className={CONTENT_GRID_CLASS}>
+      {groupByKstDay(items, sortByCollected).map((seg) => (
+        <Fragment key={seg.key}>
+          <p className="col-span-full sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+            {seg.label}
+          </p>
+          {renderContentCards(seg.items, category, sortByCollected)}
+        </Fragment>
       ))}
     </div>
   )
@@ -616,7 +649,7 @@ export default function ContentsBoard({
                 </button>
               </div>
             )}
-            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+            <div className={CONTENT_GRID_CLASS}>
               {Array.from({ length: 6 }).map((_, i) => <ContentCardSkeleton key={i} index={i} />)}
             </div>
           </div>
@@ -649,21 +682,21 @@ export default function ContentsBoard({
               ) : (
                 <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
               )
-            ) : (
+            ) : category === '뉴스' && contentsView === 'list' ? (
+              // 510 — 리스트 뷰는 행 목록이라 열 정렬 문제가 없어 날짜별 섹션 구조를 그대로 유지한다.
               <div className="space-y-6">
                 {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
                   <section key={seg.key}>
                     <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
                       {seg.label}
                     </p>
-                    {category === '뉴스' && contentsView === 'list' ? (
-                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
-                    ) : (
-                      <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
-                    )}
+                    <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
                   </section>
                 ))}
               </div>
+            ) : (
+              // 510 — 작업 1: 날짜 경계를 넘어 열이 정렬되도록 격자 하나로 통합(GroupedContentCardGrid).
+              <GroupedContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
             )}
           </div>
 

@@ -7,6 +7,7 @@ import CoverImage from '@/components/common/CoverImage'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover from '@/components/dashboard/BrandedCover'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
+import { CARD_BADGE_ROW_CLASS, CARD_MAX_VISIBLE_TAGS, CARD_PADDING_CLASS, CARD_TAG_ROW_CLASS } from '@/lib/contents/card-contract'
 
 function formatDate(d: string | null) {
   if (!d) return null
@@ -77,42 +78,51 @@ export default function ContentListCard({
           fallback={<BrandedCover category={category} title={title} sourceName={sourceName ?? null} />}
         />
       </div>
-      <div className="flex flex-1 flex-col p-5">
-        {/* 상단: 카테고리 배지 + 해시태그 + 에디터픽 */}
-        <div className="mb-3 flex flex-wrap items-center gap-1">
-          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      <div className={`flex flex-1 flex-col ${CARD_PADDING_CLASS}`}>
+        {/* 배지 행 — 카테고리·LGU 임팩트·발행일·에디터픽. 한 줄 고정(510 카드 내부 계약) */}
+        <div className={CARD_BADGE_ROW_CLASS}>
+          <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {CONTENT_CATEGORY_LABEL[category] ?? category}
           </span>
-          <LguImpactBadge impact={lguImpact} />
+          <LguImpactBadge impact={lguImpact} className="shrink-0" />
           {showPublishedDateBadge && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               <CalendarDays className="h-3 w-3" aria-hidden />
               {dateStr ?? '발행일 미상'}
             </span>
           )}
-          {tags.map((kw) => (
-            <span
-              key={kw}
-              className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
-            >
-              #{kw}
-            </span>
-          ))}
           {isEditorPick && (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+            <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
               ⭐ 에디터 픽
             </span>
           )}
         </div>
 
-        {/* 제목 */}
-        <h2 className="mb-2.5 line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
+        {/* 해시태그 — 값이 없어도 항상 렌더해 높이를 예약한다(510). 최대 CARD_MAX_VISIBLE_TAGS개 + "+N" */}
+        <div className={CARD_TAG_ROW_CLASS}>
+          {tags.slice(0, CARD_MAX_VISIBLE_TAGS).map((kw) => (
+            <span
+              key={kw}
+              className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+            >
+              #{kw}
+            </span>
+          ))}
+          {tags.length > CARD_MAX_VISIBLE_TAGS && (
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+              +{tags.length - CARD_MAX_VISIBLE_TAGS}
+            </span>
+          )}
+        </div>
+
+        {/* 제목 — 값 유무와 무관하게 2줄 높이를 고정 */}
+        <h2 className="mb-2.5 line-clamp-2 min-h-[2.75rem] text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
           {title}
         </h2>
 
-        {/* 요약 발췌 */}
-        <p className="mb-4 line-clamp-3 flex-1 text-[13px] leading-relaxed text-foreground/70 dark:text-foreground/60">
-          {excerpt ?? '요약 정보가 없습니다.'}
+        {/* 요약 발췌 — 값이 없어도 항상 렌더(빈 자리 유지), 2줄 높이 고정(510 — 기존 line-clamp-3 에서 통일) */}
+        <p className="mb-4 line-clamp-2 min-h-[2.75rem] flex-1 text-[13px] leading-relaxed text-foreground/70 dark:text-foreground/60">
+          {excerpt ?? ''}
         </p>
 
         {/* 풋터: 메타 + 액션 */}
@@ -193,7 +203,7 @@ export default function ContentListCard({
   )
 
   const cardClass =
-    'group flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
+    'group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-brand-200 hover:shadow-md'
 
   // 252 — 유튜브도 인앱 상세로. "원문" 버튼은 위 풋터에서 별도 제공.
   return (

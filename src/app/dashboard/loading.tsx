@@ -1,4 +1,5 @@
 import PageContainer from '@/components/PageContainer'
+import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
 
 export default function Loading() {
   return (
@@ -25,7 +26,7 @@ export default function Loading() {
         </div>
 
         {/* 피드 카드 스켈레톤 */}
-        <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+        <div className={CONTENT_GRID_CLASS}>
           {[0, 1, 2].map(i => (
             <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
               <div className="aspect-[16/9] bg-muted animate-pulse" />
