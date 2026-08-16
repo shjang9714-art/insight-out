@@ -23,6 +23,8 @@ export interface BriefIssue {
   first_seen_at: string | null
   last_seen_at: string | null
   recommended_action: string | null
+  suspected_cause: string | null
+  fingerprint: string
 }
 
 export interface DataPoint<T> {
@@ -142,6 +144,10 @@ const REVIEW_REASONS = [
   ['llm_irrelevant', 'AI 관련 없음 판정'],
   ['excluded_rule', '제외 규칙'],
 ] as const
+
+/** 502 — 리포트가 전용 알림으로 이미 같은 수치를 보고하는 지표. 두 줄로 중복되고
+ *  측정 시점 차이로 숫자까지 달라져 혼란을 준다. 감지 자체는 유지(어드민 화면용). */
+const REPORT_DUPLICATE_ISSUE_FINGERPRINTS = new Set(['enrichment:backlog'])
 
 function toDateKey(utcMidnightMs: number): string {
   return new Date(utcMidnightMs).toISOString().slice(0, 10)
@@ -548,7 +554,7 @@ export async function gatherDailyBrief(
     safeData<{ provider: string; monthly_token_limit: number }>('LLM 설정', admin.from('llm_settings').select('provider, monthly_token_limit').eq('enabled', true)),
     safeData<{ chars: number }>('번역 사용량', admin.from('translation_usage').select('chars').eq('period', period)),
     safeData<{ chars: number }>('TTS 사용량', admin.from('tts_usage').select('chars').eq('period', period)),
-    safeData<BriefIssue>('운영 이슈', admin.from('ops_issues').select('title, severity, occurrence_count, first_seen_at, last_seen_at, recommended_action').in('status', ['open', 'acknowledged', 'in_progress']).in('severity', ['critical', 'warning']).order('severity').order('last_seen_at', { ascending: false })),
+    safeData<BriefIssue>('운영 이슈', admin.from('ops_issues').select('title, severity, occurrence_count, first_seen_at, last_seen_at, recommended_action, suspected_cause, fingerprint').in('status', ['open', 'acknowledged', 'in_progress']).in('severity', ['critical', 'warning']).order('severity').order('last_seen_at', { ascending: false })),
   ])
 
   const reviewReasonPoints = await Promise.all(REVIEW_REASONS.map(async ([reason, label]) => {
@@ -683,9 +689,11 @@ export async function gatherDailyBrief(
 
   const issues = issuesResult.available ? issuesResult.value : []
   for (const issue of issues) {
+    if (REPORT_DUPLICATE_ISSUE_FINGERPRINTS.has(issue.fingerprint)) continue
+    const cause = issue.suspected_cause ? ` — ${issue.suspected_cause}` : ''
     alerts.push({
       severity: issue.severity,
-      message: `${issue.title} — ${issue.occurrence_count}회${issue.recommended_action ? ` · 권장: ${issue.recommended_action}` : ''}`,
+      message: `${issue.title}${cause}${issue.recommended_action ? ` · 권장: ${issue.recommended_action}` : ''}`,
     })
   }
   if (!alerts.length) alerts.push({ severity: 'notice', message: '주요 시스템 정상' })
@@ -938,15 +946,16 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light only">
+  <style>:root{color-scheme:light only;}</style>
   <style>@media only screen and (max-width:480px){.summary-card{display:block!important;width:100%!important;box-sizing:border-box!important}}</style>
   <title>${esc(buildDailyBriefSubject(brief))}</title>
 </head>
-<body style="margin:0;padding:0;background:#eef0f3;color:#202124;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef0f3">
+<body bgcolor="#eef0f3" style="margin:0;padding:0;background:#eef0f3;background-color:#eef0f3;color:#202124;font-family:Arial,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#eef0f3" style="border-collapse:collapse;background:#eef0f3;background-color:#eef0f3">
     <tr><td align="center" style="padding:20px 8px">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:640px;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #d7dce2;border-radius:12px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:640px;border-collapse:separate;border-spacing:0;background:#ffffff;background-color:#ffffff;border:1px solid #d7dce2;border-radius:12px">
         <tr><td style="padding:24px 20px;background:#202124;color:#ffffff;border-radius:12px 12px 0 0">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
             <td valign="top"><div style="font-size:11px;color:#d1d5db;letter-spacing:.08em">INSIGHT OUT</div><div style="margin-top:6px;font-size:22px;line-height:29px;font-weight:800">일일 운영리포트</div></td>
