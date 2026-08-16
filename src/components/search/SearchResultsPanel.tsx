@@ -79,8 +79,11 @@ export default function SearchResultsPanel({
   }, [sections, activeType, sortMode])
 
   const showSkeleton = isLoading
-  const showResults = !showSkeleton && sections !== null && !error
-  const showEmpty = showResults && totalCount === 0
+  // 509 — 일부 소스 실패(error)여도 나머지 fulfilled 섹션은 그대로 보여준다.
+  // "결과 없음"은 error 가 없을 때만 — 실패로 0건이 된 걸 "일치하는 결과가 없어요"로
+  // 잘못 표시하면 안 된다(검색 실패와 결과 0건은 반드시 구분).
+  const showResults = !showSkeleton && sections !== null
+  const showEmpty = showResults && totalCount === 0 && !error
 
   return (
     <div>
