@@ -186,7 +186,7 @@ function renderContentCards(
         key={item.id}
         id={item.id}
         title={item.title}
-        summaryKo={item.summary_ko ?? null}
+        summaryKo={toExcerpt(item.summary_ko, item.body_original)}
         category={item.category}
         sourceName={item.sources?.name ?? item.author ?? null}
         publishedAt={displayDate(item, sortByCollected)}
