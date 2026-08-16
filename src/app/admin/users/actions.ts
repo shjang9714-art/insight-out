@@ -169,6 +169,19 @@ export async function forceSignOutUser(userId: string) {
   return { error: null }
 }
 
+export async function liftSignOutBan(userId: string) {
+  const gate = await requireAdminAction({ action: 'user.ban_lift', capability: 'manage_admins' })
+  if (!gate.ok) return { error: gate.error }
+
+  const svc = serviceClient()
+
+  const { error } = await svc.auth.admin.updateUserById(userId, { ban_duration: 'none' })
+
+  await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, outcome: error ? 'failed' : 'ok', error: error?.message })
+  if (error) return { error: `차단 해제 실패: ${error.message}` }
+  return { error: null }
+}
+
 export async function rejectUser(userId: string) {
   const gate = await requireAdminAction({ action: 'user.approval.update' })
   if (!gate.ok) return { error: gate.error }

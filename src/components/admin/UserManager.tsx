@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, ShieldCheck, CheckCircle, XCircle, Clock, Pencil, LogOut } from 'lucide-react'
+import { Loader2, ShieldCheck, CheckCircle, XCircle, Clock, Pencil, LogOut, Unlock } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
@@ -34,6 +34,7 @@ import {
   rejectUser,
   updateUserProfileByAdmin,
   forceSignOutUser,
+  liftSignOutBan,
 } from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { DEPARTMENT_DISPLAY_LABEL, FIXED_DEPARTMENT, isOrgGroup, ORG_GROUPS } from '@/lib/org'
@@ -51,6 +52,12 @@ interface UserRow {
   role: UserRole
   approval_status: ApprovalStatus
   created_at: string
+  bannedUntil: string | null
+}
+
+function isBanActive(bannedUntil: string | null): boolean {
+  if (!bannedUntil) return false
+  return new Date(bannedUntil).getTime() > Date.now()
 }
 
 interface Props {
@@ -131,7 +138,7 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
         setUsers(prev => {
           const exists = prev.find(u => u.id === promoted.id)
           if (exists) return prev.map(u => u.id === promoted.id ? { ...u, role: 'admin' } : u)
-          return [promoted, ...prev]
+          return [{ ...promoted, bannedUntil: null }, ...prev]
         })
         setAdminCount(prev => prev + 1)
         setFormSuccess(`${promoted.email} 계정이 admin으로 변경되었습니다.`)
@@ -173,15 +180,16 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
     })
   }
 
-  // ── 세션 강제 종료 ────────────────────────────────────────────────────────
+  // ── 세션 강제 종료 / 로그인 차단 해제 ────────────────────────────────────
   const [signingOutId, setSigningOutId] = useState<string | null>(null)
+  const [liftingBanId, setLiftingBanId] = useState<string | null>(null)
 
   const handleForceSignOut = async (user: UserRow) => {
     if (!(await confirm({
-      title: '세션 종료',
-      description: '이 사용자의 모든 기기에서 즉시 로그아웃됩니다.',
+      title: '로그인 차단',
+      description: '모든 기기에서 즉시 로그아웃되고, 해제하기 전까지 로그인할 수 없습니다. 24시간 후 자동 해제됩니다.',
       targets: [`${user.name || '이름 미입력'} (${user.email})`],
-      confirmLabel: '세션 종료',
+      confirmLabel: '로그인 차단',
       destructive: true,
     }))) return
 
@@ -191,9 +199,27 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
       if (err) {
         setError(err)
       } else {
-        toast.success(`${user.email} 계정을 로그아웃 처리했습니다.`)
+        const bannedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, bannedUntil } : u))
+        toast.success(`${user.email} 계정을 로그인 차단 처리했습니다.`)
       }
       setSigningOutId(null)
+    })
+  }
+
+  const handleLiftBan = async (user: UserRow) => {
+    if (!(await confirm({ title: '차단 해제', targets: [`${user.name || '이름 미입력'} (${user.email})`], confirmLabel: '해제' }))) return
+
+    setLiftingBanId(user.id)
+    startTransition(async () => {
+      const { error: err } = await liftSignOutBan(user.id)
+      if (err) {
+        setError(err)
+      } else {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, bannedUntil: null } : u))
+        toast.success(`${user.email} 계정의 로그인 차단을 해제했습니다.`)
+      }
+      setLiftingBanId(null)
     })
   }
 
@@ -274,7 +300,11 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
             {user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}
             {user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}
             <button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button>
-            {user.id !== currentUserId && <button type="button" onClick={() => handleForceSignOut(user)} disabled={signingOutId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{signingOutId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <LogOut className="h-3 w-3" />}세션 종료</button>}
+            {user.id !== currentUserId && (
+              isBanActive(user.bannedUntil)
+                ? <button type="button" onClick={() => handleLiftBan(user)} disabled={liftingBanId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{liftingBanId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}차단 해제</button>
+                : <button type="button" onClick={() => handleForceSignOut(user)} disabled={signingOutId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{signingOutId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <LogOut className="h-3 w-3" />}로그인 차단</button>
+            )}
             <Select value={user.role} onValueChange={(value) => { void handleToggleRole(user, value as UserRole) }} disabled={roleChangeDisabledReason !== null || togglingId === user.id || isPending}>
               <SelectTrigger className="h-8 w-[125px] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="user">user</SelectItem><SelectItem value="viewer">viewer</SelectItem><SelectItem value="admin">admin</SelectItem><SelectItem value="super_admin">super_admin</SelectItem></SelectContent>
