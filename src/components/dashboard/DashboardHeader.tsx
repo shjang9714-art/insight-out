@@ -242,7 +242,7 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
           {/* 북마크·아카이브 진입 — 죽은 Sidebar.tsx에만 있던 링크를 헤더로 옮김(지시서 513).
               모바일·md 폭에서는 이미 관계지도·자료실·검색으로 우측이 붐벼 lg+에서만 노출. */}
           <Link
-            href="/dashboard/mypage#bookmarks"
+            href="/dashboard/bookmarks"
             title="북마크"
             className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
             aria-label="북마크 모아보기"
@@ -250,7 +250,7 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
             <Bookmark className="h-5 w-5" />
           </Link>
           <Link
-            href="/dashboard/mypage#archives"
+            href="/dashboard/archive"
             title="아카이브"
             className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
             aria-label="아카이빙 콘텐츠"
