@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
+import PageHeader from '@/components/PageHeader'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
@@ -285,6 +286,14 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   return (
     <PageContainer>
+      {/* 공통 페이지 헤더 — 자료실로 이관된 공시자료(documents) 뷰는 제외 */}
+      {view !== 'documents' && (
+        <PageHeader
+          title="기업동향"
+          description="주요 경쟁사·파트너 기업의 주간 동향을 자사 관점 시사점과 함께 정리한 기업 아카이브입니다."
+        />
+      )}
+
       {/* 주요 기업 탭 */}
       {view === 'watchlist' && (
         <Suspense fallback={<EntityPanelSkeleton />}>

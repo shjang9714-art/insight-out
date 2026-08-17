@@ -102,11 +102,8 @@ export default function EntitiesPageClient({
 
   return (
     <div>
-      {/* 헤더 + 뷰 토글 */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          기업·기술·인물·정책을 중심으로 시장의 연결 관계를 확인합니다.
-        </p>
+      {/* 뷰 토글 — 페이지 설명은 공통 헤더(PageHeader)로 이동 */}
+      <div className="mb-4 flex justify-end">
         <div className="flex items-center gap-1 rounded-lg border p-1">
           <button
             onClick={() => setView('graph')}
