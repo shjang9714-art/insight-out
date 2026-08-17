@@ -3,7 +3,7 @@ import type { LensKey } from '@/lib/lens'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
-export type MyPageTab = 'settings' | 'bookmarks' | 'archives'
+export type MyPageTab = 'settings' | 'bookmarks'
 
 export interface ProfileForm {
   name: string
@@ -29,6 +29,8 @@ export interface BookmarkWithItem {
   content_id: string | null
   youtube_video_id: string | null
   ai_report_id: string | null
+  daily_insight_id: string | null
+  insight_card_id: string | null
   created_at: string
   contents: {
     id: string
@@ -50,19 +52,17 @@ export interface BookmarkWithItem {
     type: string
     published_at: string | null
   } | null
-}
-
-export interface ArchiveWithItems {
-  id: string
-  name: string
-  description: string | null
-  created_at: string
-  items: {
-    content_id: string | null
-    youtube_video_id: string | null
-    ai_report_id: string | null
-    added_at: string
-    contents: { id: string; title: string; category: string; original_url: string | null } | null
-    ai_reports: { id: string; title: string; type: string; published_at: string | null } | null
-  }[]
+  daily_insights: {
+    id: string
+    headline: string
+    category: string | null
+    day_of: string
+  } | null
+  insight_cards: {
+    id: string
+    topic: string
+    headline: string
+    card_headline: string | null
+    generated_at: string | null
+  } | null
 }

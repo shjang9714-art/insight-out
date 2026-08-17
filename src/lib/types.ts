@@ -287,24 +287,6 @@ export interface Bookmark {
   created_at: string
 }
 
-export interface Archive {
-  id: string
-  user_id: string
-  name: string
-  description?: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface ArchiveItem {
-  archive_id: string
-  content_id?: string | null
-  youtube_video_id?: string | null
-  note?: string | null
-  order: number
-  added_at: string
-}
-
 // ============================================================
 // 관심업체 워치리스트 (지시서 93)
 // ============================================================

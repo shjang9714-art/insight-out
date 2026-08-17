@@ -31,11 +31,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '삭제할 콘텐츠가 없습니다.' }, { status: 400 })
   }
 
-  const [bookmarks, archiveItems] = await Promise.all([
-    gate.admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
-    gate.admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-  ])
-  // 492 — 하드 delete 대신 소프트 삭제. CASCADE 가 발화하지 않으므로 북마크·아카이브는 보존된다.
+  const bookmarks = await gate.admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids)
+  // 492 — 하드 delete 대신 소프트 삭제. CASCADE 가 발화하지 않으므로 북마크는 보존된다.
   const { error, count } = await gate.admin
     .from('contents')
     .update({ deleted_at: new Date().toISOString(), deleted_by: gate.userId }, { count: 'exact' })
@@ -49,7 +46,6 @@ export async function POST(request: NextRequest) {
     payload: {
       ids: ids.slice(0, 50),
       bookmarkPreservedCount: bookmarks.error ? null : bookmarks.count ?? 0,
-      archiveItemPreservedCount: archiveItems.error ? null : archiveItems.count ?? 0,
     },
     outcome: error ? 'failed' : 'ok',
     error: error?.message,
