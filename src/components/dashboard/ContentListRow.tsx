@@ -30,6 +30,8 @@ interface ContentListRowProps {
   category: ContentCategory
   publishedAt: string | null
   originalUrl: string | null
+  /** 외부(새 탭) 이동 링크 — 있으면 상세 페이지 대신 이 링크로 바로 연결한다(유튜브 등). */
+  externalHref?: string | null
   sourceName: string | null
   tags: string[]
   thumbnailUrl: string | null
@@ -43,6 +45,7 @@ export default function ContentListRow({
   category,
   publishedAt,
   originalUrl,
+  externalHref,
   sourceName,
   tags,
   thumbnailUrl,
@@ -50,14 +53,16 @@ export default function ContentListRow({
 }: ContentListRowProps) {
   const Icon = CATEGORY_ICON[category] ?? Newspaper
   const detailHref = `/dashboard/contents/${id}`
+  const isExternal = Boolean(externalHref)
+  const primaryLinkProps = isExternal
+    ? { href: externalHref!, target: '_blank', rel: 'noopener noreferrer' }
+    : { href: detailHref, prefetch: false, target: '_blank', rel: 'noopener' }
 
   return (
     <article className="group flex gap-4 rounded-xl border border-border bg-card p-3 transition-all hover:border-brand-200 hover:shadow-sm sm:p-4">
+      {/* prefetch-ok: href가 내부 상세/외부 원문으로 동적 — 내부 분기는 primaryLinkProps에서 prefetch:false, 외부 분기는 새 탭 외부링크라 prefetch 무관 */}
       <Link
-        href={detailHref}
-        prefetch={false}
-        target="_blank"
-        rel="noopener"
+        {...primaryLinkProps}
         className="flex h-24 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted sm:h-28 sm:w-40"
       >
         <CoverImage
@@ -92,7 +97,8 @@ export default function ContentListRow({
           )}
         </div>
 
-        <Link href={detailHref} prefetch={false} target="_blank" rel="noopener">
+        {/* prefetch-ok: href가 내부 상세/외부 원문으로 동적 — 내부 분기는 primaryLinkProps에서 prefetch:false, 외부 분기는 새 탭 외부링크라 prefetch 무관 */}
+        <Link {...primaryLinkProps}>
           <h2 className="line-clamp-2 text-[15px] font-bold leading-snug text-foreground transition-colors group-hover:text-brand-600">
             {title}
           </h2>
@@ -112,7 +118,7 @@ export default function ContentListRow({
             )}
             <span className="shrink-0 whitespace-nowrap">{formatDate(publishedAt)}</span>
           </span>
-          {originalUrl && (
+          {originalUrl && !isExternal && (
             <a
               href={`/api/contents/${id}/source`}
               target="_blank"

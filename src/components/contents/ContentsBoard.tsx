@@ -12,6 +12,7 @@ import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
+import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import ViewToggle, { type ContentsView } from '@/components/contents/ViewToggle'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
@@ -284,6 +285,8 @@ function ContentRowList({ items, sortByCollected, tagFreqMap }: {
           category={item.category}
           publishedAt={displayDate(item, sortByCollected)}
           originalUrl={item.original_url}
+          // 유튜브는 리스트 뷰에서도 상세 페이지가 아니라 원문(유튜브) 링크로 바로 연결한다.
+          externalHref={item.category === '유튜브' ? item.original_url : null}
           sourceName={item.sources?.name ?? item.author ?? null}
           tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
           thumbnailUrl={coverUrls[index]}
@@ -619,9 +622,13 @@ export default function ContentsBoard({
         <ViewToggle value={contentsView} onChange={changeContentsView} groupAriaLabel="콘텐츠 보기 방식" />
       </div>
 
-      {/* ─── 검색(질의) + 인기 키워드(필터) — 511: 역할 분리, 한 줄에 나란히, 각각 독립 해제 ──── */}
+      {/* ─── 자료종류(L2) 탭 — 헤더가 아니라 콘텐츠 영역 안쪽, 제목/건수 아래 목록 위 */}
+      <ContentsL2Tabs />
+
+      {/* ─── 검색(질의) + 인기 키워드(필터) — 511: 역할 분리, 한 줄에 나란히, 각각 독립 해제.
+          검색 입력창은 항상 노출하되, 인기 키워드 칩·"모두 지우기"는 검색어·선택 키워드가
+          있을 때만 노출한다(칩은 필터 상태를 보여주는 용도라 평소엔 렌더 자체를 안 함). */}
       <div className="mb-6 space-y-3">
-        {/* 394 — 항상 렌더 + 최소 높이 예약(칩 한 줄 높이). /api/contents/keywords 응답이 늦게 와도 아래 목록이 밀리지 않는다. */}
         <div className="flex min-h-[34px] flex-wrap items-center gap-2">
           {/* 검색 입력 — 텍스트 질의. ?q= 에 동기화(300ms 디바운스), 키워드 칩과 독립적으로 해제 가능 */}
           <div className="relative w-full sm:w-64">
@@ -645,26 +652,28 @@ export default function ContentsBoard({
               </button>
             )}
           </div>
-          {keywordChips.map(({ name }) => {
-              const isSelected = selectedKeywords.includes(name)
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => toggleKeyword(name)}
-                  aria-pressed={isSelected}
-                  className={cn(
-                    'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-                    isSelected
-                      ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
-                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  #{name}
-                </button>
-              )
-            })}
-            {(searchQuery || selectedKeywords.length > 0) && (
+
+          {(searchQuery || selectedKeywords.length > 0) && (
+            <>
+              {keywordChips.map(({ name }) => {
+                const isSelected = selectedKeywords.includes(name)
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleKeyword(name)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                      isSelected
+                        ? 'bg-brand-solid text-white hover:bg-brand-solid-hover'
+                        : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                    )}
+                  >
+                    #{name}
+                  </button>
+                )
+              })}
               <button
                 type="button"
                 onClick={clearSearchFilters}
@@ -672,7 +681,8 @@ export default function ContentsBoard({
               >
                 모두 지우기
               </button>
-            )}
+            </>
+          )}
         </div>
       </div>
 
