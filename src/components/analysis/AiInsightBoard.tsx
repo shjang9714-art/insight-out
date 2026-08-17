@@ -267,6 +267,9 @@ export default function AiInsightBoard({
       {/* 핵심 인사이트 — 주간 daily_insights 목록(§2, 지시서 20260715 주간 복귀) */}
       {view === 'brief' && (
         <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            매주 업계 주요 이슈 중 보도량·업계 파급력·최신성을 기준으로 핵심 사안을 선별해, LG유플러스 관점의 기회·리스크·실행 제안으로 정리한 주간 인사이트입니다.
+          </p>
           <WeeklyInsightHeader
             weeks={dailyInsightWeeks}
             selectedWeek={selectedWeek}
