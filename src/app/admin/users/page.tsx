@@ -16,7 +16,7 @@ interface PageProps {
 }
 
 const PAGE_SIZE = 20
-const SORT_KEYS = new Set(['email', 'name', 'role', 'approval_status', 'created_at'])
+const SORT_KEYS = new Set(['email', 'name', 'role', 'approval_status', 'created_at', 'last_seen_at'])
 
 export default async function AdminUsersPage({ searchParams }: PageProps) {
   const params = await searchParams
@@ -35,7 +35,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
   const [usersResult, adminCountResult] = await Promise.all([
     svc
       .from('users')
-      .select('id, email, name, department, team, team_name, position, role, approval_status, created_at', { count: 'exact' })
+      .select('id, email, name, department, team, team_name, position, role, approval_status, created_at, last_seen_at', { count: 'exact' })
       .order(sortKey, { ascending: sortDir === 'asc' })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
     svc

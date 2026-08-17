@@ -152,7 +152,7 @@ export default async function AdminPage() {
     newsTodayRes, reportTodayRes, webTodayRes, ytTodayRes, aiTodayRes,
     trendRes, sourceRes,
     // 신규 — 오늘 할 일
-    crawlFailedRes, crawlSourcesRes, pendingUsersRes,
+    crawlFailedRes, crawlSourcesRes,
     // 신규 — 전체 사용자 수 KPI (278)
     totalUsersRes,
     // 신규 — usage
@@ -196,8 +196,6 @@ export default async function AdminPage() {
     supabase.from('crawl_logs').select('*', { count: 'exact', head: true }).in('status', ['failed', 'partial']).gte('started_at', todayStart),
     // 최근 24h 실패 소스 목록 (distinct source_id 집계용)
     supabase.from('crawl_logs').select('source_id').in('status', ['failed', 'partial']).gte('started_at', yesterday).not('source_id', 'is', null),
-    // 승인 대기 사용자 수 (193, approval_status 컬럼 없으면 error → graceful 생략)
-    supabase.from('users').select('*', { count: 'exact', head: true }).eq('approval_status', 'pending'),
     // 전체 사용자 수 (278)
     supabase.from('users').select('*', { count: 'exact', head: true }),
     // LLM usage
@@ -294,7 +292,6 @@ export default async function AdminPage() {
   type CrawlSrcRow = { source_id: string }
   const failedSrcIds  = new Set((crawlSourcesRes.data ?? []).map((r: CrawlSrcRow) => r.source_id))
   const sourcesToCheck = failedSrcIds.size
-  const pendingUsers   = pendingUsersRes.error ? null : (pendingUsersRes.count ?? 0)
 
   // ── LLM 사용량 집계 ────────────────────────────────────────────────────────
   const usageMap = new Map<string, number>(
@@ -388,7 +385,6 @@ export default async function AdminPage() {
         pending={pendingRes.count ?? 0}
         todayFailed={todayFailed}
         sourcesToCheck={sourcesToCheck}
-        pendingUsers={pendingUsers}
       />
 
       {/* ②-1 검색 수집원 현황(472) — 네이버·GDELT·Google 유입과 시드 수 */}

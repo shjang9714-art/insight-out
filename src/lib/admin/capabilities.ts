@@ -8,12 +8,11 @@ export const ADMIN_CAPABILITIES = [
 ] as const
 
 export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number]
-export const ADMIN_ROLES = ['admin', 'super_admin', 'viewer'] as const
+export const ADMIN_ROLES = ['admin', 'super_admin'] as const
 
 export const ROLE_CAPABILITIES: Record<string, readonly AdminCapability[]> = {
   super_admin: ADMIN_CAPABILITIES,
   admin: ['delete_content', 'manage_sources', 'send_broadcast'],
-  viewer: [],
 }
 
 /**
@@ -24,7 +23,7 @@ export const ROLE_CAPABILITIES: Record<string, readonly AdminCapability[]> = {
  */
 export function hasCapability(role: string | null | undefined, cap?: AdminCapability): boolean {
   if (role === 'super_admin') return true
-  if (role !== 'admin' && role !== 'viewer') return false
-  if (!cap) return role === 'admin'
+  if (role !== 'admin') return false
+  if (!cap) return true
   return ROLE_CAPABILITIES[role]?.includes(cap) ?? false
 }
