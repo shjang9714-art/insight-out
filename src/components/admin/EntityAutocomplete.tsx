@@ -14,13 +14,17 @@ interface Props {
   onChange: (entity: EntityOption | null) => void
   placeholder?: string
   disabled?: boolean
+  /** 검색 대상 엔티티 유형. 'all'이면 유형 무관 검색(521 — 상위 엔티티 선택 등). 기본 'company'. */
+  type?: string
+  /** 검색 결과에서 제외할 엔티티 id(521 — 자기 자신을 상위로 선택하는 것 방지). */
+  excludeId?: string
 }
 
 /**
  * 355-C — 기업 엔티티 검색 자동완성. CompanyDocumentDiscovery(355-F)의 패턴을
  * 재사용해 소스 레지스트리·업로드 통·검토함 3곳에서 공용으로 쓴다.
  */
-export default function EntityAutocomplete({ id, value, onChange, placeholder, disabled }: Props) {
+export default function EntityAutocomplete({ id, value, onChange, placeholder, disabled, type = 'company', excludeId }: Props) {
   const [query, setQuery] = useState(value?.canonical_name ?? '')
   const [options, setOptions] = useState<EntityOption[]>([])
   const [searching, setSearching] = useState(false)
@@ -34,7 +38,9 @@ export default function EntityAutocomplete({ id, value, onChange, placeholder, d
     }
     setSearching(true)
     try {
-      const res = await fetch(`/api/entities/search?q=${encodeURIComponent(next.trim())}&type=company`)
+      const params = new URLSearchParams({ q: next.trim(), type })
+      if (excludeId) params.set('excludeId', excludeId)
+      const res = await fetch(`/api/entities/search?${params.toString()}`)
       const data = await res.json() as { entities?: EntityOption[] }
       setOptions(data.entities ?? [])
     } catch {
