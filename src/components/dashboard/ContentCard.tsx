@@ -5,6 +5,7 @@ import BrandedCover, { CATEGORY_COLOR } from '@/components/dashboard/BrandedCove
 import { extractVideoId } from '@/lib/youtube'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { CARD_BADGE_ROW_CLASS, CARD_MAX_VISIBLE_TAGS, CARD_PADDING_CLASS, CARD_TAG_ROW_CLASS } from '@/lib/contents/card-contract'
+import { tagFilterHref } from '@/lib/contents/excerpt'
 
 // ─── timeAgo ────────────────────────────────────────────────────────────────
 
@@ -148,9 +149,15 @@ export default function ContentCard({
             카드 폭 기준 한 줄 초과분은 "+N"으로 표시(줄바꿈으로 카드 높이 들쭉날쭉해지는 것 방지) */}
         <div className={CARD_TAG_ROW_CLASS}>
           {(keywords ?? []).slice(0, CARD_MAX_VISIBLE_TAGS).map((kw) => (
-            <span key={kw} className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            <Link
+              key={kw}
+              href={tagFilterHref(category, kw)}
+              prefetch={false}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
+            >
               #{kw}
-            </span>
+            </Link>
           ))}
           {(keywords?.length ?? 0) > CARD_MAX_VISIBLE_TAGS && (
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">

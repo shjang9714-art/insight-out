@@ -179,6 +179,7 @@ function renderContentCards(
   items: ClusteredItem[],
   category: ContentCategory | '',
   sortByCollected: boolean,
+  tagFreqMap?: Record<string, number>,
 ) {
   const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return items.map(({ item, members }, index) => (
@@ -193,7 +194,7 @@ function renderContentCards(
         publishedAt={displayDate(item, sortByCollected)}
         thumbnailUrl={coverUrls[index]}
         externalHref={category === '유튜브' ? item.original_url : null}
-        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
         lguImpact={item.lgu_impact ?? null}
       />
     ) : category === '리서치' || category === '지식보고서' ? (
@@ -206,7 +207,7 @@ function renderContentCards(
         sourceName={item.sources?.name ?? item.author ?? null}
         publishedAt={displayDate(item, sortByCollected)}
         coverImageUrl={coverUrls[index]}
-        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
       />
     ) : (
       <ContentListCard
@@ -221,7 +222,7 @@ function renderContentCards(
         isEditorPick={item.is_editor_pick}
         author={item.author}
         sourceName={item.sources?.name ?? null}
-        tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+        tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
         clusterMembers={members.length > 0 ? members : undefined}
         thumbnailUrl={coverUrls[index]}
         lguImpact={item.lgu_impact ?? null}
@@ -230,14 +231,15 @@ function renderContentCards(
   ))
 }
 
-function ContentCardGrid({ items, category, sortByCollected }: {
+function ContentCardGrid({ items, category, sortByCollected, tagFreqMap }: {
   items: ClusteredItem[]
   category: ContentCategory | ''
   sortByCollected: boolean
+  tagFreqMap?: Record<string, number>
 }) {
   return (
     <div className={CONTENT_GRID_CLASS}>
-      {renderContentCards(items, category, sortByCollected)}
+      {renderContentCards(items, category, sortByCollected, tagFreqMap)}
     </div>
   )
 }
@@ -245,10 +247,11 @@ function ContentCardGrid({ items, category, sortByCollected }: {
 /** 510 — 작업 1: 날짜별로 <section>마다 격자를 새로 열던 것을 격자 하나로 합친다.
  *  날짜 헤더는 그 격자의 자식(col-span-full)으로 들어가 열이 날짜 경계를 넘어서도
  *  정렬된다. sticky/backdrop-blur 등 기존 헤더 스타일·동작은 그대로 유지. */
-function GroupedContentCardGrid({ items, category, sortByCollected }: {
+function GroupedContentCardGrid({ items, category, sortByCollected, tagFreqMap }: {
   items: ClusteredItem[]
   category: ContentCategory | ''
   sortByCollected: boolean
+  tagFreqMap?: Record<string, number>
 }) {
   return (
     <div className={CONTENT_GRID_CLASS}>
@@ -257,16 +260,17 @@ function GroupedContentCardGrid({ items, category, sortByCollected }: {
           <p className="col-span-full sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
             {seg.label}
           </p>
-          {renderContentCards(seg.items, category, sortByCollected)}
+          {renderContentCards(seg.items, category, sortByCollected, tagFreqMap)}
         </Fragment>
       ))}
     </div>
   )
 }
 
-function ContentRowList({ items, sortByCollected }: {
+function ContentRowList({ items, sortByCollected, tagFreqMap }: {
   items: ClusteredItem[]
   sortByCollected: boolean
+  tagFreqMap?: Record<string, number>
 }) {
   const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
@@ -281,7 +285,7 @@ function ContentRowList({ items, sortByCollected }: {
           publishedAt={displayDate(item, sortByCollected)}
           originalUrl={item.original_url}
           sourceName={item.sources?.name ?? item.author ?? null}
-          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
           thumbnailUrl={coverUrls[index]}
           lguImpact={item.lgu_impact ?? null}
         />
@@ -333,6 +337,9 @@ export default function ContentsBoard({
   // 395 — 직전 category를 들고 있다가 바뀌면 쿼리 전에 목록을 비운다(잔상 방지).
   const prevCategoryRef = useRef(category)
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
+  // 514 — 태그 희소도 정렬용 30일 문서빈도 맵(매칭 그룹+매칭 키워드 합집합). 값이 없으면
+  // tagsOf2가 기존 순서로 폴백하므로 로딩 전에도 안전하다.
+  const [tagFreqMap, setTagFreqMap] = useState<Record<string, number> | undefined>(undefined)
   // 512 — 기본값은 localStorage(기기별 마지막 선택) 기억용, ?view= 가 있으면 URL이 우선(새로고침·공유 시 유지).
   const storedContentsView = useSyncExternalStore(
     subscribeContentsView,
@@ -388,9 +395,15 @@ export default function ContentsBoard({
     fetch(`/api/contents/keywords?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('인기 키워드 조회 실패')
-        return response.json() as Promise<{ keywords: { name: string; count: number }[] }>
+        return response.json() as Promise<{
+          keywords: { name: string; count: number }[]
+          frequencies?: Record<string, number>
+        }>
       })
-      .then(({ keywords }) => setPopularKeywords(keywords))
+      .then(({ keywords, frequencies }) => {
+        setPopularKeywords(keywords)
+        setTagFreqMap(frequencies)
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
         if (!schemaPendingMessage) console.error('[contents] 인기 키워드 조회 오류:', error)
@@ -715,7 +728,7 @@ export default function ContentsBoard({
           <div className={cn('transition-opacity duration-150', isLoading && page === 1 && 'opacity-[0.85]')}>
             {contentsView === 'list' ? (
               usesContinuousLayout ? (
-                <ContentRowList items={clusteredItems} sortByCollected={sortByCollected} />
+                <ContentRowList items={clusteredItems} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
               ) : (
                 // 510 — 리스트 뷰는 행 목록이라 열 정렬 문제가 없어 날짜별 섹션 구조를 그대로 유지한다.
                 // 512 — 이전엔 '뉴스' 카테고리에만 적용됐으나, 리스트 뷰 전환이 전 카테고리로 확장되며 일반화.
@@ -725,16 +738,16 @@ export default function ContentsBoard({
                       <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
                         {seg.label}
                       </p>
-                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
+                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
                     </section>
                   ))}
                 </div>
               )
             ) : usesContinuousLayout ? (
-              <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+              <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
             ) : (
               // 510 — 작업 1: 날짜 경계를 넘어 열이 정렬되도록 격자 하나로 통합(GroupedContentCardGrid).
-              <GroupedContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+              <GroupedContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
             )}
           </div>
 

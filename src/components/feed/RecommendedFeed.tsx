@@ -82,6 +82,19 @@ export default function RecommendedFeed({
   const [items, setItems] = useState<FeedItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
+  // 514 — 태그 희소도 정렬용 30일 문서빈도 맵. 홈 피드는 카테고리를 섞어 보여주므로
+  // category 파라미터 없이(전체 기준) 한 번만 가져온다. 실패해도 tagsOf2가 기존
+  // 순서로 폴백하므로 카드 렌더를 막지 않는다.
+  const [tagFreqMap, setTagFreqMap] = useState<Record<string, number> | undefined>(undefined)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/contents/keywords?limit=1', { signal: controller.signal })
+      .then((res) => res.json() as Promise<{ frequencies?: Record<string, number> }>)
+      .then(({ frequencies }) => setTagFreqMap(frequencies))
+      .catch(() => { /* noop — freqMap 없이 폴백 */ })
+    return () => controller.abort()
+  }, [])
 
   // 사용자가 실제로 카테고리를 선택한 상태인지(건너뛰기/신규 사용자는 해당 없음) —
   // 선택했는데도 매칭 콘텐츠가 희소한 경우와, 애초에 선택을 안 한 경우를 구분해
@@ -212,7 +225,7 @@ export default function RecommendedFeed({
                     publishedAt={item.published_at}
                     thumbnailUrl={fallbackCoverUrls[index]}
                     href={item.category === '유튜브' ? null : undefined}
-                    keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                    keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
                   />
                 ))
               })()}
@@ -241,7 +254,7 @@ export default function RecommendedFeed({
                 publishedAt={item.published_at}
                 thumbnailUrl={itemsCoverUrls[index]}
                 href={item.category === '유튜브' ? null : undefined}
-                keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+                keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
               />
             ))
           })()}

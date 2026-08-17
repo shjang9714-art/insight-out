@@ -25,7 +25,8 @@ export interface ContentSearchRow {
   is_editor_pick: boolean
   author: string | null
   sources: { name: string } | null
-  content_keywords: { keywords: { name: string } | null }[]
+  matched_groups: string[] | null
+  matched_keywords: string[] | null
 }
 
 export interface DailyInsightRow {
@@ -155,7 +156,9 @@ async function fetchContentCategory(
 ): Promise<UnifiedResult[]> {
   let query = applyTokenFilters(
     supabase.from('contents').select(
-      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name))'
+      // 514 — 태그는 content_keywords(keywords(name)) 조인이 아니라 matched_groups·
+      // matched_keywords 원본을 tagsOf2로 통일 처리(다른 목록 화면과 같은 경로).
+      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords'
     ),
     // 509 1단계 — body_original 에는 pg_trgm 인덱스가 없어 OR 로 묶이는 순간 인덱스 경로가
     // 버려지고 전량 스캔이 된다(운영 실측 8,166ms, authenticated statement_timeout 8,000ms
