@@ -68,7 +68,7 @@ export default function EmailBookmarkWidget() {
           콘텐츠를 북마크하면 메일로 받아볼 수 있어요
         </p>
         <Link
-          href="/dashboard/mypage#bookmarks"
+          href="/dashboard/bookmarks"
           className="ml-4 shrink-0 text-xs font-medium text-brand-600 hover:underline"
         >
           북마크 관리 →
@@ -90,7 +90,7 @@ export default function EmailBookmarkWidget() {
           </p>
         </div>
         <Link
-          href="/dashboard/mypage#bookmarks"
+          href="/dashboard/bookmarks"
           className="shrink-0 text-xs text-brand-600 hover:underline"
         >
           북마크 관리

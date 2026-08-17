@@ -243,7 +243,7 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
               모바일·md 폭에서는 이미 관계지도·자료실·검색으로 우측이 붐벼 lg+에서만 노출.
               517 — 아카이브는 북마크로 통합돼 아이콘 제거. */}
           <Link
-            href="/dashboard/mypage#bookmarks"
+            href="/dashboard/bookmarks"
             title="북마크"
             className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
             aria-label="북마크 모아보기"
