@@ -1,6 +1,7 @@
 import { ExternalLink, Rocket, ShieldAlert, ListChecks, PenLine } from 'lucide-react'
 import type { DailyInsightSourceArticle, ImplicationLenses } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { stripActionTeamSubject } from '@/lib/daily-insights/normalize-action'
 import { cn } from '@/lib/utils'
 
 interface TrendSection {
@@ -58,8 +59,9 @@ export default function EvidenceDrilldown({
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">💡 자사 관점 시사점</p>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {(Object.keys(LENS_META) as (keyof ImplicationLenses)[]).map((key) => {
-                const text = implicationLenses[key]
-                if (!text) return null
+                const rawText = implicationLenses[key]
+                if (!rawText) return null
+                const text = key === 'action' ? stripActionTeamSubject(rawText) : rawText
                 const meta = LENS_META[key]
                 const Icon = meta.icon
                 return (

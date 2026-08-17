@@ -4,6 +4,7 @@ import CategoryDotChip from '@/components/daily-insights/CategoryDotChip'
 import { LENS_META } from '@/components/daily-insights/EvidenceDrilldown'
 import type { DailyInsightRow, ImplicationLenses } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { stripActionTeamSubject } from '@/lib/daily-insights/normalize-action'
 import { cn } from '@/lib/utils'
 import AiMark from '@/components/ui/AiMark'
 
@@ -77,8 +78,9 @@ function InsightCard({ item, isLatestWeek }: { item: DailyInsightRow; isLatestWe
           </p>
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {(Object.keys(LENS_META) as (keyof ImplicationLenses)[]).map((key) => {
-              const text = item.implication_lenses?.[key]
-              if (!text) return null
+              const rawText = item.implication_lenses?.[key]
+              if (!rawText) return null
+              const text = key === 'action' ? stripActionTeamSubject(rawText) : rawText
               const meta = LENS_META[key]
               const Icon = meta.icon
               return (
