@@ -1,6 +1,6 @@
 import type { ContentCategory } from '@/lib/types'
 
-export interface ArchiveEmailItem {
+export interface BookmarkEmailItem {
   title: string
   category: ContentCategory | string
   sourceName: string | null
@@ -11,13 +11,12 @@ export interface ArchiveEmailItem {
   isAttached?: boolean
 }
 
-export interface ArchiveEmailData {
-  archiveName: string
+export interface BookmarkEmailData {
   recipientName: string
-  items: ArchiveEmailItem[]
+  items: BookmarkEmailItem[]
 }
 
-export function buildArchiveEmailHtml(data: ArchiveEmailData): string {
+export function buildBookmarkEmailHtml(data: BookmarkEmailData): string {
   const itemsHtml = data.items
     .map((item, i) => {
       let linkHtml = ''
@@ -52,7 +51,7 @@ export function buildArchiveEmailHtml(data: ArchiveEmailData): string {
     <tr>
       <td style="padding: 24px 24px 16px; background-color: #E6007E;">
         <p style="margin: 0; font-size: 12px; color: rgba(255,255,255,0.7); letter-spacing: 0.05em;">INSIGHT OUT</p>
-        <h1 style="margin: 4px 0 0; font-size: 20px; color: #ffffff;">${data.archiveName}</h1>
+        <h1 style="margin: 4px 0 0; font-size: 20px; color: #ffffff;">내 북마크</h1>
       </td>
     </tr>
     <!-- 안내 문구 -->

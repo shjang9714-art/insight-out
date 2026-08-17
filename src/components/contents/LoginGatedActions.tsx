@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { LogIn } from 'lucide-react'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
-import ArchiveButton from '@/components/archive/ArchiveButton'
 
 interface LoginGatedActionsProps {
   isLoggedIn: boolean
@@ -10,9 +9,8 @@ interface LoginGatedActionsProps {
 }
 
 /**
- * 뉴스레터 비로그인 공개 뷰(지시서 20260723)에서 북마크·아카이빙 담기는
- * 로그인 사용자 전용 기능이라 anon 방문자에겐 실패하는 fetch 대신
- * 로그인 유도 링크로 대체한다.
+ * 뉴스레터 비로그인 공개 뷰(지시서 20260723)에서 북마크는 로그인 사용자 전용
+ * 기능이라 anon 방문자에겐 실패하는 fetch 대신 로그인 유도 링크로 대체한다.
  */
 export default function LoginGatedActions({ isLoggedIn, contentId, reportId }: LoginGatedActionsProps) {
   if (!isLoggedIn) {
@@ -27,10 +25,5 @@ export default function LoginGatedActions({ isLoggedIn, contentId, reportId }: L
     )
   }
 
-  return (
-    <>
-      <BookmarkButton contentId={contentId} reportId={reportId} />
-      <ArchiveButton contentId={contentId} reportId={reportId} />
-    </>
-  )
+  return <BookmarkButton contentId={contentId} reportId={reportId} />
 }

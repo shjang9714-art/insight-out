@@ -6,6 +6,7 @@ import { createServerClient } from '@supabase/ssr'
 import { Quote } from 'lucide-react'
 import BackLink from '@/components/BackLink'
 import PageContainer from '@/components/PageContainer'
+import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import {
   computeImportance,
@@ -225,21 +226,26 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
 
       {/* 헤더 */}
       <div className="mb-6 space-y-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
-            {card.topic}
-          </span>
-          <span className={`rounded px-2 py-0.5 text-xs font-medium ${IMPORTANCE_CLS[importance]}`}>
-            {IMPORTANCE_LABEL[importance]}
-          </span>
-          {(relevance === 'high' || relevance === 'mid') && (
-            <span className={`rounded px-2 py-0.5 text-xs font-medium ${RELEVANCE_CLS[relevance]}`}>
-              {RELEVANCE_LABEL[relevance]}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="rounded px-2 py-0.5 text-xs font-medium bg-brand-600/10 text-brand-600">
+              {card.topic}
             </span>
-          )}
-          <span className="text-xs text-muted-foreground/70">
-            {formatPeriod(card.period_start, card.period_end)}
-          </span>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${IMPORTANCE_CLS[importance]}`}>
+              {IMPORTANCE_LABEL[importance]}
+            </span>
+            {(relevance === 'high' || relevance === 'mid') && (
+              <span className={`rounded px-2 py-0.5 text-xs font-medium ${RELEVANCE_CLS[relevance]}`}>
+                {RELEVANCE_LABEL[relevance]}
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground/70">
+              {formatPeriod(card.period_start, card.period_end)}
+            </span>
+          </div>
+          <div className="shrink-0">
+            <BookmarkButton insightCardId={card.id} />
+          </div>
         </div>
         <h1 className="text-2xl font-bold text-foreground leading-snug">
           {cardHeadline ?? headline}

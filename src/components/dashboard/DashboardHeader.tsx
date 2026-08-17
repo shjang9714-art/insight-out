@@ -3,7 +3,7 @@
 import { useState, useEffect, startTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Archive, Bookmark, FlaskConical, FolderOpen, Menu, Search, Waypoints } from 'lucide-react'
+import { Bookmark, FlaskConical, FolderOpen, Menu, Search, Waypoints } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -239,8 +239,9 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
             <Search className="h-5 w-5" />
           </button>
 
-          {/* 북마크·아카이브 진입 — 죽은 Sidebar.tsx에만 있던 링크를 헤더로 옮김(지시서 513).
-              모바일·md 폭에서는 이미 관계지도·자료실·검색으로 우측이 붐벼 lg+에서만 노출. */}
+          {/* 북마크 진입 — 죽은 Sidebar.tsx에만 있던 링크를 헤더로 옮김(지시서 513).
+              모바일·md 폭에서는 이미 관계지도·자료실·검색으로 우측이 붐벼 lg+에서만 노출.
+              517 — 아카이브는 북마크로 통합돼 아이콘 제거. */}
           <Link
             href="/dashboard/mypage#bookmarks"
             title="북마크"
@@ -248,14 +249,6 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
             aria-label="북마크 모아보기"
           >
             <Bookmark className="h-5 w-5" />
-          </Link>
-          <Link
-            href="/dashboard/mypage#archives"
-            title="아카이브"
-            className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
-            aria-label="아카이빙 콘텐츠"
-          >
-            <Archive className="h-5 w-5" />
           </Link>
 
           <ThemeToggle />

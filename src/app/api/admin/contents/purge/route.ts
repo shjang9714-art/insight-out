@@ -17,8 +17,8 @@ export const maxDuration = 60
 
 /**
  * GET — 휴지통(소프트 삭제된 콘텐츠) 건수 미리보기.
- * `?ids=a,b,c` 가 오면 그 대상의 연쇄 건수(북마크·아카이브)도 함께 돌려준다(492-E).
- * 브라우저 RLS 클라이언트로는 bookmarks/archive_items 가 본인 것만 잡혀 0으로 위장되므로,
+ * `?ids=a,b,c` 가 오면 그 대상의 연쇄 건수(북마크)도 함께 돌려준다(492-E).
+ * 브라우저 RLS 클라이언트로는 bookmarks 가 본인 것만 잡혀 0으로 위장되므로,
  * 여기서 service_role 로 정확히 세서 확인 다이얼로그에 내려준다.
  */
 export async function GET(request: NextRequest) {
@@ -45,16 +45,11 @@ export async function GET(request: NextRequest) {
 
     if (!ids) return NextResponse.json({ count: count ?? 0 })
 
-    const [bookmarks, archiveItems] = await Promise.all([
-      admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids),
-      // archive_items 는 id 컬럼이 없다 — content_id 로 count
-      admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', ids),
-    ])
+    const bookmarks = await admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', ids)
 
     return NextResponse.json({
       count: count ?? 0,
       bookmarks: bookmarks.error ? null : bookmarks.count ?? 0,
-      archiveItems: archiveItems.error ? null : archiveItems.count ?? 0,
     })
   } catch (err) {
     console.error('[/api/admin/contents/purge] GET 오류:', err)
@@ -87,13 +82,9 @@ export async function POST(request: Request) {
       await completeAudit(admin, gate.auditId, { action: 'content.purge', targetType: 'contents', targetCount: targetIds.length, outcome: 'failed', error: `대상 건수가 변경되었습니다(확인 시 ${body.expectedCount}건 → 현재 ${targetIds.length}건).` })
       return { mismatch: true, expected: body.expectedCount, current: targetIds.length }
     }
-    const [bookmarks, archiveItems] = targetIds.length > 0
-      ? await Promise.all([
-          admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', targetIds),
-          // archive_items 는 id 컬럼이 없다 — content_id 로 count
-          admin.from('archive_items').select('content_id', { count: 'exact', head: true }).in('content_id', targetIds),
-        ])
-      : [{ count: 0, error: null }, { count: 0, error: null }]
+    const bookmarks = targetIds.length > 0
+      ? await admin.from('bookmarks').select('id', { count: 'exact', head: true }).in('content_id', targetIds)
+      : { count: 0, error: null }
     const { error, count } = await admin
       .from('contents')
       .delete({ count: 'exact' })
@@ -107,7 +98,6 @@ export async function POST(request: Request) {
         selectionMode: selectedIds ? 'selected' : 'all_trash',
         ids: targetIds.slice(0, 50),
         bookmarkCascadeCount: bookmarks.error ? null : bookmarks.count ?? 0,
-        archiveItemCascadeCount: archiveItems.error ? null : archiveItems.count ?? 0,
       },
       outcome: error ? 'failed' : 'ok',
       error: error?.message,

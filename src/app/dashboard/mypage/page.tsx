@@ -9,13 +9,11 @@ import { createClient } from '@/lib/supabase/client'
 import PageContainer from '@/components/PageContainer'
 import SettingsTab from '@/components/mypage/SettingsTab'
 import BookmarksTab from '@/components/mypage/BookmarksTab'
-import ArchivesTab from '@/components/mypage/ArchivesTab'
 import { saveProfile } from '@/app/dashboard/mypage/actions'
 import type { Department } from '@/lib/types'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 import type { LensKey } from '@/lib/lens'
 import type {
-  ArchiveWithItems,
   BookmarkWithItem,
   NewsletterForm,
   ProfileForm,
@@ -29,19 +27,12 @@ import type {
 type ContentsJoin = { deleted_at?: string | null } | null
 
 function isLiveContentJoin(contentId: string | null, contents: ContentsJoin): boolean {
-  if (!contentId) return true // youtube_video_id/ai_report_id 기반 항목은 무관
+  if (!contentId) return true // content_id 아닌 다른 타겟 기반 항목은 무관
   return Boolean(contents) && !contents!.deleted_at
 }
 
 function filterDeletedBookmarks(rows: BookmarkWithItem[]): BookmarkWithItem[] {
   return rows.filter((row) => isLiveContentJoin(row.content_id, row.contents as ContentsJoin))
-}
-
-function filterDeletedArchiveItems(archives: ArchiveWithItems[]): ArchiveWithItems[] {
-  return archives.map((archive) => ({
-    ...archive,
-    items: archive.items.filter((item) => isLiveContentJoin(item.content_id, item.contents as ContentsJoin)),
-  }))
 }
 
 export default function MyPage() {
@@ -74,14 +65,12 @@ export default function MyPage() {
   const [bookmarksLoading, setBookmarksLoading] = useState(true)
   const [bookmarkError, setBookmarkError] = useState<string | null>(null)
 
-  const [archives, setArchives] = useState<ArchiveWithItems[]>([])
-  const [archivesLoading, setArchivesLoading] = useState(true)
-  const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null)
-  const [archiveError, setArchiveError] = useState<string | null>(null)
-  const [sendingArchiveId, setSendingArchiveId] = useState<string | null>(null)
-  const [sendResult, setSendResult] = useState<{ archiveId: string; to: string } | null>(null)
-  const [emailInputArchiveId, setEmailInputArchiveId] = useState<string | null>(null)
+  // 517 — 아카이브를 없애고 북마크 하나로 합치며, 다중 선택 → 메일 발송을 북마크 쪽으로 옮겼다.
+  const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set())
+  const [emailInputOpen, setEmailInputOpen] = useState(false)
   const [emailInputValue, setEmailInputValue] = useState('')
+  const [sendingBookmarks, setSendingBookmarks] = useState(false)
+  const [sendResult, setSendResult] = useState<{ to: string } | null>(null)
 
   async function fetchWatchlistForUser(userId: string): Promise<WatchlistSummaryItem[]> {
     const { data, error } = await supabase
@@ -132,7 +121,6 @@ export default function MyPage() {
         userRes,
         subRes,
         bookmarksRes,
-        archivesRes,
         watchlistRows,
       ] = await Promise.all([
         supabase.from('users').select('name, department, team, team_name, default_lens').eq('id', user.id).single(),
@@ -140,15 +128,13 @@ export default function MyPage() {
         supabase
           .from('bookmarks')
           .select(`
-            id, content_id, youtube_video_id, ai_report_id, created_at,
+            id, content_id, youtube_video_id, ai_report_id, daily_insight_id, insight_card_id, created_at,
             contents(id, title, category, original_url, published_at, deleted_at),
             youtube_videos(id, video_id, title, channel_name, published_at),
-            ai_reports(id, title, type, published_at)
+            ai_reports(id, title, type, published_at),
+            daily_insights(id, headline, category, day_of),
+            insight_cards(id, topic, headline, card_headline, generated_at)
           `)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('archives')
-          .select(`id, name, description, created_at, items:archive_items(content_id, youtube_video_id, ai_report_id, added_at, contents(id, title, category, original_url, deleted_at), ai_reports(id, title, type, published_at))`)
           .order('created_at', { ascending: false }),
         fetchWatchlistForUser(user.id),
       ])
@@ -181,10 +167,6 @@ export default function MyPage() {
       if (bookmarksRes.error) setBookmarkError('북마크를 불러오지 못했습니다.')
       if (bookmarksRes.data) setBookmarks(filterDeletedBookmarks(bookmarksRes.data as unknown as BookmarkWithItem[]))
       setBookmarksLoading(false)
-
-      if (archivesRes.error) setArchiveError('아카이브를 불러오지 못했습니다.')
-      if (archivesRes.data) setArchives(filterDeletedArchiveItems(archivesRes.data as unknown as ArchiveWithItems[]))
-      setArchivesLoading(false)
 
       if (subRes.data) {
         setNewsletter({
@@ -293,79 +275,60 @@ export default function MyPage() {
       setBookmarkError('북마크 해제에 실패했습니다. 잠시 후 다시 시도해주세요.')
     } else {
       setBookmarks((prev) => prev.filter((bookmark) => bookmark.id !== bookmarkId))
+      setSelectedBookmarkIds((prev) => {
+        if (!prev.has(bookmarkId)) return prev
+        const next = new Set(prev)
+        next.delete(bookmarkId)
+        return next
+      })
     }
   }
 
-  async function handleDeleteArchive(archiveId: string) {
-    if (!window.confirm('아카이브를 삭제하면 담긴 항목도 모두 사라집니다. 계속할까요?')) return
-    setArchiveError(null)
-    const { error } = await supabase.from('archives').delete().eq('id', archiveId)
-    if (error) {
-      setArchiveError('삭제에 실패했습니다. 잠시 후 다시 시도해주세요.')
-    } else {
-      setArchives((prev) => prev.filter((archive) => archive.id !== archiveId))
-      if (expandedArchiveId === archiveId) setExpandedArchiveId(null)
-    }
+  function handleToggleSelectBookmark(bookmarkId: string) {
+    setSelectedBookmarkIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(bookmarkId)) next.delete(bookmarkId)
+      else next.add(bookmarkId)
+      return next
+    })
   }
 
-  async function handleRemoveItem(
-    archiveId: string,
-    contentId: string | null,
-    youtubeId: string | null,
-    reportId: string | null = null
-  ) {
-    setArchiveError(null)
-    let query = supabase.from('archive_items').delete().eq('archive_id', archiveId)
-    if (contentId) query = query.eq('content_id', contentId)
-    else if (reportId) query = query.eq('ai_report_id', reportId)
-    else if (youtubeId) query = query.eq('youtube_video_id', youtubeId)
-
-    const { error } = await query
-    if (error) {
-      setArchiveError('항목 제거에 실패했습니다.')
-    } else {
-      setArchives((prev) =>
-        prev.map((archive) =>
-          archive.id === archiveId
-            ? {
-                ...archive,
-                items: archive.items.filter((item) =>
-                  contentId
-                    ? item.content_id !== contentId
-                    : reportId
-                      ? item.ai_report_id !== reportId
-                      : item.youtube_video_id !== youtubeId
-                ),
-              }
-            : archive
-        )
-      )
-    }
+  function handleToggleSelectAllBookmarks() {
+    setSelectedBookmarkIds((prev) =>
+      prev.size === bookmarks.length ? new Set() : new Set(bookmarks.map((b) => b.id))
+    )
   }
 
-  async function handleSendEmail(archiveId: string, recipientsInput?: string) {
-    setSendingArchiveId(archiveId)
-    setArchiveError(null)
+  function handleOpenEmailInput() {
+    setEmailInputValue(authEmail)
     setSendResult(null)
-    const recipients = recipientsInput
-      ? recipientsInput.split(/[,;\s]+/).map((email) => email.trim()).filter(Boolean)
+    setBookmarkError(null)
+    setEmailInputOpen(true)
+  }
+
+  async function handleSendBookmarkEmail() {
+    setSendingBookmarks(true)
+    setBookmarkError(null)
+    setSendResult(null)
+    const recipients = emailInputValue
+      ? emailInputValue.split(/[,;\s]+/).map((email) => email.trim()).filter(Boolean)
       : []
 
     try {
-      const res = await fetch('/api/email/send-archive', {
+      const res = await fetch('/api/email/send-bookmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archiveId, recipients }),
+        body: JSON.stringify({ bookmarkIds: [...selectedBookmarkIds], recipients }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? '발송에 실패했습니다.')
-      setSendResult({ archiveId, to: data.to })
-      setEmailInputArchiveId(null)
+      setSendResult({ to: data.to })
+      setEmailInputOpen(false)
       setEmailInputValue('')
     } catch (err) {
-      setArchiveError(err instanceof Error ? err.message : '이메일 발송에 실패했습니다.')
+      setBookmarkError(err instanceof Error ? err.message : '이메일 발송에 실패했습니다.')
     } finally {
-      setSendingArchiveId(null)
+      setSendingBookmarks(false)
     }
   }
 
@@ -423,37 +386,23 @@ export default function MyPage() {
             onWatchlistChange={refreshWatchlistSummary}
           />
 
-          <section id="bookmarks" className="scroll-mt-20">
-            <h2 className="mb-4 text-base font-semibold text-foreground">북마크</h2>
-            <BookmarksTab
-              bookmarks={bookmarks}
-              loading={bookmarksLoading}
-              error={bookmarkError}
-              onRemove={handleRemoveBookmark}
-            />
-          </section>
-
-          <section id="archives" className="scroll-mt-20">
-            <h2 className="mb-4 text-base font-semibold text-foreground">아카이브</h2>
-            <ArchivesTab
-              archives={archives}
-              loading={archivesLoading}
-              error={archiveError}
-              expandedArchiveId={expandedArchiveId}
-              setExpandedArchiveId={setExpandedArchiveId}
-              sendingArchiveId={sendingArchiveId}
-              sendResult={sendResult}
-              emailInputArchiveId={emailInputArchiveId}
-              setEmailInputArchiveId={setEmailInputArchiveId}
-              emailInputValue={emailInputValue}
-              setEmailInputValue={setEmailInputValue}
-              defaultEmail={authEmail}
-              onDeleteArchive={handleDeleteArchive}
-              onRemoveItem={handleRemoveItem}
-              onSendEmail={handleSendEmail}
-              clearSendResult={() => setSendResult(null)}
-            />
-          </section>
+          <BookmarksTab
+            bookmarks={bookmarks}
+            loading={bookmarksLoading}
+            error={bookmarkError}
+            onRemove={handleRemoveBookmark}
+            selectedIds={selectedBookmarkIds}
+            onToggleSelect={handleToggleSelectBookmark}
+            onToggleSelectAll={handleToggleSelectAllBookmarks}
+            emailInputOpen={emailInputOpen}
+            onOpenEmailInput={handleOpenEmailInput}
+            onCloseEmailInput={() => setEmailInputOpen(false)}
+            emailInputValue={emailInputValue}
+            setEmailInputValue={setEmailInputValue}
+            sending={sendingBookmarks}
+            sendResult={sendResult}
+            onSendEmail={handleSendBookmarkEmail}
+          />
         </div>
       </div>
     </PageContainer>

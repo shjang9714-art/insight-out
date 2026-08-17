@@ -36,7 +36,7 @@ export default function WatchlistManager({ onChange }: Props) {
   const [curatedCompanies, setCuratedCompanies] = useState<CuratedCompany[]>([])
   const [curatedLoadFailed, setCuratedLoadFailed] = useState(false)
 
-  // 최초 마운트 시 1회 로드(loaded 가드 — ArchiveButton 패턴)
+  // 최초 마운트 시 1회 로드(loaded 가드)
   useEffect(() => {
     if (loaded) return
 
