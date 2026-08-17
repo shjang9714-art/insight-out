@@ -7,8 +7,6 @@ interface Props {
   pending: number
   todayFailed: number
   sourcesToCheck: number
-  /** 승인 대기 사용자 수. 승인 컬럼을 확인할 수 없으면 null → 타일 생략(graceful) */
-  pendingUsers: number | null
 }
 
 interface Tile {
@@ -21,7 +19,7 @@ interface Tile {
   urgent: boolean // true면 count > 0 일 때 risk 톤
 }
 
-export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck, pendingUsers }: Props) {
+export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck }: Props) {
   const tiles: Tile[] = [
     {
       key: 'pending',
@@ -50,15 +48,6 @@ export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck, p
       description: '최근 24시간 내 오류가 발생한 소스',
       urgent: true,
     },
-    ...(pendingUsers !== null ? [{
-      key: 'users',
-      label: '승인 대기',
-      count: pendingUsers,
-      unit: '명',
-      href: '/admin/users',
-      description: '가입 승인이 필요한 사용자',
-      urgent: false,
-    }] : []),
   ]
 
   const allClear = tiles.every((t) => t.count === 0)

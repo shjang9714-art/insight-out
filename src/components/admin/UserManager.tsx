@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogClose,
@@ -22,16 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, ShieldCheck, CheckCircle, XCircle, Clock, Pencil, LogOut, Unlock } from 'lucide-react'
+import { Loader2, ShieldCheck, Pencil, LogOut, Unlock, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
-import StatusBadge from '@/components/admin/ui/StatusBadge'
 import {
   updateUserRole,
   promoteByEmail,
-  approveUser,
-  rejectUser,
+  createAdminUser,
   updateUserProfileByAdmin,
   forceSignOutUser,
   liftSignOutBan,
@@ -52,6 +49,7 @@ interface UserRow {
   role: UserRole
   approval_status: ApprovalStatus
   created_at: string
+  last_seen_at: string | null
   bannedUntil: string | null
 }
 
@@ -138,7 +136,7 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
         setUsers(prev => {
           const exists = prev.find(u => u.id === promoted.id)
           if (exists) return prev.map(u => u.id === promoted.id ? { ...u, role: 'admin' } : u)
-          return [{ ...promoted, bannedUntil: null }, ...prev]
+          return [{ ...promoted, last_seen_at: null, bannedUntil: null }, ...prev]
         })
         setAdminCount(prev => prev + 1)
         setFormSuccess(`${promoted.email} 계정이 admin으로 변경되었습니다.`)
@@ -149,35 +147,66 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
     }
   }
 
-  // ── 승인/거절 ──────────────────────────────────────────────────────────────
-  const [approvingId, setApprovingId] = useState<string | null>(null)
+  // ── 관리자 계정 생성 (F-04) ─────────────────────────────────────────────────
 
-  const handleApprove = async (user: UserRow) => {
-    if (!(await confirm({ title: '가입 승인', targets: [user.email], confirmLabel: '승인' }))) return
-    setApprovingId(user.id)
-    startTransition(async () => {
-      const { error: err } = await approveUser(user.id)
-      if (err) {
-        setError(err)
-      } else {
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, approval_status: 'approved' } : u))
-      }
-      setApprovingId(null)
-    })
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [createEmail, setCreateEmail] = useState('')
+  const [createPassword, setCreatePassword] = useState('')
+  const [createName, setCreateName] = useState('')
+  const [createTeam, setCreateTeam] = useState('')
+  const [createTeamName, setCreateTeamName] = useState('')
+  const [createRole, setCreateRole] = useState<UserRole>('user')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+
+  const resetCreateForm = () => {
+    setCreateEmail('')
+    setCreatePassword('')
+    setCreateName('')
+    setCreateTeam('')
+    setCreateTeamName('')
+    setCreateRole('user')
+    setCreateError(null)
   }
 
-  const handleReject = async (user: UserRow) => {
-    if (!(await confirm({ title: '가입 거절', targets: [user.email], confirmLabel: '거절', destructive: true }))) return
-    setApprovingId(user.id)
-    startTransition(async () => {
-      const { error: err } = await rejectUser(user.id)
-      if (err) {
-        setError(err)
-      } else {
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, approval_status: 'rejected' } : u))
+  const handleCreateOpenChange = (open: boolean) => {
+    if (!open && !isCreating) {
+      setIsCreateOpen(false)
+      resetCreateForm()
+    } else {
+      setIsCreateOpen(open)
+    }
+  }
+
+  const handleCreateSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (isCreating) return
+    setCreateError(null)
+    setIsCreating(true)
+
+    try {
+      const { error: err, user: created } = await createAdminUser({
+        email: createEmail,
+        password: createPassword,
+        name: createName,
+        team: createTeam,
+        team_name: createTeamName,
+        role: createRole,
+      })
+
+      if (err || !created) {
+        setCreateError(err ?? '계정 생성에 실패했습니다.')
+        return
       }
-      setApprovingId(null)
-    })
+
+      setUsers(prev => [{ ...created, last_seen_at: null, bannedUntil: null }, ...prev])
+      if (createRole !== 'user') setAdminCount(prev => prev + 1)
+      toast.success(`${created.email} 계정을 생성했습니다.`)
+      setIsCreateOpen(false)
+      resetCreateForm()
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   // ── 세션 강제 종료 / 로그인 차단 해제 ────────────────────────────────────
@@ -281,14 +310,13 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
 
   // ── 렌더 ──────────────────────────────────────────────────────────────────
 
-  const pendingUsers = users.filter(u => u.approval_status === 'pending')
   const columns: AdminTableColumn<UserRow>[] = [
     { key: 'email', header: '이메일', sortKey: 'email', truncate: true, width: 'max-w-[200px]', cell: (user) => <span className="font-medium text-foreground" title={user.email}>{user.email}</span> },
     { key: 'name', header: '이름', sortKey: 'name', truncate: true, width: 'max-w-[200px]', cell: (user) => <span className="text-muted-foreground" title={user.name ?? undefined}>{user.name || '—'}</span> },
     { key: 'organization', header: '조직', width: 'min-w-[150px]', cell: (user) => <><p className="text-xs font-medium text-foreground"><span className="mr-1 text-muted-foreground">그룹</span>{user.team || '—'}</p><p className="mt-1 text-xs text-muted-foreground"><span className="mr-1">팀</span>{user.team_name || '—'}</p></> },
-    { key: 'role', header: '권한', sortKey: 'role', cell: (user) => user.role === 'admin' ? <span className="inline-flex items-center gap-1 rounded-full bg-brand-600/10 px-2.5 py-0.5 text-xs font-semibold text-brand-600"><ShieldCheck className="h-3 w-3" />admin</span> : <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">user</span> },
-    { key: 'approval', header: '승인', sortKey: 'approval_status', cell: (user) => user.approval_status === 'approved' ? <Badge variant="outline" className="border-positive/30 bg-positive-soft text-positive">승인</Badge> : user.approval_status === 'rejected' ? <StatusBadge tone="negative" label="거절" /> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">대기</Badge> },
+    { key: 'role', header: '권한', sortKey: 'role', cell: (user) => user.role === 'admin' || user.role === 'super_admin' ? <span className="inline-flex items-center gap-1 rounded-full bg-brand-600/10 px-2.5 py-0.5 text-xs font-semibold text-brand-600"><ShieldCheck className="h-3 w-3" />{user.role}</span> : <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">user</span> },
     { key: 'created_at', header: '가입일', sortKey: 'created_at', nowrap: true, cell: (user) => <span className="text-xs text-muted-foreground">{new Date(user.created_at).toLocaleDateString('ko-KR')}</span> },
+    { key: 'last_seen_at', header: '최근 접속', sortKey: 'last_seen_at', nowrap: true, cell: (user) => <span className="text-xs text-muted-foreground">{user.last_seen_at ? new Date(user.last_seen_at).toLocaleString('ko-KR') : '—'}</span> },
     { key: 'actions', header: '작업', align: 'right', nowrap: true, cell: (user) => {
       const roleChangeDisabledReason = user.id === currentUserId && user.role === 'super_admin'
         ? '본인의 super_admin 권한은 직접 변경할 수 없습니다.'
@@ -297,8 +325,6 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
       return (
         <div className="flex flex-col items-end gap-1">
           <div className="flex items-center justify-end gap-1.5">
-            {user.approval_status !== 'approved' && <button onClick={() => handleApprove(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}승인</button>}
-            {user.approval_status !== 'rejected' && user.approval_status !== 'approved' && <button onClick={() => handleReject(user)} disabled={approvingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{approvingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}거절</button>}
             <button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button>
             {user.id !== currentUserId && (
               isBanActive(user.bannedUntil)
@@ -307,7 +333,7 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
             )}
             <Select value={user.role} onValueChange={(value) => { void handleToggleRole(user, value as UserRole) }} disabled={roleChangeDisabledReason !== null || togglingId === user.id || isPending}>
               <SelectTrigger className="h-8 w-[125px] text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="user">user</SelectItem><SelectItem value="viewer">viewer</SelectItem><SelectItem value="admin">admin</SelectItem><SelectItem value="super_admin">super_admin</SelectItem></SelectContent>
+              <SelectContent><SelectItem value="user">user</SelectItem><SelectItem value="admin">admin</SelectItem><SelectItem value="super_admin">super_admin</SelectItem></SelectContent>
             </Select>
           </div>
           {roleChangeDisabledReason && (
@@ -371,64 +397,15 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
         </CardContent>
       </Card>
 
-      {/* ── 승인 대기 섹션 ── */}
-      {pendingUsers.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Clock className="h-4 w-4 text-amber-500" />
-              승인 대기 ({pendingUsers.length}명)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y divide-border rounded-lg border border-border">
-              {pendingUsers.map(u => (
-                <div key={u.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{u.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {u.name || '이름 미입력'} · {u.department || '부문 미입력'} · 그룹 {u.team || '—'} · 팀 {u.team_name || '—'}
-                    </p>
-                  </div>
-                  <div className="ml-4 flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleApprove(u)}
-                      disabled={approvingId === u.id || isPending}
-                    >
-                      {approvingId === u.id ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      ) : (
-                        <CheckCircle className="mr-1 h-3 w-3" />
-                      )}
-                      승인
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleReject(u)}
-                      disabled={approvingId === u.id || isPending}
-                    >
-                      {approvingId === u.id ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      ) : (
-                        <XCircle className="mr-1 h-3 w-3" />
-                      )}
-                      거절
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── 목록 헤더 ── */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           전체 {total?.toLocaleString() ?? '확인 불가'}명 · 전체 admin {adminCount}명
         </p>
+        <Button size="sm" onClick={() => setIsCreateOpen(true)}>
+          <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+          새 계정 생성
+        </Button>
       </div>
 
       {/* ── 사용자 테이블 ── */}
@@ -524,6 +501,123 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
                   <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />저장 중...</>
                 ) : (
                   '저장'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
+        <DialogContent className="max-w-md">
+          <form onSubmit={handleCreateSubmit}>
+            <DialogHeader>
+              <DialogTitle>새 계정 생성</DialogTitle>
+              <DialogDescription>
+                신규 진입·권한 없음 상태 등을 검증할 테스트 계정을 만듭니다.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-user-email">
+                  이메일 <span className="text-negative">*</span>
+                </Label>
+                <Input
+                  id="create-user-email"
+                  type="email"
+                  value={createEmail}
+                  onChange={event => setCreateEmail(event.target.value)}
+                  placeholder="example@company.com"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-user-password">
+                  초기 비밀번호 <span className="text-negative">*</span>
+                </Label>
+                <Input
+                  id="create-user-password"
+                  type="text"
+                  value={createPassword}
+                  onChange={event => setCreatePassword(event.target.value)}
+                  placeholder="8자 이상"
+                  required
+                  minLength={8}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-user-name">
+                  이름 <span className="text-negative">*</span>
+                </Label>
+                <Input
+                  id="create-user-name"
+                  value={createName}
+                  onChange={event => setCreateName(event.target.value)}
+                  placeholder="홍길동"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-user-team">
+                  그룹 <span className="text-negative">*</span>
+                </Label>
+                <Select value={createTeam} onValueChange={setCreateTeam}>
+                  <SelectTrigger id="create-user-team" className="w-full">
+                    <SelectValue placeholder="그룹을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ORG_GROUPS.map(group => (
+                      <SelectItem key={group} value={group}>{group}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-user-team-name">팀</Label>
+                <Input
+                  id="create-user-team-name"
+                  value={createTeamName}
+                  onChange={event => setCreateTeamName(event.target.value)}
+                  placeholder="예: 클라우드사업팀"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-user-role">권한</Label>
+                <Select value={createRole} onValueChange={value => setCreateRole(value as UserRole)}>
+                  <SelectTrigger id="create-user-role" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">user</SelectItem>
+                    <SelectItem value="admin">admin</SelectItem>
+                    <SelectItem value="super_admin">super_admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {createError && (
+                <p className="text-xs text-negative" role="alert">{createError}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline" size="sm" disabled={isCreating}>
+                  취소
+                </Button>
+              </DialogClose>
+              <Button type="submit" size="sm" disabled={isCreating}>
+                {isCreating ? (
+                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />생성 중...</>
+                ) : (
+                  '생성'
                 )}
               </Button>
             </DialogFooter>
