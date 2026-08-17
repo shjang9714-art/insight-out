@@ -236,7 +236,7 @@ export default function MyPage() {
   return (
     // 347: 마이페이지는 목록 화면과 성격이 다른 "설정 패널" — 중앙 정렬(mx-auto).
     // 폭은 다른 화면(max-w-screen-xl)까지 늘리지 않는다 — 입력 필드·폼이 1200px로 늘어지면 읽기·조작이 불편해진다.
-    // 북마크·아카이브는 /dashboard/bookmarks, /dashboard/archive 전용 페이지로 분리.
+    // 북마크는 /dashboard/bookmarks 전용 페이지로 분리(아카이브는 517에서 북마크로 통합·제거됨).
     <PageContainer>
       <div className="mx-auto w-full max-w-3xl">
         <div className="mb-8">

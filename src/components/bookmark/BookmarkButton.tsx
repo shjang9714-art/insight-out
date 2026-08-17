@@ -9,19 +9,25 @@ interface BookmarkButtonProps {
   contentId?: string
   youtubeVideoId?: string
   reportId?: string
+  dailyInsightId?: string
+  insightCardId?: string
 }
 
-type BookmarkColumn = 'content_id' | 'ai_report_id' | 'youtube_video_id'
+type BookmarkColumn = 'content_id' | 'ai_report_id' | 'youtube_video_id' | 'daily_insight_id' | 'insight_card_id'
 type BookmarkTarget = { column: BookmarkColumn; id: string }
 
 function resolveTarget(
   contentId?: string,
   reportId?: string,
-  youtubeVideoId?: string
+  youtubeVideoId?: string,
+  dailyInsightId?: string,
+  insightCardId?: string
 ): BookmarkTarget | null {
   if (contentId) return { column: 'content_id', id: contentId }
   if (reportId) return { column: 'ai_report_id', id: reportId }
   if (youtubeVideoId) return { column: 'youtube_video_id', id: youtubeVideoId }
+  if (dailyInsightId) return { column: 'daily_insight_id', id: dailyInsightId }
+  if (insightCardId) return { column: 'insight_card_id', id: insightCardId }
   return null
 }
 
@@ -33,13 +39,15 @@ export default function BookmarkButton({
   contentId,
   youtubeVideoId,
   reportId,
+  dailyInsightId,
+  insightCardId,
 }: BookmarkButtonProps) {
   const [isBookmarked, setIsBookmarked] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const target = resolveTarget(contentId, reportId, youtubeVideoId)
+  const target = resolveTarget(contentId, reportId, youtubeVideoId, dailyInsightId, insightCardId)
   const targetColumn = target?.column ?? null
   const targetId = target?.id ?? null
 

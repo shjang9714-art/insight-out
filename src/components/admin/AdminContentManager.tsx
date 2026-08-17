@@ -277,9 +277,9 @@ async function readJsonSafe(response: Response): Promise<unknown> {
 async function fetchCascadeCount(ids: string[]): Promise<number> {
   const res = await fetch(`/api/admin/contents/purge?ids=${encodeURIComponent(ids.join(','))}`)
   if (!res.ok) throw new Error('연쇄 건수를 확인할 수 없습니다.')
-  const data = await res.json() as { bookmarks: number | null; archiveItems: number | null }
-  if (data.bookmarks === null || data.archiveItems === null) throw new Error('연쇄 건수를 확인할 수 없습니다.')
-  return data.bookmarks + data.archiveItems
+  const data = await res.json() as { bookmarks: number | null }
+  if (data.bookmarks === null) throw new Error('연쇄 건수를 확인할 수 없습니다.')
+  return data.bookmarks
 }
 
 /** 348 — 테이블 셀용 짧은 KST 표기: 2026.07.14 15:12 (전체 표기는 title 속성으로) */
@@ -965,7 +965,7 @@ export default function AdminContentManager() {
   }
 
   const handleDelete = async (content: AdminContentRow) => {
-    if (!(await confirm({ title: '콘텐츠 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
+    if (!(await confirm({ title: '콘텐츠 삭제', description: '휴지통으로 이동합니다. 연결된 북마크는 보존됩니다.', targets: [content.title], confirmLabel: '삭제', destructive: true }))) return
     setWorkingId(content.id)
     setError(null)
     const response = await fetch('/api/admin/contents/delete', {
@@ -1288,12 +1288,12 @@ export default function AdminContentManager() {
     setIsBulkWorking(false)
   }
 
-  // 207 — 선택 바 삭제(벌크). 492 — 소프트 삭제(휴지통행)로 전환, 북마크·아카이브는 보존된다.
+  // 207 — 선택 바 삭제(벌크). 492 — 소프트 삭제(휴지통행)로 전환, 북마크는 보존된다.
   const handleBulkDelete = async () => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
     const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
-    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '휴지통으로 이동합니다. 연결된 북마크·아카이브 항목은 보존됩니다.', targets: titles, countLabel: '보존되는 북마크·아카이브', confirmLabel: '삭제', destructive: true, loadCount: () => fetchCascadeCount(ids) }))) return
+    if (!(await confirm({ title: '콘텐츠 일괄 삭제', description: '휴지통으로 이동합니다. 연결된 북마크는 보존됩니다.', targets: titles, countLabel: '보존되는 북마크', confirmLabel: '삭제', destructive: true, loadCount: () => fetchCascadeCount(ids) }))) return
 
     setIsBulkWorking(true)
     setError(null)
@@ -1353,9 +1353,9 @@ export default function AdminContentManager() {
     const titles = contents.filter((item) => selectedIds.has(item.id)).map((item) => item.title)
     if (!(await confirm({
       title: '콘텐츠 영구 삭제',
-      description: '휴지통에서 완전히 삭제합니다. 연결된 북마크·아카이브 항목도 함께 사라집니다. 되돌릴 수 없습니다.',
+      description: '휴지통에서 완전히 삭제합니다. 연결된 북마크도 함께 사라집니다. 되돌릴 수 없습니다.',
       targets: titles,
-      countLabel: '함께 삭제되는 북마크·아카이브',
+      countLabel: '함께 삭제되는 북마크',
       confirmLabel: '영구 삭제',
       destructive: true,
       loadCount: () => fetchCascadeCount(ids),

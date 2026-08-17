@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient as createServiceClient } from '@supabase/supabase-js'
-import type { UserRole, ApprovalStatus } from '@/lib/types'
+import type { UserRole } from '@/lib/types'
 import { revalidatePath } from 'next/cache'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 import { requireAdminAction } from '@/lib/admin/require-admin-action'
@@ -123,25 +123,6 @@ export async function promoteByEmail(email: string) {
   return { error: null, user: { ...target, role: 'admin' as UserRole } }
 }
 
-export async function approveUser(userId: string) {
-  const gate = await requireAdminAction({ action: 'user.approval.update' })
-  if (!gate.ok) return { error: gate.error }
-
-  const { error } = await serviceClient()
-    .from('users')
-    .update({
-      approval_status: 'approved' as ApprovalStatus,
-      approved_at: new Date().toISOString(),
-      approved_by: gate.userId,
-    })
-    .eq('id', userId)
-
-  await completeAudit(serviceClient(), gate.auditId, { targetType: 'users', targetId: userId, payload: { nextStatus: 'approved' }, outcome: error ? 'failed' : 'ok', error: error?.message })
-  if (error) return { error: `승인 처리 실패: ${error.message}` }
-  revalidatePath('/admin/users')
-  return { error: null }
-}
-
 // GoTrue(Supabase Auth 서버)에는 user_id 기준 세션 강제 종료 API가 없다.
 // admin.auth.admin.signOut()은 대상 세션 자신의 JWT를 필요로 해 관리자가 다른 사용자에게
 // 쓸 수 없고, 세션을 실제로 지우는 유일한 경로(models.Logout)는 계정 소프트 삭제에
@@ -182,21 +163,58 @@ export async function liftSignOutBan(userId: string) {
   return { error: null }
 }
 
-export async function rejectUser(userId: string) {
-  const gate = await requireAdminAction({ action: 'user.approval.update' })
-  if (!gate.ok) return { error: gate.error }
+export async function createAdminUser(input: {
+  email: string
+  password: string
+  name: string
+  team: string
+  team_name: string
+  role: UserRole
+}) {
+  const gate = await requireAdminAction({ action: 'user.create', capability: 'manage_admins' })
+  if (!gate.ok) return { error: gate.error, user: null }
 
-  const { error } = await serviceClient()
+  const email = input.email.trim().toLowerCase()
+  const name = input.name.trim()
+  const teamName = input.team_name.trim()
+
+  if (!email) return { error: '이메일을 입력해주세요.', user: null }
+  if (input.password.length < 8) return { error: '비밀번호는 8자 이상이어야 합니다.', user: null }
+  if (!name) return { error: '이름을 입력해주세요.', user: null }
+  if (!isOrgGroup(input.team)) return { error: '그룹 값이 올바르지 않습니다.', user: null }
+
+  const svc = serviceClient()
+
+  const { data: created, error: createErr } = await svc.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+  })
+
+  if (createErr || !created.user) {
+    await completeAudit(svc, gate.auditId, { targetType: 'users', payload: { email }, outcome: 'failed', error: createErr?.message })
+    return { error: `계정 생성 실패: ${createErr?.message ?? '알 수 없는 오류'}`, user: null }
+  }
+
+  const userId = created.user.id
+
+  const { data: updated, error: updateErr } = await svc
     .from('users')
     .update({
-      approval_status: 'rejected' as ApprovalStatus,
-      approved_at: new Date().toISOString(),
-      approved_by: gate.userId,
+      name,
+      team: input.team,
+      team_name: teamName,
+      department: FIXED_DEPARTMENT,
+      role: input.role,
+      onboarding_completed: true,
     })
     .eq('id', userId)
+    .select('id, email, name, department, team, team_name, position, role, approval_status, created_at')
+    .single()
 
-  await completeAudit(serviceClient(), gate.auditId, { targetType: 'users', targetId: userId, payload: { nextStatus: 'rejected' }, outcome: error ? 'failed' : 'ok', error: error?.message })
-  if (error) return { error: `거절 처리 실패: ${error.message}` }
+  await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, payload: { email, role: input.role }, outcome: updateErr ? 'failed' : 'ok', error: updateErr?.message })
+  if (updateErr || !updated) return { error: `계정 정보 저장 실패: ${updateErr?.message ?? '알 수 없는 오류'}`, user: null }
+
   revalidatePath('/admin/users')
-  return { error: null }
+  return { error: null, user: updated }
 }

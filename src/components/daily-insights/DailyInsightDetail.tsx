@@ -3,6 +3,7 @@ import CompetitorMatrix from '@/components/daily-insights/CompetitorMatrix'
 import RelatedInsights from '@/components/daily-insights/RelatedInsights'
 import EvidenceDrilldown from '@/components/daily-insights/EvidenceDrilldown'
 import NextSteps from '@/components/daily-insights/NextSteps'
+import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
@@ -29,7 +30,12 @@ export default function DailyInsightDetail({ insight, relatedInsights = [] }: Da
   return (
     <article className="space-y-6">
       <header className="space-y-2">
-        {insight.category && <CategoryBadge category={insight.category} />}
+        <div className="flex items-start justify-between gap-3">
+          {insight.category && <CategoryBadge category={insight.category} />}
+          <div className="ml-auto shrink-0">
+            <BookmarkButton dailyInsightId={insight.id} />
+          </div>
+        </div>
         <h1 className="text-2xl font-bold leading-snug tracking-tight text-foreground">{stripLlmArtifacts(insight.headline)}</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">💡 {stripLlmArtifacts(insight.summary_ko)}</p>
         {insight.why_it_matters && (
