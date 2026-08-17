@@ -76,6 +76,10 @@ export interface SearchSection {
 
 // 소스별 조회 상한 — 기존과 동일(무회귀), 단일 카테고리 필터 선택 시 화면 표시 상한도 동일하게 사용
 const FETCH_LIMIT = 60
+// 515 — 전체 검색(filter 미지정) 시 콘텐츠 소스(뉴스·유튜브·기술 Blog·AI 리포트·컨설팅
+// 리포트·공시자료) 6개 섹션을 category IN(...) 조건 없는 단일 쿼리로 합쳐서 가져온 뒤
+// 클라이언트에서 category 로 나눠 배분한다 — 섹션별 표시 상한 합(현재 84) 보다 넉넉하게.
+const CONTENT_MERGE_LIMIT = 240
 // 다중 단어 검색 시 토큰 상한 — 과도한 .or() 체이닝 방지
 const MAX_QUERY_TOKENS = 5
 // 엔티티/키워드 ↔ 콘텐츠 연결 조회 시 안전판(다건 연결된 항목이 과도한 로우를 끌어오지 않게) — 최신순 정렬 후 자르므로
@@ -336,36 +340,101 @@ export function useUnifiedSearch(
         // 509 — 소스별 fetch 함수가 이제 실패 시 throw 하므로 Promise.all 대신
         // allSettled 로 받는다. 한 소스(예: 타임아웃)가 실패해도 나머지 fulfilled
         // 섹션은 그대로 렌더해야 한다 — 전체를 지우면 안 됨.
-        const settled = await Promise.allSettled(
-          keysToFetch.map(async (key): Promise<SearchSection> => ({
-            key,
-            items: await fetchSection(supabase, key, tokens, capFor(key)),
-          }))
-        )
+        //
+        // 515 — filter 미지정(전체 검색)일 때, 콘텐츠 소스(뉴스·유튜브·기술 Blog·AI 리포트·
+        // 컨설팅 리포트·공시자료) 6개는 각자 category IN(...) 조건으로 쿼리를 날리면 그
+        // 조건이 인덱스를 안 타 전부 동일한 전량 스캔을 반복했다(콜드 캐시 8초 타임아웃
+        // 원인). 이 경우에만 카테고리 조건 없는 단일 쿼리 하나로 합쳐서 가져오고, 응답을
+        // category 로 나눠 각 섹션에 배분한다 — fetchSection 태스크 하나가 SearchSection
+        // 여러 개를 반환할 수 있으므로 각 태스크는 SearchSection[] 를 돌려준다.
+        // filter 지정(특정 카테고리 선택) 시엔 기존처럼 그 카테고리 하나만 조회(무회귀).
+        const isContentKey = (key: SearchFilterKey) => searchFilterDef(key).source === 'content'
+        const tasks: Promise<SearchSection[]>[] = filter
+          ? keysToFetch.map(async (key) => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key)) }])
+          : [
+              (async (): Promise<SearchSection[]> => {
+                const contentKeys = keysToFetch.filter(isContentKey)
+                const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT)
+                // 주의 — 발행일 내림차순으로 한 번에 CONTENT_MERGE_LIMIT(240)행만 받으므로,
+                // 검색어가 특정 카테고리(예: 뉴스)에 압도적으로 많이 매칭되면 그 카테고리가
+                // 240건을 거의 다 차지해 물량이 적은 다른 카테고리 섹션이 비어 보일 수 있다.
+                // 카테고리별 정확한 상한 보장이 아니라 "최신순 240건 중 이 카테고리 몫"이라는
+                // 한계 — 콜드 캐시 타임아웃 회피가 우선순위였던 절충이다.
+                return contentKeys.map((key) => {
+                  const categories = searchFilterDef(key).categories ?? []
+                  return {
+                    key,
+                    items: merged
+                      .filter((r) => categories.includes(r.content!.category))
+                      .slice(0, capFor(key)),
+                  }
+                })
+              })(),
+              ...keysToFetch
+                .filter((key) => !isContentKey(key))
+                .map(async (key): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key)) }]),
+            ]
 
-        if (!cancelled) {
-          const fulfilled = settled
-            .filter((r): r is PromiseFulfilledResult<SearchSection> => r.status === 'fulfilled')
-            .map((r) => r.value)
-          const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        const settled = await Promise.allSettled(tasks)
+        if (cancelled) return
 
-          // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
-          const nonEmpty = fulfilled.filter((s) => s.items.length > 0)
-          setSections(nonEmpty)
+        const sectionOrderIndex = (key: SearchFilterKey) => SEARCH_SECTION_ORDER.indexOf(key)
+        const fulfilled = settled
+          .filter((r): r is PromiseFulfilledResult<SearchSection[]> => r.status === 'fulfilled')
+          .flatMap((r) => r.value)
+          // 콘텐츠 합류 태스크가 다른 태스크보다 먼저/나중에 끝나는 순서와 무관하게
+          // 화면은 항상 SEARCH_SECTION_ORDER 고정 순서를 유지해야 한다(SearchResultsPanel의
+          // '전체' 결과가 이 순서를 그대로 관련도순으로 쓴다).
+          .sort((a, b) => sectionOrderIndex(a.key) - sectionOrderIndex(b.key))
+        const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
 
-          if (rejected.length > 0) {
-            rejected.forEach((r) => console.error('[search] 일부 검색 실패:', r.reason))
-            const isTimeout = rejected.some((r) => (r.reason as { code?: string } | null)?.code === '57014')
-            setError(
-              isTimeout
-                ? '검색이 오래 걸려 중단되었습니다. 검색어를 좁혀서 다시 시도해주세요.'
-                : '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+        // 515-2 — 병합 쿼리(발행일 내림차순 CONTENT_MERGE_LIMIT행)는 물량 많은 카테고리가
+        // 창을 독점하면 물량 적은 카테고리가 통째로 빈다(실측: 'aidc' 매칭 1,265건 중
+        // 뉴스가 1,263건이라 유튜브 2건이 240위 밖으로 밀려 섹션이 사라짐). 1라운드가
+        // 끝난 뒤에만(동시 발사 금지 — 그게 원래 8초 타임아웃의 원인이었다) 0건으로 남은
+        // 콘텐츠 섹션만 그 카테고리 하나로 다시 조회해 채운다. 1라운드가 이미 같은 힙
+        // 블록을 읽어 캐시가 데워진 상태라 카테고리별 개별 쿼리도 빠르다(실측 20ms대).
+        let finalSections = fulfilled
+        if (!filter) {
+          const emptyContentKeys = fulfilled
+            .filter((s) => isContentKey(s.key) && s.items.length === 0)
+            .map((s) => s.key)
+
+          if (emptyContentKeys.length > 0) {
+            const round2 = await Promise.allSettled(
+              emptyContentKeys.map(async (key): Promise<SearchSection> => ({
+                key,
+                items: await fetchSection(supabase, key, tokens, capFor(key)),
+              }))
             )
-          } else {
-            setError(null)
+            if (cancelled) return
+            // 2라운드 실패는 조용히 무시 — 1라운드 결과(빈 섹션 → 자동 숨김)를 그대로
+            // 둔다. 별도 에러 배너는 띄우지 않는다(아래 에러 판정은 1라운드 rejected만 반영).
+            const round2ByKey = new Map(
+              round2
+                .filter((r): r is PromiseFulfilledResult<SearchSection> => r.status === 'fulfilled')
+                .map((r) => [r.value.key, r.value] as const)
+            )
+            finalSections = fulfilled.map((s) => round2ByKey.get(s.key) ?? s)
           }
-          setLoading(false)
         }
+
+        // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
+        const nonEmpty = finalSections.filter((s) => s.items.length > 0)
+        setSections(nonEmpty)
+
+        if (rejected.length > 0) {
+          rejected.forEach((r) => console.error('[search] 일부 검색 실패:', r.reason))
+          const isTimeout = rejected.some((r) => (r.reason as { code?: string } | null)?.code === '57014')
+          setError(
+            isTimeout
+              ? '검색이 오래 걸려 중단되었습니다. 검색어를 좁혀서 다시 시도해주세요.'
+              : '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+          )
+        } else {
+          setError(null)
+        }
+        setLoading(false)
       }
 
       fetchResults().catch(errorValue => {
