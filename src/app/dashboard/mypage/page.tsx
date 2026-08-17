@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import PageContainer from '@/components/PageContainer'
 import SettingsTab from '@/components/mypage/SettingsTab'
+import SecurityTab from '@/components/mypage/SecurityTab'
 import BookmarksTab from '@/components/mypage/BookmarksTab'
 import { saveProfile } from '@/app/dashboard/mypage/actions'
 import type { Department } from '@/lib/types'
@@ -385,6 +386,8 @@ export default function MyPage() {
             watchlistItems={watchlistItems}
             onWatchlistChange={refreshWatchlistSummary}
           />
+
+          <SecurityTab authEmail={authEmail} />
 
           <BookmarksTab
             bookmarks={bookmarks}
