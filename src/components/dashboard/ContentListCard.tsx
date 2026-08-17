@@ -8,6 +8,7 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover from '@/components/dashboard/BrandedCover'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { CARD_BADGE_ROW_CLASS, CARD_MAX_VISIBLE_TAGS, CARD_PADDING_CLASS, CARD_TAG_ROW_CLASS } from '@/lib/contents/card-contract'
+import { tagFilterHref } from '@/lib/contents/excerpt'
 
 function formatDate(d: string | null) {
   if (!d) return null
@@ -101,12 +102,15 @@ export default function ContentListCard({
         {/* 해시태그 — 값이 없어도 항상 렌더해 높이를 예약한다(510). 최대 CARD_MAX_VISIBLE_TAGS개 + "+N" */}
         <div className={CARD_TAG_ROW_CLASS}>
           {tags.slice(0, CARD_MAX_VISIBLE_TAGS).map((kw) => (
-            <span
+            <Link
               key={kw}
-              className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+              href={tagFilterHref(category, kw)}
+              prefetch={false}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 transition-colors hover:bg-brand-100 dark:bg-brand-950/30 dark:text-brand-300 dark:hover:bg-brand-950/50"
             >
               #{kw}
-            </span>
+            </Link>
           ))}
           {tags.length > CARD_MAX_VISIBLE_TAGS && (
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import ContentCard from '@/components/dashboard/ContentCard'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
+import { tagsOf2 } from '@/lib/contents/excerpt'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ export default async function YoutubeSection() {
             publishedAt={video.published_at}
             thumbnailUrl={videoCoverUrls[index]}
             externalHref={video.original_url}
-            keywords={video.matched_keywords ?? []}
+            keywords={tagsOf2(video.matched_groups ?? [], video.matched_keywords ?? [], '유튜브')}
           />
         ))}
       </div>
