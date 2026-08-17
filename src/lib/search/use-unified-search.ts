@@ -112,10 +112,15 @@ export interface QueryToken {
 export function buildQueryTokens(q: string): QueryToken[] {
   return tokenizeQuery(q).map((token) => {
     const searchTerm = normalizeCompany(token) ?? token
-    const escaped = searchTerm.replace(/[%_]/g, '\\$&')
+    // 511 — ilike 값은 반드시 PostgREST 인용 형태("%…%")로 감싼다. 인용하지 않으면
+    // 검색어에 콤마·괄호가 섞였을 때 or=(...) 필터 구분자로 잘못 쪼개져 400 이 난다
+    // (교체 전 ContentsBoard 는 인용하고 있었는데 509 2단계에서 이 함수로 옮기며 빠졌다).
+    // 순서 고정: 1) LIKE 이스케이프(%, _) → 2) PostgREST 인용 이스케이프(\, ") → 3) "%…%" 로 감싸기.
+    const likeEscaped = searchTerm.replace(/[%_]/g, '\\$&')
+    const pgEscaped = likeEscaped.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
     const ftsBase = searchTerm.replace(/[^\p{L}\p{N}]/gu, '')
     return {
-      ilike: `%${escaped}%`,
+      ilike: `"%${pgEscaped}%"`,
       fts: ftsBase ? `${ftsBase}:*` : null,
     }
   })
