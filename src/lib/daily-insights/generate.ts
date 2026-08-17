@@ -529,42 +529,98 @@ async function buildRelatedPast(
     .filter((r): r is DailyInsightPastArticle => r !== null)
 }
 
-// ─── §5-A 이번 주 흐름(weekly_flows) ───────────────────────────────────────────
-// 그 주 daily_insights 중 "가장 중요한 이슈" 상위 2~3건을 골라 각각 원인→사건→확산→후속발표
-// →시장반응 흐름으로 재구성한다. 인사이트 생성이 끝난 rows(이미 3C·근거기사 확정됨)를 그대로
-// 재료로 쓴다. rank(1=가장 중요) 로 (week_of, rank) 복합키에 저장.
-const MAX_WEEKLY_FLOWS = 3
+// ─── §5-A 이번 주 흐름(weekly_flows) — 엔티티 타임라인 추적 ─────────────────────
+// "이번 주 인사이트 카드 스냅샷"(그 주 daily_insights 상위 몇 건의 헤드라인 각도)이 아니라
+// "엔티티 타임라인 추적"으로 재설계 — KT·SKT·LGU+ 같은 주체의 최근 90일 기사를 모아 그
+// 회사 하나의 궤적(예: AX 투자 발표 → 이후 행보 → 분기 실적 반영)을 원인→사건→확산→후속발표
+// →시장반응 흐름으로 재구성한다. rank(1=엔티티 목록 순서) 로 (week_of, rank) 복합키에 저장.
+const MAX_WEEKLY_FLOWS = 5
 /** flow의 단계(stage) 수가 이 값 미만이면 "흐름"이 아니라 단발성 사건이므로 후보에서 제외한다.
  * "단계 수"는 화면에 렌더되는 단위와 동일하게 flow 배열 길이(WeeklyFlowStep[].length)로 센다
  * (WeeklyFlowHighlight.tsx의 flow.map()이 항목당 1개 번호 단계로 그대로 렌더). */
 const MIN_FLOW_STAGES = 2
 
-// ─── 흐름 재료 확장 — WEEKLY_WINDOW_DAYS(7)는 인사이트 창(항상 최신 유지)이라 건드리지 않고,
-// "흐름 생성" 단계에서만 winner 근거기사 외에 최근 30일 관련기사를 contents에서 추가로 모은다.
-// 보도가 하루에 몰리는 주(source_articles 전부 같은 날)라도, 같은 주제의 앞뒤 날짜 기사를
-// 끌어와야 countDistinctKstDates(flow) >= 2 를 충족하는 "진짜" 시간 흐름을 만들 수 있다.
-const FLOW_EVIDENCE_WINDOW_DAYS = 30
-const FLOW_EVIDENCE_MAX_PER_DATE = 3
-const FLOW_EVIDENCE_MAX_TOTAL = 12
+// ─── 엔티티 타임라인 시딩 ───────────────────────────────────────────────────────
+// 통신 3사(LGU+/KT/SKT) + SK브로드밴드 씨앗으로 시작. entities.canonical_name 은
+// candidates.ts/relevance.ts 의 TELECOM_COMPANY_NAMES 와 동일한 값을 쓴다.
+interface EntityTimelineSeed {
+  canonicalName: string
+  displayName: string
+  aliases: string[]
+}
+
+const ENTITY_TIMELINE_SEEDS: EntityTimelineSeed[] = [
+  { canonicalName: 'LG유플러스', displayName: 'LG유플러스', aliases: ['LG유플러스', 'LGU+', 'LG U+', '유플러스'] },
+  { canonicalName: 'KT', displayName: 'KT', aliases: ['KT'] },
+  { canonicalName: 'SKT', displayName: 'SKT', aliases: ['SKT', 'SK텔레콤'] },
+  { canonicalName: 'SK브로드밴드', displayName: 'SK브로드밴드', aliases: ['SK브로드밴드'] },
+]
+
+const TIMELINE_WINDOW_DAYS = 90
+const TIMELINE_MAX_PER_DATE = 2
+const TIMELINE_MAX_ARTICLES = 20
+/** 서로 다른 KST 날짜가 이 값 미만이면 "궤적"을 그릴 재료가 부족해 그 엔티티는 스킵한다. */
+const TIMELINE_MIN_DATES = 3
+/** 이 기간 내 기사가 0건이면 "지금 살아있는 서사"가 아니라 오래전에 끝난 이야기이므로 스킵한다. */
+const TIMELINE_RECENCY_DAYS = 14
+
+/** 'KT' 별칭은 'KT&G' 오매칭을 제외하고 판정한다. */
+function titleMatchesEntityAlias(title: string, alias: string): boolean {
+  if (alias === 'KT') return title.replace(/KT&G/gi, '').includes('KT')
+  return title.includes(alias)
+}
+
+interface TimelineCandidate {
+  contentId: string
+  title: string
+  url: string | null
+  publishedAt: string | null
+  sourceName: string
+  importanceScore: number
+}
+
+/** 중요도 내림차순으로 날짜별 대표 최대 TIMELINE_MAX_PER_DATE건, 전체 TIMELINE_MAX_ARTICLES건으로
+ * 캡한 뒤 published_at 오름차순(오래된→최신)으로 정렬해 반환한다. */
+function selectTimelineArticles(candidates: TimelineCandidate[]): DailyInsightSourceArticle[] {
+  const sortedByImportance = [...candidates].sort((a, b) => b.importanceScore - a.importanceScore)
+  const perDateCount = new Map<string, number>()
+  const selected: TimelineCandidate[] = []
+  for (const c of sortedByImportance) {
+    if (selected.length >= TIMELINE_MAX_ARTICLES) break
+    const key = c.publishedAt ? getKstDateString(new Date(c.publishedAt)) : '미상'
+    const count = perDateCount.get(key) ?? 0
+    if (count >= TIMELINE_MAX_PER_DATE) continue
+    perDateCount.set(key, count + 1)
+    selected.push(c)
+  }
+
+  selected.sort((a, b) => {
+    const at = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
+    const bt = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
+    return at - bt
+  })
+
+  return selected.map((c) => ({
+    content_id: c.contentId,
+    title: c.title,
+    url: c.url,
+    source: c.sourceName,
+    published_at: c.publishedAt,
+  }))
+}
 
 /**
- * winner(채택된 daily_insights 행) 1건의 흐름 재료를 source_articles 밖에서 추가로 모은다.
- * contents 최근 30일 창에서 후보를 가져와, headline·source_articles 제목을 reference로 삼아
- * relevance.ts의 관련성 판정(isRelevantPastArticle)을 그대로 태워 "진짜 같은 주제"만 남긴다.
- * source_articles에 이미 있는 content_id는 제외하고, dedupeSimilarArticles로 근접중복을
- * 제거한 뒤 날짜별 대표 소수만 남겨(FLOW_EVIDENCE_MAX_PER_DATE) 총 FLOW_EVIDENCE_MAX_TOTAL건으로 캡.
+ * 엔티티 1건의 최근 TIMELINE_WINDOW_DAYS(90)일 타임라인을 모은다. content_entities로 연결된
+ * content(우선) + title이 엔티티 별칭과 매칭되는 content(폴백)를 합쳐 후보로 삼고,
+ * dedupeSimilarArticles로 근접중복을 제거한다. 서로 다른 날짜가 TIMELINE_MIN_DATES 미만이거나
+ * 최근 TIMELINE_RECENCY_DAYS일 내 기사가 없으면(죽은 서사) 빈 배열을 반환해 그 엔티티를 스킵한다.
  */
-async function buildFlowEvidenceArticles(
-  winner: Record<string, unknown>,
+async function gatherEntityTimeline(
+  seed: EntityTimelineSeed,
+  entityId: string | null,
   admin: ReturnType<typeof createAdminClient>
 ): Promise<DailyInsightSourceArticle[]> {
-  const headline = typeof winner.headline === 'string' ? winner.headline : ''
-  if (!headline) return []
-  const category = (winner.category as string | null) ?? null
-  const sourceArticles = (winner.source_articles as DailyInsightSourceArticle[] | null) ?? []
-  const sourceContentIds = new Set(sourceArticles.map((a) => a.content_id))
-
-  const windowStart = new Date(Date.now() - FLOW_EVIDENCE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
+  const windowStart = new Date(Date.now() - TIMELINE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
 
   const { data: rawContents, error } = await admin
     .from('contents')
@@ -575,156 +631,41 @@ async function buildFlowEvidenceArticles(
     .limit(3000)
   if (error || !rawContents || rawContents.length === 0) return []
 
-  const candidates = rawContents.filter((c) => !sourceContentIds.has(c.id))
-  if (candidates.length === 0) return []
+  let entityContentIds = new Set<string>()
+  if (entityId) {
+    const { data: entityHits } = await admin.from('content_entities').select('content_id').eq('entity_id', entityId)
+    entityContentIds = new Set((entityHits ?? []).map((r) => r.content_id as string))
+  }
 
-  const categoryByContentId = await classifyPastArticleCategories(candidates.map((c) => c.id))
-  const referenceTitles = [headline, ...sourceArticles.map((a) => a.title)]
-  const relevant = candidates.filter((c) =>
-    isRelevantPastArticle({ title: c.title, category: categoryByContentId.get(c.id) ?? null }, category, referenceTitles)
+  const matched = rawContents.filter(
+    (c) => entityContentIds.has(c.id) || seed.aliases.some((alias) => titleMatchesEntityAlias(c.title, alias))
   )
-  if (relevant.length === 0) return []
+  if (matched.length === 0) return []
 
-  // 근거기사 없이 흐름 재료로만 쓰이므로 매체명이 필요 — sources는 winner 단위로 소규모 조회.
   const { data: sources } = await admin.from('sources').select('id, name')
   const sourceMap = new Map((sources ?? []).map((s) => [s.id, s.name as string]))
 
-  const adapted = relevant
-    .slice()
-    .sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0))
-    .map((c) => ({
-      contentId: c.id as string,
-      title: c.title as string,
-      url: c.original_url as string | null,
-      publishedAt: c.published_at as string | null,
-      sourceName: sourceMap.get(c.source_id as string) ?? '(미상)',
-    }))
+  const adapted = matched.map((c) => ({
+    contentId: c.id as string,
+    title: c.title as string,
+    url: c.original_url as string | null,
+    publishedAt: c.published_at as string | null,
+    sourceName: sourceMap.get(c.source_id as string) ?? '(미상)',
+    importanceScore: c.importance_score ?? 0,
+  }))
 
   const deduped = dedupeSimilarArticles(adapted)
 
-  // 날짜별 대표 소수만 남긴다(중요도 내림차순으로 이미 정렬돼 있으므로 앞에서부터 자름).
-  const byDate = new Map<string, typeof deduped>()
-  for (const a of deduped) {
-    const key = a.publishedAt ? getKstDateString(new Date(a.publishedAt)) : '미상'
-    const list = byDate.get(key) ?? []
-    if (list.length < FLOW_EVIDENCE_MAX_PER_DATE) {
-      list.push(a)
-      byDate.set(key, list)
-    }
-  }
-  const capped = [...byDate.values()].flat()
-
-  // 시간순(오래된 것부터)으로 정렬해 "원인→사건→확산" 서술에 자연스럽게 맞춘다.
-  capped.sort((a, b) => {
-    const at = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
-    const bt = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
-    return at - bt
-  })
-
-  return capped.slice(0, FLOW_EVIDENCE_MAX_TOTAL).map((c) => ({
-    content_id: c.contentId,
-    title: c.title,
-    url: c.url,
-    source: c.sourceName,
-    published_at: c.publishedAt,
-  }))
-}
-
-function categoryTierRank(category: string | null): number {
-  if (!category) return 3
-  if ((TIER1_CATEGORIES as readonly string[]).includes(category)) return 0
-  if (category === AIDC_CATEGORY) return 1
-  return 2
-}
-
-// 헤드라인 토큰 유사도(제목 근접중복) 또는 근거기사 절반 이상 겹침이면 "같은 주제"로 보고
-// 이미 채택된 winner와 중복이라 건너뛴다 — MAX_WEEKLY_FLOWS건 중 같은 이슈가 두 번 뜨는 것 방지.
-const FLOW_DUP_HEADLINE_JACCARD_THRESHOLD = 0.5
-const FLOW_DUP_SOURCE_OVERLAP_RATIO = 0.5
-
-function isSameTopicFlowWinner(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  const aHeadline = (a.headline as string | null) ?? ''
-  const bHeadline = (b.headline as string | null) ?? ''
-  if (aHeadline && bHeadline) {
-    const sim = jaccardSimilarity(titleTokens(aHeadline), titleTokens(bHeadline))
-    if (sim >= FLOW_DUP_HEADLINE_JACCARD_THRESHOLD) return true
-  }
-
-  const aSources = (a.source_articles as DailyInsightSourceArticle[] | null) ?? []
-  const bSources = (b.source_articles as DailyInsightSourceArticle[] | null) ?? []
-  if (aSources.length === 0 || bSources.length === 0) return false
-  const bIds = new Set(bSources.map((s) => s.content_id))
-  const overlap = aSources.filter((s) => bIds.has(s.content_id)).length
-  const minCount = Math.min(aSources.length, bSources.length)
-  return minCount > 0 && overlap / minCount >= FLOW_DUP_SOURCE_OVERLAP_RATIO
-}
-
-/** 근거기사 수 → 카테고리 Tier → 최신성 순으로 그 주 가장 중요한 이슈 상위 max건을 고른다.
- * 점수 정렬 후 그리디로 채택하되, 이미 채택된 winner와 같은 주제(헤드라인 유사 또는 근거기사
- * 절반 이상 겹침)면 건너뛴다 — daily_insights 각 행이 별개 클러스터로 생성돼도 실질적으로
- * 같은 사건을 다루는 경우가 있어 그대로 두면 "이번 주 흐름"에 같은 주제가 중복 노출된다. */
-function pickFlowWinners(rows: Record<string, unknown>[], max: number): Record<string, unknown>[] {
-  if (rows.length === 0) return []
-  const scored = rows.map((r) => {
-    const category = (r.category as string | null) ?? null
-    const sourceArticles = (r.source_articles as DailyInsightSourceArticle[] | null) ?? []
-    const latestMs = sourceArticles.reduce((max, a) => {
-      const t = a.published_at ? new Date(a.published_at).getTime() : NaN
-      return Number.isFinite(t) ? Math.max(max, t) : max
-    }, 0)
-    return { row: r, tierRank: categoryTierRank(category), sourceCount: sourceArticles.length, latestMs }
-  })
-  scored.sort((a, b) => {
-    if (a.tierRank !== b.tierRank) return a.tierRank - b.tierRank
-    if (a.sourceCount !== b.sourceCount) return b.sourceCount - a.sourceCount
-    return b.latestMs - a.latestMs
-  })
-
-  const winners: Record<string, unknown>[] = []
-  for (const s of scored) {
-    if (winners.length >= max) break
-    if (winners.some((w) => isSameTopicFlowWinner(w, s.row))) continue
-    winners.push(s.row)
-  }
-  return winners
-}
-
-function buildFlowSystemPrompt(): string {
-  return (
-    '당신은 LG유플러스 전략기획팀의 애널리스트다. 아래 이번 주 핵심 이슈 하나를 ' +
-    '"원인 → 사건 → 확산 → 후속 발표 → 시장 반응" 시간순 흐름으로 재구성한다.\n\n' +
-    '규칙:\n' +
-    '1. flow는 배열 [{"phase":"원인","text":"...","articleIndex":1}, ...]. phase는 원인/사건/확산/' +
-    '후속 발표/시장 반응 중 입력 근거로 실제 확인되는 것만, 시간순으로 넣는다.\n' +
-    '2. articleIndex는 그 단계 문장의 근거가 된 "근거 기사" 목록의 번호(1부터 시작) 하나만 적는다. ' +
-    '여러 기사에 걸쳐 있거나 특정 기사 하나로 못 좁히면 articleIndex 필드 자체를 생략한다(번호 추측·창작 금지).\n' +
-    '3. 근거로 확인 안 되는 단계는 통째로 생략한다 — 5단계를 억지로 다 채우지 않는다. ' +
-    '흐름을 그릴 근거가 부족하면 flow를 빈 배열 []로 둔다. 근거 기사(articleIndex)로 뒷받침되지 ' +
-    '않는 단계는 반드시 제외한다. 시장 전망·추측 문장은 단계로 넣지 않는다.\n' +
-    '4. 각 text는 1~2문장, 짧고 명확하게.\n' +
-    '5. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
-    '6. headline: 이번 주 이 이슈를 대표하는 한 줄.\n' +
-    '7. 모든 문장은 ~다체(~한다/~이다/~했다)로만 작성하고 ~습니다체(~합니다/~입니다/~했습니다)는 ' +
-    '절대 쓰지 않는다. headline·flow[].text 모두 예외 없이 적용한다.\n' +
-    '8. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
-    '출력 스키마: {"headline":"...","flow":[{"phase":"...","text":"...","articleIndex":1}]}'
+  const distinctDates = new Set(
+    deduped.map((a) => (a.publishedAt ? getKstDateString(new Date(a.publishedAt)) : null)).filter((d): d is string => !!d)
   )
-}
+  if (distinctDates.size < TIMELINE_MIN_DATES) return []
 
-// market_trend·competitor_trend·implication은 의도적으로 프롬프트에 넣지 않는다 — 이 필드들은
-// 추측성 서술(시장 전망 등)을 포함할 수 있어, 흐름 생성 LLM에 재료로 주면 근거 기사 없는 "전망"
-// 단계를 만들어낼 위험이 있다. 헤드라인·요약·근거 기사 목록만으로 시간순 사실 흐름만 재구성한다.
-function buildFlowUserPrompt(winner: Record<string, unknown>, evidenceArticles: DailyInsightSourceArticle[]): string {
-  const headline = winner.headline as string
-  const summary = winner.summary_ko as string
-  const sourcesText = evidenceArticles
-    .map((a, i) => `${i + 1}. ${a.title} (${a.source}${a.published_at ? `, ${a.published_at}` : ''})`)
-    .join('\n')
+  const recencyCutoffMs = Date.now() - TIMELINE_RECENCY_DAYS * 24 * 3600 * 1000
+  const hasRecentArticle = deduped.some((a) => a.publishedAt && new Date(a.publishedAt).getTime() >= recencyCutoffMs)
+  if (!hasRecentArticle) return []
 
-  return (
-    `이슈 헤드라인: ${headline}\n요약: ${summary}\n` +
-    `근거 기사(${evidenceArticles.length}건, articleIndex는 아래 번호를 그대로 사용):\n${sourcesText}`
-  )
+  return selectTimelineArticles(deduped)
 }
 
 export interface WeeklyFlowGenResult {
@@ -732,23 +673,56 @@ export interface WeeklyFlowGenResult {
   flow: WeeklyFlowStep[]
 }
 
-/** rank가 매겨진 단일 이슈의 흐름을 생성. article은 LLM이 지목한 articleIndex로 [winner의
- * source_articles + buildFlowEvidenceArticles(최근 30일 관련기사)] 합친 목록을 코드가 직접
- * 룩업해 붙인다(content_id/title/url/source/published_at 모두 원본 그대로) — LLM은 번호만
- * 고르고 사실 정보는 창작하지 않는다. */
-async function generateWeeklyFlow(
-  winner: Record<string, unknown>,
-  admin: ReturnType<typeof createAdminClient>
-): Promise<WeeklyFlowGenResult | null> {
-  const sourceArticles = (winner.source_articles as DailyInsightSourceArticle[] | null) ?? []
-  const evidenceArticles = await buildFlowEvidenceArticles(winner, admin)
-  const combinedArticles = [...sourceArticles, ...evidenceArticles]
+function buildEntityTimelineSystemPrompt(): string {
+  return (
+    '당신은 LG유플러스 전략기획팀의 애널리스트다. 아래는 특정 통신사업자의 최근 3개월 기사 ' +
+    '타임라인이다. 이 회사의 하나의 큰 궤적(through-line)을 골라 "원인 → 사건 → 확산 → 후속 ' +
+    '발표 → 시장 반응" 중 실제 근거가 있는 단계만 시간순으로 재구성한다.\n\n' +
+    '규칙:\n' +
+    '1. flow는 배열 [{"phase":"원인","text":"...","articleIndex":1}, ...]. phase는 원인/사건/확산/' +
+    '후속 발표/시장 반응 중 입력 근거로 실제 확인되는 것만, 시간순으로 넣는다. 각 단계는 서로 ' +
+    '다른 시점(날짜)의 사건이어야 한다 — 같은 날 기사 여러 개를 억지로 다른 단계로 쪼개지 않는다.\n' +
+    '2. articleIndex는 그 단계 문장의 근거가 된 "타임라인 기사" 목록의 번호(1부터 시작) 하나만 ' +
+    '적는다. 여러 기사에 걸쳐 있거나 특정 기사 하나로 못 좁히면 articleIndex 필드 자체를 ' +
+    '생략한다(번호 추측·창작 금지).\n' +
+    '3. 근거로 확인 안 되는 단계는 통째로 생략한다 — 5단계를 억지로 다 채우지 않는다. 흐름을 ' +
+    '그릴 근거가 부족하면 flow를 빈 배열 []로 둔다. 시장 전망·추측 문장은 단계로 넣지 않는다.\n' +
+    '4. 이 회사와 무관한 타사(경쟁사 등) 소식은 절대 단계로 넣지 않는다 — 타임라인에 섞여 ' +
+    '들어왔더라도 이 회사 자신의 행보가 아니면 제외한다.\n' +
+    '5. 각 text는 1~2문장, 짧고 명확하게.\n' +
+    '6. 날짜·수치·회사명은 입력에 있는 값만 사용한다. 창작 금지.\n' +
+    '7. headline: 이 회사의 궤적을 관통하는 한 줄(예: "KT, AX 투자에서 2분기 실적 반영까지 — ' +
+    'B2B 구조 전환 궤적"). 특정 기사 제목 복사 금지.\n' +
+    '8. 모든 문장은 ~다체(~한다/~이다/~했다)로만 작성하고 ~습니다체(~합니다/~입니다/~했습니다)는 ' +
+    '절대 쓰지 않는다. headline·flow[].text 모두 예외 없이 적용한다.\n' +
+    '9. JSON만 출력한다. 코드펜스·설명 문장 금지.\n\n' +
+    '출력 스키마: {"headline":"...","flow":[{"phase":"...","text":"...","articleIndex":1}]}'
+  )
+}
 
-  const system = buildFlowSystemPrompt()
-  const user = buildFlowUserPrompt(winner, combinedArticles)
+function buildEntityTimelineUserPrompt(displayName: string, timeline: DailyInsightSourceArticle[]): string {
+  const lines = timeline
+    .map((a, i) => `${i + 1}. ${a.title} (${a.source}${a.published_at ? `, ${a.published_at}` : ''})`)
+    .join('\n')
+  return (
+    `대상 기업: ${displayName}\n` +
+    `최근 3개월 타임라인 기사(${timeline.length}건, articleIndex는 아래 번호를 그대로 사용):\n${lines}`
+  )
+}
+
+/** 엔티티 1건의 타임라인 기사 목록으로 궤적 흐름을 생성. article은 LLM이 지목한 articleIndex로
+ * timeline을 코드가 직접 룩업해 붙인다(content_id/title/url/source/published_at 모두 원본
+ * 그대로) — LLM은 번호만 고르고 사실 정보는 창작하지 않는다. 파싱된 단계는 article.published_at
+ * 오름차순으로 코드에서 강제 재정렬해 LLM이 순서를 틀려도 시간순을 보장한다. */
+async function generateEntityTimelineFlow(
+  displayName: string,
+  timeline: DailyInsightSourceArticle[]
+): Promise<WeeklyFlowGenResult | null> {
+  const system = buildEntityTimelineSystemPrompt()
+  const user = buildEntityTimelineUserPrompt(displayName, timeline)
   const { text: raw, errorReason } = await llmCompleteDetailed('daily_insight', system, user)
   if (!raw) {
-    console.error(`[핵심Insight][주간흐름] LLM 실패: ${errorReason ?? '사유 미상'}`)
+    console.error(`[핵심Insight][주간흐름] ${displayName} LLM 실패: ${errorReason ?? '사유 미상'}`)
     return null
   }
 
@@ -771,16 +745,14 @@ async function generateWeeklyFlow(
 
       const idxRaw = e.articleIndex
       const idx = typeof idxRaw === 'number' ? idxRaw : typeof idxRaw === 'string' ? Number(idxRaw) : NaN
-      const article =
-        Number.isInteger(idx) && idx >= 1 && idx <= combinedArticles.length ? combinedArticles[idx - 1] : undefined
+      const article = Number.isInteger(idx) && idx >= 1 && idx <= timeline.length ? timeline[idx - 1] : undefined
       if (!article) return null
 
       return { phase, text, article }
     })
     .filter((s): s is WeeklyFlowStep => s !== null)
 
-  // published_at 기준 시간순 정렬 — 근거 기사가 붙은 단계끼리만 재정렬한다. 근거 기사가 없는
-  // 단계는 비교 불가이므로 stable sort로 원래 상대 위치를 유지한다(날짜 지어내기 방지).
+  // LLM이 순서를 틀려도 시간순을 강제 보장 — article.published_at 오름차순 재정렬.
   flow.sort((a, b) => {
     const at = a.article?.published_at ? new Date(a.article.published_at).getTime() : NaN
     const bt = b.article?.published_at ? new Date(b.article.published_at).getTime() : NaN
@@ -810,19 +782,32 @@ function countDistinctKstDates(flow: WeeklyFlowStep[]): number {
   return dates.size
 }
 
-/** 그 주 상위 max(기본 3)개 이슈 각각의 흐름을 rank(1=가장 중요) 순으로 생성. LLM 실패나
- * 단계 수 미달(MIN_FLOW_STAGES 미만), 하루짜리 가짜 흐름(서로 다른 날짜 2개 미만)이면 그
- * 이슈만 건너뛰고 나머지는 계속 진행(부분 실패 허용) — 빠진 자리를 다른 후보로 억지로 채우지
- * 않고 그만큼 적은 개수로 남긴다. rank는 채택된 항목끼리 1부터 다시 매겨 빈틈이 생기지 않게 한다. */
+/** ENTITY_TIMELINE_SEEDS(LGU+/KT/SKT/SK브로드밴드) 각각에 대해 gatherEntityTimeline→
+ * generateEntityTimelineFlow 로 궤적 흐름을 생성. 타임라인 게이트 미통과(날짜 다양성·최신성
+ * 부족), LLM 실패, 단계 수 미달(MIN_FLOW_STAGES 미만), 하루짜리 가짜 흐름(서로 다른 날짜 2개
+ * 미만)이면 그 엔티티만 건너뛰고 나머지는 계속 진행(부분 실패 허용). rank는 채택된 항목끼리
+ * 1부터 다시 매겨 빈틈이 생기지 않게 한다. */
 export async function generateWeeklyFlows(
-  rows: Record<string, unknown>[],
-  max: number = MAX_WEEKLY_FLOWS
+  admin: ReturnType<typeof createAdminClient>
 ): Promise<WeeklyFlowGenEntry[]> {
-  const admin = createAdminClient()
-  const winners = pickFlowWinners(rows, max)
+  const { data: entityRows } = await admin
+    .from('entities')
+    .select('id, canonical_name')
+    .in(
+      'canonical_name',
+      ENTITY_TIMELINE_SEEDS.map((s) => s.canonicalName)
+    )
+  const entityIdByName = new Map((entityRows ?? []).map((e) => [e.canonical_name as string, e.id as string]))
+
   const entries: WeeklyFlowGenEntry[] = []
-  for (const winner of winners) {
-    const result = await generateWeeklyFlow(winner, admin)
+  for (const seed of ENTITY_TIMELINE_SEEDS) {
+    if (entries.length >= MAX_WEEKLY_FLOWS) break
+
+    const entityId = entityIdByName.get(seed.canonicalName) ?? null
+    const timeline = await gatherEntityTimeline(seed, entityId, admin)
+    if (timeline.length === 0) continue
+
+    const result = await generateEntityTimelineFlow(seed.displayName, timeline)
     if (!result || result.flow.length < MIN_FLOW_STAGES) continue
     if (countDistinctKstDates(result.flow) < 2) continue
     entries.push({ rank: entries.length + 1, headline: result.headline, flow: result.flow })
@@ -866,14 +851,7 @@ async function backfillWeeklyFlowIfMissing(admin: ReturnType<typeof createAdminC
   const { data: existingFlow } = await admin.from('weekly_flows').select('week_of').eq('week_of', weekOf).limit(1)
   if (existingFlow && existingFlow.length > 0) return
 
-  const { data: weekRows, error } = await admin
-    .from('daily_insights')
-    .select('*')
-    .eq('week_of', weekOf)
-    .eq('status', 'published')
-  if (error || !weekRows || weekRows.length === 0) return
-
-  const entries = await generateWeeklyFlows(weekRows)
+  const entries = await generateWeeklyFlows(admin)
   await upsertWeeklyFlows(admin, weekOf, entries)
 }
 
@@ -1078,8 +1056,9 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
     }
   }
 
-  // §5-A 이번 주 흐름 — daily_insight 배치와 같은 주기로 갱신. 실패해도 본 배치는 막지 않는다.
-  const weeklyFlowEntries = await generateWeeklyFlows(rows)
+  // §5-A 이번 주 흐름(엔티티 타임라인) — daily_insight 배치와 같은 주기로 갱신. rows(카드)와
+  // 무관하게 엔티티 타임라인을 직접 추적한다. 실패해도 본 배치는 막지 않는다.
+  const weeklyFlowEntries = await generateWeeklyFlows(admin)
 
   if (dryRun) {
     return {
