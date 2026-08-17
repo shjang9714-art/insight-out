@@ -5,14 +5,14 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { LayoutGrid, List, Loader2, Search, X } from 'lucide-react'
+import { Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
-import { Button } from '@/components/ui/button'
+import ViewToggle, { type ContentsView } from '@/components/contents/ViewToggle'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
 import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
@@ -59,7 +59,6 @@ interface ClusteredItem {
 const PAGE_SIZE = 20
 const CONTENTS_VIEW_STORAGE_KEY = 'io:contents-view'
 const CONTENTS_VIEW_CHANGE_EVENT = 'io:contents-view-change'
-type ContentsView = 'card' | 'list'
 
 function getContentsViewSnapshot(): ContentsView {
   const savedView = window.localStorage.getItem(CONTENTS_VIEW_STORAGE_KEY)
@@ -334,11 +333,14 @@ export default function ContentsBoard({
   // 395 — 직전 category를 들고 있다가 바뀌면 쿼리 전에 목록을 비운다(잔상 방지).
   const prevCategoryRef = useRef(category)
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
-  const contentsView = useSyncExternalStore(
+  // 512 — 기본값은 localStorage(기기별 마지막 선택) 기억용, ?view= 가 있으면 URL이 우선(새로고침·공유 시 유지).
+  const storedContentsView = useSyncExternalStore(
     subscribeContentsView,
     getContentsViewSnapshot,
     getContentsViewServerSnapshot,
   )
+  const viewParam = searchParams.get('view')
+  const contentsView: ContentsView = viewParam === 'card' || viewParam === 'list' ? viewParam : storedContentsView
   // lgu_impact 컬럼 미적용(42703) 시 false — select 에서 제외하되 카드 배지는 유지한다.
   const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
 
@@ -568,6 +570,9 @@ export default function ContentsBoard({
   const changeContentsView = (view: ContentsView) => {
     window.localStorage.setItem(CONTENTS_VIEW_STORAGE_KEY, view)
     window.dispatchEvent(new Event(CONTENTS_VIEW_CHANGE_EVENT))
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', view)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
@@ -575,7 +580,6 @@ export default function ContentsBoard({
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠')
 
-  const supportsViewToggle = category === '뉴스' || category === '웹인사이트'
   const usesContinuousLayout =
     category === '웹인사이트'
     || category === '리서치'
@@ -599,32 +603,7 @@ export default function ContentsBoard({
             )
           )}
         </div>
-        {supportsViewToggle && (
-          <div className="flex items-center rounded-lg border border-border bg-card p-0.5" role="group" aria-label="콘텐츠 보기 방식">
-            <Button
-              type="button"
-              variant={contentsView === 'card' ? 'secondary' : 'ghost'}
-              size="icon-sm"
-              onClick={() => changeContentsView('card')}
-              aria-label="카드 보기"
-              aria-pressed={contentsView === 'card'}
-              title="카드 보기"
-            >
-              <LayoutGrid aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant={contentsView === 'list' ? 'secondary' : 'ghost'}
-              size="icon-sm"
-              onClick={() => changeContentsView('list')}
-              aria-label="리스트 보기"
-              aria-pressed={contentsView === 'list'}
-              title="리스트 보기"
-            >
-              <List aria-hidden />
-            </Button>
-          </div>
-        )}
+        <ViewToggle value={contentsView} onChange={changeContentsView} groupAriaLabel="콘텐츠 보기 방식" />
       </div>
 
       {/* ─── 검색(질의) + 인기 키워드(필터) — 511: 역할 분리, 한 줄에 나란히, 각각 독립 해제 ──── */}
@@ -734,24 +713,25 @@ export default function ContentsBoard({
           {/* 395 — 상단 바 형태의 로딩 표시는 경고 배너처럼 읽혀 삭제. opacity만 유지(검색·칩 전환 시 "바뀌는 중" 최소 신호).
               더 보기(page>1)는 기존 목록 전체가 흐려지면 안 되므로 대상에서 제외한다. */}
           <div className={cn('transition-opacity duration-150', isLoading && page === 1 && 'opacity-[0.85]')}>
-            {usesContinuousLayout ? (
-              supportsViewToggle && contentsView === 'list' ? (
+            {contentsView === 'list' ? (
+              usesContinuousLayout ? (
                 <ContentRowList items={clusteredItems} sortByCollected={sortByCollected} />
               ) : (
-                <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+                // 510 — 리스트 뷰는 행 목록이라 열 정렬 문제가 없어 날짜별 섹션 구조를 그대로 유지한다.
+                // 512 — 이전엔 '뉴스' 카테고리에만 적용됐으나, 리스트 뷰 전환이 전 카테고리로 확장되며 일반화.
+                <div className="space-y-6">
+                  {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
+                    <section key={seg.key}>
+                      <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+                        {seg.label}
+                      </p>
+                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
+                    </section>
+                  ))}
+                </div>
               )
-            ) : category === '뉴스' && contentsView === 'list' ? (
-              // 510 — 리스트 뷰는 행 목록이라 열 정렬 문제가 없어 날짜별 섹션 구조를 그대로 유지한다.
-              <div className="space-y-6">
-                {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
-                  <section key={seg.key}>
-                    <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
-                      {seg.label}
-                    </p>
-                    <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
-                  </section>
-                ))}
-              </div>
+            ) : usesContinuousLayout ? (
+              <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
             ) : (
               // 510 — 작업 1: 날짜 경계를 넘어 열이 정렬되도록 격자 하나로 통합(GroupedContentCardGrid).
               <GroupedContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />

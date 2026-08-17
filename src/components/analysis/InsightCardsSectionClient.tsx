@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Quote, LayoutGrid, List } from 'lucide-react'
+import { Quote } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ViewToggle from '@/components/contents/ViewToggle'
 import {
   useLensContext,
   useActiveLens,
@@ -131,36 +132,15 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
   const totalCount = visibleGroups.reduce((sum, g) => sum + g.displayedCards.length, 0)
 
   // ─── 뷰 토글 ───────────────────────────────────────────────────────────────
+  // 512 — 카드/목록 아이콘이 뒤바뀌어 있던 것을 공용 ViewToggle(labeled)로 교체하며 바로잡음.
   const toggle = (
     <div className="mb-4 flex justify-end">
-      <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5">
-        <button
-          onClick={() => handleViewChange('cardnews')}
-          aria-label="카드 뷰"
-          className={cn(
-            'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-            view === 'cardnews'
-              ? 'bg-brand-solid text-white'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <List className="h-3.5 w-3.5" />
-          카드
-        </button>
-        <button
-          onClick={() => handleViewChange('analysis')}
-          aria-label="목록 뷰"
-          className={cn(
-            'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-            view === 'analysis'
-              ? 'bg-brand-solid text-white'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <LayoutGrid className="h-3.5 w-3.5" />
-          목록
-        </button>
-      </div>
+      <ViewToggle
+        variant="labeled"
+        value={view === 'cardnews' ? 'card' : 'list'}
+        onChange={(v) => handleViewChange(v === 'card' ? 'cardnews' : 'analysis')}
+        groupAriaLabel="인사이트 보기 방식"
+      />
     </div>
   )
 
