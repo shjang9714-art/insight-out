@@ -96,31 +96,53 @@ function tokenizeQuery(q: string): string[] {
   return q.split(/\s+/).filter(Boolean).slice(0, MAX_QUERY_TOKENS)
 }
 
-function buildIlikePatterns(q: string): string[] {
+/** 토큰 하나의 두 검색 형태 — ilike(제목·요약 등 trigram 인덱스 컬럼용)와
+ *  fts(contents.search_vector 전용, to_tsquery('simple') 접두 질의). */
+interface QueryToken {
+  ilike: string
+  /** 한글·영숫자 외 문자를 제거하고 접두(:*)를 붙인 to_tsquery 항. 남는 글자가 없으면 null —
+   *  그 토큰은 fts 조건 자체를 건너뛴다(빈 tsquery 로 쿼리를 보내지 않기 위함). */
+  fts: string | null
+}
+
+// 509 2단계 — 'simple' 설정은 형태소 분석을 하지 않아 '엔비디아의'가 통째로 한 토큰이 된다.
+// 접두 매칭(:*)이 없으면 조사 붙은 표기를 전부 놓친다(실측: '엔비디아' 완전일치 false / '엔비디아:*' true).
+function buildQueryTokens(q: string): QueryToken[] {
   return tokenizeQuery(q).map((token) => {
     const searchTerm = normalizeCompany(token) ?? token
     const escaped = searchTerm.replace(/[%_]/g, '\\$&')
-    return `%${escaped}%`
+    const ftsBase = searchTerm.replace(/[^\p{L}\p{N}]/gu, '')
+    return {
+      ilike: `%${escaped}%`,
+      fts: ftsBase ? `${ftsBase}:*` : null,
+    }
   })
 }
 
-/** 각 토큰이 columns 중 하나에라도 등장해야 하는 (OR across columns) AND (across tokens) 필터를 체이닝한다. */
+/** 각 토큰이 columns(ilike) 또는 ftsColumn(fts, 지정된 경우만) 중 하나에라도 등장해야 하는
+ *  (OR across columns) AND (across tokens) 필터를 체이닝한다. */
 function applyTokenFilters<T extends { or: (filter: string) => T }>(
   query: T,
   columns: string[],
-  ilikePats: string[],
+  tokens: QueryToken[],
+  ftsColumn?: string,
 ): T {
   let result = query
-  for (const pat of ilikePats) {
-    const orFilter = columns.map((col) => `${col}.ilike.${pat}`).join(',')
-    result = result.or(orFilter)
+  for (const token of tokens) {
+    const parts = columns.map((col) => `${col}.ilike.${token.ilike}`)
+    if (ftsColumn && token.fts) parts.push(`${ftsColumn}.fts(simple).${token.fts}`)
+    result = result.or(parts.join(','))
+  }
+  // 509 2단계 검증용 — fts 조건이 실제로 쿼리에 실리는지 개발 모드에서만 확인
+  if (ftsColumn && process.env.NODE_ENV !== 'production') {
+    console.debug('[search] fts 토큰:', tokens.map((t) => t.fts))
   }
   return result
 }
 
 async function fetchContentCategory(
   supabase: SupabaseClient,
-  ilikePats: string[],
+  tokens: QueryToken[],
   categories: ContentCategory[] | undefined,
   cap: number,
 ): Promise<UnifiedResult[]> {
@@ -128,12 +150,15 @@ async function fetchContentCategory(
     supabase.from('contents').select(
       'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), content_keywords(keywords(name))'
     ),
-    // 509 — body_original 에는 pg_trgm 인덱스가 없어 OR 로 묶이는 순간 인덱스 경로가
+    // 509 1단계 — body_original 에는 pg_trgm 인덱스가 없어 OR 로 묶이는 순간 인덱스 경로가
     // 버려지고 전량 스캔이 된다(운영 실측 8,166ms, authenticated statement_timeout 8,000ms
-    // 초과 → 57014 상시 실패). title/summary_ko 만 대상으로 한다. .select() 의
+    // 초과 → 57014 상시 실패). title/summary_ko 만 ilike 대상으로 한다. .select() 의
     // body_original 은 그대로 둔다 — ContentRow 가 요약 폴백으로 쓴다.
+    // 509 2단계 — search_vector(제목+요약+번역본문+원문본문, GIN 인덱스)로 본문 커버리지를
+    // 되살린다. ilike 는 그대로 두고 fts 를 OR 로 추가만 한다(교체 아님).
     ['title', 'summary_ko'],
-    ilikePats,
+    tokens,
+    'search_vector',
   ).eq('status', 'published')
   if (categories) query = query.in('category', categories)
   const { data, error: err } = await query.order('published_at', { ascending: false, nullsFirst: false }).limit(Math.max(cap, FETCH_LIMIT))
@@ -143,11 +168,11 @@ async function fetchContentCategory(
     .slice(0, cap)
 }
 
-async function fetchInsights(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+async function fetchInsights(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
   const query = applyTokenFilters(
     supabase.from('daily_insights').select('id, headline, summary_ko, day_of'),
     ['headline', 'summary_ko', 'market_trend', 'competitor_trend', 'implication'],
-    ilikePats,
+    tokens,
   ).eq('status', 'published')
   const { data, error: err } = await query.order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] daily_insights 조회 오류:', err); throw err }
@@ -156,11 +181,11 @@ async function fetchInsights(supabase: SupabaseClient, ilikePats: string[], cap:
     .slice(0, cap)
 }
 
-async function fetchIssues(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+async function fetchIssues(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
   const query = applyTokenFilters(
     supabase.from('issues').select('id, title, summary, created_at'),
     ['title', 'summary'],
-    ilikePats,
+    tokens,
   ).eq('status', 'published')
   const { data, error: err } = await query.order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] issues 조회 오류:', err); throw err }
@@ -183,11 +208,11 @@ function aggregateLinks(rows: { linkId: string; publishedAt: string | null }[]):
   return stats
 }
 
-async function fetchEntities(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
   const { data: matched, error: err } = await applyTokenFilters(
     supabase.from('entities').select('id, canonical_name, description'),
     ['canonical_name', 'description'],
-    ilikePats,
+    tokens,
   ).limit(FETCH_LIMIT)
   if (err) { console.error('[search] entities 조회 오류:', err); throw err }
   const ids = (matched ?? []).map((e) => e.id as string)
@@ -219,11 +244,11 @@ async function fetchEntities(supabase: SupabaseClient, ilikePats: string[], cap:
   return sortDesc(items).slice(0, cap)
 }
 
-async function fetchKeywords(supabase: SupabaseClient, ilikePats: string[], cap: number): Promise<UnifiedResult[]> {
+async function fetchKeywords(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
   const { data: matched, error: err } = await applyTokenFilters(
     supabase.from('keywords').select('id, name'),
     ['name'],
-    ilikePats,
+    tokens,
   ).limit(FETCH_LIMIT)
   if (err) { console.error('[search] keywords 조회 오류:', err); throw err }
   const ids = (matched ?? []).map((k) => k.id as string)
@@ -258,15 +283,15 @@ async function fetchKeywords(supabase: SupabaseClient, ilikePats: string[], cap:
 async function fetchSection(
   supabase: SupabaseClient,
   key: SearchFilterKey,
-  ilikePats: string[],
+  tokens: QueryToken[],
   cap: number,
 ): Promise<UnifiedResult[]> {
   const def = searchFilterDef(key)
-  if (def.source === 'content') return fetchContentCategory(supabase, ilikePats, def.categories, cap)
-  if (def.source === 'daily_insights') return fetchInsights(supabase, ilikePats, cap)
-  if (def.source === 'issues') return fetchIssues(supabase, ilikePats, cap)
-  if (def.source === 'entities') return fetchEntities(supabase, ilikePats, cap)
-  return fetchKeywords(supabase, ilikePats, cap)
+  if (def.source === 'content') return fetchContentCategory(supabase, tokens, def.categories, cap)
+  if (def.source === 'daily_insights') return fetchInsights(supabase, tokens, cap)
+  if (def.source === 'issues') return fetchIssues(supabase, tokens, cap)
+  if (def.source === 'entities') return fetchEntities(supabase, tokens, cap)
+  return fetchKeywords(supabase, tokens, cap)
 }
 
 export function useUnifiedSearch(
@@ -292,7 +317,7 @@ export function useUnifiedSearch(
     const timer = setTimeout(() => {
       const fetchResults = async () => {
         const supabase = createClient()
-        const ilikePats = buildIlikePatterns(q)
+        const tokens = buildQueryTokens(q)
 
         // 특정 카테고리 선택 시: 그 종류 하나만 조회, 표시 상한도 60(무회귀 — 기존 단독 필터와 동일)
         const keysToFetch = filter ? [filter] : SEARCH_SECTION_ORDER
@@ -304,7 +329,7 @@ export function useUnifiedSearch(
         const settled = await Promise.allSettled(
           keysToFetch.map(async (key): Promise<SearchSection> => ({
             key,
-            items: await fetchSection(supabase, key, ilikePats, capFor(key)),
+            items: await fetchSection(supabase, key, tokens, capFor(key)),
           }))
         )
 
