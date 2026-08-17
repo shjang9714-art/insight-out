@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ExternalLink, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
-import { toExcerpt } from '@/lib/contents/excerpt'
+import { toExcerpt, tagFilterHref } from '@/lib/contents/excerpt'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { highlightMatches } from '@/lib/search/highlight'
 
@@ -94,9 +94,15 @@ export default function ContentRow({
           </span>
         )}
         {tags.map((kw) => (
-          <span key={kw} className="text-[11px] font-medium text-brand-600">
+          <Link
+            key={kw}
+            href={tagFilterHref(category, kw)}
+            prefetch={false}
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] font-medium text-brand-600 hover:underline"
+          >
             #{kw}
-          </span>
+          </Link>
         ))}
       </div>
 

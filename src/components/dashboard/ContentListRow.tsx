@@ -3,6 +3,8 @@ import { ExternalLink, FileSearch, Globe2, Newspaper, Video, type LucideIcon } f
 import CoverImage from '@/components/common/CoverImage'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import { CARD_MAX_VISIBLE_TAGS } from '@/lib/contents/card-contract'
+import { tagFilterHref } from '@/lib/contents/excerpt'
 
 const CATEGORY_ICON: Partial<Record<ContentCategory, LucideIcon>> = {
   '뉴스': Newspaper,
@@ -78,11 +80,21 @@ export default function ContentListRow({
             {CONTENT_CATEGORY_LABEL[category] ?? category}
           </span>
           <LguImpactBadge impact={lguImpact} />
-          {tags.slice(0, 4).map((tag) => (
-            <span key={tag} className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-950/30 dark:text-brand-300">
+          {tags.slice(0, CARD_MAX_VISIBLE_TAGS).map((tag) => (
+            <Link
+              key={tag}
+              href={tagFilterHref(category, tag)}
+              prefetch={false}
+              className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 transition-colors hover:bg-brand-100 dark:bg-brand-950/30 dark:text-brand-300 dark:hover:bg-brand-950/50"
+            >
               #{tag}
-            </span>
+            </Link>
           ))}
+          {tags.length > CARD_MAX_VISIBLE_TAGS && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+              +{tags.length - CARD_MAX_VISIBLE_TAGS}
+            </span>
+          )}
         </div>
 
         {/* prefetch-ok: href가 내부 상세/외부 원문으로 동적 — 내부 분기는 primaryLinkProps에서 prefetch:false, 외부 분기는 새 탭 외부링크라 prefetch 무관 */}

@@ -4,9 +4,8 @@ import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import BrandedCover, { CATEGORY_COLOR } from '@/components/dashboard/BrandedCover'
 import { extractVideoId } from '@/lib/youtube'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
-
-// 카드 폭(≈300px) 기준 한 줄에 무리 없이 들어가는 해시태그 개수 — 나머지는 "+N"으로 뭉침
-const MAX_VISIBLE_KEYWORDS = 3
+import { CARD_BADGE_ROW_CLASS, CARD_MAX_VISIBLE_TAGS, CARD_PADDING_CLASS, CARD_TAG_ROW_CLASS } from '@/lib/contents/card-contract'
+import { tagFilterHref } from '@/lib/contents/excerpt'
 
 // ─── timeAgo ────────────────────────────────────────────────────────────────
 
@@ -133,45 +132,49 @@ export default function ContentCard({
         <Thumbnail url={thumbnailUrl} category={category} title={title} sourceName={sourceName} externalHref={externalHref} />
       </div>
 
-      <div className="flex flex-1 flex-col p-4">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}>
+      <div className={`flex flex-1 flex-col ${CARD_PADDING_CLASS}`}>
+        <div className={CARD_BADGE_ROW_CLASS}>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${catColor}`}>
             {CONTENT_CATEGORY_LABEL[category] ?? category}
           </span>
-          <LguImpactBadge impact={lguImpact} />
+          <LguImpactBadge impact={lguImpact} className="shrink-0" />
           {sourceName && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+            <span className="min-w-0 truncate rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
               {sourceName}
             </span>
           )}
         </div>
 
-        {/* 해시태그 — 카드 폭 기준 한 줄 초과분은 "+N"으로 표시(줄바꿈으로 카드 높이 들쭉날쭉해지는 것 방지) */}
-        {keywords && keywords.length > 0 && (
-          <div className="mb-1.5 flex flex-nowrap items-center gap-1 overflow-hidden">
-            {keywords.slice(0, MAX_VISIBLE_KEYWORDS).map((kw) => (
-              <span key={kw} className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                #{kw}
-              </span>
-            ))}
-            {keywords.length > MAX_VISIBLE_KEYWORDS && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                +{keywords.length - MAX_VISIBLE_KEYWORDS}
-              </span>
-            )}
-          </div>
-        )}
+        {/* 해시태그 — 값이 없어도 항상 렌더해 높이를 예약한다(510 카드 내부 계약).
+            카드 폭 기준 한 줄 초과분은 "+N"으로 표시(줄바꿈으로 카드 높이 들쭉날쭉해지는 것 방지) */}
+        <div className={CARD_TAG_ROW_CLASS}>
+          {(keywords ?? []).slice(0, CARD_MAX_VISIBLE_TAGS).map((kw) => (
+            <Link
+              key={kw}
+              href={tagFilterHref(category, kw)}
+              prefetch={false}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/30 dark:hover:text-brand-300"
+            >
+              #{kw}
+            </Link>
+          ))}
+          {(keywords?.length ?? 0) > CARD_MAX_VISIBLE_TAGS && (
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+              +{keywords!.length - CARD_MAX_VISIBLE_TAGS}
+            </span>
+          )}
+        </div>
 
-        {/* 제목 */}
-        <p className="mb-1.5 line-clamp-2 text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
+        {/* 제목 — 값 유무와 무관하게 2줄 높이를 고정해 카드마다 세로 위치가 흔들리지 않게 한다 */}
+        <p className="mb-1.5 line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-snug text-foreground group-hover:text-brand-600">
           {title}
         </p>
 
-        {summaryKo && (
-          <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-            {summaryKo}
-          </p>
-        )}
+        {/* 요약 — 값이 없어도 항상 렌더(빈 자리 유지), 2줄 높이 고정 */}
+        <p className="mb-2 line-clamp-2 min-h-[2.5rem] text-xs leading-relaxed text-muted-foreground">
+          {summaryKo ?? ''}
+        </p>
 
         <p className="mt-auto text-[11px] text-muted-foreground">
           {publishedAt

@@ -28,6 +28,7 @@ import { fetchAndSaveYoutubeTranscript } from './youtube-transcript'
 import { fetchNaverNews } from './adapters/naver-news'
 import { fetchGdeltNews } from './adapters/gdelt-news'
 import { hasGdeltCredentials, queryGdeltMonth } from './gdelt-bigquery'
+import { buildCompanyMatchOr, getCompanyNewsSinceIso } from '@/lib/insight/company-match'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -54,10 +55,22 @@ const googleNewsRss = (q: string) =>
 // ── 회사 seed 검색 수집(259) 상수 ───────────────────────────────────────
 const MAX_COMPANY_SEEDS = 120
 const COMPANY_SEARCH_BUDGET_MS = 20_000
+/** 501 — 최근 N일 이 건수 미만인 회사만 회사 seed 대상. 그 이상은 일반 수집으로
+ *  이미 충분히 들어온다(실측: 네이버 596·포스코 397 vs 지니언스 2·안랩 4). */
+const COMPANY_SEED_COVERAGE_DAYS = 30
+const COMPANY_SEED_COVERAGE_THRESHOLD = 20
 
 // maxDuration(300초) 안에서 우아하게 멈추기 위한 크롤 전체 소프트 데드라인.
 // 하드킬(강제종료)과 달리 여기 걸리면 runJob 이 정상적으로 succeeded/partial 로 기록한다.
-const CRAWL_SOFT_DEADLINE_MS = 270_000
+// 498: 270→240초로 낮췄다. 실제 소스 수집은 9~35초(전체의 10% 미만)고 시간을 먹는 건
+// 순차 처리인 키워드/회사 seed 검색(210초 안팎)이다 — 270이면 여유가 30초뿐이었는데,
+// 성공한 5일의 실측 소요가 275.5·276.4·278.7·293.4·293.6초로 전부 270을 넘겼고 최대
+// 초과폭이 23.6초라 남은 마진 6초로는 실패가 사고가 아니라 확률이었다(8일에 3번,
+// claude/진단-cron-crawl-300초초과-2026-08-15.md). 크론을 sources/seeds phase 로
+// 분리한 뒤에도 seeds 잡은 여전히 300초 창 전체를 혼자 쓰므로, 240으로 낮추면 여유가
+// 60초(실측 최대 초과폭의 2.5배)가 된다. phase 분리로 seeds 가 창을 독점하게 되니 240으로
+// 낮춰도 실제 seed 처리량은 줄지 않는다(기존엔 소스 수집 20초를 뺀 250초 안에서 돌았다).
+const CRAWL_SOFT_DEADLINE_MS = 240_000
 
 interface TranslationBudget {
   remaining: number
@@ -226,11 +239,34 @@ export interface CrawlSummary {
    *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
    *  경고 흔적을 남긴다. */
   error?: string
+  /** 498 — 소프트 데드라인에 걸려 중간에 멈춘 단계. 비어 있으면 완주.
+   *  주의: enrichRecentContents(enrichment tail)는 이번 범위가 아니라 절단 신호를
+   *  노출하지 않는다 — 비어 있다고 완주를 보장하지 않는다. */
+  truncatedPhases?: string[]
+  /** 498 — 회사 seed 처리/전체 개수. truncatedPhases 에 'company_seed' 가 있을 때 근거로 참고.
+   *  501: companySeedsTotal 은 활성 회사 전체가 아니라 커버리지 필터를 통과해 "선별된"
+   *  회사의 seed 수다 — 몇 곳 중 몇 곳이 처리됐는지가 아니라, 굶고 있던 회사들 중 몇 곳이
+   *  처리됐는지를 본다. 활성 회사 전체 규모는 companySeedsCandidates 를 봐라. */
+  companySeedsProcessed?: number
+  companySeedsTotal?: number
+  /** 501 — curated_companies 활성 회사 수(선별 전). */
+  companySeedsCandidates?: number
+  /** 501 — 커버리지 임계(COMPANY_SEED_COVERAGE_THRESHOLD) 미만으로 걸러져 seed 대상이 된 회사 수. */
+  companySeedsSelected?: number
+  /** 501 — 시도할 대상 자체가 0이었던 경우(사실상 성공/실패 판정 대상이 없음)의 사유.
+   *  competitor-weekly 의 문자열 skipped 사유와 형태를 맞췄다 — run-job.ts 가 이 필드를
+   *  보고 job_runs.status='skipped' 로 기록한다(ok=true 인 채로도 '아무 일도 안 했다'가
+   *  succeeded 로 묻히지 않게). 소스가 있었는데 전부 실패한 경우와는 다르다(그때는 ok=false). */
+  skipped?: string
 }
+
+export type CrawlPhase = 'sources' | 'seeds' | 'all'
 
 export interface RunCrawlOptions extends CrawlScheduleOptions {
   sourceIds?: string[]
   gdeltBackfill?: { from: string; to: string }
+  /** 498 — 기본 'all'(수동 실행·백필 기존 동작 보존). 크론만 'sources'/'seeds' 로 쪼개 호출한다. */
+  phase?: CrawlPhase
 }
 
 /**
@@ -1017,6 +1053,39 @@ function isGenericAlias(alias: string): boolean {
   return alias.length <= 2 && /^[a-zA-Z]+$/.test(alias)
 }
 
+/**
+ * 501 — curated_companies 중 최근 COMPANY_SEED_COVERAGE_DAYS일 내 이미 수집된 기사가
+ * COMPANY_SEED_COVERAGE_THRESHOLD건 미만인 회사만 남긴다. 큰 회사(네이버·포스코 등)는
+ * 일반 소스·키워드 수집에 자연히 묻어 들어와, 회사명으로 또 검색하면 같은 기사를 다시
+ * 긁어 dedup 에서 버리는 예산 낭비다 — 이 필터가 겨냥하는 건 니치 회사(지시서 259 의
+ * 원래 의도)뿐이다. 회사 인사이트 소비처(insight/generate.ts)와 같은 매처
+ * (buildCompanyMatchOr)를 재사용해 "굶고 있다"의 정의가 소비처와 어긋나지 않게 한다.
+ * status 필터는 걸지 않는다 — "수집이 되고 있나"를 보는 것이지 "발행됐나"가 아니다
+ * (검토 대기(pending)에 묶인 기사도 수집은 된 것이라 더 긁어와야 할 이유가 아니다).
+ * 회사당 1쿼리를 Promise.all 로 병렬 조회한다(실측 회사당 317ms — 순차면 40곳에 12.7초로
+ * 회사 seed 예산 20초의 절반을 "무엇을 크롤할지 정하는 데" 써버린다). 조회 실패한 회사는
+ * seed 대상에 남긴다 — 모르면 굶은 쪽으로 친다(0으로 위장해 조용히 빠지는 것보다 안전).
+ */
+async function filterCompaniesByCoverage(
+  admin: SupabaseClient,
+  companies: CuratedCompanyRow[]
+): Promise<CuratedCompanyRow[]> {
+  const sinceIso = getCompanyNewsSinceIso(COMPANY_SEED_COVERAGE_DAYS)
+  const results = await Promise.all(
+    companies.map(async (c) => {
+      const { count, error } = await admin
+        .from('contents')
+        .select('id', { count: 'exact', head: true })
+        .gte('collected_at', sinceIso)
+        .or(buildCompanyMatchOr(c.name, c.aliases ?? []))
+        .is('deleted_at', null)
+      const needsSeed = error ? true : (count ?? 0) < COMPANY_SEED_COVERAGE_THRESHOLD
+      return { company: c, needsSeed }
+    })
+  )
+  return results.filter(r => r.needsSeed).map(r => r.company)
+}
+
 /** curated_companies name + aliases 합집합(dedup) → 회사 seed 목록, 상한 적용. */
 function buildCompanySeeds(companies: CuratedCompanyRow[]): string[] {
   const seeds = new Set<string>()
@@ -1308,6 +1377,7 @@ async function enrichRecentContents(
  *  @param options.force true 이면 주기와 관계없이 활성 소스를 모두 실행.
  *  @param options.sourceIds 지정 시 해당 소스만 수집, 키워드 검색 skip. */
 export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSummary> {
+  const phase: CrawlPhase = options.phase ?? 'all'
   const runStartedAt = new Date().toISOString()
   const softDeadline = Date.now() + CRAWL_SOFT_DEADLINE_MS
   const backfillDays =
@@ -1424,21 +1494,32 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const exclusionHits = new Map<string, number>()
 
   // 회사 seed 목록(259) — curated_companies(253) 기반, SQL 미적용(42P01) 시 빈 배열로 격리(크롤 무중단)
+  // 501: 활성 회사 전체가 아니라 커버리지 필터(filterCompaniesByCoverage)를 통과한 회사만 seed로 쓴다.
+  // phase==='sources' 는 이 블록 자체를 스킵한다 — 커버리지 필터가 회사당 쿼리라 실측
+  // 40곳 기준 수 초~10여 초가 걸리는데, phase='sources' 크론은 companySeeds 를 아예 쓰지
+  // 않으므로(§B 아래 keyword_phase_skipped 조건과 동일 게이트) 계산해봤자 버려진다.
+  // 498 이 소스 폴링 크론을 9~35초로 지켜낸 목적을 이 단계가 무너뜨리면 안 된다.
   let companySeeds: string[] = []
-  try {
-    const companyResult = await admin
-      .from('curated_companies')
-      .select('name, aliases')
-      .eq('is_active', true)
-    if (companyResult.error) {
-      console.warn('[크롤러] curated_companies 조회 실패 (SQL 253 미적용 가능), 회사 seed 검색 skip:', companyResult.error.message)
-    } else {
-      companySeeds = rotateSeedsForToday(
-        buildCompanySeeds((companyResult.data ?? []) as CuratedCompanyRow[])
-      )
+  let companySeedsCandidates: number | undefined
+  let companySeedsSelected: number | undefined
+  if (phase !== 'sources') {
+    try {
+      const companyResult = await admin
+        .from('curated_companies')
+        .select('name, aliases')
+        .eq('is_active', true)
+      if (companyResult.error) {
+        console.warn('[크롤러] curated_companies 조회 실패 (SQL 253 미적용 가능), 회사 seed 검색 skip:', companyResult.error.message)
+      } else {
+        const activeCompanies = (companyResult.data ?? []) as CuratedCompanyRow[]
+        const selectedCompanies = await filterCompaniesByCoverage(admin, activeCompanies)
+        companySeedsCandidates = activeCompanies.length
+        companySeedsSelected = selectedCompanies.length
+        companySeeds = rotateSeedsForToday(buildCompanySeeds(selectedCompanies))
+      }
+    } catch (e) {
+      console.warn('[크롤러] curated_companies 로드 실패, 회사 seed 검색 skip:', e)
     }
-  } catch (e) {
-    console.warn('[크롤러] curated_companies 로드 실패, 회사 seed 검색 skip:', e)
   }
 
   // 본문 최소 길이(221) — crawl_settings 단일행, SQL 미적용(42P01) 시 기본값으로 격리(크롤 무중단)
@@ -1504,27 +1585,31 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   // 각 소스에 softDeadline 전달 — 이전엔 이 구간이 무제한이라(회사/키워드 seed 검색과 달리
   // 데드라인 체크가 없었음) backfillDays 로 아이템 수가 늘면 maxDuration 하드킬까지 갈 수
   // 있었다(job_runs 가 running 에서 멈추는 근본 원인, 2026-07-27 조사).
-  const results = await Promise.allSettled(
-    dueSources.map(s =>
-      s.type === 'youtube_channel'
-        ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
-        : crawlOne(
-            admin,
-            s,
-            sinceForSource(s, since, backfillDays),
-            keywords,
-            groups,
-            translationBudget,
-            classifyBudget,
-            aliasMap,
-            issueList,
-            exclusionRules,
-            exclusionHits,
-            minBodyLength,
-            softDeadline
-          )
-    )
-  )
+  // 498: phase==='seeds' 이면 이 블록을 건너뛴다 — crawl-seeds 크론은 키워드/회사 seed
+  // 검색만 담당한다(소스 폴링은 crawl 크론이 phase='sources' 로 별도 처리).
+  const results = phase === 'seeds'
+    ? []
+    : await Promise.allSettled(
+        dueSources.map(s =>
+          s.type === 'youtube_channel'
+            ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
+            : crawlOne(
+                admin,
+                s,
+                sinceForSource(s, since, backfillDays),
+                keywords,
+                groups,
+                translationBudget,
+                classifyBudget,
+                aliasMap,
+                issueList,
+                exclusionRules,
+                exclusionHits,
+                minBodyLength,
+                softDeadline
+              )
+        )
+      )
 
   // 결과 집계
   let successCount = 0
@@ -1573,14 +1658,22 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     }
   }
 
-  // 키워드 검색 수집 — 개별 소스 수집(sourceIds 지정) 시 skip
-  if (!options.sourceIds?.length && searchSeeds.length > 0) {
+  // 498: 절단 가시화 — 비어 있으면 완주(enrichment tail 은 미포함, 위 CrawlSummary 주석 참고).
+  const truncatedPhases: string[] = []
+  let companySeedsProcessed: number | undefined
+  let companySeedsTotal: number | undefined
+
+  // 키워드 검색 수집 — 개별 소스 수집(sourceIds 지정) 시 skip. 498: phase==='sources' 시에도 skip.
+  if (!options.sourceIds?.length && phase !== 'sources' && searchSeeds.length > 0) {
     providers.keyword_phase_skipped = false
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
       admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
     )
-    if (kwResult.truncated) console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
+    if (kwResult.truncated) {
+      console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
+      truncatedPhases.push('keyword_search')
+    }
     providers.keyword_google = kwResult.providerFetched.google
     providers.keyword_naver = kwResult.providerFetched.naver
     providers.keyword_gdelt = kwResult.providerFetched.gdelt
@@ -1601,8 +1694,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     if (!kwResult.hadError) successCount++
   }
 
-  // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds 지정) 시 skip.
-  if (!options.sourceIds?.length && companySeeds.length > 0) {
+  // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds
+  // 지정) 시 skip. 498: phase==='sources' 시에도 skip.
+  if (!options.sourceIds?.length && phase !== 'sources' && companySeeds.length > 0) {
     console.log(`[크롤러] 회사 seed 수집 시작: ${companySeeds.length}개 시드(날짜 회전 적용)`)
     const companyResult = await crawlCompanySearch(
       admin, companySeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS, softDeadline
@@ -1623,6 +1717,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       error:     companyResult.firstError,
     })
     if (!companyResult.hadError) successCount++
+    companySeedsProcessed = companyResult.processedSeeds
+    companySeedsTotal = companySeeds.length
+    if (companyResult.processedSeeds < companySeeds.length) truncatedPhases.push('company_seed')
     console.log(`[크롤러] 회사 seed 수집 완료: ${companyResult.processedSeeds}/${companySeeds.length}개 시드 처리`)
   }
 
@@ -1657,12 +1754,25 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   // 시도한 것(개별 소스 + 키워드/회사 seed 검색)이 하나라도 성공했으면 부분 실패로 보고 전체는
   // 성공 처리하되, errorSummary 를 남겨 job_runs.meta 로 경고를 추적할 수 있게 한다.
   // 전부 실패했을 때(성공 0건)만 진짜 전체 실패로 판정한다.
-  const attemptedAnything =
-    dueSources.length > 0 || searchSeeds.length > 0 || companySeeds.length > 0
+  // 501: phase 로 건너뛴 블록은 "시도"로 치지 않는다. phase='sources' 인 크론은 검색 seed
+  // 블록을 아예 안 도는데, searchSeeds/companySeeds 길이만으로 attemptedAnything=true 가
+  // 되면 소스가 0건 due 였던 날(sources_total:0, details:[])에도 ok=false(전체 실패)로
+  // 잘못 판정됐다(실측 2026-08-15 20:26 — 아무 일도 안 일어났는데 크론 실패로 찍힘, 500 참고).
+  // 마찬가지로 phase='seeds' 인 크론은 소스 블록을 아예 안 도는 게 정상이라 dueSources 는
+  // 시도 여부 판정에서 제외한다.
+  const attemptedSources = phase !== 'seeds' && dueSources.length > 0
+  const attemptedSeedSearch = phase !== 'sources' && (searchSeeds.length > 0 || companySeeds.length > 0)
+  const attemptedAnything = attemptedSources || attemptedSeedSearch
   const ok = !attemptedAnything || successCount > 0
+  // 시도할 대상 자체가 0이었던 경우 — 소스가 있었는데 전부 실패한 경우(ok=false)와는 다르다.
+  // "아무 일도 안 일어남"이 succeeded 로 묻히지 않도록 skipped 로 명시한다(competitor-weekly
+  // 의 문자열 skipped 사유 형태와 동일 — run-job.ts 가 이걸 보고 status='skipped' 로 기록).
+  const skipped = !attemptedAnything ? 'nothing_due' : undefined
 
   if (!ok) {
     console.error(`[크롤러] 크롤 전체 실패 — ${errorSummary ?? '성공한 소스 없음(사유 미상)'}`)
+  } else if (skipped) {
+    console.log('[크롤러] 시도할 대상 없음(nothing_due) — 소스·검색 seed 모두 이번 phase 에서 due 없음')
   } else if (problemDetails.length > 0) {
     console.warn(`[크롤러] 부분 실패 있었으나 전체는 성공 처리 — ${errorSummary}`)
   }
@@ -1680,5 +1790,11 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     details,
     providers,
     error: errorSummary,
+    truncatedPhases: truncatedPhases.length > 0 ? truncatedPhases : undefined,
+    companySeedsProcessed,
+    companySeedsTotal,
+    companySeedsCandidates,
+    companySeedsSelected,
+    skipped,
   }
 }

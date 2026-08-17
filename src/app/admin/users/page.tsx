@@ -46,12 +46,27 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
 
   const { data: users, error, count } = usersResult
 
+  // public.users에는 banned_until이 없다(auth.users 소관, PostgREST에 노출되지 않는 스키마) —
+  // 목록 조회 자체엔 이 정보가 없어 행마다 Admin API로 개별 조회한다(지시서 506 보완).
+  // 페이지 크기가 20으로 고정돼 있어 왕복 20회 추가는 어드민 전용 트래픽 범위에서 감내 가능.
+  const bannedUntilById = new Map<string, string | null>()
+  await Promise.all(
+    (users ?? []).map(async (u) => {
+      const { data } = await svc.auth.admin.getUserById(u.id)
+      bannedUntilById.set(u.id, data.user?.banned_until ?? null)
+    })
+  )
+  const usersWithBanStatus = (users ?? []).map((u) => ({
+    ...u,
+    bannedUntil: bannedUntilById.get(u.id) ?? null,
+  }))
+
   return (
     <>
       <AdminPageHeader />
       <UserManager
         key={`${page}-${sortKey}-${sortDir}`}
-        initialUsers={users ?? []}
+        initialUsers={usersWithBanStatus}
         currentUserId={user?.id ?? ''}
         initialAdminCount={adminCountResult.count ?? 0}
         tableState={error ? 'error' : (users ?? []).length === 0 ? 'empty' : 'idle'}

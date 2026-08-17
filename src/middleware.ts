@@ -79,7 +79,8 @@ export async function middleware(request: NextRequest) {
     // 온보딩 미완 상태는 캐시하지 않음 — 완료 직후 전이에서 낡은 false 쿠키가
     // 대시보드 진입을 가로막지 않도록 완료 상태만 저장한다.
     // 캐시를 완료 후에만 기록하면 그 전이 구간에서 쿠키가 낡은 값(false)으로 대시보드를
-    // 막는 사고를 구조적으로 피할 수 있다. 승인취소·강등 등 타 세션발 전이는 TTL(15분) 내 반영.
+    // 막는 사고를 구조적으로 피할 수 있다. 승인취소·강등 등 타 세션발 전이는 /admin은 즉시,
+    // 그 외 경로는 TTL(15분) 내 반영(지시서 506).
     let gate: {
       onboarding_completed: boolean
       role: string
@@ -88,7 +89,10 @@ export async function middleware(request: NextRequest) {
     } | null = null
     let hasPasswordGateEnabled = true
 
-    const cachedCookie = request.cookies.get(PROFILE_COOKIE_NAME)?.value
+    // /admin 은 캐시를 건너뛰고 항상 DB를 본다 — 관리자 role/승인상태 강등이 다음 요청에
+    // 즉시 반영돼야 한다(지시서 506 F-03). 어드민 트래픽은 소수라 DB 조회 증가 부담이 작다.
+    const isAdminPath = pathname.startsWith('/admin')
+    const cachedCookie = isAdminPath ? undefined : request.cookies.get(PROFILE_COOKIE_NAME)?.value
     if (cachedCookie) {
       const cached = await parseProfileCookie(cachedCookie, user.id)
       if (cached) {

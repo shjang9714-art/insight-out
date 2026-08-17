@@ -36,7 +36,7 @@ interface IssueRow {
   match_keywords: string[]
   source: string
   created_at: string
-  content_count?: number
+  content_count?: number | null
   content_preview?: string[]  // AI 후보용 미리보기 제목
 }
 
@@ -199,41 +199,41 @@ export default function IssueManager() {
 
     const rows = ((data ?? []) as IssueRow[]).map(sanitizeIssueRow)
 
-    // 배정 콘텐츠 수 일괄 집계
+    // 배정 콘텐츠 수 — 이슈별 병렬 count(head:true) 조회 (505: 267,368행짜리
+    // issue_contents 를 통째로 끌어와 클라이언트에서 세면 PostgREST 기본 상한(1,000행)에
+    // 걸려 대부분 0으로 보였다. 실패한 이슈는 0이 아니라 null(확인 실패)로 남긴다.)
     if (rows.length > 0) {
-      const ids = rows.map(r => r.id)
-      const { data: icData } = await supabase
-        .from('issue_contents')
-        .select('issue_id')
-        .in('issue_id', ids)
+      const countResults = await Promise.all(
+        rows.map(r =>
+          supabase.from('issue_contents')
+            .select('content_id', { count: 'exact', head: true })
+            .eq('issue_id', r.id)
+        )
+      )
+      rows.forEach((r, i) => {
+        const { count, error: countErr } = countResults[i]
+        r.content_count = countErr ? null : (count ?? 0)
+      })
 
-      const countMap = new Map<string, number>()
-      for (const row of (icData ?? []) as { issue_id: string }[]) {
-        countMap.set(row.issue_id, (countMap.get(row.issue_id) ?? 0) + 1)
-      }
-      rows.forEach(r => { r.content_count = countMap.get(r.id) ?? 0 })
+      // AI 후보(source='claude' && status='draft') 콘텐츠 미리보기 제목 — 이슈별 병렬 조회
+      // (전체 상한 방식은 앞쪽 이슈가 다 먹어 이슈당 3건을 보장하지 못했다)
+      const aiCandidateRows = rows.filter(r => r.source === 'claude' && r.status === 'draft')
 
-      // AI 후보(source='claude' && status='draft') 콘텐츠 미리보기 제목
-      const aiCandidateIds = rows
-        .filter(r => r.source === 'claude' && r.status === 'draft')
-        .map(r => r.id)
-
-      if (aiCandidateIds.length > 0) {
-        const { data: previewData } = await supabase
-          .from('issue_contents')
-          .select('issue_id, contents!inner(id, title)')
-          .in('issue_id', aiCandidateIds)
-          .limit(aiCandidateIds.length * 4)
-
-        type PreviewRow = { issue_id: string; contents: { title: string } }
-        const previewMap = new Map<string, string[]>()
-        for (const row of (previewData ?? []) as unknown as PreviewRow[]) {
-          if (!previewMap.has(row.issue_id)) previewMap.set(row.issue_id, [])
-          const titles = previewMap.get(row.issue_id)!
-          if (titles.length < 3) titles.push(row.contents.title)
-        }
-        rows.forEach(r => {
-          if (previewMap.has(r.id)) r.content_preview = previewMap.get(r.id)
+      if (aiCandidateRows.length > 0) {
+        const previewResults = await Promise.all(
+          aiCandidateRows.map(r =>
+            supabase.from('issue_contents')
+              .select('contents!inner(title)')
+              .eq('issue_id', r.id)
+              .limit(3)
+          )
+        )
+        type PreviewRow = { contents: { title: string } }
+        aiCandidateRows.forEach((r, i) => {
+          const { data: previewData, error: previewErr } = previewResults[i]
+          if (!previewErr && previewData) {
+            r.content_preview = (previewData as unknown as PreviewRow[]).map(row => row.contents.title)
+          }
         })
       }
     }
@@ -465,7 +465,7 @@ export default function IssueManager() {
   const columns: AdminTableColumn<IssueRow>[] = [
     { key: 'title', header: '제목', cell: (issue) => <div className="admin-cell-wrap"><div className="line-clamp-1 font-medium text-foreground">{issue.title}</div>{issue.summary && <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{issue.summary}</div>}{rematchMsg?.id === issue.id && <div className={cn('mt-1 text-[11px] font-medium', rematchMsg.ok ? 'text-positive' : 'text-negative')}>{rematchMsg.text}</div>}{briefMsg?.id === issue.id && <div className={cn('mt-1 text-[11px] font-medium', briefMsg.ok ? 'text-positive' : 'text-negative')}>{briefMsg.text}</div>}</div> },
     { key: 'status', header: '상태', cell: (issue) => <StatusBadge tone={ISSUE_STATUS_TONE[issue.status]} label={STATUS_LABEL[issue.status]} /> },
-    { key: 'assigned', header: '배정', align: 'center', cell: (issue) => <span className="text-xs font-medium tabular-nums">{issue.content_count ?? 0}</span> },
+    { key: 'assigned', header: '배정', align: 'center', cell: (issue) => issue.content_count === null ? <span className="text-xs text-muted-foreground">확인 실패</span> : <span className="text-xs font-medium tabular-nums">{issue.content_count ?? 0}</span> },
     { key: 'keywords', header: '키워드', align: 'center', cell: (issue) => <span className="text-xs tabular-nums text-muted-foreground">{issue.match_keywords?.length ?? 0}</span> },
     { key: 'actions', header: '작업', align: 'right', cell: (issue) => <div className="flex items-center justify-end gap-0.5"><button onClick={() => openEdit(issue)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="수정"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => { void handleRematch(issue) }} disabled={rematchingId === issue.id} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', rematchingId === issue.id ? 'cursor-wait text-muted-foreground/40' : issue.match_keywords?.length > 0 ? 'text-brand-600 hover:bg-brand-50' : 'text-muted-foreground/30 cursor-default')} title={issue.match_keywords?.length > 0 ? '키워드로 재배정' : 'match_keywords 없음'}>{rematchingId === issue.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}</button><button onClick={() => { void handleBrief(issue) }} disabled={briefingId === issue.id} className={cn('rounded p-1.5 transition-colors hover:bg-accent hover:text-foreground', briefingId === issue.id ? 'cursor-wait text-muted-foreground/40' : 'text-blue-500 hover:bg-blue-50 hover:text-blue-700')} title="AI 브리핑 생성">{briefingId === issue.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrainCircuit className="h-3.5 w-3.5" />}</button><button onClick={() => { void handleDelete(issue) }} className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button></div> },
   ]
@@ -565,9 +565,9 @@ export default function IssueManager() {
                             · {title}
                           </li>
                         ))}
-                        {(issue.content_count ?? 0) > (issue.content_preview.length) && (
+                        {typeof issue.content_count === 'number' && issue.content_count > issue.content_preview.length && (
                           <li className="text-[11px] text-muted-foreground/60">
-                            외 {(issue.content_count ?? 0) - issue.content_preview.length}건
+                            외 {issue.content_count - issue.content_preview.length}건
                           </li>
                         )}
                       </ul>

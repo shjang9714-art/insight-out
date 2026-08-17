@@ -2,7 +2,7 @@
 // Web Crypto(crypto.subtle) 사용 — Edge/Node 런타임 모두 호환.
 
 export const PROFILE_COOKIE_NAME = 'uo'
-export const PROFILE_COOKIE_TTL_SECONDS = 15 * 60 // 15분 — 승인취소/강등 등 타 세션발 전이는 이 TTL 내로 반영
+export const PROFILE_COOKIE_TTL_SECONDS = 15 * 60 // 15분. /admin 경로는 이 캐시를 건너뛰고 매 요청 DB를 본다(지시서 506) — 그 외 경로는 승인취소/강등 등 타 세션발 전이가 이 TTL 내로 반영된다.
 
 export interface CachedProfile {
   uid: string

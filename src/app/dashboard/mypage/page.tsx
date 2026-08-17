@@ -423,7 +423,7 @@ export default function MyPage() {
             onWatchlistChange={refreshWatchlistSummary}
           />
 
-          <section>
+          <section id="bookmarks" className="scroll-mt-20">
             <h2 className="mb-4 text-base font-semibold text-foreground">북마크</h2>
             <BookmarksTab
               bookmarks={bookmarks}
@@ -433,7 +433,7 @@ export default function MyPage() {
             />
           </section>
 
-          <section>
+          <section id="archives" className="scroll-mt-20">
             <h2 className="mb-4 text-base font-semibold text-foreground">아카이브</h2>
             <ArchivesTab
               archives={archives}

@@ -26,14 +26,14 @@ export async function GET(request: NextRequest) {
       // 기준일을 저장). 하루 1회뿐인 스냅샷이니 캐시 없이 그 시점 실측값을 직접 계산한다.
       const trending = await computeTrendingEvents()
 
-      if (!trending) {
-        return { ok: false as const, error: 'trending_keywords 뷰 조회 실패' }
+      if (!trending.ok) {
+        return { ok: false as const, error: `${trending.stage} 조회 실패: ${trending.error}` }
       }
 
       // 명시적 date 쿼리(백필용)가 없으면 랭킹에 반영된 기사들의 실제 최신일(asOfDateKst)로
       // 저장 — 시스템 시계상 "오늘"을 그대로 쓰면 히스토리 조회 시에도 날짜·건수 불일치가 재현된다.
-      const date = explicitDate ?? trending.asOfDateKst
-      const saved = await saveTrendingSnapshot(trending.events, date)
+      const date = explicitDate ?? trending.value.asOfDateKst
+      const saved = await saveTrendingSnapshot(trending.value.events, date)
       return { ok: true as const, date, saved }
     })
 

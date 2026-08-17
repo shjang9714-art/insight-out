@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef, useSyncExternalStore, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { LayoutGrid, List, Loader2 } from 'lucide-react'
+import { Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
@@ -13,9 +13,12 @@ import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
-import { Button } from '@/components/ui/button'
+import ViewToggle, { type ContentsView } from '@/components/contents/ViewToggle'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
+import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
+// 511 — 목록 자체 검색(q)이 전역 통합검색과 같은 결과 집합을 내도록 토큰 빌더를 재사용한다.
+import { buildQueryTokens, applyTokenFilters } from '@/lib/search/use-unified-search'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -57,7 +60,6 @@ interface ClusteredItem {
 const PAGE_SIZE = 20
 const CONTENTS_VIEW_STORAGE_KEY = 'io:contents-view'
 const CONTENTS_VIEW_CHANGE_EVENT = 'io:contents-view-change'
-type ContentsView = 'card' | 'list'
 
 function getContentsViewSnapshot(): ContentsView {
   const savedView = window.localStorage.getItem(CONTENTS_VIEW_STORAGE_KEY)
@@ -172,68 +174,104 @@ function useLoadingPhase(isLoading: boolean): LoadingPhase {
 
 // ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
 
-function ContentCardGrid({ items, category, sortByCollected }: {
+/** 510 — 카드 렌더링만 담당(격자 wrapper는 안 만듦). 날짜별로 격자를 새로 여는 대신
+ *  하나의 격자 안에 날짜 헤더+카드를 함께 넣어야 해서(작업 1) 격자 wrapper와 분리했다. */
+function renderContentCards(
+  items: ClusteredItem[],
+  category: ContentCategory | '',
+  sortByCollected: boolean,
+  tagFreqMap?: Record<string, number>,
+) {
+  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
+  return items.map(({ item, members }, index) => (
+    category === '유튜브' || category === '뉴스' ? (
+      <ContentCard
+        key={item.id}
+        id={item.id}
+        title={item.title}
+        summaryKo={toExcerpt(item.summary_ko, item.body_original)}
+        category={item.category}
+        sourceName={item.sources?.name ?? item.author ?? null}
+        publishedAt={displayDate(item, sortByCollected)}
+        thumbnailUrl={coverUrls[index]}
+        externalHref={category === '유튜브' ? item.original_url : null}
+        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
+        lguImpact={item.lgu_impact ?? null}
+      />
+    ) : category === '리서치' || category === '지식보고서' ? (
+      <ContentReportCard
+        key={item.id}
+        id={item.id}
+        title={item.title}
+        summary={toExcerpt(item.summary_ko, item.body_original)}
+        category={item.category}
+        sourceName={item.sources?.name ?? item.author ?? null}
+        publishedAt={displayDate(item, sortByCollected)}
+        coverImageUrl={coverUrls[index]}
+        keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
+      />
+    ) : (
+      <ContentListCard
+        key={item.id}
+        id={item.id}
+        title={item.title}
+        excerpt={toExcerpt(item.summary_ko, item.body_original)}
+        category={item.category}
+        publishedAt={displayDate(item, sortByCollected)}
+        originalUrl={item.original_url}
+        filePath={item.file_path}
+        isEditorPick={item.is_editor_pick}
+        author={item.author}
+        sourceName={item.sources?.name ?? null}
+        tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
+        clusterMembers={members.length > 0 ? members : undefined}
+        thumbnailUrl={coverUrls[index]}
+        lguImpact={item.lgu_impact ?? null}
+      />
+    )
+  ))
+}
+
+function ContentCardGrid({ items, category, sortByCollected, tagFreqMap }: {
   items: ClusteredItem[]
   category: ContentCategory | ''
   sortByCollected: boolean
+  tagFreqMap?: Record<string, number>
 }) {
-  const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
-    <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-      {items.map(({ item, members }, index) => (
-        category === '유튜브' || category === '뉴스' ? (
-          <ContentCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            summaryKo={item.summary_ko ?? null}
-            category={item.category}
-            sourceName={item.sources?.name ?? item.author ?? null}
-            publishedAt={displayDate(item, sortByCollected)}
-            thumbnailUrl={coverUrls[index]}
-            externalHref={category === '유튜브' ? item.original_url : null}
-            keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-            lguImpact={item.lgu_impact ?? null}
-          />
-        ) : category === '리서치' || category === '지식보고서' ? (
-          <ContentReportCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            summary={toExcerpt(item.summary_ko, item.body_original)}
-            category={item.category}
-            sourceName={item.sources?.name ?? item.author ?? null}
-            publishedAt={displayDate(item, sortByCollected)}
-            coverImageUrl={coverUrls[index]}
-            keywords={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-          />
-        ) : (
-          <ContentListCard
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            excerpt={toExcerpt(item.summary_ko, item.body_original)}
-            category={item.category}
-            publishedAt={displayDate(item, sortByCollected)}
-            originalUrl={item.original_url}
-            filePath={item.file_path}
-            isEditorPick={item.is_editor_pick}
-            author={item.author}
-            sourceName={item.sources?.name ?? null}
-            tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
-            clusterMembers={members.length > 0 ? members : undefined}
-            thumbnailUrl={coverUrls[index]}
-            lguImpact={item.lgu_impact ?? null}
-          />
-        )
+    <div className={CONTENT_GRID_CLASS}>
+      {renderContentCards(items, category, sortByCollected, tagFreqMap)}
+    </div>
+  )
+}
+
+/** 510 — 작업 1: 날짜별로 <section>마다 격자를 새로 열던 것을 격자 하나로 합친다.
+ *  날짜 헤더는 그 격자의 자식(col-span-full)으로 들어가 열이 날짜 경계를 넘어서도
+ *  정렬된다. sticky/backdrop-blur 등 기존 헤더 스타일·동작은 그대로 유지. */
+function GroupedContentCardGrid({ items, category, sortByCollected, tagFreqMap }: {
+  items: ClusteredItem[]
+  category: ContentCategory | ''
+  sortByCollected: boolean
+  tagFreqMap?: Record<string, number>
+}) {
+  return (
+    <div className={CONTENT_GRID_CLASS}>
+      {groupByKstDay(items, sortByCollected).map((seg) => (
+        <Fragment key={seg.key}>
+          <p className="col-span-full sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+            {seg.label}
+          </p>
+          {renderContentCards(seg.items, category, sortByCollected, tagFreqMap)}
+        </Fragment>
       ))}
     </div>
   )
 }
 
-function ContentRowList({ items, sortByCollected }: {
+function ContentRowList({ items, sortByCollected, tagFreqMap }: {
   items: ClusteredItem[]
   sortByCollected: boolean
+  tagFreqMap?: Record<string, number>
 }) {
   const coverUrls = coverUrlsForList(items.map(({ item }) => item))
   return (
@@ -250,7 +288,7 @@ function ContentRowList({ items, sortByCollected }: {
           // 유튜브는 리스트 뷰에서도 상세 페이지가 아니라 원문(유튜브) 링크로 바로 연결한다.
           externalHref={item.category === '유튜브' ? item.original_url : null}
           sourceName={item.sources?.name ?? item.author ?? null}
-          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category)}
+          tags={tagsOf2(item.matched_groups ?? [], item.matched_keywords ?? [], item.category, tagFreqMap)}
           thumbnailUrl={coverUrls[index]}
           lguImpact={item.lgu_impact ?? null}
         />
@@ -302,11 +340,17 @@ export default function ContentsBoard({
   // 395 — 직전 category를 들고 있다가 바뀌면 쿼리 전에 목록을 비운다(잔상 방지).
   const prevCategoryRef = useRef(category)
   const [popularKeywords, setPopularKeywords] = useState<{ name: string; count: number }[]>([])
-  const contentsView = useSyncExternalStore(
+  // 514 — 태그 희소도 정렬용 30일 문서빈도 맵(매칭 그룹+매칭 키워드 합집합). 값이 없으면
+  // tagsOf2가 기존 순서로 폴백하므로 로딩 전에도 안전하다.
+  const [tagFreqMap, setTagFreqMap] = useState<Record<string, number> | undefined>(undefined)
+  // 512 — 기본값은 localStorage(기기별 마지막 선택) 기억용, ?view= 가 있으면 URL이 우선(새로고침·공유 시 유지).
+  const storedContentsView = useSyncExternalStore(
     subscribeContentsView,
     getContentsViewSnapshot,
     getContentsViewServerSnapshot,
   )
+  const viewParam = searchParams.get('view')
+  const contentsView: ContentsView = viewParam === 'card' || viewParam === 'list' ? viewParam : storedContentsView
   // lgu_impact 컬럼 미적용(42703) 시 false — select 에서 제외하되 카드 배지는 유지한다.
   const [lguImpactAvailable, setLguImpactAvailable] = useState(true)
 
@@ -331,6 +375,20 @@ export default function ContentsBoard({
     router.replace(`${pathname}?${params.toString()}`)
   }
 
+  // ── 검색 입력(511) — 텍스트 질의. 기존 키워드 칩(필터)과는 독립적으로 해제 가능.
+  // ?q= 에 동기화하되, 타건마다 재조회하지 않도록 300ms 디바운스 후 updateParam(page 리셋 포함)한다.
+  const [queryInput, setQueryInput] = useState(searchQuery)
+  useEffect(() => {
+    startTransition(() => setQueryInput(searchQuery))
+  }, [searchQuery])
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (queryInput.trim() !== searchQuery) updateParam('q', queryInput.trim())
+    }, 300)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryInput])
+
   // 현재 소스타입의 최근 30일 인기 키워드를 가져온다.
   useEffect(() => {
     if (!category) return
@@ -340,9 +398,15 @@ export default function ContentsBoard({
     fetch(`/api/contents/keywords?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('인기 키워드 조회 실패')
-        return response.json() as Promise<{ keywords: { name: string; count: number }[] }>
+        return response.json() as Promise<{
+          keywords: { name: string; count: number }[]
+          frequencies?: Record<string, number>
+        }>
       })
-      .then(({ keywords }) => setPopularKeywords(keywords))
+      .then(({ keywords, frequencies }) => {
+        setPopularKeywords(keywords)
+        setTagFreqMap(frequencies)
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
         if (!schemaPendingMessage) console.error('[contents] 인기 키워드 조회 오류:', error)
@@ -389,8 +453,10 @@ export default function ContentsBoard({
           query = query.in('category', dbCats)
         }
         if (searchQuery) {
-          const escapedQuery = searchQuery.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-          query = query.or(`title.ilike."%${escapedQuery}%",summary_ko.ilike."%${escapedQuery}%"`)
+          // 511 — 전역 통합검색(use-unified-search)과 같은 토큰 빌더·필터 조합을 써서
+          // 결과 집합이 갈라지지 않게 한다. ilike(title/summary_ko) OR fts(search_vector) —
+          // 본문 커버리지(509 2단계)도 이 목록 검색에 그대로 적용된다.
+          query = applyTokenFilters(query, ['title', 'summary_ko'], buildQueryTokens(searchQuery), 'search_vector')
         }
         if (selectedKeywords.length > 0) query = query.overlaps('matched_keywords', selectedKeywords)
 
@@ -443,7 +509,25 @@ export default function ContentsBoard({
     p.set('page', String(next))
     window.history.replaceState(null, '', `${pathname}?${p.toString()}`)
   }
+  // 511 — hasMore 는 반드시 서버가 돌려준 원시 items 행 수 기준으로만 판정한다.
+  // clusteredItems 는 표시용으로 클러스터를 접어 카드 수가 total 보다 적어질 수 있어
+  // 그 기준으로 판정하면 실제로 더 있는데 "더 보기"가 사라진다.
   const hasMore = total !== null && items.length < total
+
+  // 511 — 무한 스크롤: sentinel(더 보기 버튼을 감싼 영역)이 뷰포트 근처에 들어오면
+  // 자동으로 handleLoadMore. 버튼 자체는 지우지 않고 접근성·수동 폴백으로 남긴다.
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!hasMore || isLoading) return
+    const el = loadMoreRef.current
+    if (!el) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) handleLoadMore()
+    }, { rootMargin: '600px 0px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, isLoading, page])
 
   // 394 — 5초 지연 안내의 "다시 시도" 버튼. 의존성 배열의 retryToken만 바꿔 동일 쿼리를 재실행한다.
   const handleRetry = () => setRetryToken((t) => t + 1)
@@ -502,6 +586,9 @@ export default function ContentsBoard({
   const changeContentsView = (view: ContentsView) => {
     window.localStorage.setItem(CONTENTS_VIEW_STORAGE_KEY, view)
     window.dispatchEvent(new Event(CONTENTS_VIEW_CHANGE_EVENT))
+    const params = new URLSearchParams(window.location.search)
+    params.set('view', view)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
@@ -509,7 +596,6 @@ export default function ContentsBoard({
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠')
 
-  const supportsViewToggle = category === '뉴스' || category === '웹인사이트' || category === '유튜브'
   const usesContinuousLayout =
     category === '웹인사이트'
     || category === '리서치'
@@ -533,44 +619,43 @@ export default function ContentsBoard({
             )
           )}
         </div>
-        {supportsViewToggle && (
-          <div className="flex items-center rounded-lg border border-border bg-card p-0.5" role="group" aria-label="콘텐츠 보기 방식">
-            <Button
-              type="button"
-              variant={contentsView === 'card' ? 'secondary' : 'ghost'}
-              size="icon-sm"
-              onClick={() => changeContentsView('card')}
-              aria-label="카드 보기"
-              aria-pressed={contentsView === 'card'}
-              title="카드 보기"
-            >
-              <LayoutGrid aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant={contentsView === 'list' ? 'secondary' : 'ghost'}
-              size="icon-sm"
-              onClick={() => changeContentsView('list')}
-              aria-label="리스트 보기"
-              aria-pressed={contentsView === 'list'}
-              title="리스트 보기"
-            >
-              <List aria-hidden />
-            </Button>
-          </div>
-        )}
+        <ViewToggle value={contentsView} onChange={changeContentsView} groupAriaLabel="콘텐츠 보기 방식" />
       </div>
 
       {/* ─── 자료종류(L2) 탭 — 헤더가 아니라 콘텐츠 영역 안쪽, 제목/건수 아래 목록 위 */}
       <ContentsL2Tabs />
 
-      {/* ─── 인기 키워드 ──────────────────────────────────────────────── */}
-      {/* 검색어·선택 키워드가 있을 때만 노출(칩은 필터 상태를 보여주는 용도) —
-          평소엔 렌더 자체를 안 해 세로 공간도 차지하지 않는다. */}
-      {(searchQuery || selectedKeywords.length > 0) && (
-        <div className="mb-6 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {keywordChips.map(({ name }) => {
+      {/* ─── 검색(질의) + 인기 키워드(필터) — 511: 역할 분리, 한 줄에 나란히, 각각 독립 해제.
+          검색 입력창은 항상 노출하되, 인기 키워드 칩·"모두 지우기"는 검색어·선택 키워드가
+          있을 때만 노출한다(칩은 필터 상태를 보여주는 용도라 평소엔 렌더 자체를 안 함). */}
+      <div className="mb-6 space-y-3">
+        <div className="flex min-h-[34px] flex-wrap items-center gap-2">
+          {/* 검색 입력 — 텍스트 질의. ?q= 에 동기화(300ms 디바운스), 키워드 칩과 독립적으로 해제 가능 */}
+          <div className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <input
+              type="text"
+              value={queryInput}
+              onChange={(e) => setQueryInput(e.target.value)}
+              placeholder="제목·요약·본문 검색"
+              aria-label="콘텐츠 검색"
+              className="h-[34px] w-full rounded-full border border-border bg-card py-1.5 pl-8 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            {queryInput && (
+              <button
+                type="button"
+                onClick={() => setQueryInput('')}
+                aria-label="검색어 지우기"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {(searchQuery || selectedKeywords.length > 0) && (
+            <>
+              {keywordChips.map(({ name }) => {
                 const isSelected = selectedKeywords.includes(name)
                 return (
                   <button
@@ -596,9 +681,10 @@ export default function ContentsBoard({
               >
                 모두 지우기
               </button>
-          </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* ─── 콘텐츠 목록 ──────────────────────────────────────────────────────── */}
       {/* 394 — 원칙: 최초 로딩(목록 없음) = 정확한 스켈레톤 / 재조회(목록 있음) = 기존 목록 유지.
@@ -623,7 +709,7 @@ export default function ContentsBoard({
                 </button>
               </div>
             )}
-            <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
+            <div className={CONTENT_GRID_CLASS}>
               {Array.from({ length: 6 }).map((_, i) => <ContentCardSkeleton key={i} index={i} />)}
             </div>
           </div>
@@ -650,33 +736,34 @@ export default function ContentsBoard({
           {/* 395 — 상단 바 형태의 로딩 표시는 경고 배너처럼 읽혀 삭제. opacity만 유지(검색·칩 전환 시 "바뀌는 중" 최소 신호).
               더 보기(page>1)는 기존 목록 전체가 흐려지면 안 되므로 대상에서 제외한다. */}
           <div className={cn('transition-opacity duration-150', isLoading && page === 1 && 'opacity-[0.85]')}>
-            {usesContinuousLayout ? (
-              supportsViewToggle && contentsView === 'list' ? (
-                <ContentRowList items={clusteredItems} sortByCollected={sortByCollected} />
+            {contentsView === 'list' ? (
+              usesContinuousLayout ? (
+                <ContentRowList items={clusteredItems} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
               ) : (
-                <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} />
+                // 510 — 리스트 뷰는 행 목록이라 열 정렬 문제가 없어 날짜별 섹션 구조를 그대로 유지한다.
+                // 512 — 이전엔 '뉴스' 카테고리에만 적용됐으나, 리스트 뷰 전환이 전 카테고리로 확장되며 일반화.
+                <div className="space-y-6">
+                  {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
+                    <section key={seg.key}>
+                      <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
+                        {seg.label}
+                      </p>
+                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
+                    </section>
+                  ))}
+                </div>
               )
+            ) : usesContinuousLayout ? (
+              <ContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
             ) : (
-              <div className="space-y-6">
-                {groupByKstDay(clusteredItems, sortByCollected).map((seg) => (
-                  <section key={seg.key}>
-                    <p className="sticky top-14 z-10 mb-3 bg-background/90 py-1 text-sm font-semibold text-muted-foreground backdrop-blur-sm">
-                      {seg.label}
-                    </p>
-                    {category === '뉴스' && contentsView === 'list' ? (
-                      <ContentRowList items={seg.items} sortByCollected={sortByCollected} />
-                    ) : (
-                      <ContentCardGrid items={seg.items} category={category} sortByCollected={sortByCollected} />
-                    )}
-                  </section>
-                ))}
-              </div>
+              // 510 — 작업 1: 날짜 경계를 넘어 열이 정렬되도록 격자 하나로 통합(GroupedContentCardGrid).
+              <GroupedContentCardGrid items={clusteredItems} category={category} sortByCollected={sortByCollected} tagFreqMap={tagFreqMap} />
             )}
           </div>
 
-          {/* 더 보기 */}
+          {/* 더 보기 — 511: IntersectionObserver로 자동 로드(위 useEffect), 이 버튼은 접근성·수동 폴백 */}
           {hasMore && (
-            <div className="mt-5 flex justify-center">
+            <div ref={loadMoreRef} className="mt-5 flex justify-center">
               <button
                 onClick={handleLoadMore}
                 disabled={isLoading}
