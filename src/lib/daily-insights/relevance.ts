@@ -12,7 +12,9 @@ import type { DailyInsightCategory } from '@/lib/daily-insights/constants'
 // suggestedCategory 를 그대로 물려받으면 한 그룹 내 멤버는 항상 그룹 카테고리와 일치해
 // 필터가 무력화되므로, 반드시 과거기사 자신의 matched_groups/entities 로 재판정해야 한다.
 
-const GROUP_NAME_TO_CATEGORY: Record<string, DailyInsightCategory> = {
+// generate.ts(§5-A 주제 타임라인 gatherTopicTimeline)도 그대로 재사용 — matched_groups →
+// DailyInsightCategory 매핑은 이 파일이 유일한 정본이므로 export 해 중복 정의를 막는다.
+export const GROUP_NAME_TO_CATEGORY: Record<string, DailyInsightCategory> = {
   'AIDC': 'AIDC·클라우드',
   'AICC': 'AICC·비즈콜',
   '통신 B2B': '통신사업·커넥티비티',
@@ -22,7 +24,7 @@ const GROUP_NAME_TO_CATEGORY: Record<string, DailyInsightCategory> = {
   '정부 규제': '정책·정부',
   '빅테크': '빅테크·One LG',
 }
-const SECURITY_GROUP_NAME = '사이버보안'
+export const SECURITY_GROUP_NAME = '사이버보안'
 const TELECOM_COMPANY_NAMES = ['LG유플러스', 'SKT', 'KT', 'SK브로드밴드'] as const
 
 /** 과거기사 content_id → (재판정한) 카테고리. 판정 불가(매칭 없음)는 null. */
