@@ -98,7 +98,7 @@ function tokenizeQuery(q: string): string[] {
 
 /** 토큰 하나의 두 검색 형태 — ilike(제목·요약 등 trigram 인덱스 컬럼용)와
  *  fts(contents.search_vector 전용, to_tsquery('simple') 접두 질의). */
-interface QueryToken {
+export interface QueryToken {
   ilike: string
   /** 한글·영숫자 외 문자를 제거하고 접두(:*)를 붙인 to_tsquery 항. 남는 글자가 없으면 null —
    *  그 토큰은 fts 조건 자체를 건너뛴다(빈 tsquery 로 쿼리를 보내지 않기 위함). */
@@ -107,7 +107,9 @@ interface QueryToken {
 
 // 509 2단계 — 'simple' 설정은 형태소 분석을 하지 않아 '엔비디아의'가 통째로 한 토큰이 된다.
 // 접두 매칭(:*)이 없으면 조사 붙은 표기를 전부 놓친다(실측: '엔비디아' 완전일치 false / '엔비디아:*' true).
-function buildQueryTokens(q: string): QueryToken[] {
+// 511 — ContentsBoard(콘텐츠 목록 화면 자체 검색)도 이 함수를 그대로 재사용한다.
+// 전역 통합검색과 결과 집합이 갈라지면 안 되기 때문(export).
+export function buildQueryTokens(q: string): QueryToken[] {
   return tokenizeQuery(q).map((token) => {
     const searchTerm = normalizeCompany(token) ?? token
     const escaped = searchTerm.replace(/[%_]/g, '\\$&')
@@ -121,7 +123,7 @@ function buildQueryTokens(q: string): QueryToken[] {
 
 /** 각 토큰이 columns(ilike) 또는 ftsColumn(fts, 지정된 경우만) 중 하나에라도 등장해야 하는
  *  (OR across columns) AND (across tokens) 필터를 체이닝한다. */
-function applyTokenFilters<T extends { or: (filter: string) => T }>(
+export function applyTokenFilters<T extends { or: (filter: string) => T }>(
   query: T,
   columns: string[],
   tokens: QueryToken[],

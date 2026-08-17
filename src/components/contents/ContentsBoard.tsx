@@ -1,11 +1,11 @@
 'use client'
 
-import { Fragment, useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef, useSyncExternalStore, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { LayoutGrid, List, Loader2 } from 'lucide-react'
+import { LayoutGrid, List, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
 import ContentCard from '@/components/dashboard/ContentCard'
@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
 import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
+// 511 — 목록 자체 검색(q)이 전역 통합검색과 같은 결과 집합을 내도록 토큰 빌더를 재사용한다.
+import { buildQueryTokens, applyTokenFilters } from '@/lib/search/use-unified-search'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -361,6 +363,20 @@ export default function ContentsBoard({
     router.replace(`${pathname}?${params.toString()}`)
   }
 
+  // ── 검색 입력(511) — 텍스트 질의. 기존 키워드 칩(필터)과는 독립적으로 해제 가능.
+  // ?q= 에 동기화하되, 타건마다 재조회하지 않도록 300ms 디바운스 후 updateParam(page 리셋 포함)한다.
+  const [queryInput, setQueryInput] = useState(searchQuery)
+  useEffect(() => {
+    startTransition(() => setQueryInput(searchQuery))
+  }, [searchQuery])
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (queryInput.trim() !== searchQuery) updateParam('q', queryInput.trim())
+    }, 300)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryInput])
+
   // 현재 소스타입의 최근 30일 인기 키워드를 가져온다.
   useEffect(() => {
     if (!category) return
@@ -419,8 +435,10 @@ export default function ContentsBoard({
           query = query.in('category', dbCats)
         }
         if (searchQuery) {
-          const escapedQuery = searchQuery.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-          query = query.or(`title.ilike."%${escapedQuery}%",summary_ko.ilike."%${escapedQuery}%"`)
+          // 511 — 전역 통합검색(use-unified-search)과 같은 토큰 빌더·필터 조합을 써서
+          // 결과 집합이 갈라지지 않게 한다. ilike(title/summary_ko) OR fts(search_vector) —
+          // 본문 커버리지(509 2단계)도 이 목록 검색에 그대로 적용된다.
+          query = applyTokenFilters(query, ['title', 'summary_ko'], buildQueryTokens(searchQuery), 'search_vector')
         }
         if (selectedKeywords.length > 0) query = query.overlaps('matched_keywords', selectedKeywords)
 
@@ -473,7 +491,25 @@ export default function ContentsBoard({
     p.set('page', String(next))
     window.history.replaceState(null, '', `${pathname}?${p.toString()}`)
   }
+  // 511 — hasMore 는 반드시 서버가 돌려준 원시 items 행 수 기준으로만 판정한다.
+  // clusteredItems 는 표시용으로 클러스터를 접어 카드 수가 total 보다 적어질 수 있어
+  // 그 기준으로 판정하면 실제로 더 있는데 "더 보기"가 사라진다.
   const hasMore = total !== null && items.length < total
+
+  // 511 — 무한 스크롤: sentinel(더 보기 버튼을 감싼 영역)이 뷰포트 근처에 들어오면
+  // 자동으로 handleLoadMore. 버튼 자체는 지우지 않고 접근성·수동 폴백으로 남긴다.
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!hasMore || isLoading) return
+    const el = loadMoreRef.current
+    if (!el) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) handleLoadMore()
+    }, { rootMargin: '600px 0px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, isLoading, page])
 
   // 394 — 5초 지연 안내의 "다시 시도" 버튼. 의존성 배열의 retryToken만 바꿔 동일 쿼리를 재실행한다.
   const handleRetry = () => setRetryToken((t) => t + 1)
@@ -591,10 +627,32 @@ export default function ContentsBoard({
         )}
       </div>
 
-      {/* ─── 인기 키워드 ──────────────────────────────────────────────── */}
+      {/* ─── 검색(질의) + 인기 키워드(필터) — 511: 역할 분리, 한 줄에 나란히, 각각 독립 해제 ──── */}
       <div className="mb-6 space-y-3">
         {/* 394 — 항상 렌더 + 최소 높이 예약(칩 한 줄 높이). /api/contents/keywords 응답이 늦게 와도 아래 목록이 밀리지 않는다. */}
         <div className="flex min-h-[34px] flex-wrap items-center gap-2">
+          {/* 검색 입력 — 텍스트 질의. ?q= 에 동기화(300ms 디바운스), 키워드 칩과 독립적으로 해제 가능 */}
+          <div className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <input
+              type="text"
+              value={queryInput}
+              onChange={(e) => setQueryInput(e.target.value)}
+              placeholder="제목·요약·본문 검색"
+              aria-label="콘텐츠 검색"
+              className="h-[34px] w-full rounded-full border border-border bg-card py-1.5 pl-8 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            {queryInput && (
+              <button
+                type="button"
+                onClick={() => setQueryInput('')}
+                aria-label="검색어 지우기"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           {keywordChips.map(({ name }) => {
               const isSelected = selectedKeywords.includes(name)
               return (
@@ -700,9 +758,9 @@ export default function ContentsBoard({
             )}
           </div>
 
-          {/* 더 보기 */}
+          {/* 더 보기 — 511: IntersectionObserver로 자동 로드(위 useEffect), 이 버튼은 접근성·수동 폴백 */}
           {hasMore && (
-            <div className="mt-5 flex justify-center">
+            <div ref={loadMoreRef} className="mt-5 flex justify-center">
               <button
                 onClick={handleLoadMore}
                 disabled={isLoading}
