@@ -50,11 +50,12 @@ async function main() {
     // macOS(APFS)는 한글 파일명을 NFD(자모 분해)로 반환. 매칭 키와 URL 모두 NFC로 정규화해
     // 빌드 OS(맥=NFD / Vercel Linux=NFC 체크아웃)와 무관하게 매니페스트를 결정론적으로 만든다.
     // git 트리 파일명은 NFC이므로 Vercel에서 NFC URL이 정확히 매칭되고(200), macOS는 정규화-무관 조회라 로컬 dev도 200.
+    const normalizedFile = file.normalize('NFC')
     const rawKey = stripVariantSuffix(base).normalize('NFC')
     const canonicalKey = ALIAS[rawKey] ?? rawKey
-    const url = encodeURI(`/topic-covers/${file.normalize('NFC')}`)
+    const url = encodeURI(`/topic-covers/${normalizedFile}`)
     if (!pool[canonicalKey]) pool[canonicalKey] = []
-    pool[canonicalKey].push(url)
+    pool[canonicalKey].push({ file: normalizedFile, url })
   }
 
   const lines = []
@@ -64,7 +65,10 @@ async function main() {
   lines.push('')
   lines.push('export const TOPIC_COVER_POOL: Record<string, string[]> = {')
   for (const key of Object.keys(pool).sort()) {
-    const arr = pool[key].map((u) => JSON.stringify(u)).join(', ')
+    // 키별 파일 배열을 파일명 오름차순으로 정렬해 출력 — readdir 순서는 실행 환경(파일시스템)마다
+    // 달라질 수 있어 그대로 쓰면 같은 소스로도 커버 이미지 우선순위가 매 빌드 흔들린다.
+    const sorted = pool[key].slice().sort((a, b) => a.file.localeCompare(b.file))
+    const arr = sorted.map((u) => JSON.stringify(u.url)).join(', ')
     lines.push(`  ${JSON.stringify(key)}: [${arr}],`)
   }
   lines.push('}')
