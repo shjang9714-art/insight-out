@@ -376,35 +376,65 @@ export function useUnifiedSearch(
             ]
 
         const settled = await Promise.allSettled(tasks)
+        if (cancelled) return
 
-        if (!cancelled) {
-          const sectionOrderIndex = (key: SearchFilterKey) => SEARCH_SECTION_ORDER.indexOf(key)
-          const fulfilled = settled
-            .filter((r): r is PromiseFulfilledResult<SearchSection[]> => r.status === 'fulfilled')
-            .flatMap((r) => r.value)
-            // 콘텐츠 합류 태스크가 다른 태스크보다 먼저/나중에 끝나는 순서와 무관하게
-            // 화면은 항상 SEARCH_SECTION_ORDER 고정 순서를 유지해야 한다(SearchResultsPanel의
-            // '전체' 결과가 이 순서를 그대로 관련도순으로 쓴다).
-            .sort((a, b) => sectionOrderIndex(a.key) - sectionOrderIndex(b.key))
-          const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        const sectionOrderIndex = (key: SearchFilterKey) => SEARCH_SECTION_ORDER.indexOf(key)
+        const fulfilled = settled
+          .filter((r): r is PromiseFulfilledResult<SearchSection[]> => r.status === 'fulfilled')
+          .flatMap((r) => r.value)
+          // 콘텐츠 합류 태스크가 다른 태스크보다 먼저/나중에 끝나는 순서와 무관하게
+          // 화면은 항상 SEARCH_SECTION_ORDER 고정 순서를 유지해야 한다(SearchResultsPanel의
+          // '전체' 결과가 이 순서를 그대로 관련도순으로 쓴다).
+          .sort((a, b) => sectionOrderIndex(a.key) - sectionOrderIndex(b.key))
+        const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
 
-          // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
-          const nonEmpty = fulfilled.filter((s) => s.items.length > 0)
-          setSections(nonEmpty)
+        // 515-2 — 병합 쿼리(발행일 내림차순 CONTENT_MERGE_LIMIT행)는 물량 많은 카테고리가
+        // 창을 독점하면 물량 적은 카테고리가 통째로 빈다(실측: 'aidc' 매칭 1,265건 중
+        // 뉴스가 1,263건이라 유튜브 2건이 240위 밖으로 밀려 섹션이 사라짐). 1라운드가
+        // 끝난 뒤에만(동시 발사 금지 — 그게 원래 8초 타임아웃의 원인이었다) 0건으로 남은
+        // 콘텐츠 섹션만 그 카테고리 하나로 다시 조회해 채운다. 1라운드가 이미 같은 힙
+        // 블록을 읽어 캐시가 데워진 상태라 카테고리별 개별 쿼리도 빠르다(실측 20ms대).
+        let finalSections = fulfilled
+        if (!filter) {
+          const emptyContentKeys = fulfilled
+            .filter((s) => isContentKey(s.key) && s.items.length === 0)
+            .map((s) => s.key)
 
-          if (rejected.length > 0) {
-            rejected.forEach((r) => console.error('[search] 일부 검색 실패:', r.reason))
-            const isTimeout = rejected.some((r) => (r.reason as { code?: string } | null)?.code === '57014')
-            setError(
-              isTimeout
-                ? '검색이 오래 걸려 중단되었습니다. 검색어를 좁혀서 다시 시도해주세요.'
-                : '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+          if (emptyContentKeys.length > 0) {
+            const round2 = await Promise.allSettled(
+              emptyContentKeys.map(async (key): Promise<SearchSection> => ({
+                key,
+                items: await fetchSection(supabase, key, tokens, capFor(key)),
+              }))
             )
-          } else {
-            setError(null)
+            if (cancelled) return
+            // 2라운드 실패는 조용히 무시 — 1라운드 결과(빈 섹션 → 자동 숨김)를 그대로
+            // 둔다. 별도 에러 배너는 띄우지 않는다(아래 에러 판정은 1라운드 rejected만 반영).
+            const round2ByKey = new Map(
+              round2
+                .filter((r): r is PromiseFulfilledResult<SearchSection> => r.status === 'fulfilled')
+                .map((r) => [r.value.key, r.value] as const)
+            )
+            finalSections = fulfilled.map((s) => round2ByKey.get(s.key) ?? s)
           }
-          setLoading(false)
         }
+
+        // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
+        const nonEmpty = finalSections.filter((s) => s.items.length > 0)
+        setSections(nonEmpty)
+
+        if (rejected.length > 0) {
+          rejected.forEach((r) => console.error('[search] 일부 검색 실패:', r.reason))
+          const isTimeout = rejected.some((r) => (r.reason as { code?: string } | null)?.code === '57014')
+          setError(
+            isTimeout
+              ? '검색이 오래 걸려 중단되었습니다. 검색어를 좁혀서 다시 시도해주세요.'
+              : '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+          )
+        } else {
+          setError(null)
+        }
+        setLoading(false)
       }
 
       fetchResults().catch(errorValue => {
