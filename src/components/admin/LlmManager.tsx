@@ -33,7 +33,6 @@ interface ProviderInfo {
   enabled: boolean
   monthly_token_limit: number
   keyCount: number
-  effectiveTokenLimit: number
   tokens_used: number
   calls_used: number
 }
@@ -386,11 +385,11 @@ export default function LlmManager() {
         <h2 className="mb-3 text-sm font-semibold text-foreground">Provider 현황</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {data.providers.map(p => {
-            const usagePct = p.effectiveTokenLimit > 0
-              ? Math.round(p.tokens_used / p.effectiveTokenLimit * 100)
+            const usagePct = p.monthly_token_limit > 0
+              ? Math.round(p.tokens_used / p.monthly_token_limit * 100)
               : 0
-            const isBlocked = p.effectiveTokenLimit > 0
-              && p.tokens_used >= p.effectiveTokenLimit
+            const isBlocked = p.monthly_token_limit > 0
+              && p.tokens_used >= p.monthly_token_limit
             return (
               <div
                 key={p.name}
@@ -451,7 +450,7 @@ export default function LlmManager() {
                   </div>
                   <p className="text-[10px] text-muted-foreground/70 text-right">
                     {p.keyCount > 0
-                      ? `월 한도 ${p.monthly_token_limit.toLocaleString()} × ${p.keyCount}키 = ${p.effectiveTokenLimit.toLocaleString()} 중 ${usagePct}%`
+                      ? `월 예산 ${p.monthly_token_limit.toLocaleString()} 중 ${usagePct}%`
                       : '키 미설정'
                     }
                   </p>
@@ -515,8 +514,8 @@ export default function LlmManager() {
               )
               const slotProviderInfo = data.providers.find(p => p.name === slot.provider)
               const slotRouting = searchRoutingByPriority[priority - 1]
-              const slotUsagePct = slotProviderInfo && slotProviderInfo.effectiveTokenLimit > 0
-                ? Math.round(slotProviderInfo.tokens_used / slotProviderInfo.effectiveTokenLimit * 100)
+              const slotUsagePct = slotProviderInfo && slotProviderInfo.monthly_token_limit > 0
+                ? Math.round(slotProviderInfo.tokens_used / slotProviderInfo.monthly_token_limit * 100)
                 : 0
               const isSlotBusy = savingSlot === priority
 
@@ -585,7 +584,7 @@ export default function LlmManager() {
                         <p>
                           이번 달 사용률 {slotUsagePct}% ·{' '}
                           {slotProviderInfo.tokens_used.toLocaleString()} /{' '}
-                          {slotProviderInfo.effectiveTokenLimit.toLocaleString()} 토큰
+                          {slotProviderInfo.monthly_token_limit.toLocaleString()} 토큰
                         </p>
                       ) : (
                         <p>키 미설정 · 이번 달 사용률 0%</p>

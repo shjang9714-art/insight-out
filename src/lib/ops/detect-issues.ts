@@ -1,9 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
-import { LLM_PROVIDERS } from '@/lib/llm'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
-  effectiveTokenLimit,
+  monthlyBudget,
 } from '@/lib/llm/token-limit'
 import { getOpsSettings } from '@/lib/ops/settings'
 import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
@@ -203,8 +201,8 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
   const usedMap = new Map<string, number>(); for (const r of usage.data ?? []) usedMap.set(r.provider, (usedMap.get(r.provider) ?? 0) + Number(r.tokens ?? 0))
   for (const [provider, used] of usedMap) {
-    const p = LLM_PROVIDERS.find(v => v.name === provider); const keyCount = p ? getProviderKeyCount(p) : 0; const limit = effectiveTokenLimit(settingsMap.get(provider), keyCount)
-    // 키 제거 직후 남은 사용 기록은 무해하므로 한도 0은 사용량 신호에서 제외한다.
+    const limit = monthlyBudget(settingsMap.get(provider))
+    // limit 은 항상 양수(DEFAULT_MONTHLY_TOKEN_LIMIT 이하로 떨어지지 않음)이지만 0 나눗셈 방어로 남겨둔다.
     const percent = limit > 0 ? used / limit * 100 : 0
     if (percent >= 80) {
       signals.push({

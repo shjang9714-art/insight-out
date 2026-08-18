@@ -8,10 +8,9 @@ import cerebrasProvider from '@/lib/llm/providers/cerebras'
 import sambanovaProvider from '@/lib/llm/providers/sambanova'
 import mistralProvider from '@/lib/llm/providers/mistral'
 import openrouterProvider from '@/lib/llm/providers/openrouter'
-import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
-  effectiveTokenLimit,
+  monthlyBudget,
 } from '@/lib/llm/token-limit'
 import { LlmModelUnavailableError, LlmRateLimitError, type LlmProvider, type LlmTask } from '@/lib/llm/types'
 
@@ -252,7 +251,7 @@ export async function llmCompleteDetailed(
 
         const s = settings.get(route.provider)
         if (s?.enabled === false) continue
-        const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
+        const tokenLimit = monthlyBudget(s?.limit)
         if ((usage.get(route.provider) ?? 0) >= tokenLimit) continue
 
         console.log(`[LLM] task=${task} provider=${route.provider} model=${route.model_id}`)
@@ -319,7 +318,7 @@ export async function llmCompleteDetailed(
         lastErrorReason = `${provider.name}: 쿨다운 중(429/401)`
         continue
       }
-      const tokenLimit = effectiveTokenLimit(s?.limit, getProviderKeyCount(provider))
+      const tokenLimit = monthlyBudget(s?.limit)
       if ((usage.get(provider.name) ?? 0) >= tokenLimit) continue
 
       console.log(`[LLM] fallback provider=${provider.name}`)

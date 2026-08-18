@@ -2,10 +2,7 @@ import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 import { NextResponse } from 'next/server'
 import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
-import {
-  DEFAULT_MONTHLY_TOKEN_LIMIT,
-  effectiveTokenLimit,
-} from '@/lib/llm/token-limit'
+import { DEFAULT_MONTHLY_TOKEN_LIMIT } from '@/lib/llm/token-limit'
 import { getKstPeriod } from '@/lib/translate'
 
 export const runtime = 'nodejs'
@@ -54,7 +51,6 @@ export async function GET() {
         enabled: s?.enabled ?? true,
         monthly_token_limit: monthlyTokenLimit,
         keyCount,
-        effectiveTokenLimit: effectiveTokenLimit(monthlyTokenLimit, keyCount),
         tokens_used: u?.tokens ?? 0,
         calls_used: u?.calls ?? 0,
       }

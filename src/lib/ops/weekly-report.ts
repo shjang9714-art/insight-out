@@ -1,9 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
-import { LLM_PROVIDERS } from '@/lib/llm'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
-  effectiveTokenLimit,
+  monthlyBudget,
 } from '@/lib/llm/token-limit'
 
 type Severity = 'critical' | 'warning' | 'notice'
@@ -57,10 +55,7 @@ export async function gatherWeeklyReport(admin: SupabaseClient): Promise<WeeklyR
   const usageMap = new Map<string, number>()
   for (const row of llm.data ?? []) usageMap.set(row.provider, (usageMap.get(row.provider) ?? 0) + Number(row.tokens ?? 0))
   const usage = [...usageMap].map(([provider, used]) => {
-    const configured = LLM_PROVIDERS.find(p => p.name === provider)
-    const keyCount = configured ? getProviderKeyCount(configured) : 0
-    const limit = effectiveTokenLimit(settingsMap.get(provider), keyCount)
-    // 키 제거 직후 남은 사용 기록은 무해하므로 한도 0은 경고성 비율로 계산하지 않는다.
+    const limit = monthlyBudget(settingsMap.get(provider))
     return { provider, used, limit, percent: pct(used, limit) }
   })
   const current = count(total)

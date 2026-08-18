@@ -1,10 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
-import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
-import { LLM_PROVIDERS } from '@/lib/llm'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
-  effectiveTokenLimit,
+  monthlyBudget,
 } from '@/lib/llm/token-limit'
 import { getOpsSettings } from '@/lib/ops/settings'
 
@@ -610,11 +608,7 @@ export async function gatherDailyBrief(
       && settingsRows.available
       && options.forceUnavailableSection !== 'usage',
     value: [...usageMap].map(([provider, used]) => {
-      const configured = LLM_PROVIDERS.find(item => item.name === provider)
-      const limit = effectiveTokenLimit(
-        settingsMap.get(provider),
-        configured ? getProviderKeyCount(configured) : 0
-      )
+      const limit = monthlyBudget(settingsMap.get(provider))
       return { provider, used, limit, percent: pct(used, limit) }
     }),
   }
