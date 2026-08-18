@@ -56,7 +56,7 @@ export default function AiCostAnalyticsView({ data, months }: { data: AiCostAnal
               <button
                 key={m}
                 type="button"
-                onClick={() => router.push(`/admin/analytics/ai-cost?months=${m}`)}
+                onClick={() => router.push(`/admin/analytics/content?tab=ai-cost&months=${m}`)}
                 className={cn(
                   'rounded-md px-3 py-1 text-sm font-medium transition-colors',
                   m === months ? 'bg-brand-600 text-white' : 'bg-muted/40 text-muted-foreground hover:bg-accent'

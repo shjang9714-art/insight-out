@@ -1,17 +1,6 @@
-import type { Metadata } from 'next'
-import EntityManager from '@/components/admin/EntityManager'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import { redirect } from 'next/navigation'
 
-export const metadata: Metadata = {
-  title: '엔티티 사전 | 어드민 | Insight Out',
-  description: '기업·기술·인물 등 엔티티 정규화·동의어 관리·중복 병합',
-}
-
+// 524 — 사전·분류(/admin/keywords)의 "엔티티 사전" 탭으로 통합. 521(계층·병합) 기능은 EntityManager 그대로 재사용.
 export default function EntitiesPage() {
-  return (
-    <div className="space-y-6">
-      <AdminPageHeader />
-      <EntityManager />
-    </div>
-  )
+  redirect('/admin/keywords?tab=entities')
 }
