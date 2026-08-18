@@ -1,6 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getKstDateString, getKstDayStartIso } from '@/lib/date'
+import { getKstDayStartIso } from '@/lib/date'
 import { REVIEW_REASONS } from '@/lib/crawler/quality'
 
 export interface DailySnapshotRow {
@@ -25,6 +25,12 @@ export interface DailySnapshotResult {
 /**
  * 527-A — 운영 일일 스냅샷 적재.
  *
+ * date 는 호출자가 명시적으로 넘겨야 한다(기본값 없음) — 527-A-fix: ops-brief 리포트가
+ * 다루는 "대상일"(getReportDays().report, 통상 전일 KST)과 스냅샷의 snapshot_date 가
+ * 반드시 같은 소스에서 나와야 둘이 어긋나지 않는다. 이 함수 자체는 실행 시점을 today 로
+ * 가정하지 않으므로, 스톡 값(pending_total 등)의 의미는 "실행 시점의 실측"이 아니라
+ * "그 리포트 대상일의 마감 시점(다음날 08:00 KST 크론 실행 시) 잔량"이 된다.
+ *
  * 재고(스톡) = 실행 시점 잔량 / 흐름(플로우) = 대상일 하루 증감. 이 구분이 핵심이다 —
  * 섞으면 527-B(리포트)가 다시 못 나눈다.
  *
@@ -40,10 +46,16 @@ export interface DailySnapshotResult {
  *                            ※ 근사치다 — 나중에 발행 전환되거나 만료되면 이 값은 줄어든다.
  *                            대상일 당일 적재분만 정확하고, 과거 스냅샷 값은 재계산하지 않는다.
  *   pending_expired_day      대상일 job_runs 의 cron:pending-expire 행 meta.total 합(플로우 — 그날 만료)
+ *
+ * 527-A-fix — 집계 쿼리 중 하나라도 실패하면 0 을 채워 넣지 않고 throw 한다. 조용히 0 을
+ * 저장하면 527-B 재고 그래프가 "재고가 사라졌다"로 잘못 읽는다(이 코드베이스에서 반복된
+ * 조용한 절단 패턴: 486/497/505/본문보강 drain/검색 타임아웃/525 limit(1000)). 실패한 날은
+ * 행을 아예 비워 527-B 가 "데이터 없음"으로 정직하게 표시하게 한다. 호출자(ops-brief)가
+ * 이 예외를 잡아 snapshotError 로 남기고 리포트는 계속 보낸다.
  */
 export async function recordDailySnapshot(
   admin: SupabaseClient,
-  date: string = getKstDateString(),
+  date: string,
 ): Promise<DailySnapshotResult> {
   const dayStart = getKstDayStartIso(date)
   const dayEnd = new Date(new Date(dayStart).getTime() + 86_400_000).toISOString()
@@ -67,8 +79,7 @@ export async function recordDailySnapshot(
         .eq('status', 'pending').is('deleted_at', null)
       q = reason === null ? q.is('review_reason', null) : q.eq('review_reason', reason)
       const { count, error } = await q
-      if (error) console.error(`[운영 스냅샷] pending_by_reason(${reason ?? '_null'}) 집계 실패:`, error.message)
-      return [reason ?? '_null', count ?? 0] as const
+      return { reason: reason ?? '_null', count, error }
     })),
     admin.from('contents').select('id', { count: 'exact', head: true })
       .eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
@@ -89,11 +100,28 @@ export async function recordDailySnapshot(
       .gte('started_at', dayStart).lt('started_at', dayEnd),
   ])
 
-  const pendingByReason: Record<string, number> = Object.fromEntries(pendingByReasonEntries)
-
-  if (expireRunsRes.error) {
-    console.error('[운영 스냅샷] pending_expired_day 조회 실패:', expireRunsRes.error.message)
+  // 527-A-fix — 모든 집계의 error 를 모아 하나라도 실패하면 upsert 하지 않고 throw 한다.
+  const failures: string[] = []
+  const checkNamed = (name: string, error: { message: string } | null) => {
+    if (error) failures.push(`${name}: ${error.message}`)
   }
+  checkNamed('pending_total', pendingTotalRes.error)
+  for (const { reason, error } of pendingByReasonEntries) checkNamed(`pending_by_reason(${reason})`, error)
+  checkNamed('body_backlog', bodyBacklogRes.error)
+  checkNamed('users_pending', usersPendingRes.error)
+  checkNamed('published_total', publishedTotalRes.error)
+  checkNamed('rejected_total', rejectedTotalRes.error)
+  checkNamed('collected_day', collectedDayRes.error)
+  checkNamed('published_day', publishedDayRes.error)
+  checkNamed('pending_in_day', pendingInDayRes.error)
+  checkNamed('pending_expired_day', expireRunsRes.error)
+  if (failures.length > 0) {
+    throw new Error(`[운영 스냅샷] 집계 실패로 저장 중단(${date}): ${failures.join('; ')}`)
+  }
+
+  const pendingByReason: Record<string, number> = Object.fromEntries(
+    pendingByReasonEntries.map(({ reason, count }) => [reason, count ?? 0])
+  )
   const pendingExpiredDay = (expireRunsRes.data ?? []).reduce((sum, row) => {
     const meta = row.meta as { total?: unknown } | null
     const total = typeof meta?.total === 'number' ? meta.total : 0
