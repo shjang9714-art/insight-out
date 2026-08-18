@@ -23,8 +23,9 @@ export interface ExpirePendingResult {
   expired: { body: number; relevance: number; unknown: number }
   total: number
   batchCapped: boolean
-  remaining: number
-  /** 526-A(재발행) — 세 계열 중 하나라도 만료 처리에 실패하면 그 사유를 담는다. */
+  /** 526-B — 잔여 집계 중 하나라도 실패하면 0(모름과 구분 불가)이 아니라 null. */
+  remaining: number | null
+  /** 526-A/526-B — 조회·만료·잔여집계 어느 단계든 실패가 있으면 그 사유를 담는다. */
   errors?: string[]
 }
 
@@ -32,6 +33,7 @@ function daysAgoIso(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString()
 }
 
+/** 526-B — 조회 실패를 "후보 없음"(빈 배열)으로 삼키지 않고 throw 한다. */
 async function fetchBodyCandidates(admin: SupabaseClient, cutoff: string, limit: number): Promise<string[]> {
   if (limit <= 0) return []
   const { data, error } = await admin
@@ -44,7 +46,7 @@ async function fetchBodyCandidates(admin: SupabaseClient, cutoff: string, limit:
     .lte('collected_at', cutoff)
     .order('collected_at', { ascending: true })
     .limit(limit)
-  if (error) { console.error('[검토대기 만료] 본문 계열 대상 조회 실패:', error.message); return [] }
+  if (error) throw new Error(error.message)
   return (data ?? []).map(r => r.id as string)
 }
 
@@ -59,7 +61,7 @@ async function fetchRelevanceCandidates(admin: SupabaseClient, cutoff: string, l
     .lte('collected_at', cutoff)
     .order('collected_at', { ascending: true })
     .limit(limit)
-  if (error) { console.error('[검토대기 만료] 관련도 계열 대상 조회 실패:', error.message); return [] }
+  if (error) throw new Error(error.message)
   return (data ?? []).map(r => r.id as string)
 }
 
@@ -74,8 +76,28 @@ async function fetchUnknownCandidates(admin: SupabaseClient, cutoff: string, lim
     .lte('collected_at', cutoff)
     .order('collected_at', { ascending: true })
     .limit(limit)
-  if (error) { console.error('[검토대기 만료] 사유없음 대상 조회 실패:', error.message); return [] }
+  if (error) throw new Error(error.message)
   return (data ?? []).map(r => r.id as string)
+}
+
+/**
+ * 526-B — 조회 단계도 계열별로 실패를 격리한다. budget(배치 예산) 차감이 순차
+ * 계산이라(한 계열이 쓰고 남은 만큼을 다음 계열이 쓴다) 세 조회를 병렬로 돌릴 수
+ * 없다 — 실패한 계열은 0건을 소비한 것으로 보고 다음 계열이 남은 예산을 그대로
+ * 쓰게 하면서, 실패 사유는 errors 에 담아 삼키지 않는다.
+ */
+async function fetchCandidatesSafe(
+  label: string,
+  fn: () => Promise<string[]>,
+  errors: string[],
+): Promise<string[]> {
+  try {
+    return await fn()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    errors.push(`${label} 조회: ${message}`)
+    return []
+  }
 }
 
 /**
@@ -116,15 +138,16 @@ export async function expirePendingContents(admin: SupabaseClient): Promise<Expi
   const bodyCutoff = daysAgoIso(EXPIRE_BODY_AFTER_DAYS)
   const relevanceCutoff = daysAgoIso(EXPIRE_RELEVANCE_AFTER_DAYS)
 
+  const errors: string[] = []
   let budget = EXPIRE_BATCH_SIZE
 
-  const bodyIds = await fetchBodyCandidates(admin, bodyCutoff, budget)
+  const bodyIds = await fetchCandidatesSafe('본문', () => fetchBodyCandidates(admin, bodyCutoff, budget), errors)
   budget -= bodyIds.length
 
-  const relevanceIds = await fetchRelevanceCandidates(admin, relevanceCutoff, budget)
+  const relevanceIds = await fetchCandidatesSafe('관련도', () => fetchRelevanceCandidates(admin, relevanceCutoff, budget), errors)
   budget -= relevanceIds.length
 
-  const unknownIds = await fetchUnknownCandidates(admin, relevanceCutoff, budget)
+  const unknownIds = await fetchCandidatesSafe('사유없음', () => fetchUnknownCandidates(admin, relevanceCutoff, budget), errors)
   budget -= unknownIds.length
 
   // 526-A(재발행) — 셋 중 하나가 실패해도 나머지는 계속 처리하고(allSettled), 실패한
@@ -136,11 +159,10 @@ export async function expirePendingContents(admin: SupabaseClient): Promise<Expi
     expireIds(admin, relevanceIds),
     expireIds(admin, unknownIds),
   ])
-  const errors: string[] = []
   const [body, relevance, unknown] = settled.map((result, index) => {
     if (result.status === 'fulfilled') return result.value
     const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
-    errors.push(`${seriesNames[index]}: ${message}`)
+    errors.push(`${seriesNames[index]} 만료: ${message}`)
     return 0
   })
   const total = body + relevance + unknown
@@ -163,7 +185,15 @@ export async function expirePendingContents(admin: SupabaseClient): Promise<Expi
       .is('review_reason', null)
       .lte('collected_at', relevanceCutoff),
   ])
-  const remaining = (bodyRemaining.count ?? 0) + (relevanceRemaining.count ?? 0) + (unknownRemaining.count ?? 0)
+  // 526-B — 잔여 집계 중 하나라도 실패하면 0을 쓰지 않는다. 0은 "재고 없음"으로 읽히는데
+  // 실제로는 "몰라서 못 셌음"이다 — 527-B 가 0(재고 없음)과 null(집계 실패)을 구분해야 한다.
+  if (bodyRemaining.error) errors.push(`본문 잔여 집계: ${bodyRemaining.error.message}`)
+  if (relevanceRemaining.error) errors.push(`관련도 잔여 집계: ${relevanceRemaining.error.message}`)
+  if (unknownRemaining.error) errors.push(`사유없음 잔여 집계: ${unknownRemaining.error.message}`)
+  const remainingFailed = Boolean(bodyRemaining.error || relevanceRemaining.error || unknownRemaining.error)
+  const remaining = remainingFailed
+    ? null
+    : (bodyRemaining.count ?? 0) + (relevanceRemaining.count ?? 0) + (unknownRemaining.count ?? 0)
 
   return {
     ok: errors.length === 0,
