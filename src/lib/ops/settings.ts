@@ -26,6 +26,14 @@ export async function getOpsSettings(): Promise<OpsSettings> {
   try {
     const { data, error } = await createAdminClient().from('ops_settings').select('brief_recipients, tts_monthly_char_cap, translation_monthly_char_cap, briefing_top_n, briefing_min_articles, briefing_window_hours, briefing_host_name').eq('id', true).maybeSingle()
     if (error || !data) return FALLBACK
-    return { ...FALLBACK, ...data, brief_recipients: data.brief_recipients ?? FALLBACK.brief_recipients }
+    return {
+      brief_recipients: data.brief_recipients ?? FALLBACK.brief_recipients,
+      tts_monthly_char_cap: data.tts_monthly_char_cap ?? FALLBACK.tts_monthly_char_cap,
+      translation_monthly_char_cap: data.translation_monthly_char_cap ?? FALLBACK.translation_monthly_char_cap,
+      briefing_top_n: data.briefing_top_n ?? FALLBACK.briefing_top_n,
+      briefing_min_articles: data.briefing_min_articles ?? FALLBACK.briefing_min_articles,
+      briefing_window_hours: data.briefing_window_hours ?? FALLBACK.briefing_window_hours,
+      briefing_host_name: data.briefing_host_name ?? FALLBACK.briefing_host_name,
+    }
   } catch { return FALLBACK }
 }

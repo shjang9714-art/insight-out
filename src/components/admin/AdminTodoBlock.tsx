@@ -35,7 +35,7 @@ export default function AdminTodoBlock({ pending, todayFailed, sourcesToCheck }:
       label: '수집 실패',
       count: todayFailed,
       unit: '건',
-      href: '/admin/crawl-logs',
+      href: '/admin/job-runs?tab=crawl-logs',
       description: '오늘 수집이 실패한 건수',
       urgent: true,
     },
