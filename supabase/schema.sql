@@ -781,8 +781,14 @@ CREATE OR REPLACE FUNCTION "public"."merge_entities"("p_source" "uuid", "p_targe
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+declare
+  v_caller_role text := coalesce(current_setting('request.jwt.claims', true)::json->>'role', '');
 begin
-  if not public.is_admin() then
+  -- 521 — 서버 액션(service role)은 앱 레벨 requireAdminAction 게이트로 이미 인가되므로
+  -- is_admin() 검사를 건너뛴다. 이 함수는 SECURITY DEFINER라 current_user/session_user가
+  -- 항상 postgres/authenticator로 고정되어 호출자를 반영하지 않으므로(lock_approval_columns의
+  -- current_user 판별과 달리) PostgREST가 넣어주는 request.jwt.claims의 role로 판별한다.
+  if v_caller_role <> 'service_role' and not public.is_admin() then
     raise exception '관리자만 병합할 수 있습니다.';
   end if;
   if p_source is null or p_target is null or p_source = p_target then
@@ -1436,7 +1442,9 @@ CREATE TABLE IF NOT EXISTS "public"."entities" (
     "mention_count" integer DEFAULT 0 NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "competitor_group" "text"
+    "competitor_group" "text",
+    "parent_id" "uuid",
+    CONSTRAINT "entities_parent_not_self" CHECK ((("parent_id" IS NULL) OR ("parent_id" <> "id")))
 );
 
 
@@ -4117,6 +4125,14 @@ ALTER TABLE ONLY "public"."curated_companies"
 
 ALTER TABLE ONLY "public"."document_sources"
     ADD CONSTRAINT "document_sources_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+--
+-- Name: entities entities_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY "public"."entities"
+    ADD CONSTRAINT "entities_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "public"."entities"("id") ON DELETE SET NULL;
 
 
 --

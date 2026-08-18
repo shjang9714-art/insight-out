@@ -27,6 +27,8 @@ import StatusBadge from '@/components/admin/ui/StatusBadge'
 import AdminTable, { type AdminTableColumn } from '@/components/admin/ui/AdminTable'
 import AdminSelectionBar from '@/components/admin/ui/AdminSelectionBar'
 import { useAdminTable } from '@/lib/admin/use-admin-table'
+import EntityAutocomplete, { type EntityOption } from '@/components/admin/EntityAutocomplete'
+import { mergeEntities } from '@/app/admin/entities/actions'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
@@ -35,9 +37,9 @@ const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'pol
 const COMPETITOR_GROUP_SUGGESTIONS = ['통신', '클라우드·플랫폼', '빅테크']
 
 const ENTITY_SELECT_WITH_GROUP =
-  'id, canonical_name, entity_type, description, is_competitor, mention_count, competitor_group'
+  'id, canonical_name, entity_type, description, is_competitor, mention_count, competitor_group, parent_id'
 const ENTITY_SELECT_NO_GROUP =
-  'id, canonical_name, entity_type, description, is_competitor, mention_count'
+  'id, canonical_name, entity_type, description, is_competitor, mention_count, parent_id'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,7 @@ interface EntityRow {
   mention_count: number
   /** 224 SQL 미적용 시 셀렉트에서 제외되어 undefined일 수 있음 */
   competitor_group?: string | null
+  parent_id: string | null
 }
 
 interface AliasRow {
@@ -64,6 +67,7 @@ interface EntityForm {
   description: string
   is_competitor: boolean
   competitor_group: string
+  parent: EntityOption | null
 }
 
 const FORM_INIT: EntityForm = {
@@ -72,6 +76,20 @@ const FORM_INIT: EntityForm = {
   description:      '',
   is_competitor:    false,
   competitor_group: '',
+  parent:           null,
+}
+
+/** 521 — candidateParentId 를 상위로 지정하면 editingId 를 조상으로 갖게 되는 순환 참조인지 확인 */
+function wouldCreateCycle(entities: EntityRow[], editingId: string, candidateParentId: string): boolean {
+  let current: string | null = candidateParentId
+  const seen = new Set<string>()
+  while (current) {
+    if (current === editingId) return true
+    if (seen.has(current)) return false // 데이터에 이미 있는 순환은 여기서 판단할 문제가 아님
+    seen.add(current)
+    current = entities.find(e => e.id === current)?.parent_id ?? null
+  }
+  return false
 }
 
 // ─── 동의어 칩 입력 ─────────────────────────────────────────────────────────
@@ -154,6 +172,8 @@ export default function EntityManager() {
   const [searchQuery,   setSearchQuery]   = useState('')
   const [searchResults, setSearchResults] = useState<EntityRow[] | null>(null)
   const [isSearching,   setIsSearching]   = useState(false)
+  /** 521 — 엔티티별 별칭 수(목록 '별칭 수' 컬럼) */
+  const [aliasCounts,   setAliasCounts]   = useState<Record<string, number>>({})
 
   // 폼 상태
   const [showForm,  setShowForm]  = useState(false)
@@ -175,6 +195,8 @@ export default function EntityManager() {
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [isMerging,     setIsMerging]     = useState(false)
   const [mergeError,    setMergeError]    = useState<string | null>(null)
+  /** 521 — 병합 시 이전될 콘텐츠 연결 수(확인 다이얼로그 미리보기) */
+  const [mergeLinkCount, setMergeLinkCount] = useState<number | null>(null)
 
   // 정규화 제안 패널 상태
   const [showNormPanel,      setShowNormPanel]      = useState(false)
@@ -207,9 +229,24 @@ export default function EntityManager() {
     return { data: fallback.data, error: fallback.error, groupSupported: false }
   }
 
+  /** 521 — entity_aliases 를 entity_id 별로 집계(전체 6건 수준이라 클라이언트 집계로 충분) */
+  async function fetchAliasCounts() {
+    const { data, error: err } = await supabase.from('entity_aliases').select('entity_id')
+    if (err) return {}
+    const counts: Record<string, number> = {}
+    for (const row of (data ?? []) as { entity_id: string }[]) {
+      counts[row.entity_id] = (counts[row.entity_id] ?? 0) + 1
+    }
+    return counts
+  }
+
   async function loadEntities() {
-    const { data, error: err, groupSupported } = await fetchEntitiesGraceful()
+    const [{ data, error: err, groupSupported }, counts] = await Promise.all([
+      fetchEntitiesGraceful(),
+      fetchAliasCounts(),
+    ])
     setGroupSupported(groupSupported)
+    setAliasCounts(counts)
     if (err) {
       setError(`엔티티 목록 로드 실패: ${err.message}`)
     } else {
@@ -220,8 +257,9 @@ export default function EntityManager() {
   useEffect(() => {
     const init = async () => {
       setIsLoading(true)
-      const entRes = await fetchEntitiesGraceful()
+      const [entRes, counts] = await Promise.all([fetchEntitiesGraceful(), fetchAliasCounts()])
       setGroupSupported(entRes.groupSupported)
+      setAliasCounts(counts)
       if (entRes.error) {
         setError(`엔티티 목록 로드 실패: ${entRes.error.message}`)
       } else {
@@ -300,6 +338,20 @@ export default function EntityManager() {
     },
     { key: 'mentions', header: '언급', align: 'center', cell: (entity) => entity.mention_count },
     {
+      key: 'parent',
+      header: '상위',
+      cell: (entity) => {
+        const parentName = entity.parent_id ? entities.find(e => e.id === entity.parent_id)?.canonical_name : null
+        return parentName ? <span className="text-xs text-muted-foreground">{parentName}</span> : <span className="text-xs text-muted-foreground/40">—</span>
+      },
+    },
+    {
+      key: 'aliasCount',
+      header: '별칭 수',
+      align: 'center',
+      cell: (entity) => <span className="text-xs text-muted-foreground">{aliasCounts[entity.id] ?? 0}</span>,
+    },
+    {
       key: 'attributes',
       header: '속성',
       cell: (entity) => <div className="flex flex-wrap items-center gap-1">{entity.is_competitor && <StatusBadge tone="negative" label="경쟁사" />}{entity.competitor_group && <StatusBadge tone="neutral" label={entity.competitor_group} />}</div>,
@@ -334,12 +386,14 @@ export default function EntityManager() {
   }
 
   function openEdit(entity: EntityRow) {
+    const parentEntity = entity.parent_id ? entities.find(e => e.id === entity.parent_id) : null
     setForm({
       canonical_name:   entity.canonical_name,
       entity_type:      entity.entity_type,
       description:      entity.description ?? '',
       is_competitor:    entity.is_competitor,
       competitor_group: entity.competitor_group ?? '',
+      parent:           parentEntity ? { id: parentEntity.id, canonical_name: parentEntity.canonical_name } : null,
     })
     setEditingId(entity.id)
     setFormError(null)
@@ -358,6 +412,13 @@ export default function EntityManager() {
     e.preventDefault()
     setFormError(null)
     if (!form.canonical_name.trim()) { setFormError('이름을 입력해주세요.'); return }
+    if (editingId && form.parent) {
+      if (form.parent.id === editingId) { setFormError('자기 자신을 상위 엔티티로 지정할 수 없습니다.'); return }
+      if (wouldCreateCycle(entities, editingId, form.parent.id)) {
+        setFormError('선택한 상위 엔티티가 이 엔티티의 하위 항목이라 순환 참조가 발생합니다.')
+        return
+      }
+    }
 
     setIsSaving(true)
     try {
@@ -370,6 +431,7 @@ export default function EntityManager() {
         is_competitor:  form.is_competitor || Boolean(competitorGroup),
         // 224 SQL 미적용 시 컬럼 자체가 없어 payload에 넣으면 저장이 실패하므로 제외(graceful)
         ...(groupSupported ? { competitor_group: competitorGroup } : {}),
+        parent_id: form.parent?.id ?? null,
       }
 
       if (editingId) {
@@ -448,6 +510,11 @@ export default function EntityManager() {
   const handleAddAlias = async (alias: string) => {
     setAliasError(null)
     if (!aliasEntityId) return
+    const entity = entities.find(e => e.id === aliasEntityId)
+    if (entity && alias.trim().toLowerCase() === entity.canonical_name.toLowerCase()) {
+      setAliasError('대표 이름과 동일한 값은 동의어로 등록할 수 없습니다.')
+      return
+    }
     const { error: err } = await supabase
       .from('entity_aliases')
       .insert({ entity_id: aliasEntityId, alias })
@@ -459,6 +526,7 @@ export default function EntityManager() {
       }
     } else {
       await openAliases(aliasEntityId)
+      setAliasCounts(prev => ({ ...prev, [aliasEntityId]: (prev[aliasEntityId] ?? 0) + 1 }))
     }
   }
 
@@ -477,6 +545,7 @@ export default function EntityManager() {
       setAliasError(`삭제 실패: ${err.message}`)
     } else {
       setAliases(prev => prev.filter(a => a.id !== aliasRow.id))
+      if (aliasEntityId) setAliasCounts(prev => ({ ...prev, [aliasEntityId]: Math.max(0, (prev[aliasEntityId] ?? 1) - 1) }))
     }
   }
 
@@ -487,6 +556,12 @@ export default function EntityManager() {
     setMergeSearch('')
     setMergeTargetId(null)
     setMergeError(null)
+    setMergeLinkCount(null)
+    void supabase
+      .from('content_entities')
+      .select('*', { count: 'exact', head: true })
+      .eq('entity_id', entityId)
+      .then(({ count }) => setMergeLinkCount(count ?? 0))
   }
 
   function closeMerge() {
@@ -494,6 +569,7 @@ export default function EntityManager() {
     setMergeSearch('')
     setMergeTargetId(null)
     setMergeError(null)
+    setMergeLinkCount(null)
   }
 
   const mergeSearchResults = mergeSearch.trim()
@@ -509,18 +585,16 @@ export default function EntityManager() {
     const target = entities.find(e => e.id === mergeTargetId)
     if (!source || !target) return
 
-    const confirmed = await confirm({ title: '엔티티 병합', description: '모든 기사 연결·동의어가 이전되며 되돌릴 수 없습니다.', targets: [source.canonical_name, target.canonical_name], confirmLabel: '병합', destructive: true })
+    const linkCountText = mergeLinkCount === null ? '' : ` 콘텐츠 연결 ${mergeLinkCount}건이 함께 이전됩니다.`
+    const confirmed = await confirm({ title: '엔티티 병합', description: `모든 기사 연결·동의어가 이전되며 되돌릴 수 없습니다.${linkCountText}`, targets: [source.canonical_name, target.canonical_name], confirmLabel: '병합', destructive: true })
     if (!confirmed) return
 
     setIsMerging(true)
     setMergeError(null)
-    const { error: err } = await supabase.rpc('merge_entities', {
-      p_source: mergeSourceId,
-      p_target: mergeTargetId,
-    })
+    const { error: err } = await mergeEntities(mergeSourceId, mergeTargetId)
     setIsMerging(false)
     if (err) {
-      setMergeError(`병합 실패: ${err.message}`)
+      setMergeError(err)
     } else {
       closeMerge()
       await loadEntities()
@@ -904,6 +978,21 @@ export default function EntityManager() {
                   placeholder="이 엔티티에 대한 간단한 설명"
                 />
               </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ent-parent">
+                  상위 엔티티{' '}
+                  <span className="text-xs font-normal text-muted-foreground">(선택)</span>
+                </Label>
+                <EntityAutocomplete
+                  key={editingId ?? 'new'}
+                  id="ent-parent"
+                  type="all"
+                  excludeId={editingId ?? undefined}
+                  value={form.parent}
+                  onChange={(entity) => setForm(p => ({ ...p, parent: entity }))}
+                  placeholder="상위 엔티티 이름을 검색하세요"
+                />
+              </div>
               <div className="flex items-center">
                 <label className="flex cursor-pointer items-center gap-2">
                   <input
@@ -1044,7 +1133,8 @@ export default function EntityManager() {
             )}
             {mergeTargetId && mergeTargetEntity && (
               <p className="rounded-lg bg-destructive/10 px-4 py-2 text-sm text-destructive">
-                ⚠️ &ldquo;{mergeSourceEntity.canonical_name}&rdquo;의 모든 기사 연결과 동의어가
+                ⚠️ &ldquo;{mergeSourceEntity.canonical_name}&rdquo;의 모든 기사 연결
+                {mergeLinkCount !== null && <strong>({mergeLinkCount}건)</strong>}과 동의어가
                 &ldquo;{mergeTargetEntity.canonical_name}&rdquo;으로 이전되며{' '}
                 <strong>되돌릴 수 없습니다.</strong>
               </p>

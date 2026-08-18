@@ -25,24 +25,34 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const q = (searchParams.get('q') ?? '').trim()
   const type = searchParams.get('type') ?? 'company'
+  const excludeId = searchParams.get('excludeId')
 
   if (q.length < 1) {
     return NextResponse.json({ entities: [] })
   }
 
+  let nameQuery = supabase
+    .from('entities')
+    .select('id, canonical_name')
+    .ilike('canonical_name', `%${q}%`)
+    .limit(10)
+  let aliasQuery = supabase
+    .from('entity_aliases')
+    .select('alias, entities!inner(id, canonical_name, entity_type)')
+    .ilike('alias', `%${q}%`)
+    .limit(10)
+  // type=all — 계층(상위 엔티티) 선택 등 엔티티 종류 무관 검색(521)
+  if (type !== 'all') {
+    nameQuery = nameQuery.eq('entity_type', type)
+    aliasQuery = aliasQuery.eq('entities.entity_type', type)
+  }
+  if (excludeId) {
+    nameQuery = nameQuery.neq('id', excludeId)
+  }
+
   const [{ data: nameMatches, error: nameErr }, { data: aliasMatches, error: aliasErr }] = await Promise.all([
-    supabase
-      .from('entities')
-      .select('id, canonical_name')
-      .eq('entity_type', type)
-      .ilike('canonical_name', `%${q}%`)
-      .limit(10),
-    supabase
-      .from('entity_aliases')
-      .select('alias, entities!inner(id, canonical_name, entity_type)')
-      .ilike('alias', `%${q}%`)
-      .eq('entities.entity_type', type)
-      .limit(10),
+    nameQuery,
+    aliasQuery,
   ])
 
   if (nameErr || aliasErr) {
@@ -53,7 +63,7 @@ export async function GET(req: NextRequest) {
   const byId = new Map<string, EntityRow>()
   for (const e of (nameMatches ?? []) as EntityRow[]) byId.set(e.id, e)
   for (const a of (aliasMatches ?? []) as unknown as AliasRow[]) {
-    if (a.entities) byId.set(a.entities.id, a.entities)
+    if (a.entities && a.entities.id !== excludeId) byId.set(a.entities.id, a.entities)
   }
 
   const entities = [...byId.values()].slice(0, 10)
