@@ -6436,3 +6436,24 @@ create index if not exists admin_audit_log_target_idx on public.admin_audit_log 
 alter table public.admin_audit_log enable row level security;
 drop policy if exists "admin_audit_log: admin 조회" on public.admin_audit_log;
 create policy "admin_audit_log: admin 조회" on public.admin_audit_log for select using (public.is_admin());
+
+-- 527-A: 운영 일일 스냅샷(재고+흐름). ops-brief 크론이 매일 1회 upsert.
+create table if not exists public.ops_daily_snapshot (
+  snapshot_date date primary key,
+  pending_total integer not null default 0,
+  pending_by_reason jsonb not null default '{}'::jsonb,
+  body_backlog integer not null default 0,
+  users_pending integer not null default 0,
+  published_total integer not null default 0,
+  rejected_total integer not null default 0,
+  collected_day integer not null default 0,
+  published_day integer not null default 0,
+  pending_in_day integer not null default 0,
+  pending_expired_day integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create trigger set_updated_at before update on public.ops_daily_snapshot for each row execute function public.set_updated_at();
+alter table public.ops_daily_snapshot enable row level security;
+drop policy if exists "ops_daily_snapshot: admin 조회" on public.ops_daily_snapshot;
+create policy "ops_daily_snapshot: admin 조회" on public.ops_daily_snapshot for select using (public.is_admin());
