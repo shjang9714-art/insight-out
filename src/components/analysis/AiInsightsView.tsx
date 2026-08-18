@@ -14,6 +14,15 @@ import { rankKeywords } from '@/lib/keywords/ranking'
 
 const WATCHLIST_LIMIT = 20
 
+// 525 — trendRes 는 14일치 발행 콘텐츠를 매칭 키워드/그룹 집계용으로 통째로 끌어온다.
+// 실측(2026-08) 14일 7,887건 중 직전7일 4,166건 — 옛 limit(1000)·순서 미지정 조합이
+// 직전 7일을 통째로 잘라내 "급상승/신규/관심 지속/하락" 분류가 전부 신규로만 나오던 원인.
+// 근본 해법(matched_keywords/matched_groups unnest 후 주 버킷 집계 RPC/뷰)은 플래너에게
+// SQL 을 요청해야 한다 — 여기서는 임시로 (a) 상한을 실측 볼륨 이상으로 올리고
+// (b) collected_at 내림차순을 명시해 잘리더라도 최신(이번 주) 쪽을 보존하고,
+// (c) 실제 건수(count: 'exact')와 수신 건수를 비교해 잘렸으면 화면에 알린다.
+const TREND_ROWS_LIMIT = 20000
+
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
 interface ContentMeta {
@@ -132,10 +141,11 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .limit(30),
     supabase
       .from('contents')
-      .select('matched_groups, matched_keywords, collected_at')
+      .select('matched_groups, matched_keywords, collected_at', { count: 'exact' })
       .eq('status', 'published')
       .gte('collected_at', fourteenDaysStart)
-      .limit(1000),
+      .order('collected_at', { ascending: false })
+      .limit(TREND_ROWS_LIMIT),
     user
       ? supabase
           .from('user_watchlist')
@@ -241,6 +251,9 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
   }
 
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
+  // trendRes.count 는 limit 과 무관한 실제 매칭 건수(count: 'exact') — 수신 건수보다 크면 잘린 것.
+  const trendWindowTruncated =
+    typeof trendRes.count === 'number' && trendRes.count > (trendRes.data?.length ?? 0)
   const trendingTopics = computeTrendingTopics(
     (trendRes.data ?? []) as TrendRow[],
     todayStartMs,
@@ -424,6 +437,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       insightGroups={insightGroups}
       contentMap={contentMapRecord}
       trendingTopics={trendingTopics}
+      trendWindowTruncated={trendWindowTruncated}
       classifiedKeywords={classifiedKeywords}
       kwStrip={kwStrip}
       issueCards={issueCards}
