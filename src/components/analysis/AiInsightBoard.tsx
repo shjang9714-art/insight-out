@@ -24,6 +24,7 @@ import InsightCardsSectionClient, {
 } from '@/components/analysis/InsightCardsSectionClient'
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
+import PageHeader from '@/components/PageHeader'
 import type { IssueCard } from '@/lib/issues/activity'
 import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
@@ -102,6 +103,22 @@ const LAB_TABS: { id: AiInsightViewId; label: string }[] = [
 
 const LAB_VIEW_IDS: readonly AiInsightViewId[] = LAB_TABS.map(t => t.id)
 const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS].map(t => t.id)
+
+// 공통 페이지 헤더(§PageHeader) 문구 — 핵심 인사이트·키워드 분석·관계지도 3탭.
+const TAB_HEADER_META: Partial<Record<AiInsightViewId, { title: string; description: string }>> = {
+  brief: {
+    title: '핵심 인사이트',
+    description: '매주 업계 주요 이슈 중 보도량·업계 파급력·최신성을 기준으로 핵심 사안을 선별해, LG유플러스 관점의 기회·리스크·실행 제안으로 정리한 주간 인사이트입니다.',
+  },
+  keyword: {
+    title: '키워드 분석',
+    description: '업계에서 오르내리는 키워드를 급상승·신규·관심 지속·하락으로 나눠 최근 흐름을 보여주는 분석입니다.',
+  },
+  graph: {
+    title: '관계지도',
+    description: '기업·기술·인물·정책이 뉴스에서 함께 등장한 연결 관계를 지도로 보여주는 화면입니다.',
+  },
+}
 
 interface KeywordChangeCard {
   id: 'rising' | 'new' | 'highlight'
@@ -258,9 +275,14 @@ export default function AiInsightBoard({
   const keywordChangeCards = buildKeywordChangeCards(classifiedKeywords)
 
   const rankedKeywords = rankKeywords(classifiedKeywords, keywordRankingMode)
+  const headerMeta = TAB_HEADER_META[view]
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* 공통 페이지 헤더(핵심 인사이트·키워드 분석·관계지도) */}
+      {headerMeta && <PageHeader title={headerMeta.title} description={headerMeta.description} />}
+
+      <div className="space-y-6">
       {/* 하위 카테고리 탭(핵심 인사이트·키워드 분석·관계지도)은 DashboardHeader의
           sticky L2 행으로 이동(372) — 이 보드는 view 상태만 URL에서 읽는다. */}
 
@@ -623,6 +645,7 @@ export default function AiInsightBoard({
           </div>
         </section>
       )}
-    </div>
+      </div>
+    </>
   )
 }

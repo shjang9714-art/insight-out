@@ -8,32 +8,17 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import PageContainer from '@/components/PageContainer'
 import SettingsTab from '@/components/mypage/SettingsTab'
-import BookmarksTab from '@/components/mypage/BookmarksTab'
+import SecurityTab from '@/components/mypage/SecurityTab'
 import { saveProfile } from '@/app/dashboard/mypage/actions'
 import type { Department } from '@/lib/types'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 import type { LensKey } from '@/lib/lens'
 import type {
-  BookmarkWithItem,
   NewsletterForm,
   ProfileForm,
   SaveStatus,
   WatchlistSummaryItem,
 } from '@/components/mypage/types'
-
-// 492 · 3단계 D — 소프트 삭제된 콘텐츠는 "삭제된 콘텐츠" 표시 없이 목록에서 조용히 감춘다.
-// SQL B(RLS) 적용 후에는 contents 가 null 로 오지만, 그 전(또는 admin 조회 등)에는
-// deleted_at 이 채워진 채로 올 수 있어 두 경우 다 걸러야 카운트·목록이 어긋나지 않는다.
-type ContentsJoin = { deleted_at?: string | null } | null
-
-function isLiveContentJoin(contentId: string | null, contents: ContentsJoin): boolean {
-  if (!contentId) return true // content_id 아닌 다른 타겟 기반 항목은 무관
-  return Boolean(contents) && !contents!.deleted_at
-}
-
-function filterDeletedBookmarks(rows: BookmarkWithItem[]): BookmarkWithItem[] {
-  return rows.filter((row) => isLiveContentJoin(row.content_id, row.contents as ContentsJoin))
-}
 
 export default function MyPage() {
   const supabase = createClient()
@@ -60,17 +45,6 @@ export default function MyPage() {
   })
   const [newsletterStatus, setNewsletterStatus] = useState<SaveStatus>('idle')
   const [newsletterError, setNewsletterError] = useState<string | null>(null)
-
-  const [bookmarks, setBookmarks] = useState<BookmarkWithItem[]>([])
-  const [bookmarksLoading, setBookmarksLoading] = useState(true)
-  const [bookmarkError, setBookmarkError] = useState<string | null>(null)
-
-  // 517 — 아카이브를 없애고 북마크 하나로 합치며, 다중 선택 → 메일 발송을 북마크 쪽으로 옮겼다.
-  const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set())
-  const [emailInputOpen, setEmailInputOpen] = useState(false)
-  const [emailInputValue, setEmailInputValue] = useState('')
-  const [sendingBookmarks, setSendingBookmarks] = useState(false)
-  const [sendResult, setSendResult] = useState<{ to: string } | null>(null)
 
   async function fetchWatchlistForUser(userId: string): Promise<WatchlistSummaryItem[]> {
     const { data, error } = await supabase
@@ -120,22 +94,10 @@ export default function MyPage() {
       const [
         userRes,
         subRes,
-        bookmarksRes,
         watchlistRows,
       ] = await Promise.all([
         supabase.from('users').select('name, department, team, team_name, default_lens').eq('id', user.id).single(),
         supabase.from('newsletter_subscriptions').select('is_active, newsletter_email').eq('user_id', user.id).single(),
-        supabase
-          .from('bookmarks')
-          .select(`
-            id, content_id, youtube_video_id, ai_report_id, daily_insight_id, insight_card_id, created_at,
-            contents(id, title, category, original_url, published_at, deleted_at),
-            youtube_videos(id, video_id, title, channel_name, published_at),
-            ai_reports(id, title, type, published_at),
-            daily_insights(id, headline, category, day_of),
-            insight_cards(id, topic, headline, card_headline, generated_at)
-          `)
-          .order('created_at', { ascending: false }),
         fetchWatchlistForUser(user.id),
       ])
 
@@ -163,10 +125,6 @@ export default function MyPage() {
       }
 
       setWatchlistItems(watchlistRows)
-
-      if (bookmarksRes.error) setBookmarkError('북마크를 불러오지 못했습니다.')
-      if (bookmarksRes.data) setBookmarks(filterDeletedBookmarks(bookmarksRes.data as unknown as BookmarkWithItem[]))
-      setBookmarksLoading(false)
 
       if (subRes.data) {
         setNewsletter({
@@ -268,70 +226,6 @@ export default function MyPage() {
     }
   }
 
-  async function handleRemoveBookmark(bookmarkId: string) {
-    setBookmarkError(null)
-    const { error } = await supabase.from('bookmarks').delete().eq('id', bookmarkId)
-    if (error) {
-      setBookmarkError('북마크 해제에 실패했습니다. 잠시 후 다시 시도해주세요.')
-    } else {
-      setBookmarks((prev) => prev.filter((bookmark) => bookmark.id !== bookmarkId))
-      setSelectedBookmarkIds((prev) => {
-        if (!prev.has(bookmarkId)) return prev
-        const next = new Set(prev)
-        next.delete(bookmarkId)
-        return next
-      })
-    }
-  }
-
-  function handleToggleSelectBookmark(bookmarkId: string) {
-    setSelectedBookmarkIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(bookmarkId)) next.delete(bookmarkId)
-      else next.add(bookmarkId)
-      return next
-    })
-  }
-
-  function handleToggleSelectAllBookmarks() {
-    setSelectedBookmarkIds((prev) =>
-      prev.size === bookmarks.length ? new Set() : new Set(bookmarks.map((b) => b.id))
-    )
-  }
-
-  function handleOpenEmailInput() {
-    setEmailInputValue(authEmail)
-    setSendResult(null)
-    setBookmarkError(null)
-    setEmailInputOpen(true)
-  }
-
-  async function handleSendBookmarkEmail() {
-    setSendingBookmarks(true)
-    setBookmarkError(null)
-    setSendResult(null)
-    const recipients = emailInputValue
-      ? emailInputValue.split(/[,;\s]+/).map((email) => email.trim()).filter(Boolean)
-      : []
-
-    try {
-      const res = await fetch('/api/email/send-bookmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookmarkIds: [...selectedBookmarkIds], recipients }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? '발송에 실패했습니다.')
-      setSendResult({ to: data.to })
-      setEmailInputOpen(false)
-      setEmailInputValue('')
-    } catch (err) {
-      setBookmarkError(err instanceof Error ? err.message : '이메일 발송에 실패했습니다.')
-    } finally {
-      setSendingBookmarks(false)
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -343,7 +237,7 @@ export default function MyPage() {
   return (
     // 347: 마이페이지는 목록 화면과 성격이 다른 "설정 패널" — 중앙 정렬(mx-auto).
     // 폭은 다른 화면(max-w-screen-xl)까지 늘리지 않는다 — 입력 필드·폼이 1200px로 늘어지면 읽기·조작이 불편해진다.
-    // 탭(설정/북마크/아카이브)은 제거하고 한 화면 스크롤로 통합.
+    // 북마크는 /dashboard/bookmarks 전용 페이지로 분리(아카이브는 517에서 북마크로 통합·제거됨).
     <PageContainer>
       <div className="mx-auto w-full max-w-3xl">
         <div className="mb-8">
@@ -386,23 +280,7 @@ export default function MyPage() {
             onWatchlistChange={refreshWatchlistSummary}
           />
 
-          <BookmarksTab
-            bookmarks={bookmarks}
-            loading={bookmarksLoading}
-            error={bookmarkError}
-            onRemove={handleRemoveBookmark}
-            selectedIds={selectedBookmarkIds}
-            onToggleSelect={handleToggleSelectBookmark}
-            onToggleSelectAll={handleToggleSelectAllBookmarks}
-            emailInputOpen={emailInputOpen}
-            onOpenEmailInput={handleOpenEmailInput}
-            onCloseEmailInput={() => setEmailInputOpen(false)}
-            emailInputValue={emailInputValue}
-            setEmailInputValue={setEmailInputValue}
-            sending={sendingBookmarks}
-            sendResult={sendResult}
-            onSendEmail={handleSendBookmarkEmail}
-          />
+          <SecurityTab authEmail={authEmail} />
         </div>
       </div>
     </PageContainer>

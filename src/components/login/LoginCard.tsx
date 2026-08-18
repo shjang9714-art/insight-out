@@ -79,6 +79,7 @@ export function LoginCard() {
   const searchParams = useSearchParams()
   const callbackError = searchParams.get('error')
   const passwordUpdated = searchParams.get('password') === 'updated'
+  const reason = searchParams.get('reason')
 
   const [step, setStep] = useState<Step>('password')
   const [intent, setIntent] = useState<Intent>('signup')
@@ -307,6 +308,17 @@ export function LoginCard() {
       {passwordUpdated && step === 'password' && !error && (
         <div role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
           비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.
+        </div>
+      )}
+      {/* F-08 — 최초 방문과 구분되는 세션 만료 안내. 계정 비활성화(F-09)도 같은 자리에서 사유를 보여준다. */}
+      {reason === 'expired' && step === 'password' && !error && !passwordUpdated && (
+        <div role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+          세션이 만료되어 다시 로그인이 필요합니다.
+        </div>
+      )}
+      {reason === 'deactivated' && step === 'password' && !error && !passwordUpdated && (
+        <div role="status" className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          비활성화된 계정입니다. 복구가 필요하면 관리자에게 문의해 주세요.
         </div>
       )}
       {(error || callbackError) && (

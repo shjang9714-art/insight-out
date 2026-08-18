@@ -3,11 +3,19 @@
 import { useState, useEffect, startTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Bookmark, FlaskConical, FolderOpen, Menu, Search, Waypoints } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Bookmark, FlaskConical, FolderOpen, LogOut, Menu, Search, User, Waypoints } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 // ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
@@ -101,6 +109,7 @@ interface Props {
 export default function DashboardHeader({ onMenuClick, onSearchClick, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
+  const router        = useRouter()
 
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
@@ -159,6 +168,13 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
         })
     })
   }, [])
+
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
     <header className={cn('sticky top-0 z-20 bg-card/90 backdrop-blur-sm', className)}>
@@ -243,7 +259,7 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
               모바일·md 폭에서는 이미 관계지도·자료실·검색으로 우측이 붐벼 lg+에서만 노출.
               517 — 아카이브는 북마크로 통합돼 아이콘 제거. */}
           <Link
-            href="/dashboard/mypage#bookmarks"
+            href="/dashboard/bookmarks"
             title="북마크"
             className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
             aria-label="북마크 모아보기"
@@ -257,31 +273,48 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
             <span className="text-xs font-medium text-foreground">{today}</span>
           </div>
 
-          {/* 사용자 */}
-          <Link
-            href="/dashboard/mypage"
-            className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-accent"
-            title="마이페이지"
-          >
-            {userName === null ? (
-              <div className="hidden flex-col items-end gap-1 sm:flex">
-                <div className="h-3 w-16 animate-pulse rounded bg-muted" />
-                <div className="h-2.5 w-10 animate-pulse rounded bg-muted" />
-              </div>
-            ) : (
-              <div className="hidden flex-col items-end sm:flex">
-                {userName && <span className="text-xs font-semibold text-foreground">{userName}</span>}
-                {userTeam && <span className="text-[11px] text-muted-foreground">{userTeam}</span>}
-              </div>
-            )}
-            {userName === null ? (
-              <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-solid text-xs font-bold text-white">
-                {userName ? userName[0] : '?'}
-              </div>
-            )}
-          </Link>
+          {/* 사용자 — 드롭다운(마이페이지·로그아웃). 헤더에서 바로 로그아웃 가능하게(F-05) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-accent aria-expanded:bg-accent"
+                title="계정"
+              >
+                {userName === null ? (
+                  <div className="hidden flex-col items-end gap-1 sm:flex">
+                    <div className="h-3 w-16 animate-pulse rounded bg-muted" />
+                    <div className="h-2.5 w-10 animate-pulse rounded bg-muted" />
+                  </div>
+                ) : (
+                  <div className="hidden flex-col items-end sm:flex">
+                    {userName && <span className="text-xs font-semibold text-foreground">{userName}</span>}
+                    {userTeam && <span className="text-[11px] text-muted-foreground">{userTeam}</span>}
+                  </div>
+                )}
+                {userName === null ? (
+                  <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-solid text-xs font-bold text-white">
+                    {userName ? userName[0] : '?'}
+                  </div>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/mypage">
+                  <User className="h-4 w-4" />
+                  마이페이지
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={handleLogout} className="text-negative">
+                <LogOut className="h-4 w-4" />
+                로그아웃
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
