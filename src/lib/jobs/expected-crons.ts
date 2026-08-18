@@ -50,6 +50,8 @@ const CRON_META: Record<string, CronMeta> = {
   'cron:ops-weekly':           { label: '주간 운영 리포트',    maxAgeHours: 200 },
   // 499 — vercel.json 에는 없이 pg_cron 10분 주기로만 도는 운영 알림. 429/434 참고.
   'cron:ops-alert':            { label: '운영 알림',           maxAgeHours: 30, highFrequency: true, pgCronOnly: true },
+  // 526 — vercel.json 에는 없이 pg_cron 으로만 도는 검토대기 만료. 실제 스케줄 등록은 SQL 로 별도.
+  'cron:pending-expire':       { label: '검토대기 만료',       maxAgeHours: 30, pgCronOnly: true },
 }
 
 function cronKeyFromPath(path: string): string {
