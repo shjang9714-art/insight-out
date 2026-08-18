@@ -207,7 +207,7 @@ export function AdminSidebar() {
     return group.items.some(
       (it) =>
         (it.href === '/admin/requests' && openRequestCount > 0) ||
-        (it.href === '/admin/insights' && dailyInsightReviewCount > 0)
+        (it.href === '/admin/daily-insights' && dailyInsightReviewCount > 0)
     )
   }
 
@@ -413,7 +413,7 @@ export function AdminSidebar() {
                                 {openRequestCount}
                               </span>
                             )}
-                            {!collapsed && item.href === '/admin/insights' && dailyInsightReviewCount > 0 && (
+                            {!collapsed && item.href === '/admin/daily-insights' && dailyInsightReviewCount > 0 && (
                               <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
                                 {dailyInsightReviewCount}
                               </span>
