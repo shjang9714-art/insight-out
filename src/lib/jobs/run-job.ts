@@ -89,6 +89,9 @@ function toErrorMessage(err: unknown): string {
 // 스스로 청소하게 한다 — 별도 리퍼 크론/route 없이 자연 치유.
 const STALE_RUN_THRESHOLD_MS = 15 * 60 * 1000 // 15분 (모든 maxDuration보다 충분히 여유)
 
+/** 523-B — 리퍼 마감 메시지의 접두사. detect-issues.ts 가 이 상수로 하드킬을 실제 예외와 구분한다. */
+export const STALE_RUN_REAPED_PREFIX = 'stale run reaped'
+
 async function reapStaleRunningJobs(admin: SupabaseClient): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - STALE_RUN_THRESHOLD_MS).toISOString()
@@ -113,7 +116,7 @@ async function reapStaleRunningJobs(admin: SupabaseClient): Promise<void> {
           status: 'failed',
           finished_at: new Date().toISOString(),
           duration_ms: Date.now() - startedAtMs,
-          error: `stale run reaped — ${STALE_RUN_THRESHOLD_MS / 60_000}분 넘게 running 상태로 남아 하드킬로 추정, 리퍼가 마감 처리함`,
+          error: `${STALE_RUN_REAPED_PREFIX} — ${STALE_RUN_THRESHOLD_MS / 60_000}분 넘게 running 상태로 남아 하드킬로 추정, 리퍼가 마감 처리함`,
         })
         .eq('id', run.id)
         .eq('status', 'running') // race 방지: 그 사이 다른 프로세스가 이미 마감했으면 건너뜀
