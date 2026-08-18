@@ -100,7 +100,7 @@ export default function PublishAnalyticsView({ data, months }: { data: PublishAn
               <button
                 key={m}
                 type="button"
-                onClick={() => router.push(`/admin/analytics/publish?months=${m}`)}
+                onClick={() => router.push(`/admin/analytics/content?tab=publish&months=${m}`)}
                 className={cn(
                   'rounded-md px-3 py-1 text-sm font-medium transition-colors',
                   m === months ? 'bg-brand-600 text-white' : 'bg-muted/40 text-muted-foreground hover:bg-accent'

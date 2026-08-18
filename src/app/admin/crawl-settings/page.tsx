@@ -1,25 +1,17 @@
 import type { Metadata } from 'next'
-import { Filter } from 'lucide-react'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
-import CrawlSettings from '@/components/admin/CrawlSettings'
+import { Suspense } from 'react'
+import CrawlRulesHub from '@/components/admin/CrawlRulesHub'
 
 export const metadata: Metadata = {
-  title: '수집 설정 | 어드민 | Insight Out',
-  description: '크롤 수집 시 적용되는 품질 기준(최소 본문 길이)을 조정합니다.',
+  title: '수집 규칙 | 어드민 | Insight Out',
+  description: '수집 품질 기준, 제외 규칙, 데이터 보강 재처리를 통합 관리합니다.',
 }
 
-// 280 — /admin/settings 에서 이동. API 불변(GET/PATCH /api/admin/crawl-settings).
-export default function AdminCrawlSettingsPage() {
+// 524 — crawl-settings · exclusion-rules · enrich 통합(AdminTabShell 이식). API 불변.
+export default function AdminCrawlRulesPage() {
   return (
-    <>
-      <AdminPageHeader />
-      <AdminSectionHeader
-        icon={Filter}
-        title="수집 필터"
-        hint="크롤 수집 시 적용되는 품질 기준을 조정합니다."
-      />
-      <CrawlSettings />
-    </>
+    <Suspense fallback={null}>
+      <CrawlRulesHub />
+    </Suspense>
   )
 }

@@ -1,24 +1,6 @@
-import { Wrench } from 'lucide-react'
-import AdminContentProcessing from '@/components/admin/AdminContentProcessing'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
-import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
-import { getEnrichJobs } from '@/lib/admin/enrich-jobs'
+import { redirect } from 'next/navigation'
 
-const DATA_JOBS = getEnrichJobs('data')
-
-export default function AdminEnrichPage() {
-  return (
-    <div className="space-y-10">
-      <AdminPageHeader />
-
-      <div>
-        <AdminSectionHeader
-          icon={Wrench}
-          title="데이터 보강 재처리"
-          hint="LLM을 쓰지 않는 수집 데이터 보강·재처리 작업만 실행합니다."
-        />
-        <AdminContentProcessing jobs={DATA_JOBS} />
-      </div>
-    </div>
-  )
+// 524 — 수집 규칙(/admin/crawl-settings)의 "데이터 보강 재처리" 탭으로 통합.
+export default function EnrichPage() {
+  redirect('/admin/crawl-settings?tab=enrich')
 }

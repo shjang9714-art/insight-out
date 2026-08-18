@@ -5,21 +5,15 @@ import {
   FilePlus,
   Sun,
   Rss,
-  ListChecks,
   Tags,
   Network,
-  Cpu,
   Sparkles,
   Mail,
   Users,
-  Boxes,
   ClipboardList,
-  Ban,
   Settings,
-  Wrench,
   TrendingUp,
   Filter,
-  Gauge,
   LayoutTemplate,
   FileText,
   History,
@@ -29,10 +23,8 @@ import {
   BarChart3,
   Building2,
   Landmark,
-  FolderTree,
   UserCheck,
   FlaskConical,
-  ShieldCheck,
 } from 'lucide-react'
 
 export interface AdminNavItem {
@@ -53,34 +45,31 @@ export interface AdminNavGroup {
 
 // 504 — 어드민 IA 1단계: 그룹 11개 → 8개 배치 재편(항목 통합은 2단계).
 // 522 — 어드민 IA 2단계: 8개 → 6개로 재배치. href 는 전부 그대로다 — 여기서는
-// 어느 그룹에 어떤 라벨로 노출되는지만 바뀐다. 항목 감소(35개)는 523(탭 통합)에서.
+// 어느 그룹에 어떤 라벨로 노출되는지만 바뀐다.
+// 524 — 어드민 IA 3단계: AdminTabShell 이식으로 4건(3~4개 항목→1개 탭 화면) 통합.
+// 통합된 항목의 href 는 사라지고 대표 href 하나로 합쳐진다. 옛 경로는 리다이렉트 스텁으로 남는다.
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '운영',
     items: [
       { href: '/admin', label: '운영 대시보드', description: '전체 운영 현황, 사용자 수, 콘텐츠 상태, AI/발행 상태를 요약합니다.', icon: LayoutDashboard },
       { href: '/admin/ops-issues', label: '운영 이슈', description: '자동 탐지된 운영 이슈(수집·크론·사용량·보강) 확인·상태 관리.', icon: AlertTriangle },
-      // 522 — 분석·관리에서 이동: 운영 성격이 강한 이력·로그·게시판을 운영 그룹으로.
-      { href: '/admin/job-runs', label: '작업 이력', description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.', icon: History },
-      { href: '/admin/audit-log', label: '감사 로그', description: '관리자 쓰기 작업과 처리 결과를 확인합니다.', icon: ShieldCheck },
-      { href: '/admin/crawl-logs', label: '로그 분석', description: '기술 로그 검색·오류 추세·연관 실행 이력.', roadmap: '(현행 크롤 로그 → 확장 예정 S9)', icon: ListChecks },
+      // 524 — 작업 이력·감사 로그·로그 분석 통합(탭). 대표 href: /admin/job-runs.
+      { href: '/admin/job-runs', label: '실행 이력', description: '크론·일괄 작업 이력, 관리자 감사 로그, 수집 기술 로그를 통합 조회합니다.', icon: History },
       { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
     ],
   },
   {
     group: '수집',
     items: [
-      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
-      { href: '/admin/crawl-settings', label: '수집 설정', description: '크롤 수집 품질 기준(최소 본문 길이).', roadmap: '각 콘텐츠 수집 설정으로 이동 예정(S4).', icon: Filter },
-      { href: '/admin/keywords', label: '키워드', description: '콘텐츠 서비스/카테고리 분류 기준 키워드 원장을 관리합니다.', icon: Tags },
-      { href: '/admin/keyword-groups', label: '키워드 그룹·시그널 기준', description: '수집 seed, 검색 seed, include/exclude pattern, 시그널 기준을 관리합니다.', icon: Network },
-      { href: '/admin/exclusion-rules', label: '제외 규칙', description: '수집 제외 도메인·키워드·URL, 중복·저품질 기준을 관리합니다.', icon: Ban },
-      { href: '/admin/entities', label: '엔티티 사전', description: '기업·조직·인물 등 엔티티와 별칭·정규화 기준을 관리합니다.', icon: Boxes },
       // 522 — 콘텐츠 그룹 해체, 수집으로 이동.
       { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
       { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록.', roadmap: '각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
-      { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리.', roadmap: '콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
-      { href: '/admin/taxonomy', label: '분류·카테고리', description: 'DB 카테고리와 사용자 화면·어드민 탭 매핑을 조회합니다. (조회 전용)', icon: FolderTree },
+      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
+      // 524 — 수집 설정·제외 규칙·데이터 보강 재처리 통합(탭). 대표 href: /admin/crawl-settings.
+      { href: '/admin/crawl-settings', label: '수집 규칙', description: '수집 품질 기준, 제외 규칙, 데이터 보강 재처리를 통합 관리합니다.', icon: Filter },
+      // 524 — 키워드·키워드그룹·분류/카테고리·엔티티 사전 통합(탭). 대표 href: /admin/keywords.
+      { href: '/admin/keywords', label: '사전·분류', description: '분류 키워드, 수집 키워드그룹·시그널 기준, 카테고리 매핑, 엔티티 사전을 통합 관리합니다.', icon: Tags },
     ],
   },
   {
@@ -113,11 +102,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '분석·관리',
     items: [
-      { href: '/admin/analytics/content', label: '콘텐츠 분석', description: '콘텐츠 수집 추이·카테고리·상태·소스·북마크 성과.', icon: BarChart3 },
-      { href: '/admin/source-quality', label: '수집 분석', description: '소스별 수집량·성공률·본문추출률·중복률·오류율.', roadmap: '(현행 소스 품질 → 확장 예정 S9)', icon: Gauge },
-      { href: '/admin/analytics/publish', label: '발행 분석', description: '발행량 추이·생성/발행 성공률·검수 소요·뉴스레터 성과.', icon: BarChart3 },
+      // 524 — 콘텐츠 분석·수집 분석·발행 분석·AI 사용량 비용 통합(탭). 대표 href: /admin/analytics/content.
+      { href: '/admin/analytics/content', label: '통계분석', description: '콘텐츠·수집·발행 분석과 AI 사용량·비용을 통합 조회합니다.', icon: BarChart3 },
       { href: '/admin/analytics/users', label: '사용자 분석', description: 'DAU/WAU/MAU·조직별 활성·기능 이용률·검색/북마크.', roadmap: '(준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
-      { href: '/admin/analytics/ai-cost', label: 'AI 사용량·비용', description: 'LLM·번역·TTS 월별 사용량과 한도 대비 소진율.', icon: Cpu },
       // 522 — 인사이트 그룹 해체 시 분석 성격이 강해 여기로 배치(지시서 미명시 항목).
       { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
       { href: '/admin/users', label: '사용자', description: '사용자 승인 상태·역할·부서·팀 정보를 관리합니다.', icon: Users },
