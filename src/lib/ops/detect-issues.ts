@@ -12,6 +12,13 @@ interface Signal { fingerprint: string; category: string; severity: 'critical' |
 
 const since24h = () => new Date(Date.now() - 86_400_000).toISOString()
 
+// 523 — 실패 1건만으로 "크론 작업 실패" 신호를 만들면 노이즈다(실측: 24시간 145회 중
+// 실패 1건(0.7%)에 긴급 메일이 6명에게 발송됨). 반복성을 확인할 최소 건수부터만 신호를
+// 만들고, severity 는 jobKey 문자열(crawl/body 포함 여부)이 아니라 실제 건수·실패율로 정한다.
+const CRON_FAIL_MIN_COUNT = 2
+const CRON_FAIL_CRITICAL_COUNT = 5
+const CRON_FAIL_CRITICAL_RATE = 0.5
+
 /** "2026-08-12 01:25" 형식(KST) — suspected_cause 문구에 마지막 실행 시각을 박아넣는 용도. */
 function formatKst(iso: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -109,8 +116,10 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const since = since24h()
   const signals: Signal[] = []
   const opsSettings = await getOpsSettings()
-  const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors, lastRunAtByKey] = await Promise.all([
+  const [jobs, jobsAll, crawls, backlog, usage, settings, translation, tts, routingModelErrors, lastRunAtByKey] = await Promise.all([
     admin.from('job_runs').select('job_key').eq('status', 'failed').gte('started_at', since),
+    // 실패율 계산용 — 같은 24시간 창의 전체 실행 건수(status 무관).
+    admin.from('job_runs').select('job_key').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
     admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
     admin.from('llm_usage').select('provider, tokens').eq('period', new Date().toISOString().slice(0, 7)),
@@ -125,7 +134,26 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     fetchCronLastRunAtByKey(admin),
   ])
   const jobCounts = new Map<string, number>(); for (const r of jobs.data ?? []) jobCounts.set(r.job_key, (jobCounts.get(r.job_key) ?? 0) + 1)
-  for (const [jobKey, count] of jobCounts) signals.push({ fingerprint: `cron:fail:${jobKey}`, category: 'cron', severity: jobKey.includes('crawl') || jobKey.includes('body') ? 'critical' : 'warning', title: '크론 작업 실패', suspected_cause: `${jobKey} 작업 오류가 반복되는 상태`, recommended_action: '잡 실행 로그와 환경변수를 확인하세요.', impact: '자동 운영 작업 지연', count })
+  const jobTotalCounts = new Map<string, number>(); for (const r of jobsAll.data ?? []) jobTotalCounts.set(r.job_key, (jobTotalCounts.get(r.job_key) ?? 0) + 1)
+  for (const [jobKey, count] of jobCounts) {
+    if (count < CRON_FAIL_MIN_COUNT) continue
+    // total 은 실패 건수 이상이어야 정상 — 두 쿼리 사이 새 행이 끼어드는 경우 방어.
+    const total = Math.max(jobTotalCounts.get(jobKey) ?? count, count)
+    const failureRate = count / total
+    const severity: Signal['severity'] =
+      count >= CRON_FAIL_CRITICAL_COUNT || failureRate >= CRON_FAIL_CRITICAL_RATE ? 'critical' : 'warning'
+    const ratePercent = Math.round(failureRate * 100)
+    signals.push({
+      fingerprint: `cron:fail:${jobKey}`,
+      category: 'cron',
+      severity,
+      title: '크론 작업 실패',
+      suspected_cause: `${jobKey} — 최근 24시간 ${total}회 중 ${count}회 실패(실패율 ${ratePercent}%)`,
+      recommended_action: '잡 실행 로그와 환경변수를 확인하세요.',
+      impact: '자동 운영 작업 지연',
+      count,
+    })
+  }
   const crawlCounts = new Map<string, number>(); for (const r of crawls.data ?? []) if (r.source_id) crawlCounts.set(r.source_id, (crawlCounts.get(r.source_id) ?? 0) + 1)
   for (const [sourceId, count] of crawlCounts) signals.push({ fingerprint: `crawl:fail:${sourceId}`, category: 'crawl', severity: 'warning', title: '수집 소스 오류 반복', suspected_cause: '해당 소스 응답 또는 파서 지연 추정', recommended_action: '실패 로그를 확인하고 소스를 일시 중지하세요.', impact: '콘텐츠 수집 누락', count })
   const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
