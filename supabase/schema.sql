@@ -73,7 +73,8 @@ CREATE TYPE "public"."ai_report_type" AS ENUM (
 CREATE TYPE "public"."approval_status" AS ENUM (
     'pending',
     'approved',
-    'rejected'
+    'rejected',
+    'deactivated'
 );
 
 
@@ -2243,6 +2244,7 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "default_lens" "text" DEFAULT 'all'::"text" NOT NULL,
     "has_password" boolean DEFAULT false NOT NULL,
     "team_name" "text" DEFAULT ''::"text" NOT NULL,
+    "deactivated_at" timestamp with time zone,
     CONSTRAINT "users_content_filter_mode_check" CHECK (("content_filter_mode" = ANY (ARRAY['my_services'::"text", 'all'::"text"]))),
     CONSTRAINT "users_default_lens_check" CHECK (("default_lens" = ANY (ARRAY['mine'::"text", 'watch'::"text", 'all'::"text"])))
 );

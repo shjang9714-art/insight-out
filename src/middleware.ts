@@ -70,7 +70,13 @@ export async function middleware(request: NextRequest) {
   const isOnboardingAction = pathname === '/onboarding' && request.headers.get('next-action') !== null
 
   if (!user && !isOnboardingAction && !publicPaths.some((p) => pathname.startsWith(p))) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    // F-08 — 최초 방문(사유 없음)과 세션 만료(사유 있음)를 구분한다. sb-*-auth-token 쿠키가
+    // 남아 있는데 getUser()가 null이면 리프레시 토큰이 만료/무효화된 것 — 로그인 화면이
+    // "세션이 만료되어 다시 로그인이 필요합니다"를 보여줄 수 있게 reason을 붙인다.
+    const hadSession = request.cookies.getAll().some((c) => c.name.startsWith('sb-') && c.name.includes('-auth-token'))
+    const loginUrl = new URL('/login', request.url)
+    if (hadSession) loginUrl.searchParams.set('reason', 'expired')
+    return NextResponse.redirect(loginUrl)
   }
 
   if (user && !isApiRoute && !isOnboardingAction && (!publicPaths.some((p) => pathname.startsWith(p)) || pathname === '/login')) {
@@ -152,6 +158,13 @@ export async function middleware(request: NextRequest) {
           })
         }
       }
+    }
+
+    // F-09 — 자가 비활성화 계정: 다른 게이트보다 먼저 걸러 매 요청마다 즉시 로그아웃시킨다.
+    // /pending으로 보내면 "가입 승인 대기" 문구가 뜨는 다른 상태와 헷갈리므로 별도 사유로 /login에 되돌린다.
+    if (gate.approval_status === 'deactivated') {
+      await supabase.auth.signOut()
+      return NextResponse.redirect(new URL('/login?reason=deactivated', request.url))
     }
 
     const isGoogleUser = user.app_metadata.provider === 'google'
