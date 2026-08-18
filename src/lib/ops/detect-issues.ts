@@ -7,6 +7,7 @@ import {
 } from '@/lib/llm/token-limit'
 import { getOpsSettings } from '@/lib/ops/settings'
 import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
+import { STALE_RUN_REAPED_PREFIX } from '@/lib/jobs/run-job'
 
 interface Signal { fingerprint: string; category: string; severity: 'critical' | 'warning'; title: string; suspected_cause: string; recommended_action: string; impact: string; count: number }
 
@@ -117,7 +118,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const signals: Signal[] = []
   const opsSettings = await getOpsSettings()
   const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors, lastRunAtByKey] = await Promise.all([
-    admin.from('job_runs').select('job_key').eq('status', 'failed').gte('started_at', since),
+    admin.from('job_runs').select('job_key, error').eq('status', 'failed').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
     admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
     admin.from('llm_usage').select('provider, tokens').eq('period', new Date().toISOString().slice(0, 7)),
@@ -131,12 +132,22 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       .gte('last_error_at', since),
     fetchCronLastRunAtByKey(admin),
   ])
-  const jobCounts = new Map<string, number>(); for (const r of jobs.data ?? []) jobCounts.set(r.job_key, (jobCounts.get(r.job_key) ?? 0) + 1)
-  // 실패한 job_key 만 대상으로 전체 실행 건수를 서버에서 집계한다(행 전송 없음, 상한 없음).
+  // 523-B — Vercel maxDuration 하드킬을 reapStaleRunningJobs 가 failed 로 마감한 행은
+  // 잡 오류가 아니라 실행시간 초과다(원인·조치가 다름) — error 접두사로 분리해 별도 신호로 낸다.
+  // error 가 null 이면 실제 예외로 센다(보수적: 하드킬이 아니라고 확신할 수 없는 쪽은 실제 예외로).
+  const realFailCounts = new Map<string, number>()
+  const hardkillCounts = new Map<string, number>()
+  for (const r of jobs.data ?? []) {
+    const isHardkill = typeof r.error === 'string' && r.error.startsWith(STALE_RUN_REAPED_PREFIX)
+    const target = isHardkill ? hardkillCounts : realFailCounts
+    target.set(r.job_key, (target.get(r.job_key) ?? 0) + 1)
+  }
+  // 실패(예외+하드킬) 한 job_key 만 대상으로 전체 실행 건수를 서버에서 집계한다(행 전송 없음, 상한 없음).
   // 전체 행을 select 하면 PostgREST 기본 1000행 상한에 잘려 total 이 과소 집계되고,
   // 실패율이 부풀려져 오히려 없던 critical 이 생긴다 — 523이 없애려던 바로 그 노이즈.
+  const failedJobKeys = new Set<string>([...realFailCounts.keys(), ...hardkillCounts.keys()])
   const jobTotalCounts = new Map<string, number>()
-  await Promise.all([...jobCounts.keys()].map(async (jobKey) => {
+  await Promise.all([...failedJobKeys].map(async (jobKey) => {
     const { count, error } = await admin
       .from('job_runs')
       .select('id', { count: 'exact', head: true })
@@ -144,7 +155,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       .gte('started_at', since)
     if (!error && typeof count === 'number') jobTotalCounts.set(jobKey, count)
   }))
-  for (const [jobKey, count] of jobCounts) {
+  for (const [jobKey, count] of realFailCounts) {
     if (count < CRON_FAIL_MIN_COUNT) continue
     const total = jobTotalCounts.get(jobKey) ?? null
     const failureRate = total && total > 0 ? count / total : null
@@ -165,6 +176,28 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       count,
     })
   }
+  // 하드킬은 만성 용량 문제(배치 크기·소프트 데드라인)라 하루 몇 건이 정상 범위다 —
+  // CRON_FAIL_CRITICAL_COUNT(절대건수) 규칙은 적용하지 않는다. 그 규칙을 적용하면
+  // 523이 없앤 노이즈가 이름만 바꿔 돌아온다.
+  for (const [jobKey, n] of hardkillCounts) {
+    if (n < CRON_FAIL_MIN_COUNT) continue
+    const total = jobTotalCounts.get(jobKey) ?? null
+    const failureRate = total && total > 0 ? n / total : null
+    const severity: Signal['severity'] = failureRate !== null && failureRate >= CRON_FAIL_CRITICAL_RATE ? 'critical' : 'warning'
+    const suspected_cause = failureRate !== null
+      ? `${jobKey} — 최근 24시간 ${total}회 중 ${n}회가 실행시간 초과로 강제 종료(리퍼 마감)`
+      : `${jobKey} — 최근 24시간 ${n}회가 실행시간 초과로 강제 종료(리퍼 마감, 전체 실행 건수 집계 실패)`
+    signals.push({
+      fingerprint: `cron:hardkill:${jobKey}`,
+      category: 'cron',
+      severity,
+      title: '크론 실행시간 초과',
+      suspected_cause,
+      recommended_action: 'maxDuration·소프트 데드라인·1회 처리량 배분을 확인하세요. 잡 오류가 아니라 시간 초과입니다.',
+      impact: '작업이 매번 중간에서 잘림',
+      count: n,
+    })
+  }
   const crawlCounts = new Map<string, number>(); for (const r of crawls.data ?? []) if (r.source_id) crawlCounts.set(r.source_id, (crawlCounts.get(r.source_id) ?? 0) + 1)
   for (const [sourceId, count] of crawlCounts) signals.push({ fingerprint: `crawl:fail:${sourceId}`, category: 'crawl', severity: 'warning', title: '수집 소스 오류 반복', suspected_cause: '해당 소스 응답 또는 파서 지연 추정', recommended_action: '실패 로그를 확인하고 소스를 일시 중지하세요.', impact: '콘텐츠 수집 누락', count })
   const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
@@ -173,7 +206,18 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     const p = LLM_PROVIDERS.find(v => v.name === provider); const keyCount = p ? getProviderKeyCount(p) : 0; const limit = effectiveTokenLimit(settingsMap.get(provider), keyCount)
     // 키 제거 직후 남은 사용 기록은 무해하므로 한도 0은 사용량 신호에서 제외한다.
     const percent = limit > 0 ? used / limit * 100 : 0
-    if (percent >= 80) signals.push({ fingerprint: `usage:limit:${provider}`, category: 'usage', severity: percent >= 95 ? 'critical' : 'warning', title: 'AI 사용량 한도 임박', suspected_cause: `${provider} 월 사용량이 ${Math.round(percent)}%에 도달`, recommended_action: '키 수와 월 한도를 확인하고 사용량을 조정하세요.', impact: 'AI 작업 중단 가능성', count: 1 })
+    if (percent >= 80) {
+      signals.push({
+        fingerprint: `usage:limit:${provider}`,
+        category: 'usage',
+        severity: percent >= 95 ? 'critical' : 'warning',
+        title: 'AI 사용 예산 초과 임박',
+        suspected_cause: `${provider} 월 사용량 ${used.toLocaleString()} / 예산 ${limit.toLocaleString()} 토큰 (${Math.round(percent)}%)`,
+        recommended_action: '자체 월 예산(llm_settings.monthly_token_limit) 기준입니다. 제공사 쿼터가 아닙니다. 예산 조정 또는 라우팅 우선순위를 검토하세요.',
+        impact: '예산 초과 시 해당 provider가 라우팅에서 제외됩니다.',
+        count: 1,
+      })
+    }
   }
   const caps = [{ key: 'translation', used: (translation.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(opsSettings.translation_monthly_char_cap) }, { key: 'tts', used: (tts.data ?? []).reduce((n, r) => n + Number(r.chars ?? 0), 0), cap: Number(opsSettings.tts_monthly_char_cap) }]
   // 한도를 못 읽었거나(0·NaN) 비정상이면 그 신호는 건너뛴다 — 0 으로 나누면 즉시 오탐한다.
