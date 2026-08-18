@@ -5,7 +5,7 @@ import { LLM_PROVIDERS } from '@/lib/llm'
 import { getProviderKeyCount } from '@/lib/llm/provider-key-count'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
-  effectiveTokenLimit,
+  monthlyBudget,
 } from '@/lib/llm/token-limit'
 
 const CATEGORIES = ['뉴스', '웹인사이트', '유튜브', '리포트', 'AI보고서'] as const
@@ -155,7 +155,7 @@ export async function gatherAiCostAnalytics(admin: SupabaseClient, months: numbe
   }
   const currentUsage = LLM_PROVIDERS.map(provider => {
     const keyCount = getProviderKeyCount(provider)
-    const limit = effectiveTokenLimit(settingsMap.get(provider.name), keyCount)
+    const limit = monthlyBudget(settingsMap.get(provider.name))
     const used = currentUsageMap.get(provider.name) ?? 0
     return {
       provider: provider.name,
