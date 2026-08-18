@@ -51,23 +51,20 @@ export interface AdminNavGroup {
   items: AdminNavItem[]
 }
 
-// 504 — 어드민 IA 1단계: 그룹 11개 → 8개 배치 재편(항목 통합은 2단계). href 는 전부
-// 그대로다 — 여기서는 어느 그룹에 어떤 라벨로 노출되는지만 바뀐다.
+// 504 — 어드민 IA 1단계: 그룹 11개 → 8개 배치 재편(항목 통합은 2단계).
+// 522 — 어드민 IA 2단계: 8개 → 6개로 재배치. href 는 전부 그대로다 — 여기서는
+// 어느 그룹에 어떤 라벨로 노출되는지만 바뀐다. 항목 감소(35개)는 523(탭 통합)에서.
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '운영',
     items: [
       { href: '/admin', label: '운영 대시보드', description: '전체 운영 현황, 사용자 수, 콘텐츠 상태, AI/발행 상태를 요약합니다.', icon: LayoutDashboard },
       { href: '/admin/ops-issues', label: '운영 이슈', description: '자동 탐지된 운영 이슈(수집·크론·사용량·보강) 확인·상태 관리.', icon: AlertTriangle },
-    ],
-  },
-  {
-    group: '콘텐츠',
-    items: [
-      { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
-      { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록.', roadmap: '각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
-      { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리.', roadmap: '콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
-      { href: '/admin/taxonomy', label: '분류·카테고리', description: 'DB 카테고리와 사용자 화면·어드민 탭 매핑을 조회합니다. (조회 전용)', icon: FolderTree },
+      // 522 — 분석·관리에서 이동: 운영 성격이 강한 이력·로그·게시판을 운영 그룹으로.
+      { href: '/admin/job-runs', label: '작업 이력', description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.', icon: History },
+      { href: '/admin/audit-log', label: '감사 로그', description: '관리자 쓰기 작업과 처리 결과를 확인합니다.', icon: ShieldCheck },
+      { href: '/admin/crawl-logs', label: '로그 분석', description: '기술 로그 검색·오류 추세·연관 실행 이력.', roadmap: '(현행 크롤 로그 → 확장 예정 S9)', icon: ListChecks },
+      { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
     ],
   },
   {
@@ -79,22 +76,11 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/keyword-groups', label: '키워드 그룹·시그널 기준', description: '수집 seed, 검색 seed, include/exclude pattern, 시그널 기준을 관리합니다.', icon: Network },
       { href: '/admin/exclusion-rules', label: '제외 규칙', description: '수집 제외 도메인·키워드·URL, 중복·저품질 기준을 관리합니다.', icon: Ban },
       { href: '/admin/entities', label: '엔티티 사전', description: '기업·조직·인물 등 엔티티와 별칭·정규화 기준을 관리합니다.', icon: Boxes },
-    ],
-  },
-  {
-    group: '인사이트',
-    items: [
-      { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
-      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
-      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
-    ],
-  },
-  {
-    group: '기업동향',
-    items: [
-      { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재.', roadmap: '주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
-      { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
-      { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화.', roadmap: '(도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
+      // 522 — 콘텐츠 그룹 해체, 수집으로 이동.
+      { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
+      { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록.', roadmap: '각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
+      { href: '/admin/enrich', label: '데이터 보강 재처리', description: '누락 본문·URL·썸네일·자막·표지·태그 재처리.', roadmap: '콘텐츠 탭/작업·오류센터로 이동 예정(S4).', icon: Wrench },
+      { href: '/admin/taxonomy', label: '분류·카테고리', description: 'DB 카테고리와 사용자 화면·어드민 탭 매핑을 조회합니다. (조회 전용)', icon: FolderTree },
     ],
   },
   {
@@ -109,6 +95,19 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       // (IssueSignals → trending_keywords 뷰 → issues + issue_contents 조인)라 옛 이름이
       // 역할을 가렸다. 홈 화면 구성 옆(발행 그룹)으로 옮긴다. 경로(/admin/issues)는 그대로.
       { href: '/admin/issues', label: '급상승 뉴스', description: '홈 화면 "오늘의 급상승 뉴스"에 노출되는 이슈 생성·발행·키워드 매칭·콘텐츠 배정을 관리합니다.', icon: TrendingUp },
+      // 522 — 인사이트 그룹 해체, 발행으로 이동.
+      { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
+      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
+    ],
+  },
+  {
+    group: '기업동향',
+    items: [
+      { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재.', roadmap: '주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
+      { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
+      { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화.', roadmap: '(도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
+      // 522 — 실험실에서 이동. 생성 화면(/admin/competitor-weekly/generate)은 실험실에 남긴다.
+      { href: '/admin/competitor-weekly', label: '경쟁사 주간 브리핑', description: '사업영역별 주간 브리핑 발행 목록.', icon: FileText },
     ],
   },
   {
@@ -119,26 +118,20 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/analytics/publish', label: '발행 분석', description: '발행량 추이·생성/발행 성공률·검수 소요·뉴스레터 성과.', icon: BarChart3 },
       { href: '/admin/analytics/users', label: '사용자 분석', description: 'DAU/WAU/MAU·조직별 활성·기능 이용률·검색/북마크.', roadmap: '(준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
       { href: '/admin/analytics/ai-cost', label: 'AI 사용량·비용', description: 'LLM·번역·TTS 월별 사용량과 한도 대비 소진율.', icon: Cpu },
-      { href: '/admin/crawl-logs', label: '로그 분석', description: '기술 로그 검색·오류 추세·연관 실행 이력.', roadmap: '(현행 크롤 로그 → 확장 예정 S9)', icon: ListChecks },
+      // 522 — 인사이트 그룹 해체 시 분석 성격이 강해 여기로 배치(지시서 미명시 항목).
+      { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
       { href: '/admin/users', label: '사용자', description: '사용자 승인 상태·역할·부서·팀 정보를 관리합니다.', icon: Users },
       { href: '/admin/organizations', label: '조직', description: '조직 등록·조직별 사용량·활성 사용자 관리.', roadmap: '(준비중 — S10)', icon: Building2, disabled: true, badge: '준비중' },
       { href: '/admin/approvals', label: '초대·가입 승인', description: '초대·가입 허용목록·승인 워크플로우.', roadmap: '(준비중 — S10)', icon: UserCheck, disabled: true, badge: '준비중' },
       { href: '/admin/roles', label: '역할·권한', description: '역할 기반 접근 권한 관리.', roadmap: '(준비중 — S10)', icon: KeyRound, disabled: true, badge: '준비중' },
       { href: '/admin/settings', label: '시스템 설정', description: '공통 환경·AI 모델·외부 API·MCP 토큰·시스템 유지보수를 통합 관리합니다.', icon: Settings },
       { href: '/admin/errors', label: '작업·오류 센터', description: '수집·본문추출·AI생성·번역/TTS·발행 실패를 모아 재실행합니다.', roadmap: '(준비중 — S9)', icon: AlertTriangle, disabled: true, badge: '준비중' },
-      { href: '/admin/job-runs', label: '작업 이력', description: '크론·일괄 작업의 실행 기록과 실패를 확인합니다.', icon: History },
-      { href: '/admin/audit-log', label: '감사 로그', description: '관리자 쓰기 작업과 처리 결과를 확인합니다.', icon: ShieldCheck },
-      { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
     ],
   },
   {
     group: '실험실',
     items: [
-      { href: '/admin/competitor-weekly', label: '경쟁사 주간 브리핑', description: '사업영역별 주간 브리핑 발행 목록.', icon: FileText },
-      // 504C — 부모(/admin/competitor-weekly) 목록 화면에 생성 진입점(버튼·링크)이 없어
-      // (CompetitorWeeklyManager 확인, 코드베이스 어디에도 이 경로로의 Link 없음)
-      // nav 에서 빼면 이 화면에 진입할 방법이 사라진다. 지시서 원칙("진입 불가가 되면
-      // 안 된다")에 따라 제거하지 않고 부모 옆에 남긴다 — 진입점 추가는 별건.
+      // 522 — "경쟁사 주간 브리핑"은 기업동향으로 이동, 생성 화면은 부모 없이 여기 남는다.
       { href: '/admin/competitor-weekly/generate', label: '주간 브리핑 생성', description: '사실 추출 → 분석 2단계로 새 브리핑을 만듭니다.', icon: Sparkles },
       { href: '/admin/competitors', label: '경쟁사동향', description: '경쟁사 최근 뉴스 수집·선별·노출.', roadmap: '(준비중 — S8)', icon: TrendingUp, disabled: true, badge: '준비중' },
       { href: '/dashboard/lab', label: '사용자 실험실', description: '사용자 화면의 실험 기능과 프로토타입을 확인합니다.', icon: FlaskConical, external: true },
