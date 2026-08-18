@@ -116,10 +116,8 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const since = since24h()
   const signals: Signal[] = []
   const opsSettings = await getOpsSettings()
-  const [jobs, jobsAll, crawls, backlog, usage, settings, translation, tts, routingModelErrors, lastRunAtByKey] = await Promise.all([
+  const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors, lastRunAtByKey] = await Promise.all([
     admin.from('job_runs').select('job_key').eq('status', 'failed').gte('started_at', since),
-    // 실패율 계산용 — 같은 24시간 창의 전체 실행 건수(status 무관).
-    admin.from('job_runs').select('job_key').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
     admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
     admin.from('llm_usage').select('provider, tokens').eq('period', new Date().toISOString().slice(0, 7)),
@@ -134,21 +132,34 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     fetchCronLastRunAtByKey(admin),
   ])
   const jobCounts = new Map<string, number>(); for (const r of jobs.data ?? []) jobCounts.set(r.job_key, (jobCounts.get(r.job_key) ?? 0) + 1)
-  const jobTotalCounts = new Map<string, number>(); for (const r of jobsAll.data ?? []) jobTotalCounts.set(r.job_key, (jobTotalCounts.get(r.job_key) ?? 0) + 1)
+  // 실패한 job_key 만 대상으로 전체 실행 건수를 서버에서 집계한다(행 전송 없음, 상한 없음).
+  // 전체 행을 select 하면 PostgREST 기본 1000행 상한에 잘려 total 이 과소 집계되고,
+  // 실패율이 부풀려져 오히려 없던 critical 이 생긴다 — 523이 없애려던 바로 그 노이즈.
+  const jobTotalCounts = new Map<string, number>()
+  await Promise.all([...jobCounts.keys()].map(async (jobKey) => {
+    const { count, error } = await admin
+      .from('job_runs')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_key', jobKey)
+      .gte('started_at', since)
+    if (!error && typeof count === 'number') jobTotalCounts.set(jobKey, count)
+  }))
   for (const [jobKey, count] of jobCounts) {
     if (count < CRON_FAIL_MIN_COUNT) continue
-    // total 은 실패 건수 이상이어야 정상 — 두 쿼리 사이 새 행이 끼어드는 경우 방어.
-    const total = Math.max(jobTotalCounts.get(jobKey) ?? count, count)
-    const failureRate = count / total
+    const total = jobTotalCounts.get(jobKey) ?? null
+    const failureRate = total && total > 0 ? count / total : null
     const severity: Signal['severity'] =
-      count >= CRON_FAIL_CRITICAL_COUNT || failureRate >= CRON_FAIL_CRITICAL_RATE ? 'critical' : 'warning'
-    const ratePercent = Math.round(failureRate * 100)
+      count >= CRON_FAIL_CRITICAL_COUNT || (failureRate !== null && failureRate >= CRON_FAIL_CRITICAL_RATE)
+        ? 'critical' : 'warning'
+    const suspected_cause = failureRate !== null
+      ? `${jobKey} — 최근 24시간 ${total}회 중 ${count}회 실패(실패율 ${Math.round(failureRate * 100)}%)`
+      : `${jobKey} — 최근 24시간 ${count}회 실패(전체 실행 건수 집계 실패)`
     signals.push({
       fingerprint: `cron:fail:${jobKey}`,
       category: 'cron',
       severity,
       title: '크론 작업 실패',
-      suspected_cause: `${jobKey} — 최근 24시간 ${total}회 중 ${count}회 실패(실패율 ${ratePercent}%)`,
+      suspected_cause,
       recommended_action: '잡 실행 로그와 환경변수를 확인하세요.',
       impact: '자동 운영 작업 지연',
       count,
