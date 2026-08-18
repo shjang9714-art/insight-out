@@ -26,7 +26,7 @@ import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import PageHeader from '@/components/PageHeader'
 import type { IssueCard } from '@/lib/issues/activity'
-import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
+import { AlertTriangle, Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
 import { rankKeywords, type KeywordRankingMode } from '@/lib/keywords/ranking'
 
@@ -65,6 +65,8 @@ export interface AiInsightBoardProps {
   insightGroups: InsightGroup[]
   contentMap: Record<string, ContentMetaRecord>
   trendingTopics: TopicTrend[]
+  /** 525 — trendRes(14일 콘텐츠) 가 실제 매칭 건수보다 적게 수신됐는지(집계용 상한 초과). true면 급상승/신규/관심 지속/하락·뜨는 토픽 수치가 일부 구간 누락일 수 있다. */
+  trendWindowTruncated: boolean
   classifiedKeywords: KeywordItem[]
   kwStrip: KeywordItem[]
   issueCards: IssueCard[]
@@ -223,6 +225,7 @@ export default function AiInsightBoard({
   insightGroups,
   contentMap,
   trendingTopics,
+  trendWindowTruncated,
   classifiedKeywords,
   kwStrip,
   issueCards,
@@ -277,6 +280,14 @@ export default function AiInsightBoard({
   const rankedKeywords = rankKeywords(classifiedKeywords, keywordRankingMode)
   const headerMeta = TAB_HEADER_META[view]
 
+  // 525 — 집계 상한을 넘겨 일부 구간이 잘렸을 때 노출하는 배너(키워드 분석·뜨는 토픽 공용).
+  const trendTruncatedNotice = trendWindowTruncated ? (
+    <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+      <span>집계 대상 콘텐츠가 상한을 넘어 일부 구간이 잘렸습니다. 수치가 실제보다 낮게 보일 수 있습니다.</span>
+    </div>
+  ) : null
+
   return (
     <>
       {/* 공통 페이지 헤더(핵심 인사이트·키워드 분석·관계지도) */}
@@ -320,6 +331,7 @@ export default function AiInsightBoard({
           <p className="mb-4 text-xs text-muted-foreground">
             이번 주 가장 빠르게 늘어난 주제 — 직전 주 대비
           </p>
+          {trendTruncatedNotice && <div className="mb-4">{trendTruncatedNotice}</div>}
           {trendingTopics.length === 0 ? (
             <p className="text-sm text-muted-foreground">이번 주 집계 데이터가 없습니다.</p>
           ) : (
@@ -422,6 +434,8 @@ export default function AiInsightBoard({
               </select>
             </label>
           </div>
+
+          {trendTruncatedNotice}
 
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
             {[
