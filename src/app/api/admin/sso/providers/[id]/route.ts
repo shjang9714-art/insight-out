@@ -61,7 +61,7 @@ function parseUpdateInput(body: unknown): UpdateSsoProviderInput {
       throw new SsoAdminError(400, 'domains 는 문자열 배열이어야 합니다.')
     }
     const domains = body.domains.map((domain) => domain.trim()).filter(Boolean)
-    if (domains.length > 0) input.domains = domains
+    input.domains = domains
   }
   if (body.resource_id !== undefined) {
     if (typeof body.resource_id !== 'string') throw new SsoAdminError(400, 'resource_id 는 문자열이어야 합니다.')

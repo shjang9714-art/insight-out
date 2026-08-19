@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Copy, KeyRound, Loader2, ShieldCheck, Trash2 } from 'lucide-react'
+import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminTable, { type AdminTableColumn, type AdminTableState } from '@/components/admin/ui/AdminTable'
 import { Button } from '@/components/ui/button'
@@ -17,12 +18,14 @@ import {
 import { cn } from '@/lib/utils'
 import type { PublicSsoProvider, SsoNameIdFormat } from '@/lib/admin/sso-admin'
 
-const PROJECT_URL = 'https://xalptogjhbiahrbgxhvu.supabase.co'
-const SP_VALUES = [
-  { key: 'entity', label: 'EntityID', value: `${PROJECT_URL}/auth/v1/sso/saml/metadata` },
-  { key: 'acs', label: 'ACS URL', value: `${PROJECT_URL}/auth/v1/sso/saml/acs` },
-  { key: 'metadata', label: 'Metadata URL', value: `${PROJECT_URL}/auth/v1/sso/saml/metadata` },
-] as const
+const PROJECT_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '') ?? ''
+const SP_VALUES = PROJECT_URL
+  ? [
+      { key: 'entity', label: 'EntityID', value: `${PROJECT_URL}/auth/v1/sso/saml/metadata` },
+      { key: 'acs', label: 'ACS URL', value: `${PROJECT_URL}/auth/v1/sso/saml/acs` },
+      { key: 'metadata', label: 'Metadata URL', value: `${PROJECT_URL}/auth/v1/sso/saml/metadata` },
+    ] as const
+  : []
 
 const ALPHAKEY_METADATA_URL = 'https://lguplus.alphakey.kr/api/sso/admin/v1.0/metadata/info/78'
 
@@ -67,6 +70,7 @@ async function fetchProviders(): Promise<PublicSsoProvider[]> {
 }
 
 export default function SsoProviderManager() {
+  const confirm = useAdminConfirm()
   const [providers, setProviders] = useState<PublicSsoProvider[]>([])
   const [tableState, setTableState] = useState<AdminTableState>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -81,6 +85,8 @@ export default function SsoProviderManager() {
   const [disabled, setDisabled] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [pendingProviderId, setPendingProviderId] = useState<string | null>(null)
+  const [editingDomainsId, setEditingDomainsId] = useState<string | null>(null)
+  const [domainDraft, setDomainDraft] = useState('')
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   const loadProviders = async () => {
@@ -211,9 +217,50 @@ export default function SsoProviderManager() {
     }
   }
 
+  const startEditingDomains = (provider: PublicSsoProvider) => {
+    setEditingDomainsId(provider.id)
+    setDomainDraft(provider.domains.map(({ domain }) => domain).join(', '))
+  }
+
+  const saveDomains = async (provider: PublicSsoProvider) => {
+    const nextDomains = domainDraft.split(',').map((domain) => domain.trim()).filter(Boolean)
+    const label = provider.resource_id ?? provider.saml.entity_id ?? provider.id
+    const ok = await confirm({
+      title: 'SSO 도메인 연결 변경',
+      description: '도메인을 묶는 순간 해당 도메인의 SSO 라우팅이 즉시 살아납니다. 변경 내용을 저장하시겠습니까?',
+      targets: nextDomains.length > 0 ? nextDomains : [`${label}: 연결된 도메인 전체 해제`],
+      confirmLabel: '변경 저장',
+    })
+    if (!ok) return
+
+    setPendingProviderId(provider.id)
+    setError(null)
+    try {
+      const response = await fetch(`/api/admin/sso/providers/${encodeURIComponent(provider.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domains: nextDomains }),
+      })
+      if (!response.ok) throw new Error(await readApiError(response))
+      await loadProviders()
+      setEditingDomainsId(null)
+      setDomainDraft('')
+    } catch (domainError) {
+      setError(domainError instanceof Error ? domainError.message : String(domainError))
+    } finally {
+      setPendingProviderId(null)
+    }
+  }
+
   const removeProvider = async (provider: PublicSsoProvider) => {
     const label = provider.resource_id ?? provider.saml.entity_id ?? provider.id
-    if (!window.confirm(`SSO 프로바이더 "${label}"을 삭제하시겠습니까?`)) return
+    const ok = await confirm({
+      title: 'SSO 프로바이더 삭제',
+      description: '삭제하면 이 IdP 로는 로그인할 수 없습니다.',
+      targets: [label],
+      destructive: true,
+    })
+    if (!ok) return
 
     setPendingProviderId(provider.id)
     setError(null)
@@ -252,9 +299,45 @@ export default function SsoProviderManager() {
     {
       key: 'domains',
       header: '도메인',
-      cell: (provider) => provider.domains.length > 0
-        ? provider.domains.map(({ domain }) => domain).join(', ')
-        : '없음',
+      cell: (provider) => {
+        if (editingDomainsId !== provider.id) {
+          return provider.domains.length > 0
+            ? provider.domains.map(({ domain }) => domain).join(', ')
+            : '없음'
+        }
+
+        const isPending = pendingProviderId === provider.id
+        return (
+          <div className="min-w-64 space-y-2">
+            <Input
+              value={domainDraft}
+              disabled={isPending}
+              aria-label={`${provider.resource_id ?? 'SSO 프로바이더'} 도메인`}
+              placeholder="쉼표로 구분, 모두 비우면 전체 해제"
+              onChange={(event) => setDomainDraft(event.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button type="button" size="sm" disabled={isPending} onClick={() => void saveDomains(provider)}>
+                {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                저장
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isPending}
+                onClick={() => {
+                  setEditingDomainsId(null)
+                  setDomainDraft('')
+                }}
+              >
+                취소
+              </Button>
+            </div>
+          </div>
+        )
+      },
+      width: 'min-w-72',
     },
     {
       key: 'status',
@@ -283,6 +366,15 @@ export default function SsoProviderManager() {
         const isPending = pendingProviderId === provider.id
         return (
           <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => startEditingDomains(provider)}
+            >
+              도메인
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -318,26 +410,32 @@ export default function SsoProviderManager() {
           title="서비스 프로바이더(SP) 정보"
           hint="IdP 담당자에게 아래 값을 그대로 전달하세요."
         />
-        <div className="grid gap-3 lg:grid-cols-3">
-          {SP_VALUES.map((item) => (
-            <div key={item.key} className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-muted-foreground">{item.label}</p>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={`${item.label} 복사`}
-                  onClick={() => void copyValue(item.key, item.value)}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
+        {SP_VALUES.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+            NEXT_PUBLIC_SUPABASE_URL 이 설정되지 않아 SP 정보를 표시할 수 없습니다.
+          </p>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-3">
+            {SP_VALUES.map((item) => (
+              <div key={item.key} className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground">{item.label}</p>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`${item.label} 복사`}
+                    onClick={() => void copyValue(item.key, item.value)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <p className="mt-2 break-all font-mono text-xs text-foreground">{item.value}</p>
+                {copiedKey === item.key ? <p className="mt-1 text-xs text-positive">복사했습니다.</p> : null}
               </div>
-              <p className="mt-2 break-all font-mono text-xs text-foreground">{item.value}</p>
-              {copiedKey === item.key ? <p className="mt-1 text-xs text-positive">복사했습니다.</p> : null}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
