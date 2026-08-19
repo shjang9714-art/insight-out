@@ -10,7 +10,6 @@ import {
   Sparkles,
   Mail,
   Users,
-  ClipboardList,
   Settings,
   TrendingUp,
   Filter,
@@ -53,10 +52,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '운영',
     items: [
       { href: '/admin', label: '운영 대시보드', description: '전체 운영 현황, 사용자 수, 콘텐츠 상태, AI/발행 상태를 요약합니다.', icon: LayoutDashboard },
-      { href: '/admin/ops-issues', label: '운영 이슈', description: '자동 탐지된 운영 이슈(수집·크론·사용량·보강) 확인·상태 관리.', icon: AlertTriangle },
-      // 524 — 작업 이력·감사 로그·로그 분석 통합(탭). 대표 href: /admin/job-runs.
-      { href: '/admin/job-runs', label: '실행 이력', description: '크론·일괄 작업 이력, 관리자 감사 로그, 수집 기술 로그를 통합 조회합니다.', icon: History },
-      { href: '/admin/requests', label: '운영 게시판', description: '운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다.', icon: ClipboardList },
     ],
   },
   {
@@ -111,6 +106,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/organizations', label: '조직', description: '조직 등록·조직별 사용량·활성 사용자 관리.', roadmap: '(준비중 — S10)', icon: Building2, disabled: true, badge: '준비중' },
       { href: '/admin/approvals', label: '초대·가입 승인', description: '초대·가입 허용목록·승인 워크플로우.', roadmap: '(준비중 — S10)', icon: UserCheck, disabled: true, badge: '준비중' },
       { href: '/admin/roles', label: '역할·권한', description: '역할 기반 접근 권한 관리.', roadmap: '(준비중 — S10)', icon: KeyRound, disabled: true, badge: '준비중' },
+      // 531 — 운영 그룹에서 분석·관리로 이동. 화면과 탭 구조는 그대로 유지한다.
+      { href: '/admin/job-runs', label: '실행 이력', description: '크론·일괄 작업 이력, 관리자 감사 로그, 수집 기술 로그를 통합 조회합니다.', icon: History },
       { href: '/admin/settings', label: '시스템 설정', description: '공통 환경·AI 모델·외부 API·MCP 토큰·시스템 유지보수를 통합 관리합니다.', icon: Settings },
       { href: '/admin/errors', label: '작업·오류 센터', description: '수집·본문추출·AI생성·번역/TTS·발행 실패를 모아 재실행합니다.', roadmap: '(준비중 — S9)', icon: AlertTriangle, disabled: true, badge: '준비중' },
     ],

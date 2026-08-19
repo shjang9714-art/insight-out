@@ -25,6 +25,8 @@ import SearchProvidersPanel, {
   type SearchProviderData,
 } from '@/components/admin/SearchProvidersPanel'
 import { parseProviderCounts } from '@/lib/admin/crawl-providers'
+import AdminOpsIssuesSummary, { type OpsIssueSummaryRow } from '@/components/admin/AdminOpsIssuesSummary'
+import AdminRequestsDialog from '@/components/admin/AdminRequestsDialog'
 
 export const dynamic = 'force-dynamic'
 
@@ -145,6 +147,40 @@ export default async function AdminPage() {
     }
   }
 
+  async function fetchOpsIssueSummary(): Promise<{ data: OpsIssueSummaryRow[]; error: string | null }> {
+    if (!admin) {
+      return { data: [], error: '잠시 후 다시 시도해주세요.' }
+    }
+    try {
+      const result = await admin
+        .from('ops_issues')
+        .select('id, severity, title, suspected_cause, occurrence_count, last_seen_at')
+        .neq('status', 'resolved')
+        .order('last_seen_at', { ascending: false })
+        .limit(200)
+
+      if (result.error) {
+        console.error('[/admin] 운영 이슈 요약 조회 실패:', result.error.message)
+        return { data: [], error: '잠시 후 다시 시도해주세요.' }
+      }
+
+      const severityRank = { critical: 0, warning: 1, notice: 2 } as const
+      const rank = (severity: OpsIssueSummaryRow['severity']) => severityRank[severity] ?? 9
+      const data = ([...((result.data ?? []) as OpsIssueSummaryRow[])])
+        .sort((left, right) => {
+          const severityOrder = rank(left.severity) - rank(right.severity)
+          if (severityOrder !== 0) return severityOrder
+          return new Date(right.last_seen_at).getTime() - new Date(left.last_seen_at).getTime()
+        })
+        .slice(0, 5)
+
+      return { data, error: null }
+    } catch (error) {
+      console.error('[/admin] 운영 이슈 요약 조회 실패:', error)
+      return { data: [], error: '잠시 후 다시 시도해주세요.' }
+    }
+  }
+
   const [
     totalRes, todayRes, pendingRes, publishedRes, rejectedRes,
     activeSourcesRes, totalSourcesRes, bookmarkedRes, researchRes,
@@ -165,6 +201,8 @@ export default async function AdminPage() {
     mailRunsRes,
     // 신규 — 검색 수집원 현황(472)
     searchProviderRunRes, searchSeedsRes,
+    // 531 — 미해결 운영 이슈 요약
+    opsIssueSummaryRes,
   ] = await Promise.all([
     // KPI head counts
     supabase.from('contents').select('*', { count: 'exact', head: true }).is('deleted_at', null),
@@ -229,6 +267,7 @@ export default async function AdminPage() {
     // 검색 수집원 현황(472) — 최신 크롤 실행의 공급자별 유입 + 활성 검색 시드
     fetchSearchProviderRun(),
     fetchSearchSeeds(),
+    fetchOpsIssueSummary(),
   ])
 
   // ── 카테고리 집계 ──────────────────────────────────────────────────────────
@@ -372,7 +411,14 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-10">
-      <AdminPageHeader actions={<AiRefreshButton />} />
+      <AdminPageHeader actions={(
+        <div className="flex items-center gap-2">
+          <AdminRequestsDialog />
+          <AiRefreshButton />
+        </div>
+      )} />
+
+      <AdminOpsIssuesSummary issues={opsIssueSummaryRes.data} error={opsIssueSummaryRes.error} />
 
       {/* ① 최근 실패한 작업(289) — 크론 10개 계측. 있으면 눈에 띄게, 없으면 조용히 */}
       <AdminFailedJobsCard jobs={failedJobs} ready={jobRunsReady} />

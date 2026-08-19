@@ -151,22 +151,6 @@ export function AdminSidebar() {
     })
   }
 
-  // 187: 미완료(대기+진행) 운영 요청 개수 배지 (in-admin 알림)
-  const [openRequestCount, setOpenRequestCount] = useState(0)
-  useEffect(() => {
-    const run = async () => {
-      try {
-        const res = await fetch('/api/admin/requests/count')
-        if (!res.ok) return
-        const data = await res.json() as { count: number }
-        setOpenRequestCount(data.count ?? 0)
-      } catch {
-        // 비차단 — 배지 숨김
-      }
-    }
-    void run()
-  }, [])
-
   // 일일 핵심 Insight — 검토 필요(needs_review) 개수 배지 (자동게시+사후검토 알림)
   const [dailyInsightReviewCount, setDailyInsightReviewCount] = useState(0)
   useEffect(() => {
@@ -206,8 +190,7 @@ export function AdminSidebar() {
   function groupHasUnread(group: typeof ADMIN_NAV_GROUPS[number]) {
     return group.items.some(
       (it) =>
-        (it.href === '/admin/requests' && openRequestCount > 0) ||
-        (it.href === '/admin/daily-insights' && dailyInsightReviewCount > 0)
+        it.href === '/admin/daily-insights' && dailyInsightReviewCount > 0
     )
   }
 
@@ -407,11 +390,6 @@ export function AdminSidebar() {
                             {!collapsed && <span className="flex-1">{item.label}</span>}
                             {!collapsed && item.external && (
                               <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-label="사용자 화면으로 이동" />
-                            )}
-                            {!collapsed && item.href === '/admin/requests' && openRequestCount > 0 && (
-                              <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">
-                                {openRequestCount}
-                              </span>
                             )}
                             {!collapsed && item.href === '/admin/daily-insights' && dailyInsightReviewCount > 0 && (
                               <span className="admin-caption rounded-full bg-risk-soft px-2 py-0.5 font-medium text-risk">

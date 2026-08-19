@@ -43,7 +43,10 @@ export default async function OpsIssuesPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader />
+      <AdminPageHeader
+        titleOverride="운영 이슈"
+        descriptionOverride="자동 탐지된 운영 이슈를 확인하고 상태를 관리합니다."
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-1.5">
           {STATUS_FILTERS.map((filter) => <Link key={filter.value} href={buildHref(filter.value, severity)} prefetch={false} className={cn('inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors', status === filter.value ? 'border-brand-600 bg-brand-600/10 text-brand-600' : 'border-border text-muted-foreground hover:text-foreground')}>{filter.label}</Link>)}
