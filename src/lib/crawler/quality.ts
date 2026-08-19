@@ -36,17 +36,16 @@ export const RELATEDNESS_THRESHOLD = 0.3
  */
 export const RELATEDNESS_GATING_ENABLED = true
 
-/**
- * 광고성 패턴.
- */
-const AD_PATTERNS: RegExp[] = [
-  /\[?(광고|AD|sponsored|협찬|프로모션)\]?/i,
-  /이 글은.*제공/,
-  /바로가기.*클릭/,
-]
+/** 제목 광고 토큰. 한글은 부분일치, 영문은 patternHit 과 같은 영숫자 경계를 적용한다. */
+export function isAdLike(title: string): boolean {
+  if (['광고', '협찬', '프로모션'].some(token => title.includes(token))) return true
+  if (/(?<![a-z0-9])AD(?![a-z0-9])/.test(title)) return true
+  return /(?<![a-z0-9])sponsored(?![a-z0-9])/i.test(title)
+}
 
-export function isAdLike(text: string): boolean {
-  return AD_PATTERNS.some(p => p.test(text))
+/** 본문에서만 의미가 있는 광고 유도 문구. */
+export function hasAdBodyMarker(body: string): boolean {
+  return /이 글은.*제공/.test(body) || /바로가기.*클릭/.test(body)
 }
 
 /**
