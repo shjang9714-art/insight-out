@@ -7,6 +7,8 @@ import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import AdminTabs, { type AdminTabItem } from '@/components/admin/ui/AdminTabs'
 import { useTabParam } from '@/lib/admin/useTabParam'
 
+const EMPTY_RESET_PARAM_KEYS: readonly string[] = []
+
 interface Props {
   tabs: AdminTabItem[]
   defaultTab: string
@@ -15,19 +17,20 @@ interface Props {
   contextBar?: ReactNode
   titleOverride?: string
   descriptionOverride?: string
+  resetParamKeys?: readonly string[]
   'aria-label'?: string
 }
 
 /** 어드민 대상 화면 표준 프레임: 브레드크럼 → 헤더 → 컨텍스트 바 → 탭(URL ?tab=) → 본문. */
 export default function AdminTabShell({
   tabs, defaultTab, renderContent, actions, contextBar,
-  titleOverride, descriptionOverride, 'aria-label': ariaLabel,
+  titleOverride, descriptionOverride, resetParamKeys = EMPTY_RESET_PARAM_KEYS, 'aria-label': ariaLabel,
 }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const loc = findAdminNavLocation(pathname, searchParams)
   const values = tabs.map(t => t.value)
-  const [active, setActive] = useTabParam(values, defaultTab)
+  const [active, setActive] = useTabParam(values, defaultTab, 'tab', resetParamKeys)
 
   return (
     <div>

@@ -9,6 +9,8 @@ const ACTIVITY_TABS = [
   { value: 'crawl-logs', label: '로그 분석' },
 ]
 
+const ACTIVITY_TAB_PARAM_KEYS = ['page', 'status', 'job', 'range', 'sort', 'dir'] as const
+
 interface ActivityHubProps {
   jobRunsPanel: ReactNode | null
   auditPanel: ReactNode | null
@@ -21,6 +23,7 @@ export default function ActivityHub({ jobRunsPanel, auditPanel, crawlLogsPanel }
     <AdminTabShell
       tabs={ACTIVITY_TABS}
       defaultTab="job-runs"
+      resetParamKeys={ACTIVITY_TAB_PARAM_KEYS}
       aria-label="실행 이력"
       renderContent={(tab) => {
         if (tab === 'audit') return auditPanel

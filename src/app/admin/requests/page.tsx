@@ -10,7 +10,10 @@ export const metadata: Metadata = {
 export default function AdminRequestsPage() {
   return (
     <>
-      <AdminPageHeader />
+      <AdminPageHeader
+        titleOverride="운영 게시판"
+        descriptionOverride="운영 요청, 작업 메모, 공지, 핸드오프를 관리합니다."
+      />
       <RequestsBoard />
     </>
   )
