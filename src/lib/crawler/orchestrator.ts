@@ -3,9 +3,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getAdapter } from './adapters'
 import { fetchYoutubeChannel } from './adapters/youtube'
 import { normalizeUrl, titleHash, bodyHash } from './normalize'
-import { findByUrl, findByTitleHash, findByBodyHash, findSimilarCandidates } from './dedup'
+import { findByUrl, findByTitleHash, findByBodyHash, createSimilarityCandidateCache, type SimilarityCandidateCache } from './dedup'
 import { titleSimilarity, SIMILARITY_THRESHOLD } from './similarity'
-import { isAdLike, isExcludedByGroups, effectiveLength, bodyLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, matchExclusion, MIN_EFFECTIVE_LENGTH, DEFAULT_MIN_BODY_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason, type ExclusionRule } from './quality'
+import { isAdLike, hasAdBodyMarker, isExcludedByGroups, effectiveLength, bodyLength, relatednessScore, matchKeywordGroups, matchIssues, assessBodyQuality, matchExclusion, MIN_EFFECTIVE_LENGTH, DEFAULT_MIN_BODY_LENGTH, RELATEDNESS_THRESHOLD, RELATEDNESS_GATING_ENABLED, type ScoringGroup, type IssueMatchDef, type ReviewReason, type ExclusionRule } from './quality'
 import { sharesCoreTokens } from './similarity'
 import type { CrawlCounts, RawItem } from './types'
 import { zeroRejectedBy } from './types'
@@ -222,6 +222,14 @@ export interface CrawlProviderCounts {
   keyword_phase_skipped: boolean
 }
 
+export interface CrawlProviderStatus {
+  gdelt: 'enabled' | 'disabled' | 'failed'
+}
+
+export interface CrawlProviderErrors {
+  gdelt?: string
+}
+
 /** 전체 크롤 실행 요약 (라우트 응답 형태) */
 export interface CrawlSummary {
   ok: boolean
@@ -235,6 +243,8 @@ export interface CrawlSummary {
   held: number
   details: CrawlSourceDetail[]
   providers: CrawlProviderCounts
+  providerStatus: CrawlProviderStatus
+  providerErrors?: CrawlProviderErrors
   /** ok=false(전체 실패) 사유 요약 — run-job.ts 의 job_runs.error 에 그대로 기록됨.
    *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
    *  경고 흔적을 남긴다. */
@@ -421,6 +431,7 @@ async function processCrawlItem(
   translationBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
   counts: CrawlCounts,
+  similarityCache: SimilarityCandidateCache,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
@@ -460,7 +471,7 @@ async function processCrawlItem(
     // 주석 참고) — 정규 소스 폴링 아이템은 그대로 적용.
     // 312 — 판정 순서·결과는 기존 || 체인과 동일(첫 매칭에서 즉시 reject). 어느 사유로
     // 걸렸는지만 if/else 로 분리해 rejectedBy 에 기록한다(세는 방식만 바꾼다, 회귀 가드).
-    if (isAdLike(qText)) {
+    if (isAdLike(item.title) || hasAdBodyMarker(item.body ?? '')) {
       counts.rejected++
       counts.rejectedBy.ad++
       return {}
@@ -492,7 +503,7 @@ async function processCrawlItem(
     // near-dup 그룹핑 (#12)
     // 해시 완전일치는 통과했지만 제목 유사도 ≥ SIMILARITY_THRESHOLD 인 관련 기사 확인.
     // 스킵하지 않고 cluster_id 를 부여해 "대표 1건 + 관련 N건" 구조로 적재.
-    const candidates = await findSimilarCandidates(admin, publishedAt)
+    const candidates = similarityCache.find(publishedAt)
     const match = candidates.find(
       c =>
         titleSimilarity(c.title, item.title) >= SIMILARITY_THRESHOLD ||
@@ -507,6 +518,7 @@ async function processCrawlItem(
           .from('contents')
           .update({ cluster_id: repId })
           .eq('id', match.id)
+        match.cluster_id = repId
       }
       clusterId = repId
       console.log(`[크롤러] 관련기사 그룹 편입: "${item.title}" → cluster ${repId}`)
@@ -630,6 +642,13 @@ async function processCrawlItem(
       // 신규 적재 성공 시 서비스/키워드 태깅 (#24) + 그룹/키워드 해시태그 적재 (B3a)
       const newId = insertedRows?.[0]?.id as string | undefined
       if (newId) {
+        similarityCache.add({
+          id: newId,
+          title: item.title,
+          published_at: publishedAt,
+          collected_at: row.collected_at,
+          cluster_id: clusterId,
+        })
         await tagContent(admin, newId, qText, keywords)
         // post-insert update — 컬럼 없어도 insert 안 깨지게 try/catch로 격리
         const matchedTags = matchKeywordGroups(item.title, item.body ?? '', groups)
@@ -750,6 +769,7 @@ async function crawlOne(
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
+  similarityCache: SimilarityCandidateCache,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
@@ -795,7 +815,7 @@ async function crawlOne(
         break
       }
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+        admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -974,6 +994,7 @@ async function crawlKeywordSearch(
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
+  similarityCache: SimilarityCandidateCache,
   aliasMap: Map<string, string> = new Map(),
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
@@ -983,12 +1004,18 @@ async function crawlKeywordSearch(
 ): Promise<{
   counts: CrawlCounts
   providerFetched: { google: number; naver: number; gdelt: number }
+  providerStatus: CrawlProviderStatus
+  providerErrors: CrawlProviderErrors
   hadError: boolean
   truncated: boolean
   firstError?: string
 }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
   const providerFetched = { google: 0, naver: 0, gdelt: 0 }
+  const providerStatus: CrawlProviderStatus = {
+    gdelt: process.env.GDELT_ENABLED === 'false' ? 'disabled' : 'enabled',
+  }
+  const providerErrors: CrawlProviderErrors = {}
   let hadError = false
   let truncated = false
   let firstError: string | undefined
@@ -1017,14 +1044,22 @@ async function crawlKeywordSearch(
       providerFetched.google += rawItems.length
       const naverItems = await fetchNaverNews(seed, since, { maxItems: 200 })
       providerFetched.naver += naverItems.length
-      const gdeltItems = await fetchGdeltNews(seed, since)
-      providerFetched.gdelt += gdeltItems.length
-      const searchItems = [...rawItems, ...naverItems, ...gdeltItems]
+      const gdeltResult = await fetchGdeltNews(seed, since)
+      if (gdeltResult.status === 'error') {
+        providerStatus.gdelt = 'failed'
+        providerErrors.gdelt ??= `seed "${seed}": ${gdeltResult.error}`
+        hadError = true
+        firstError ??= `GDELT seed "${seed}": ${gdeltResult.error}`
+      } else if (gdeltResult.status === 'disabled') {
+        providerStatus.gdelt = 'disabled'
+      }
+      providerFetched.gdelt += gdeltResult.items.length
+      const searchItems = [...rawItems, ...naverItems, ...gdeltResult.items]
       counts.fetched += searchItems.length
 
       for (const item of searchItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
         if (result.partial) {
           hadError = true
@@ -1039,7 +1074,7 @@ async function crawlKeywordSearch(
     }
   }
 
-  return { counts, providerFetched, hadError, truncated, firstError }
+  return { counts, providerFetched, providerStatus, providerErrors, hadError, truncated, firstError }
 }
 
 /** curated_companies(253) 최소 조회 타입 — 회사 seed 검색용 */
@@ -1124,6 +1159,7 @@ async function crawlCompanySearch(
   groups: ScoringGroup[],
   translationBudget: TranslationBudget,
   classifyBudget: TranslationBudget,
+  similarityCache: SimilarityCandidateCache,
   aliasMap: Map<string, string>,
   issueList: IssueMatchDef[],
   exclusionRules: ExclusionRule[],
@@ -1163,7 +1199,7 @@ async function crawlCompanySearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
         )
         if (result.partial) {
           hadError = true
@@ -1555,6 +1591,10 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     company_google: 0,
     keyword_phase_skipped: true,
   }
+  let providerStatus: CrawlProviderStatus = {
+    gdelt: process.env.GDELT_ENABLED === 'false' ? 'disabled' : 'enabled',
+  }
+  let providerErrors: CrawlProviderErrors = {}
 
   const scoped = options.sourceIds?.length
     ? rawSources.filter(s => options.sourceIds!.includes(s.id))
@@ -1565,19 +1605,30 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     { backfillDays, force: options.force }
   )
 
+  const similarityWindowStarts = [
+    ...dueSources.map(source => sinceForSource(source, since, backfillDays)),
+    ...(phase !== 'sources' ? [getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)] : []),
+    ...(options.gdeltBackfill ? [options.gdeltBackfill.from] : []),
+  ]
+    .map(value => new Date(value))
+    .filter(value => !Number.isNaN(value.getTime()))
+    .sort((left, right) => left.getTime() - right.getTime())
+  const earliestPublishedAt = similarityWindowStarts[0]?.toISOString() ?? since
+  const similarityCache = await createSimilarityCandidateCache(admin, earliestPublishedAt)
+
   // GDELT BigQuery 소급 경로: 기존 아이템 처리 파이프라인을 그대로 재사용한다.
   if (options.gdeltBackfill) {
-    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, error: undefined }
+    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, providerStatus, error: undefined }
     const terms = [...new Set([...keywords.map(k => k.name), ...searchSeeds, ...groups.flatMap(g => g.include_patterns ?? [])])]
     const discovered = await queryGdeltMonth({ ...options.gdeltBackfill, keywordTerms: terms })
     const counts = zeroRejectedBy()
     const itemCounts = { fetched: discovered.length, inserted: 0, duplicate: 0, rejected: 0, held: 0, rejectedBy: counts }
     for (const item of discovered) {
-      const result = await processCrawlItem(admin, { original_url: item.url, title: `GDELT 수집 기사 ${item.domain}`, body: `GDELT 원문 링크 ${item.url}`, published_at: item.date }, { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }, keywords, groups, translationBudget, classifyBudget, itemCounts, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength)
+      const result = await processCrawlItem(admin, { original_url: item.url, title: `GDELT 수집 기사 ${item.domain}`, body: `GDELT 원문 링크 ${item.url}`, published_at: item.date }, { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }, keywords, groups, translationBudget, classifyBudget, itemCounts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength)
       if (result.errorMessage) console.warn('[GDELT 백필] 아이템 처리 실패:', result.errorMessage)
     }
     await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
-    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers }
+    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers, providerStatus }
   }
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
@@ -1601,6 +1652,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
                 groups,
                 translationBudget,
                 classifyBudget,
+                similarityCache,
                 aliasMap,
                 issueList,
                 exclusionRules,
@@ -1668,8 +1720,10 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     providers.keyword_phase_skipped = false
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
+      admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
     )
+    providerStatus = kwResult.providerStatus
+    providerErrors = kwResult.providerErrors
     if (kwResult.truncated) {
       console.warn('[크롤러] 키워드 검색 소프트 데드라인 초과 — 일부 seed 건너뜀')
       truncatedPhases.push('keyword_search')
@@ -1699,7 +1753,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   if (!options.sourceIds?.length && phase !== 'sources' && companySeeds.length > 0) {
     console.log(`[크롤러] 회사 seed 수집 시작: ${companySeeds.length}개 시드(날짜 회전 적용)`)
     const companyResult = await crawlCompanySearch(
-      admin, companySeeds, keywords, groups, translationBudget, classifyBudget, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS, softDeadline
+      admin, companySeeds, keywords, groups, translationBudget, classifyBudget, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, COMPANY_SEARCH_BUDGET_MS, softDeadline
     )
     providers.company_google = companyResult.counts.fetched
     totalFetched    += companyResult.counts.fetched
@@ -1789,6 +1843,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     held: totalHeld,
     details,
     providers,
+    providerStatus,
+    providerErrors: Object.keys(providerErrors).length > 0 ? providerErrors : undefined,
     error: errorSummary,
     truncatedPhases: truncatedPhases.length > 0 ? truncatedPhases : undefined,
     companySeedsProcessed,

@@ -125,7 +125,7 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
     const providerRun = await admin
       .from('job_runs')
       .select('started_at, meta')
-      .eq('job_key', 'cron:crawl')
+      .eq('job_key', 'cron:crawl-seeds')
       .in('status', ['succeeded', 'failed'])
       .order('started_at', { ascending: false })
       .limit(1)
@@ -209,10 +209,10 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
         <section className="mb-6 rounded-xl border border-border bg-card p-4" aria-labelledby="provider-summary-title">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="provider-summary-title" className="text-sm font-semibold text-foreground">
-              최신 자동 수집 공급자
+              최신 검색 수집 공급자
             </h2>
             <p className="text-xs text-muted-foreground">
-              cron:crawl · {formatKST(latestProviderRunAt)}
+              cron:crawl-seeds · {formatKST(latestProviderRunAt)}
             </p>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">

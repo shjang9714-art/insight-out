@@ -4,6 +4,11 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 interface GdeltArticle { url?: string; title?: string; seendate?: string }
 interface GdeltResponse { articles?: GdeltArticle[] }
 
+export type GdeltFetchResult =
+  | { status: 'ok'; items: RawItem[] }
+  | { status: 'disabled'; items: [] }
+  | { status: 'error'; items: []; error: string }
+
 function gdeltDate(value: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${value.getUTCFullYear()}${p(value.getUTCMonth() + 1)}${p(value.getUTCDate())}${p(value.getUTCHours())}${p(value.getUTCMinutes())}${p(value.getUTCSeconds())}`
@@ -40,8 +45,8 @@ export function parseGdeltSeenDate(value: string | undefined): Date | null {
   return date
 }
 
-export async function fetchGdeltNews(query: string, since: string, opts: { maxRecords?: number } = {}): Promise<RawItem[]> {
-  if (process.env.GDELT_ENABLED === 'false') return []
+export async function fetchGdeltNews(query: string, since: string, opts: { maxRecords?: number } = {}): Promise<GdeltFetchResult> {
+  if (process.env.GDELT_ENABLED === 'false') return { status: 'disabled', items: [] }
   const now = new Date()
   const threeMonthsAgo = new Date(now); threeMonthsAgo.setUTCMonth(threeMonthsAgo.getUTCMonth() - 3)
   const requestedSince = new Date(since)
@@ -64,9 +69,10 @@ export async function fetchGdeltNews(query: string, since: string, opts: { maxRe
       if (!title) continue
       items.push({ original_url: article.url, title, published_at: date.toISOString(), language: 'ko' })
     }
-    return items
+    return { status: 'ok', items }
   } catch (error) {
-    console.error(`[GDELT 뉴스] 검색 실패(query=${query}):`, error instanceof Error ? error.message : String(error))
-    return []
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[GDELT 뉴스] 검색 실패(query=${query}):`, message)
+    return { status: 'error', items: [], error: message }
   }
 }

@@ -9,6 +9,70 @@ export interface SimilarityCandidate {
   cluster_id: string | null
 }
 
+const SIMILARITY_CANDIDATE_LIMIT = 500
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function similaritySinceIso(
+  publishedAt: string | null | undefined,
+  sinceDays: number
+): string | null {
+  const baseMs = publishedAt ? new Date(publishedAt).getTime() : Date.now()
+  if (Number.isNaN(baseMs)) return null
+  return new Date(baseMs - sinceDays * DAY_MS).toISOString()
+}
+
+/** 런 단위 near-dup 후보 캐시. candidates 는 collected_at 내림차순을 유지한다. */
+export interface SimilarityCandidateCache {
+  candidates: SimilarityCandidate[]
+  find(publishedAt: string | null | undefined, sinceDays?: number): SimilarityCandidate[]
+  add(candidate: SimilarityCandidate): void
+}
+
+/**
+ * 런에서 사용할 가장 넓은 창을 한 번 조회한다. 아이템별 좁은 창은 메모리에서 필터한다.
+ * 신규 적재분은 add 로 최신 위치에 넣어 같은 런의 후속 아이템 후보에 포함한다.
+ */
+export async function createSimilarityCandidateCache(
+  admin: SupabaseClient,
+  earliestPublishedAt: string,
+  sinceDays = 3
+): Promise<SimilarityCandidateCache> {
+  const broadSinceIso = similaritySinceIso(earliestPublishedAt, sinceDays)
+  let candidates: SimilarityCandidate[] = []
+
+  if (broadSinceIso) {
+    const { data, error } = await admin
+      .from('contents')
+      .select('id, title, published_at, collected_at, cluster_id')
+      .eq('category', '뉴스')
+      .gte('collected_at', broadSinceIso)
+      .is('deleted_at', null)
+      .order('collected_at', { ascending: false })
+      .limit(SIMILARITY_CANDIDATE_LIMIT)
+
+    if (error) {
+      console.error('[크롤러] 런 유사 후보 캐시 조회 오류:', error.message)
+    } else {
+      candidates = (data ?? []) as SimilarityCandidate[]
+    }
+  }
+
+  return {
+    get candidates() { return candidates },
+    find(publishedAt, itemSinceDays = sinceDays) {
+      const sinceIso = similaritySinceIso(publishedAt, itemSinceDays)
+      if (!sinceIso) return []
+      // 넓은 창도 같은 최신 500건을 돌려주므로(정렬·상한 동일) 캐시 전체가 정답이다.
+      if (broadSinceIso && sinceIso < broadSinceIso) return candidates
+      return candidates.filter(candidate => candidate.collected_at >= sinceIso)
+    },
+    add(candidate) {
+      candidates = [candidate, ...candidates.filter(current => current.id !== candidate.id)]
+        .slice(0, SIMILARITY_CANDIDATE_LIMIT)
+    },
+  }
+}
+
 // 492 판단② — 아래 세 함수(findByUrl·findByTitleHash·findByBodyHash)는 의도적으로
 // deleted_at 필터를 걸지 않는다. 이 값들은 "이미 존재하는지" 멱등 판정용이라,
 // 소프트 삭제된 행도 "이미 있었다"로 잡아야 한다. 여기서 필터를 걸어 살아있는 행만
@@ -82,9 +146,8 @@ export async function findSimilarCandidates(
   publishedAt: string | null | undefined,
   sinceDays = 3
 ): Promise<SimilarityCandidate[]> {
-  const baseMs = publishedAt ? new Date(publishedAt).getTime() : Date.now()
-  if (isNaN(baseMs)) return []
-  const sinceIso = new Date(baseMs - sinceDays * 24 * 60 * 60 * 1000).toISOString()
+  const sinceIso = similaritySinceIso(publishedAt, sinceDays)
+  if (!sinceIso) return []
 
   const { data, error } = await admin
     .from('contents')
@@ -93,7 +156,7 @@ export async function findSimilarCandidates(
     .gte('collected_at', sinceIso)
     .is('deleted_at', null)
     .order('collected_at', { ascending: false })
-    .limit(500)
+    .limit(SIMILARITY_CANDIDATE_LIMIT)
 
   if (error) {
     console.error('[크롤러] 유사 후보 조회 오류:', error.message)

@@ -99,7 +99,7 @@ export default async function AdminPage() {
       const result = await admin
         .from('job_runs')
         .select('started_at, meta')
-        .eq('job_key', 'cron:crawl')
+        .eq('job_key', 'cron:crawl-seeds')
         .in('status', ['succeeded', 'failed'])
         .order('started_at', { ascending: false })
         .limit(1)
