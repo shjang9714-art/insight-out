@@ -39,7 +39,7 @@ export const RELATEDNESS_GATING_ENABLED = true
 /** 제목 광고 토큰. 한글은 부분일치, 영문은 patternHit 과 같은 영숫자 경계를 적용한다. */
 export function isAdLike(title: string): boolean {
   if (['광고', '협찬', '프로모션'].some(token => title.includes(token))) return true
-  if (/(?<![a-z0-9])AD(?![a-z0-9])/.test(title)) return true
+  if (/(?<![A-Za-z0-9])AD(?![A-Za-z0-9])/.test(title)) return true
   return /(?<![a-z0-9])sponsored(?![a-z0-9])/i.test(title)
 }
 

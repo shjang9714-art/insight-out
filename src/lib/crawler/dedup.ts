@@ -61,7 +61,9 @@ export async function createSimilarityCandidateCache(
     get candidates() { return candidates },
     find(publishedAt, itemSinceDays = sinceDays) {
       const sinceIso = similaritySinceIso(publishedAt, itemSinceDays)
-      if (!sinceIso || (broadSinceIso && sinceIso < broadSinceIso)) return []
+      if (!sinceIso) return []
+      // 넓은 창도 같은 최신 500건을 돌려주므로(정렬·상한 동일) 캐시 전체가 정답이다.
+      if (broadSinceIso && sinceIso < broadSinceIso) return candidates
       return candidates.filter(candidate => candidate.collected_at >= sinceIso)
     },
     add(candidate) {
