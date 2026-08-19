@@ -157,6 +157,7 @@ export default async function AdminPage() {
         .select('id, severity, title, suspected_cause, occurrence_count, last_seen_at')
         .neq('status', 'resolved')
         .order('last_seen_at', { ascending: false })
+        .limit(200)
 
       if (result.error) {
         console.error('[/admin] 운영 이슈 요약 조회 실패:', result.error.message)
@@ -164,9 +165,10 @@ export default async function AdminPage() {
       }
 
       const severityRank = { critical: 0, warning: 1, notice: 2 } as const
+      const rank = (severity: OpsIssueSummaryRow['severity']) => severityRank[severity] ?? 9
       const data = ([...((result.data ?? []) as OpsIssueSummaryRow[])])
         .sort((left, right) => {
-          const severityOrder = severityRank[left.severity] - severityRank[right.severity]
+          const severityOrder = rank(left.severity) - rank(right.severity)
           if (severityOrder !== 0) return severityOrder
           return new Date(right.last_seen_at).getTime() - new Date(left.last_seen_at).getTime()
         })
