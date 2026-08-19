@@ -5,6 +5,7 @@ import AdminAppearanceSettings from '@/components/admin/AdminAppearanceSettings'
 import AdminDataReset from '@/components/admin/AdminDataReset'
 import LlmManager from '@/components/admin/LlmManager'
 import McpTokenBoard from '@/components/admin/McpTokenBoard'
+import SsoProviderManager from '@/components/admin/SsoProviderManager'
 import TranslationStatusManager from '@/components/admin/TranslationStatusManager'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
 import AdminTabShell from '@/components/admin/ui/AdminTabShell'
@@ -14,6 +15,7 @@ const SETTINGS_TABS = [
   { value: 'llm', label: 'AI 모델' },
   { value: 'api', label: '외부 API' },
   { value: 'mcp', label: 'MCP' },
+  { value: 'sso', label: 'SSO' },
   { value: 'maintenance', label: '유지보수' },
 ]
 
@@ -49,6 +51,8 @@ function renderSettingsContent(activeTab: string) {
       return <TranslationStatusManager />
     case 'mcp':
       return <McpTokenBoard />
+    case 'sso':
+      return <SsoProviderManager />
     case 'maintenance':
       return <MaintenanceSettings />
     default:
