@@ -27,6 +27,31 @@ interface DecodeStats {
   recovered: number
 }
 
+interface GdeltProviderDiagnostics {
+  status: 'enabled' | 'disabled' | 'failed'
+  error: string | null
+}
+
+function parseGdeltProviderDiagnostics(meta: unknown): GdeltProviderDiagnostics | null {
+  if (!meta || typeof meta !== 'object') return null
+  const value = meta as Record<string, unknown>
+  const providerStatus = value.providerStatus
+  if (!providerStatus || typeof providerStatus !== 'object') return null
+
+  const status = (providerStatus as Record<string, unknown>).gdelt
+  if (status !== 'enabled' && status !== 'disabled' && status !== 'failed') return null
+
+  const providerErrors = value.providerErrors
+  const error = providerErrors && typeof providerErrors === 'object'
+    ? (providerErrors as Record<string, unknown>).gdelt
+    : null
+
+  return {
+    status,
+    error: typeof error === 'string' ? error : null,
+  }
+}
+
 function parseDecodeStats(meta: unknown): DecodeStats | null {
   if (!meta || typeof meta !== 'object') return null
   const decodeStats = (meta as Record<string, unknown>).decodeStats
@@ -119,6 +144,7 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
   // job_runs는 service_role 전용이다. 아직 테이블/진단 필드가 없거나 조회가 실패하면
   // 기존 크롤 로그 화면은 그대로 유지하고 공급자 진단만 숨긴다.
   let latestProviders: ProviderCounts | null = null
+  let latestGdeltDiagnostics: GdeltProviderDiagnostics | null = null
   let latestProviderRunAt: string | null = null
   try {
     const admin = createAdminClient()
@@ -137,6 +163,7 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
       }
     } else if (providerRun.data) {
       latestProviders = parseProviderCounts(providerRun.data.meta)
+      latestGdeltDiagnostics = parseGdeltProviderDiagnostics(providerRun.data.meta)
       latestProviderRunAt = providerRun.data.started_at
     }
   } catch (providerError) {
@@ -202,6 +229,10 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
   const decodeFailureRate = latestDecodeStats && latestDecodeStats.attempted > 0
     ? Math.round((effectiveDecodeFailures / latestDecodeStats.attempted) * 100)
     : 0
+  const gdeltFailed = latestGdeltDiagnostics?.status === 'failed'
+  const gdeltDisabled = latestGdeltDiagnostics?.status === 'disabled'
+  const gdeltError = gdeltFailed ? latestGdeltDiagnostics?.error : null
+  const gdeltZeroWarning = latestProviders?.keyword_gdelt === 0 && !gdeltFailed && !gdeltDisabled
 
   return (
     <>
@@ -219,25 +250,41 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
             {[
               { label: 'Google 키워드', value: latestProviders.keyword_google, warn: false },
               { label: '네이버', value: latestProviders.keyword_naver, warn: latestProviders.keyword_naver === 0 },
-              { label: 'GDELT', value: latestProviders.keyword_gdelt, warn: latestProviders.keyword_gdelt === 0 },
+              {
+                label: 'GDELT',
+                value: latestProviders.keyword_gdelt,
+                warn: gdeltZeroWarning,
+                failed: gdeltFailed,
+                suffix: gdeltFailed
+                  ? '실패'
+                  : gdeltDisabled
+                    ? '환경변수로 비활성'
+                    : null,
+              },
               { label: 'Google 회사', value: latestProviders.company_google, warn: false },
             ].map((provider) => (
               <span
                 key={provider.label}
                 className={cn(
                   'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
-                  provider.warn
-                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
-                    : 'border-border bg-muted/50 text-muted-foreground'
+                  provider.failed
+                    ? 'border-negative/30 bg-negative-soft text-negative'
+                    : provider.warn
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-600'
+                      : 'border-border bg-muted/50 text-muted-foreground'
                 )}
               >
                 {provider.label} {provider.value.toLocaleString()}건
+                {provider.suffix ? ` · ${provider.suffix}` : ''}
               </span>
             ))}
           </div>
+          {gdeltError && (
+            <p className="mt-3 text-xs text-negative">{gdeltError}</p>
+          )}
           {(latestProviders.keyword_phase_skipped ||
             latestProviders.keyword_naver === 0 ||
-            latestProviders.keyword_gdelt === 0) && (
+            gdeltZeroWarning) && (
             <div className="mt-3 space-y-1 text-xs text-amber-600">
               {latestProviders.keyword_phase_skipped && (
                 <p>키워드 검색 단계가 건너뛰어졌습니다. 검색 시드 설정과 개별 소스 실행 여부를 확인해주세요.</p>
@@ -245,7 +292,7 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
               {latestProviders.keyword_naver === 0 && (
                 <p>네이버 0건: API 키 설정 또는 해당 시드의 검색 결과를 확인해주세요.</p>
               )}
-              {latestProviders.keyword_gdelt === 0 && (
+              {gdeltZeroWarning && (
                 <p>GDELT 0건: GDELT 활성 설정 또는 해당 시드의 검색 결과를 확인해주세요.</p>
               )}
             </div>
