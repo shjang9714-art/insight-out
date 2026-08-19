@@ -5,6 +5,7 @@ import AdminAppearanceSettings from '@/components/admin/AdminAppearanceSettings'
 import AdminDataReset from '@/components/admin/AdminDataReset'
 import LlmManager from '@/components/admin/LlmManager'
 import McpTokenBoard from '@/components/admin/McpTokenBoard'
+import OpsSettingsPanel from '@/components/admin/OpsSettingsPanel'
 import SsoProviderManager from '@/components/admin/SsoProviderManager'
 import TranslationStatusManager from '@/components/admin/TranslationStatusManager'
 import AdminSectionHeader from '@/components/admin/ui/AdminSectionHeader'
@@ -56,7 +57,12 @@ function renderSettingsContent(activeTab: string) {
     case 'maintenance':
       return <MaintenanceSettings />
     default:
-      return <AdminAppearanceSettings />
+      return (
+        <div className="space-y-6">
+          <AdminAppearanceSettings />
+          <OpsSettingsPanel />
+        </div>
+      )
   }
 }
 
