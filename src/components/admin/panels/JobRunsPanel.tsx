@@ -1,7 +1,4 @@
 import Link from 'next/link'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import JobRunsTable, { type JobRunRow } from '@/components/admin/JobRunsTable'
 import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
@@ -57,25 +54,6 @@ export default async function JobRunsPanel({ searchParams }: JobRunsPanelProps) 
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
   const sortKey = searchParams.sort && SORT_KEYS.has(searchParams.sort) ? searchParams.sort : 'started_at'
   const sortDir = searchParams.dir === 'asc' ? 'asc' : 'desc'
-
-  // 어드민 role 직접 재확인(미들웨어 의존 금지, 289 §3-4)
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) { toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) },
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') redirect('/dashboard')
 
   // job_runs 는 RLS 정책 없음(service_role 전용) — admin 클라이언트로 조회
   const admin = createAdminClient()
