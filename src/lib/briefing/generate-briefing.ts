@@ -7,6 +7,7 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { generateHighlights } from '@/lib/briefing/highlights'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { getOpsSettings } from '@/lib/ops/settings'
+import { loadPrompt } from '@/lib/prompts/load-prompt'
 
 // ─── 기본값 ───────────────────────────────────────────────────────────────
 // ops_settings 에 값이 없을 때만 쓰는 기본값. 윈도우 48h: 일일 크롤이 배치로 들어와
@@ -101,10 +102,9 @@ function getKstDateParts(date?: Date): { year: number; month: number; day: numbe
 
 // ─── 시스템 프롬프트 ─────────────────────────────────────────────────────────
 
-function buildSystemPrompt(hostName: string): string {
-  return (
+export const BRIEFING_SYSTEM_FALLBACK =
   '당신은 LG유플러스 임직원을 위한 1인 모닝 라디오 \'모닝브리핑\'의 진행자이자 산업 애널리스트다.\n' +
-  `진행자 이름은 '${hostName}'이다. 도입부 인사에서 이 이름으로 자신을 소개하고, 다른 이름을 지어내지 마라.\n` +
+  "진행자 이름은 '{host_name}'이다. 도입부 인사에서 이 이름으로 자신을 소개하고, 다른 이름을 지어내지 마라.\n" +
   '입력으로 오늘 선정된 통신·테크·AI 산업 기사 3~5건(산업영역·태그·제목·요약·본문)이 주어진다.\n' +
   '단순 요약 낭독이 아니라, 시장을 다각도로 읽어 주는 인사이트 있는 한국어 팟캐스트 스크립트를 작성하라.\n\n' +
   '대상·목적:\n' +
@@ -136,8 +136,6 @@ function buildSystemPrompt(hostName: string): string {
   '- 사실만. 입력에 없는 수치·사건 추측·창작 금지. 다만 입력된 사실에 근거한 해석·시사점은 적극적으로 제시하라. 회사명·출처는 입력대로.\n' +
   '- 전체 분량 1,500~2,200자(약 4~5분 낭독). 문장은 짧고 끊어 읽기 쉽게.\n' +
   '- 출력은 스크립트 본문만. 제목·머리말·설명 없이.'
-  )
-}
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -402,7 +400,10 @@ export async function generateBriefing(
 
   // 5. LLM 스크립트 생성
   const userPrompt = buildUserPrompt(selected, dateParts)
-  const { text: scriptRaw, errorReason } = await llmCompleteDetailed('briefing', buildSystemPrompt(hostName), userPrompt)
+  const systemPrompt = (
+    await loadPrompt(admin, 'briefing_script', BRIEFING_SYSTEM_FALLBACK)
+  ).replaceAll('{host_name}', hostName)
+  const { text: scriptRaw, errorReason } = await llmCompleteDetailed('briefing', systemPrompt, userPrompt)
 
   if (!scriptRaw?.trim()) {
     console.error('[브리핑] 스크립트 생성 실패:', errorReason)

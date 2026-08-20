@@ -4,6 +4,7 @@ import { llmComplete } from '@/lib/llm'
 import { insightAutoPublish, insightCompanyAutoPublish } from '@/lib/insight/auto-publish'
 import { buildCompanyMatchOr } from '@/lib/insight/company-match'
 import { getLastCompletedWeekKst } from '@/lib/competitor-weekly/generate'
+import { loadPrompt } from '@/lib/prompts/load-prompt'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ function addDaysToDateString(dateStr: string, days: number): string {
 
 // ─── LLM 프롬프트 ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
+export const DAILY_INSIGHT_SYSTEM_FALLBACK = `당신은 LG U+ B2B 시장 인텔리전스 분석가다.
 주어진 기사들로 이 주제의 핵심 동향 1줄(headline, 분석가 톤)과 LG U+ B2B(엔터프라이즈/공공/AICC·AIDC 등)에의 시사점(implication)을 쓰라.
 추가로 card_headline: 읽고 싶게 만드는 에디토리얼 헤드라인. 구체 수치·주체·변화폭·능동 동사로 끌리게(공백 포함 24자 내외). 단 사실 기반 — 허위·왜곡·근거없는 단정·선정적 낚시 금지, 물음표 남용 금지. 호기심은 구체성과 판돈으로 만든다.
   예시(밋밋 → 끌림, 모두 기사 근거 내에서만): "AI 데이터센터 투자 확대" → "AI 데이터센터, 전력이 발목 잡는다" / "클라우드 보안 강화 추세" → "클라우드 침해 40% 급증, 보안이 먼저다" / "AICC 시장 성장" → "AICC 3년새 2배, 상담원이 사라진다"
@@ -193,6 +194,11 @@ export async function generateIndustryInsightCards(
 
   const contentIdSet = new Set(validContents.map((c) => c.id))
   const created: string[] = []
+  const systemPrompt = await loadPrompt(
+    adminClient,
+    'daily_insight',
+    DAILY_INSIGHT_SYSTEM_FALLBACK,
+  )
 
   for (const [group, groupArticles] of topGroups) {
     try {
@@ -208,7 +214,7 @@ export async function generateIndustryInsightCards(
       // 3. LLM 생성
       const raw = await llmComplete(
         'report',
-        SYSTEM_PROMPT,
+        systemPrompt,
         buildUserPrompt(group, articles)
       )
 

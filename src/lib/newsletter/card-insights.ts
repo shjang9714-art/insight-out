@@ -1,6 +1,8 @@
 import 'server-only'
 import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
+import { loadPrompt } from '@/lib/prompts/load-prompt'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export interface CardForInsight {
   id: string
@@ -8,7 +10,7 @@ export interface CardForInsight {
   summaryKo: string | null
 }
 
-const SYSTEM_PROMPT = `당신은 LG유플러스 B2B 전략팀 관점에서 뉴스 기사를 짧게 코멘트하는 애널리스트다.
+export const NEWSLETTER_CARD_INSIGHT_FALLBACK = `당신은 LG유플러스 B2B 전략팀 관점에서 뉴스 기사를 짧게 코멘트하는 애널리스트다.
 아래 규칙을 반드시 지킨다.
 - 입력 기사 본문(제목·요약)에 없는 사실·수치·기업명을 만들어내지 않는다.
 - LG유플러스 관련 시사점은 단정하지 말고 "~여지/신호/가능성" 톤으로 표현한다.
@@ -36,9 +38,15 @@ export async function generateCardInsights(cards: CardForInsight[]): Promise<Map
   const result = new Map<string, string>()
   if (cards.length === 0) return result
 
+  const admin = createAdminClient()
+  const systemPrompt = await loadPrompt(
+    admin,
+    'newsletter_card_insight',
+    NEWSLETTER_CARD_INSIGHT_FALLBACK,
+  )
   const { text, errorReason } = await llmCompleteDetailed(
     'newsletter_card_insight',
-    SYSTEM_PROMPT,
+    systemPrompt,
     buildUserPrompt(cards)
   )
 
