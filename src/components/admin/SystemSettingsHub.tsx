@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { LayoutTemplate, Trash2 } from 'lucide-react'
 import AdminAppearanceSettings from '@/components/admin/AdminAppearanceSettings'
 import AdminDataReset from '@/components/admin/AdminDataReset'
@@ -59,10 +60,15 @@ function HomepageSettings() {
   )
 }
 
-function renderSettingsContent(activeTab: string) {
+function renderSettingsContent(activeTab: string, llmCostPanel: ReactNode | null) {
   switch (activeTab) {
     case 'llm':
-      return <LlmManager />
+      return (
+        <div className="space-y-6">
+          <LlmManager />
+          {llmCostPanel}
+        </div>
+      )
     case 'api':
       return <TranslationStatusManager />
     case 'mcp':
@@ -83,13 +89,13 @@ function renderSettingsContent(activeTab: string) {
   }
 }
 
-export default function SystemSettingsHub() {
+export default function SystemSettingsHub({ llmCostPanel }: { llmCostPanel: ReactNode | null }) {
   return (
     <AdminTabShell
       tabs={SETTINGS_TABS}
       defaultTab="general"
       aria-label="시스템 설정"
-      renderContent={renderSettingsContent}
+      renderContent={(activeTab) => renderSettingsContent(activeTab, llmCostPanel)}
     />
   )
 }

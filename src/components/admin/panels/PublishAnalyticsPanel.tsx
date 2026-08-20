@@ -11,7 +11,7 @@ interface PublishAnalyticsPanelProps {
   searchParams: Record<string, string | string[] | undefined>
 }
 
-/** 524 — analytics/publish/page.tsx 에서 이식. 데이터 로딩 로직 불변, AdminPageHeader 만 제거(허브가 대신 렌더). */
+/** 발행 분석 페이지의 서버 조회 패널. 페이지 헤더는 상위 페이지가 렌더한다. */
 export default async function PublishAnalyticsPanel({ searchParams }: PublishAnalyticsPanelProps) {
   const months = parseMonths(searchParams.months)
   const admin = createAdminClient()

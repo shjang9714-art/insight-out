@@ -11,7 +11,7 @@ interface AiCostAnalyticsPanelProps {
   searchParams: Record<string, string | string[] | undefined>
 }
 
-/** 524 — analytics/ai-cost/page.tsx 에서 이식. 데이터 로딩 로직 불변, AdminPageHeader 만 제거(허브가 대신 렌더). */
+/** 시스템 설정의 AI 모델 탭이 활성일 때만 생성하는 서버 조회 패널. */
 export default async function AiCostAnalyticsPanel({ searchParams }: AiCostAnalyticsPanelProps) {
   const months = parseMonths(searchParams.months)
   const admin = createAdminClient()

@@ -33,6 +33,7 @@ export interface ChartData {
   statusDist: { name: string; value: number }[]
   dayTrend: DayTrend[]
   sourceTop: { sourceId: string; name: string; count: number }[]
+  topBookmarked: { id: string; title: string; bookmark_count: number }[]
 }
 
 const CATEGORIES = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI보고서'] as const
@@ -41,7 +42,7 @@ const CATEGORIES = ['뉴스', '리포트', '웹인사이트', '유튜브', 'AI�
 
 export function DashboardCharts({ chartData }: { chartData: ChartData }) {
   const router = useRouter()
-  const { categoryDist, statusDist, dayTrend, sourceTop } = chartData
+  const { categoryDist, statusDist, dayTrend, sourceTop, topBookmarked } = chartData
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -181,6 +182,32 @@ export function DashboardCharts({ chartData }: { chartData: ChartData }) {
                 />
               </BarChart>
             </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ⑤ 북마크 Top 10 */}
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-foreground">북마크 Top 10</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {topBookmarked.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">데이터 없음</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {topBookmarked.map((item, index) => (
+                <div key={item.id} className="flex items-center gap-3 py-2">
+                  <span className="w-5 shrink-0 text-right admin-caption text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.title}</span>
+                  <span className="shrink-0 admin-caption font-medium tabular-nums text-muted-foreground">
+                    {item.bookmark_count.toLocaleString()}건
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
