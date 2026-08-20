@@ -11,7 +11,6 @@ import {
   Users,
   Settings,
   TrendingUp,
-  LayoutTemplate,
   FileText,
   History,
   KeyRound,
@@ -66,15 +65,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { href: '/admin/reports', label: 'AI 리포트', description: 'AI 리포트 생성·발행과 프롬프트 편집을 통합 관리합니다.', icon: FileText },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
-      { href: '/admin/homepage-sections', label: '홈 화면 구성', description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.', icon: LayoutTemplate },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
       { href: '/admin/newsletter', label: '뉴스레터', description: '뉴스레터 발행·설정·수신자·구독자·발송 이력을 통합 관리합니다.', icon: Mail },
       // 504A — "이슈 관리"에서 개명. 실제 소비처는 홈의 "오늘의 급상승 뉴스"
       // (IssueSignals → trending_keywords 뷰 → issues + issue_contents 조인)라 옛 이름이
-      // 역할을 가렸다. 홈 화면 구성 옆(발행 그룹)으로 옮긴다. 경로(/admin/issues)는 그대로.
+      // 역할을 가렸다. 발행 그룹에 둔다. 경로(/admin/issues)는 그대로.
       { href: '/admin/issues', label: '급상승 뉴스', description: '홈 화면 "오늘의 급상승 뉴스"에 노출되는 이슈 생성·발행·키워드 매칭·콘텐츠 배정을 관리합니다.', icon: TrendingUp },
       // 522 — 인사이트 그룹 해체, 발행으로 이동.
-      { href: '/admin/daily-insights', label: '일일 핵심', description: '자동 게시된 일일 핵심 검토·편집·반려.', icon: Sun },
+      { href: '/admin/daily-insights', label: '핵심 인사이트', description: '주 1회(월요일) 생성되는 핵심 인사이트를 검토·편집·반려합니다.', icon: Sun },
       { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
     ],
   },

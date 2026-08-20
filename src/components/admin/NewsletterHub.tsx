@@ -5,6 +5,7 @@ import AdminTabShell from '@/components/admin/ui/AdminTabShell'
 import NewsletterHistory from '@/components/admin/NewsletterHistory'
 import NewsletterSendPanel from '@/components/admin/NewsletterSendPanel'
 import NewsletterSettingsForm, { type NewsletterSettingsState } from '@/components/admin/NewsletterSettingsForm'
+import PromptConsole from '@/components/admin/PromptConsole'
 import type { AdminTableState } from '@/components/admin/ui/AdminTable'
 
 interface Issue {
@@ -21,6 +22,7 @@ const TABS = [
   { value: 'history',  label: '발송 이력' },
   { value: 'send',     label: '미리보기·발송' },
   { value: 'settings', label: '발송 설정' },
+  { value: 'prompts',  label: '프롬프트' },
 ]
 
 interface Props {
@@ -41,22 +43,25 @@ export default function NewsletterHub({ initialSettings, initialIssues, issuesSt
       tabs={TABS}
       defaultTab="history"
       aria-label="뉴스레터 관리"
-      renderContent={(tab) =>
-        tab === 'history'
-          ? <NewsletterHistory initialIssues={initialIssues} state={issuesState} />
-          : tab === 'send'
-            ? <NewsletterSendPanel />
-            : (
-              <NewsletterSettingsForm
-                settings={settings}
-                setSettings={setSettings}
-                settingsStatus={settingsStatus}
-                setSettingsStatus={setSettingsStatus}
-                settingsError={settingsError}
-                setSettingsError={setSettingsError}
-              />
-            )
-      }
+      renderContent={(tab) => {
+        if (tab === 'history') {
+          return <NewsletterHistory initialIssues={initialIssues} state={issuesState} />
+        }
+        if (tab === 'send') return <NewsletterSendPanel />
+        if (tab === 'prompts') {
+          return <PromptConsole keys={['newsletter_card_insight']} />
+        }
+        return (
+          <NewsletterSettingsForm
+            settings={settings}
+            setSettings={setSettings}
+            settingsStatus={settingsStatus}
+            setSettingsStatus={setSettingsStatus}
+            settingsError={settingsError}
+            setSettingsError={setSettingsError}
+          />
+        )
+      }}
     />
   )
 }

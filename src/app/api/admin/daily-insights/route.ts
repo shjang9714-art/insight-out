@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
       .from('daily_insights')
       .select('day_of')
       .order('day_of', { ascending: false })
+      .limit(500)
     if (dayError) throw dayError
 
     const days = [...new Set((dayRows ?? []).map((r) => r.day_of as string))]
