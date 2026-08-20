@@ -605,7 +605,7 @@ export default function SourceQualityManager() {
             )}
           </Button>
           <Button size="sm" variant="outline" asChild>
-            <Link href="/admin/crawl-settings?tab=exclusion-rules">제외 규칙 관리</Link>
+            <Link href="/admin/sources?tab=exclusion-rules">제외 규칙 관리</Link>
           </Button>
         </div>
       </div>

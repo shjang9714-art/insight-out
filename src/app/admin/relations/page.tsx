@@ -8,7 +8,7 @@ import RelationsExplorer from '@/components/admin/RelationsExplorer'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: '관계지도 | 어드민 | Insight Out',
+  title: '관계 그래프 | 어드민 | Insight Out',
   description: '엔티티 동시출현 관계·근거 콘텐츠를 탐색합니다.',
 }
 
