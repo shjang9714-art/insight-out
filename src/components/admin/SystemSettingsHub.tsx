@@ -1,8 +1,9 @@
 'use client'
 
-import { Trash2 } from 'lucide-react'
+import { LayoutTemplate, Trash2 } from 'lucide-react'
 import AdminAppearanceSettings from '@/components/admin/AdminAppearanceSettings'
 import AdminDataReset from '@/components/admin/AdminDataReset'
+import HomeSectionsSettings from '@/components/admin/HomeSectionsSettings'
 import LlmManager from '@/components/admin/LlmManager'
 import McpTokenBoard from '@/components/admin/McpTokenBoard'
 import OpsSettingsPanel from '@/components/admin/OpsSettingsPanel'
@@ -16,6 +17,7 @@ const SETTINGS_TABS = [
   { value: 'llm', label: 'AI 모델' },
   { value: 'api', label: '외부 API' },
   { value: 'mcp', label: 'MCP' },
+  { value: 'homepage', label: '홈 화면 구성' },
   { value: 'sso', label: 'SSO' },
   { value: 'maintenance', label: '유지보수' },
 ]
@@ -44,6 +46,19 @@ function MaintenanceSettings() {
   )
 }
 
+function HomepageSettings() {
+  return (
+    <div>
+      <AdminSectionHeader
+        icon={LayoutTemplate}
+        title="공개 홈 구성"
+        hint="방문자에게 보이는 홈 화면의 항목과 순서를 정합니다. 모든 방문자에게 적용됩니다."
+      />
+      <HomeSectionsSettings />
+    </div>
+  )
+}
+
 function renderSettingsContent(activeTab: string) {
   switch (activeTab) {
     case 'llm':
@@ -52,6 +67,8 @@ function renderSettingsContent(activeTab: string) {
       return <TranslationStatusManager />
     case 'mcp':
       return <McpTokenBoard />
+    case 'homepage':
+      return <HomepageSettings />
     case 'sso':
       return <SsoProviderManager />
     case 'maintenance':

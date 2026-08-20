@@ -20,7 +20,11 @@ interface PromptItem {
   fallback: string
 }
 
-export default function PromptConsole() {
+interface Props {
+  keys?: readonly string[]
+}
+
+export default function PromptConsole({ keys }: Props) {
   const [prompts, setPrompts] = useState<PromptItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -79,7 +83,10 @@ export default function PromptConsole() {
     )
   }
 
-  const groups = [...new Set(prompts.map(p => p.group))]
+  const visiblePrompts = keys
+    ? prompts.filter((prompt) => keys.includes(prompt.key))
+    : prompts
+  const groups = [...new Set(visiblePrompts.map(p => p.group))]
 
   return (
     <div className="space-y-5">
@@ -91,7 +98,7 @@ export default function PromptConsole() {
       {groups.map(group => (
         <section key={group} className="space-y-3">
           <h3 className="text-sm font-semibold text-foreground">{group}</h3>
-          {prompts.filter(p => p.group === group).map(item => {
+          {visiblePrompts.filter(p => p.group === group).map(item => {
             const draft = drafts[item.key] ?? ''
             const dirty = draft !== item.promptText
             const usingFallback = !item.saved

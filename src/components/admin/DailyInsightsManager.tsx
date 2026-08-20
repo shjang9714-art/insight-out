@@ -165,10 +165,11 @@ export default function DailyInsightsManager() {
   return (
     <div className="space-y-4">
       {error && <AdminErrorBox onDismiss={() => setError(null)}>{error}</AdminErrorBox>}
+      <p className="text-sm text-muted-foreground">월요일에 주 1회 생성됩니다.</p>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">날짜</span>
+          <span className="text-sm text-muted-foreground">주(월요일 시작)</span>
           {days.length > 0 ? (
             <Select value={dayOf ?? undefined} onValueChange={handleDayChange} disabled={isLoading}>
               <SelectTrigger className="h-8 w-44 text-xs">
@@ -201,7 +202,7 @@ export default function DailyInsightsManager() {
 
       {cards.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
-          이 날짜에 생성된 일일 핵심 Insight가 없습니다.
+          이 주에 생성된 핵심 인사이트가 없습니다.
         </div>
       ) : (
         <div className="space-y-3">
