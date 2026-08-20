@@ -57,7 +57,7 @@ export async function fetchGdeltNews(query: string, since: string, opts: { maxRe
   url.searchParams.set('maxrecords', String(Math.min(opts.maxRecords ?? 100, 250)))
   url.searchParams.set('startdatetime', gdeltDate(start)); url.searchParams.set('enddatetime', gdeltDate(now))
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+    const response = await fetch(url, { signal: AbortSignal.timeout(6_000) })
     if (!response.ok) throw new Error(`GDELT API ${response.status}`)
     const payload = await response.json() as GdeltResponse
     const items: RawItem[] = []

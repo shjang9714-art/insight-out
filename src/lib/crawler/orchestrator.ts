@@ -49,6 +49,7 @@ const ENRICH_MIN_BODY_LEN = 400
 // ── 키워드 검색 수집 상수 ────────────────────────────────────────────────
 const KEYWORD_LOOKBACK_DAYS = 2
 const MAX_SEARCH_SEEDS = 30
+const GDELT_FAILURE_CIRCUIT = 2
 const googleNewsRss = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=ko&gl=KR&ceid=KR:ko`
 
@@ -1019,6 +1020,11 @@ async function crawlKeywordSearch(
   let hadError = false
   let truncated = false
   let firstError: string | undefined
+  let consecutiveGdeltFailures = 0
+  let gdeltAttempts = 0
+  let gdeltFailures = 0
+  let gdeltCircuitSkips = 0
+  let firstGdeltError: string | undefined
   const since = getDaysAgoStartKst(KEYWORD_LOOKBACK_DAYS)
   const adapter = getAdapter('news_site')!
   const srcCtx: ItemSourceCtx = { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }
@@ -1044,17 +1050,28 @@ async function crawlKeywordSearch(
       providerFetched.google += rawItems.length
       const naverItems = await fetchNaverNews(seed, since, { maxItems: 200 })
       providerFetched.naver += naverItems.length
-      const gdeltResult = await fetchGdeltNews(seed, since)
-      if (gdeltResult.status === 'error') {
-        providerStatus.gdelt = 'failed'
-        providerErrors.gdelt ??= `seed "${seed}": ${gdeltResult.error}`
-        hadError = true
-        firstError ??= `GDELT seed "${seed}": ${gdeltResult.error}`
-      } else if (gdeltResult.status === 'disabled') {
-        providerStatus.gdelt = 'disabled'
+      let gdeltItems: RawItem[] = []
+      if (consecutiveGdeltFailures >= GDELT_FAILURE_CIRCUIT) {
+        gdeltCircuitSkips += 1
+      } else {
+        gdeltAttempts += 1
+        const gdeltResult = await fetchGdeltNews(seed, since)
+        gdeltItems = gdeltResult.items
+        if (gdeltResult.status === 'error') {
+          providerStatus.gdelt = 'failed'
+          consecutiveGdeltFailures += 1
+          gdeltFailures += 1
+          firstGdeltError ??= gdeltResult.error
+          hadError = true
+          firstError ??= `GDELT seed "${seed}": ${gdeltResult.error}`
+        } else if (gdeltResult.status === 'disabled') {
+          providerStatus.gdelt = 'disabled'
+        } else {
+          consecutiveGdeltFailures = 0
+        }
       }
-      providerFetched.gdelt += gdeltResult.items.length
-      const searchItems = [...rawItems, ...naverItems, ...gdeltResult.items]
+      providerFetched.gdelt += gdeltItems.length
+      const searchItems = [...rawItems, ...naverItems, ...gdeltItems]
       counts.fetched += searchItems.length
 
       for (const item of searchItems) {
@@ -1072,6 +1089,10 @@ async function crawlKeywordSearch(
       hadError = true
       if (!firstError) firstError = `seed "${seed}": ${message}`
     }
+  }
+
+  if (gdeltFailures > 0) {
+    providerErrors.gdelt = `시도 ${gdeltAttempts}개 / 실패 ${gdeltFailures}개 / 서킷으로 건너뜀 ${gdeltCircuitSkips}개 — 첫 오류: ${firstGdeltError ?? '알 수 없음'}`
   }
 
   return { counts, providerFetched, providerStatus, providerErrors, hadError, truncated, firstError }
