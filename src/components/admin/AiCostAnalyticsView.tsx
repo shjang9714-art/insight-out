@@ -35,7 +35,7 @@ function EmptyState() {
 
 export default function AiCostAnalyticsView({ data, months }: { data: AiCostAnalytics; months: number }) {
   const router = useRouter()
-  const { months: periods, llmByMonth, currentUsage, translationByMonth, ttsByMonth } = data
+  const { months: periods, llmByMonth, translationByMonth, ttsByMonth } = data
 
   const providers = [...new Set(llmByMonth.map(r => r.provider))]
   const stackedTokens = periods.map(period => {
@@ -56,7 +56,7 @@ export default function AiCostAnalyticsView({ data, months }: { data: AiCostAnal
               <button
                 key={m}
                 type="button"
-                onClick={() => router.push(`/admin/analytics/content?tab=ai-cost&months=${m}`)}
+                onClick={() => router.push(`/admin/settings?tab=llm&months=${m}`)}
                 className={cn(
                   'rounded-md px-3 py-1 text-sm font-medium transition-colors',
                   m === months ? 'bg-brand-600 text-white' : 'bg-muted/40 text-muted-foreground hover:bg-accent'
@@ -67,46 +67,7 @@ export default function AiCostAnalyticsView({ data, months }: { data: AiCostAnal
             ))}
           </div>
         </div>
-        <p className="admin-caption text-muted-foreground">
-          실제 과금액은 제공자 콘솔 기준(여기선 한도 대비 소진율)
-        </p>
       </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-foreground">이번 달 한도 대비 사용률</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {currentUsage.every(u => u.used === 0) ? (
-            <EmptyState />
-          ) : (
-            <div className="space-y-3">
-              {currentUsage.map(u => (
-                <div key={u.provider}>
-                  <div className="mb-1 flex items-center justify-between admin-caption">
-                    <span className="font-medium text-foreground">{u.provider}</span>
-                    <span className="text-muted-foreground">
-                      {u.keyCount === 0
-                        ? '키 미설정'
-                        : `${u.used.toLocaleString()} / ${u.limit.toLocaleString()} (${u.percent}%)`
-                      }
-                    </span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">
-                    <div
-                      className={cn(
-                        'h-full rounded-full',
-                        u.percent >= 95 ? 'bg-destructive' : u.percent >= 80 ? 'bg-amber-500' : 'bg-brand-600'
-                      )}
-                      style={{ width: `${Math.min(u.percent, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="pb-2">

@@ -89,8 +89,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     group: '분석·관리',
     items: [
-      // 524 — 콘텐츠 분석·수집 분석·발행 분석·AI 사용량 비용 통합(탭). 대표 href: /admin/analytics/content.
-      { href: '/admin/analytics/content', label: '통계분석', description: '콘텐츠·수집·발행 분석과 AI 사용량·비용을 통합 조회합니다.', icon: BarChart3 },
+      { href: '/admin/analytics/publish', label: '발행 분석', description: 'AI 리포트·모닝브리핑·뉴스레터·경쟁사 주간 브리핑의 발행 현황을 분석합니다.', icon: BarChart3 },
       { href: '/admin/analytics/users', label: '사용자 분석', description: 'DAU/WAU/MAU·조직별 활성·기능 이용률·검색/북마크.', roadmap: '(준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
       // 522 — 인사이트 그룹 해체 시 분석 성격이 강해 여기로 배치(지시서 미명시 항목).
       { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },

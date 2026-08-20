@@ -186,7 +186,7 @@ export default async function AdminPage() {
     activeSourcesRes, totalSourcesRes, bookmarkedRes, researchRes,
     newsRes, reportRes, webRes, ytRes, aiRes,
     newsTodayRes, reportTodayRes, webTodayRes, ytTodayRes, aiTodayRes,
-    trendRes, sourceRes,
+    trendRes, sourceRes, topBookmarkedRes,
     // 신규 — 오늘 할 일
     crawlFailedRes, crawlSourcesRes,
     // 신규 — 전체 사용자 수 KPI (278)
@@ -230,6 +230,15 @@ export default async function AdminPage() {
     supabase.from('contents').select('category, collected_at').gte('collected_at', fourteenDaysStart).is('deleted_at', null),
     // 소스 Top 10 (바운디드 30일)
     supabase.from('contents').select('source_id, sources(name)').gte('collected_at', thirtyDaysStart).not('source_id', 'is', null).is('deleted_at', null),
+    // 북마크 Top 10 (기존 콘텐츠 분석 쿼리 이관)
+    admin
+      ? admin.from('contents')
+          .select('id, title, bookmark_count')
+          .gt('bookmark_count', 0)
+          .is('deleted_at', null)
+          .order('bookmark_count', { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [], error: null }),
     // 오늘 크롤 실패 건수
     supabase.from('crawl_logs').select('*', { count: 'exact', head: true }).in('status', ['failed', 'partial']).gte('started_at', todayStart),
     // 최근 24h 실패 소스 목록 (distinct source_id 집계용)
@@ -326,6 +335,16 @@ export default async function AdminPage() {
     .slice(0, 10)
     .map(([sourceId, { name, count }]) => ({ sourceId, name, count }))
 
+  const topBookmarked = ((topBookmarkedRes.data ?? []) as {
+    id: string
+    title: string
+    bookmark_count: number | null
+  }[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    bookmark_count: row.bookmark_count ?? 0,
+  }))
+
   // ── 오늘 할 일 집계 ────────────────────────────────────────────────────────
   const todayFailed   = crawlFailedRes.count ?? 0
   type CrawlSrcRow = { source_id: string }
@@ -405,6 +424,7 @@ export default async function AdminPage() {
     ],
     dayTrend,
     sourceTop,
+    topBookmarked,
   }
 
   // ─── JSX ─────────────────────────────────────────────────────────────────────

@@ -102,7 +102,7 @@ export default async function AdminSourcesPage({
 }) {
   const params = await searchParams
   const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab
-  const isSourceListTab = !['crawl-settings', 'exclusion-rules', 'enrich', 'ai-jobs'].includes(rawTab ?? '')
+  const isSourceListTab = !['source-quality', 'crawl-settings', 'exclusion-rules', 'enrich', 'ai-jobs'].includes(rawTab ?? '')
 
   return (
     <Suspense fallback={null}>
