@@ -1,8 +1,10 @@
 import 'server-only'
 import { FRAME_SPEC, LGU_CONTEXT } from '@/lib/competitor-weekly/frame-spec'
 import { FACTS_SYSTEM_FALLBACK } from '@/lib/competitor-weekly/generate'
-import { COMPANY_SYSTEM_PROMPT } from '@/lib/insight/generate'
+import { BRIEFING_SYSTEM_FALLBACK } from '@/lib/briefing/generate-briefing'
+import { COMPANY_SYSTEM_PROMPT, DAILY_INSIGHT_SYSTEM_FALLBACK } from '@/lib/insight/generate'
 import { RISE_FRAME_FALLBACK } from '@/lib/keywords/rise-frame'
+import { NEWSLETTER_CARD_INSIGHT_FALLBACK } from '@/lib/newsletter/card-insights'
 import { STRATEGY_SYSTEM_FALLBACK } from '@/lib/reports/generate-strategy'
 
 /**
@@ -24,6 +26,27 @@ export interface PromptCatalogEntry {
 }
 
 export const PROMPT_CATALOG: PromptCatalogEntry[] = [
+  {
+    key: 'briefing_script',
+    label: '모닝브리핑 — 진행 스크립트',
+    group: '모닝브리핑',
+    description: '모닝브리핑 진행 스크립트 작성 규칙. {host_name} 치환됨.',
+    fallback: BRIEFING_SYSTEM_FALLBACK,
+  },
+  {
+    key: 'newsletter_card_insight',
+    label: '뉴스레터 — 카드 인사이트',
+    group: '뉴스레터',
+    description: '뉴스레터 기사별 LG유플러스 B2B 관점 인사이트 작성 규칙.',
+    fallback: NEWSLETTER_CARD_INSIGHT_FALLBACK,
+  },
+  {
+    key: 'daily_insight',
+    label: '핵심 인사이트 — 주간 생성',
+    group: '핵심 인사이트',
+    description: '주간 핵심 동향과 LG U+ B2B 시사점 카드 작성 규칙.',
+    fallback: DAILY_INSIGHT_SYSTEM_FALLBACK,
+  },
   {
     key: 'keyword_rise_frame',
     label: '키워드 상승 요인 — 패스② 분석 프레임',
