@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard,
   Newspaper,
-  FilePlus,
   Sun,
   Rss,
   Tags,
@@ -12,7 +11,6 @@ import {
   Users,
   Settings,
   TrendingUp,
-  Filter,
   LayoutTemplate,
   FileText,
   History,
@@ -59,18 +57,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       // 522 — 콘텐츠 그룹 해체, 수집으로 이동.
       { href: '/admin/contents', label: '콘텐츠', description: '뉴스·웹인사이트·유튜브·외부리포트 콘텐츠를 탭별로 관리합니다.', icon: Newspaper },
-      { href: '/admin/upload', label: '콘텐츠 추가', description: '리포트 업로드·텍스트 붙여넣기·URL 가져오기로 수동 등록.', roadmap: '각 콘텐츠 등록으로 이동 예정(S4).', icon: FilePlus },
-      { href: '/admin/sources', label: '소스 관리', description: '콘텐츠 소스 전체 목록·순서 관리. 타입별 관리는 각 콘텐츠 화면의 소스 탭에서.', icon: Rss },
-      // 524 — 수집 설정·제외 규칙·데이터 보강 재처리 통합(탭). 대표 href: /admin/crawl-settings.
-      { href: '/admin/crawl-settings', label: '수집 규칙', description: '수집 품질 기준, 제외 규칙, 데이터 보강 재처리를 통합 관리합니다.', icon: Filter },
-      // 524 — 키워드·키워드그룹·분류/카테고리·엔티티 사전 통합(탭). 대표 href: /admin/keywords.
-      { href: '/admin/keywords', label: '사전·분류', description: '분류 키워드, 수집 키워드그룹·시그널 기준, 카테고리 매핑, 엔티티 사전을 통합 관리합니다.', icon: Tags },
+      { href: '/admin/sources', label: '소스 관리', description: '소스 목록, 수집 설정, 제외 규칙과 콘텐츠 보강 작업을 통합 관리합니다.', icon: Rss },
+      { href: '/admin/keywords', label: '키워드', description: '분류 키워드, 수집 키워드그룹·시그널 기준과 관계지도 사전을 통합 관리합니다.', icon: Tags },
     ],
   },
   {
     group: '발행',
     items: [
-      { href: '/admin/reports', label: 'AI 리포트', description: 'AI 리포트 생성·발행, 프롬프트 편집, AI 콘텐츠 보강을 통합 관리합니다.', icon: FileText },
+      { href: '/admin/reports', label: 'AI 리포트', description: 'AI 리포트 생성·발행과 프롬프트 편집을 통합 관리합니다.', icon: FileText },
       { href: '/admin/knowledge-reports', label: '지식보고서', description: '내부 지식보고서 작성·업로드·발행 정보 관리.', icon: FileText },
       { href: '/admin/homepage-sections', label: '홈 화면 구성', description: '방문자에게 보이는 홈 화면의 항목과 순서를 관리합니다.', icon: LayoutTemplate },
       { href: '/admin/briefings', label: '모닝브리핑', description: '데일리 브리핑·TTS 오디오·하이라이트 생성 관리.', icon: Sun },
@@ -88,7 +82,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '기업동향',
     items: [
       { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재.', roadmap: '주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
-      { href: '/admin/relations', label: '관계지도', description: '엔티티 동시출현 관계·근거 콘텐츠 탐색.', icon: Network },
+      { href: '/admin/relations', label: '관계 그래프', description: '엔티티 동시출현 관계와 근거 콘텐츠를 그래프로 탐색합니다.', icon: Network },
       { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화.', roadmap: '(도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
       // 522 — 실험실에서 이동. 생성 화면(/admin/competitor-weekly/generate)은 실험실에 남긴다.
       { href: '/admin/competitor-weekly', label: '경쟁사 주간 브리핑', description: '사업영역별 주간 브리핑 발행 목록.', icon: FileText },

@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import SearchProvidersPanel, {
   type Loaded,
   type SearchProviderData,
 } from '@/components/admin/SearchProvidersPanel'
 import SourceManager from '@/components/admin/SourceManager'
-import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
+import SourcesHub from '@/components/admin/SourcesHub'
 import { parseProviderCounts } from '@/lib/admin/crawl-providers'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -19,7 +20,7 @@ interface SearchSeedRow {
   search_seeds: string[] | null
 }
 
-export default async function AdminSourcesPage() {
+async function SourceListPanel() {
   const keySet =
     !!(process.env.NAVER_CLIENT_ID ?? process.env.NAVER_SEARCH_CLIENT_ID) &&
     !!(process.env.NAVER_CLIENT_SECRET ?? process.env.NAVER_SEARCH_CLIENT_SECRET)
@@ -83,7 +84,6 @@ export default async function AdminSourcesPage() {
 
   return (
     <>
-      <AdminPageHeader />
       <SearchProvidersPanel
         providerState={providerState}
         keySet={keySet}
@@ -92,5 +92,21 @@ export default async function AdminSourcesPage() {
       />
       <SourceManager />
     </>
+  )
+}
+
+export default async function AdminSourcesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab
+  const isSourceListTab = !['crawl-settings', 'exclusion-rules', 'enrich', 'ai-jobs'].includes(rawTab ?? '')
+
+  return (
+    <Suspense fallback={null}>
+      <SourcesHub sourceListPanel={isSourceListTab ? <SourceListPanel /> : null} />
+    </Suspense>
   )
 }

@@ -170,7 +170,7 @@ export default function SearchProvidersPanel({
       <p className="border-t border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
         검색 시드는{' '}
         <Link href="/admin/keywords?tab=keyword-groups" className="font-medium text-foreground underline underline-offset-2">
-          수집 &gt; 사전·분류
+          수집 &gt; 키워드
         </Link>
         에서 관리하고, 유입 상세는{' '}
         <Link href="/admin/job-runs?tab=crawl-logs" className="font-medium text-foreground underline underline-offset-2">

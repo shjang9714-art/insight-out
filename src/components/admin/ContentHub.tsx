@@ -1,6 +1,7 @@
 'use client'
 
 import AdminContentManager from '@/components/admin/AdminContentManager'
+import AdminContentAddDialog from '@/components/admin/AdminContentAddDialog'
 import SourceManager from '@/components/admin/SourceManager'
 import AdminTabShell from '@/components/admin/ui/AdminTabShell'
 import { CATEGORY_SOURCE_TYPE } from '@/lib/admin/content-source-types'
@@ -23,6 +24,7 @@ export default function ContentHub({ category }: ContentHubProps) {
       tabs={tabs}
       defaultTab="list"
       aria-label="콘텐츠 관리"
+      actions={<AdminContentAddDialog />}
       renderContent={(tab) =>
         tab === 'sources'
           ? <SourceManager initialSelectedType={initialSourceType} />

@@ -1,16 +1,5 @@
-import type { Metadata } from 'next'
-import { Suspense } from 'react'
-import ContentAddTabs from '@/components/admin/ContentAddTabs'
-
-export const metadata: Metadata = {
-  title: '콘텐츠 추가 | 어드민 | Insight Out',
-  description: '파일 업로드 또는 텍스트 붙여넣기로 콘텐츠를 수동 등록합니다.',
-}
+import { redirect } from 'next/navigation'
 
 export default function AdminUploadPage() {
-  return (
-    <Suspense fallback={null}>
-      <ContentAddTabs />
-    </Suspense>
-  )
+  redirect('/admin/contents')
 }
