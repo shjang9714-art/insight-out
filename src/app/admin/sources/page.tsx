@@ -6,7 +6,7 @@ import SearchProvidersPanel, {
 } from '@/components/admin/SearchProvidersPanel'
 import SourceManager from '@/components/admin/SourceManager'
 import SourcesHub from '@/components/admin/SourcesHub'
-import { parseProviderCounts } from '@/lib/admin/crawl-providers'
+import { parseEntityLinkStats, parseProviderCounts } from '@/lib/admin/crawl-providers'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +28,7 @@ async function SourceListPanel() {
 
   let providerState: Loaded<SearchProviderData> = {
     available: true,
-    data: { providers: null, lastCrawledAt: null },
+    data: { providers: null, entityLinks: null, lastCrawledAt: null },
   }
   let seedState: Loaded<number> = { available: true, data: 0 }
 
@@ -59,6 +59,7 @@ async function SourceListPanel() {
         available: true,
         data: {
           providers: parseProviderCounts(providerRun.data.meta),
+          entityLinks: parseEntityLinkStats(providerRun.data.meta),
           lastCrawledAt: providerRun.data.started_at,
         },
       }

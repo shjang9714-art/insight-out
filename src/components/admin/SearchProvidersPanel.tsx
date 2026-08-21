@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Search } from 'lucide-react'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
-import type { ProviderCounts } from '@/lib/admin/crawl-providers'
+import type { EntityLinkStats, ProviderCounts } from '@/lib/admin/crawl-providers'
 import { cn } from '@/lib/utils'
 
 export type Loaded<T> =
@@ -10,6 +10,7 @@ export type Loaded<T> =
 
 export interface SearchProviderData {
   providers: ProviderCounts | null
+  entityLinks: EntityLinkStats | null
   lastCrawledAt: string | null
 }
 
@@ -40,6 +41,7 @@ export default function SearchProvidersPanel({
 }: SearchProvidersPanelProps) {
   const providers = providerState.available ? providerState.data.providers : null
   const lastCrawledAt = providerState.available ? providerState.data.lastCrawledAt : null
+  const entityLinks = providerState.available ? providerState.data.entityLinks : null
   const phaseSkipped = providers?.keyword_phase_skipped ?? false
   const companyPhaseSkipped = providers?.company_phase_skipped ?? false
   const providerRows = [
@@ -168,6 +170,13 @@ export default function SearchProvidersPanel({
           hint={seedState.error}
           className="m-4"
         />
+      )}
+
+      {entityLinks && (
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+          엔티티 링킹 {entityLinks.linked.toLocaleString()}/{entityLinks.attempted.toLocaleString()}건
+          {' · '}사전 {entityLinks.aliasMapSize.toLocaleString()}개
+        </p>
       )}
 
       {providerState.available && seedState.available && (phaseSkipped || seedState.data === 0) && (

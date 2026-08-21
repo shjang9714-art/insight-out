@@ -5,6 +5,7 @@ import { translateToKorean } from '@/lib/translate'
 import { summarizeKo } from '@/lib/crawler/summarize'
 import { matchIssues, type IssueMatchDef } from '@/lib/crawler/quality'
 import { coverFromPdfFirstPage } from '@/lib/contents/cover-from-pdf'
+import { loadEntityAliasMap } from '@/lib/entities/alias-map'
 
 export const runtime    = 'nodejs'
 export const dynamic    = 'force-dynamic'
@@ -133,16 +134,8 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
   // 7. 엔티티 링킹 (try/catch)
   let entityCount = 0
   try {
-    const { data: aliasData, error: aliasErr } = await admin
-      .from('entity_aliases')
-      .select('alias, entity_id')
-
-    if (!aliasErr && aliasData && aliasData.length > 0) {
-      const aliasMap = new Map<string, string>()
-      for (const row of aliasData as { alias: string; entity_id: string }[]) {
-        aliasMap.set(row.alias.toLowerCase(), row.entity_id)
-      }
-
+    const aliasMap = await loadEntityAliasMap(admin)
+    if (aliasMap.size > 0) {
       const searchText = `${title} ${koBody}`.toLowerCase()
       const matchedEntityIds = [...new Set(
         [...aliasMap.entries()]

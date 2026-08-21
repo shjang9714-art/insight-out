@@ -29,6 +29,7 @@ import { fetchNaverNews } from './adapters/naver-news'
 import { fetchGdeltNews } from './adapters/gdelt-news'
 import { hasGdeltCredentials, queryGdeltMonth } from './gdelt-bigquery'
 import { buildCompanyMatchOr, getCompanyNewsSinceIso } from '@/lib/insight/company-match'
+import { loadEntityAliasMap } from '@/lib/entities/alias-map'
 
 const MAX_TRANSLATIONS_PER_CRAWL = 20
 const MAX_LLM_CLASSIFY_PER_CRAWL = 40
@@ -156,7 +157,8 @@ export async function tagYoutubeContent(
   contentId: string,
   title: string,
   groups: ScoringGroup[],
-  aliasMap: Map<string, string>
+  aliasMap: Map<string, string>,
+  entityLinks?: EntityLinkStats
 ): Promise<void> {
   const matchedTags = matchKeywordGroups(title, '', groups)
   try {
@@ -170,6 +172,7 @@ export async function tagYoutubeContent(
   }
 
   try {
+    if (entityLinks) entityLinks.attempted++
     if (aliasMap.size > 0 && matchedTags.keywords.length > 0) {
       const entityIds = [...new Set(
         matchedTags.keywords
@@ -186,7 +189,11 @@ export async function tagYoutubeContent(
         const { error: entErr } = await admin
           .from('content_entities')
           .upsert(entityRows, { onConflict: 'content_id,entity_id', ignoreDuplicates: true })
-        if (entErr) console.error('[크롤러] 유튜브 content_entities 적재 실패(SQL 99 미적용 가능):', entErr.message)
+        if (entErr) {
+          console.error('[크롤러] 유튜브 content_entities 적재 실패(SQL 99 미적용 가능):', entErr.message)
+        } else if (entityLinks) {
+          entityLinks.linked++
+        }
       }
     }
   } catch (e) {
@@ -232,6 +239,12 @@ export interface CrawlProviderErrors {
   gdelt?: string
 }
 
+export interface EntityLinkStats {
+  attempted: number
+  linked: number
+  aliasMapSize: number
+}
+
 /** 전체 크롤 실행 요약 (라우트 응답 형태) */
 export interface CrawlSummary {
   ok: boolean
@@ -247,6 +260,7 @@ export interface CrawlSummary {
   providers: CrawlProviderCounts
   providerStatus: CrawlProviderStatus
   providerErrors?: CrawlProviderErrors
+  entityLinks: EntityLinkStats
   /** ok=false(전체 실패) 사유 요약 — run-job.ts 의 job_runs.error 에 그대로 기록됨.
    *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
    *  경고 흔적을 남긴다. */
@@ -438,7 +452,8 @@ async function processCrawlItem(
   issueList: IssueMatchDef[] = [],
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
-  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH
+  minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  entityLinks?: EntityLinkStats
 ): Promise<{ partial?: true; errorMessage?: string }> {
   try {
     const url = normalizeUrl(item.original_url)
@@ -698,6 +713,7 @@ async function processCrawlItem(
         // post-insert: 엔티티 링킹 (99) — matched_keywords ↔ alias 맵 → content_entities
         // SQL 99 미적용 시 upsert 실패 → try/catch 격리로 크롤 무중단
         try {
+          if (entityLinks) entityLinks.attempted++
           if (aliasMap.size > 0) {
             const mergedKws: string[] = [
               ...matchedTags.keywords,
@@ -718,7 +734,11 @@ async function processCrawlItem(
               const { error: entErr } = await admin
                 .from('content_entities')
                 .upsert(entityRows, { onConflict: 'content_id,entity_id', ignoreDuplicates: true })
-              if (entErr) console.error('[크롤러] content_entities 적재 실패(SQL 99 미적용 가능):', entErr.message)
+              if (entErr) {
+                console.error('[크롤러] content_entities 적재 실패(SQL 99 미적용 가능):', entErr.message)
+              } else if (entityLinks) {
+                entityLinks.linked++
+              }
             }
           }
         } catch (e) {
@@ -777,6 +797,7 @@ async function crawlOne(
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  entityLinks?: EntityLinkStats,
   deadline?: number
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
@@ -817,7 +838,7 @@ async function crawlOne(
         break
       }
       const result = await processCrawlItem(
-        admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+        admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, entityLinks
       )
       if (result.partial) {
         crawlStatus = 'partial'
@@ -861,6 +882,7 @@ async function crawlYoutube(
   groups: ScoringGroup[],
   aliasMap: Map<string, string>,
   transcriptBudget: TranslationBudget,
+  entityLinks?: EntityLinkStats,
   deadline?: number
 ): Promise<SourceCrawlResult> {
   const startedAt = new Date().toISOString()
@@ -935,7 +957,7 @@ async function crawlYoutube(
         }
         const mirrorId = mirrorRows?.[0]?.id as string | undefined
         if (mirrorId) {
-          await tagYoutubeContent(admin, mirrorId, item.title, groups, aliasMap)
+          await tagYoutubeContent(admin, mirrorId, item.title, groups, aliasMap, entityLinks)
 
           // 유튜브 요약(266)은 크롤 크리티컬 패스에서 제외 — /api/cron/summary-backfill 로 이관.
 
@@ -1002,6 +1024,7 @@ async function crawlKeywordSearch(
   exclusionRules: ExclusionRule[] = [],
   exclusionHits: Map<string, number> = new Map(),
   minBodyLength: number = DEFAULT_MIN_BODY_LENGTH,
+  entityLinks?: EntityLinkStats,
   deadline?: number
 ): Promise<{
   counts: CrawlCounts
@@ -1077,7 +1100,7 @@ async function crawlKeywordSearch(
 
       for (const item of searchItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, entityLinks
         )
         if (result.partial) {
           hadError = true
@@ -1188,6 +1211,7 @@ async function crawlCompanySearch(
   exclusionHits: Map<string, number>,
   minBodyLength: number,
   budgetMs: number,
+  entityLinks?: EntityLinkStats,
   overallDeadline?: number
 ): Promise<{ counts: CrawlCounts; hadError: boolean; processedSeeds: number; firstError?: string }> {
   const counts: CrawlCounts = { fetched: 0, inserted: 0, duplicate: 0, held: 0, rejected: 0, rejectedBy: zeroRejectedBy() }
@@ -1221,7 +1245,7 @@ async function crawlCompanySearch(
 
       for (const item of rawItems) {
         const result = await processCrawlItem(
-          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength
+          admin, item, srcCtx, keywords, groups, translationBudget, classifyBudget, counts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, entityLinks
         )
         if (result.partial) {
           hadError = true
@@ -1499,23 +1523,8 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     throw new Error('수집 준비 중 오류가 발생했습니다. 서버 설정을 확인해주세요.')
   }
 
-  // 엔티티 alias 맵 로드 — SQL 99 미적용 시 빈 맵으로 격리(크롤 무중단)
-  const aliasMap = new Map<string, string>() // lower(alias) → entity_id
-  try {
-    const aliasResult = await admin
-      .from('entity_aliases')
-      .select('alias, entity_id')
-      .limit(5000)
-    if (aliasResult.error) {
-      console.warn('[크롤러] entity_aliases 조회 실패 (SQL 99 미적용 가능), 링킹 skip:', aliasResult.error.message)
-    } else {
-      for (const row of (aliasResult.data ?? []) as { alias: string; entity_id: string }[]) {
-        aliasMap.set(row.alias.toLowerCase(), row.entity_id)
-      }
-    }
-  } catch (e) {
-    console.warn('[크롤러] entity_aliases 로드 실패, 링킹 skip:', e)
-  }
+  const aliasMap = await loadEntityAliasMap(admin)
+  const entityLinks: EntityLinkStats = { attempted: 0, linked: 0, aliasMapSize: aliasMap.size }
 
   // 이슈 목록 로드 — SQL 101 미적용 시 빈 배열로 격리(크롤 무중단)
   const issueList: IssueMatchDef[] = []
@@ -1644,17 +1653,17 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
 
   // GDELT BigQuery 소급 경로: 기존 아이템 처리 파이프라인을 그대로 재사용한다.
   if (options.gdeltBackfill) {
-    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, providerStatus, error: undefined }
+    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, providerStatus, entityLinks, error: undefined }
     const terms = [...new Set([...keywords.map(k => k.name), ...searchSeeds, ...groups.flatMap(g => g.include_patterns ?? [])])]
     const discovered = await queryGdeltMonth({ ...options.gdeltBackfill, keywordTerms: terms })
     const counts = zeroRejectedBy()
     const itemCounts = { fetched: discovered.length, inserted: 0, duplicate: 0, rejected: 0, held: 0, rejectedBy: counts }
     for (const item of discovered) {
-      const result = await processCrawlItem(admin, { original_url: item.url, title: `GDELT 수집 기사 ${item.domain}`, body: `GDELT 원문 링크 ${item.url}`, published_at: item.date }, { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }, keywords, groups, translationBudget, classifyBudget, itemCounts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength)
+      const result = await processCrawlItem(admin, { original_url: item.url, title: `GDELT 수집 기사 ${item.domain}`, body: `GDELT 원문 링크 ${item.url}`, published_at: item.date }, { id: null, type: 'news_site', trust_tier: 1, isSearchSourced: true }, keywords, groups, translationBudget, classifyBudget, itemCounts, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, entityLinks)
       if (result.errorMessage) console.warn('[GDELT 백필] 아이템 처리 실패:', result.errorMessage)
     }
     await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
-    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers, providerStatus }
+    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers, providerStatus, entityLinks }
   }
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
@@ -1667,7 +1676,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     ? await Promise.allSettled(
         dueSources.map(s =>
           s.type === 'youtube_channel'
-            ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, softDeadline)
+            ? crawlYoutube(admin, s, groups, aliasMap, transcriptBudget, entityLinks, softDeadline)
             : crawlOne(
                 admin,
                 s,
@@ -1682,6 +1691,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
                 exclusionRules,
                 exclusionHits,
                 minBodyLength,
+                entityLinks,
                 softDeadline
               )
         )
@@ -1745,7 +1755,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     providers.keyword_phase_skipped = false
     console.log(`[크롤러] 키워드 검색 수집 시작: ${searchSeeds.length}개 시드`)
     const kwResult = await crawlKeywordSearch(
-      admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, softDeadline
+      admin, searchSeeds, keywords, groups, translationBudget, classifyBudget, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength, entityLinks, softDeadline
     )
     providerStatus = kwResult.providerStatus
     providerErrors = kwResult.providerErrors
@@ -1781,6 +1791,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     const companyResult = await crawlCompanySearch(
       admin, companySeeds, keywords, groups, translationBudget, classifyBudget, similarityCache, aliasMap, issueList, exclusionRules, exclusionHits, minBodyLength,
       phase === 'companies' ? CRAWL_SOFT_DEADLINE_MS : COMPANY_SEARCH_BUDGET_MS,
+      entityLinks,
       softDeadline
     )
     providers.company_google = companyResult.counts.fetched
@@ -1873,6 +1884,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     details,
     providers,
     providerStatus,
+    entityLinks,
     providerErrors: Object.keys(providerErrors).length > 0 ? providerErrors : undefined,
     error: errorSummary,
     truncatedPhases: truncatedPhases.length > 0 ? truncatedPhases : undefined,
