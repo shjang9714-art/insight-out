@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { extractPdfText, isScannedPdf, detectLang } from '@/lib/extract/pdf'
 import { translateToKorean } from '@/lib/translate'
 import { summarizeKo } from '@/lib/crawler/summarize'
-import { matchIssues, type IssueMatchDef } from '@/lib/crawler/quality'
+import { matchIssues, patternHit, type IssueMatchDef } from '@/lib/crawler/quality'
 import { coverFromPdfFirstPage } from '@/lib/contents/cover-from-pdf'
 import { loadEntityAliasMap } from '@/lib/entities/alias-map'
 
@@ -139,7 +139,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
       const searchText = `${title} ${koBody}`.toLowerCase()
       const matchedEntityIds = [...new Set(
         [...aliasMap.entries()]
-          .filter(([alias]) => searchText.includes(alias))
+          .filter(([alias]) => patternHit(searchText, alias))
           .map(([, entityId]) => entityId)
       )]
 
