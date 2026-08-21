@@ -441,20 +441,10 @@ export default function EntityManager() {
           .eq('id', editingId)
         if (err) throw new Error(`수정 실패: ${err.message}`)
       } else {
-        const { data: inserted, error: err } = await supabase
+        const { error: err } = await supabase
           .from('entities')
           .insert(payload)
-          .select('id')
-          .single()
         if (err) throw new Error(`추가 실패: ${err.message}`)
-        if (inserted) {
-          const { error: aliasErr } = await supabase
-            .from('entity_aliases')
-            .insert({ entity_id: inserted.id, alias: payload.canonical_name })
-          if (aliasErr && aliasErr.code !== '23505') {
-            console.warn('[EntityManager] canonical alias 등록 실패:', aliasErr.message)
-          }
-        }
       }
 
       closeForm()
@@ -512,7 +502,7 @@ export default function EntityManager() {
     if (!aliasEntityId) return
     const entity = entities.find(e => e.id === aliasEntityId)
     if (entity && alias.trim().toLowerCase() === entity.canonical_name.toLowerCase()) {
-      setAliasError('대표 이름과 동일한 값은 동의어로 등록할 수 없습니다.')
+      setAliasError('대표 이름은 자동으로 매칭되므로 따로 등록할 필요가 없습니다.')
       return
     }
     const { error: err } = await supabase
@@ -532,11 +522,8 @@ export default function EntityManager() {
 
   const handleRemoveAlias = async (aliasRow: AliasRow) => {
     setAliasError(null)
-    const entity = entities.find(e => e.id === aliasEntityId)
-    if (entity && aliasRow.alias.toLowerCase() === entity.canonical_name.toLowerCase()) {
-      const confirmed = await confirm({ title: '동의어 삭제', description: '대표 이름과 동일해 삭제하면 검색 매핑이 끊어질 수 있습니다.', targets: [aliasRow.alias], confirmLabel: '삭제', destructive: true })
-      if (!confirmed) return
-    }
+    const confirmed = await confirm({ title: '동의어 삭제', description: '선택한 동의어를 삭제합니다.', targets: [aliasRow.alias], confirmLabel: '삭제', destructive: true })
+    if (!confirmed) return
     const { error: err } = await supabase
       .from('entity_aliases')
       .delete()

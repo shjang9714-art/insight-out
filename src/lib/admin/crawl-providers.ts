@@ -7,6 +7,12 @@ export interface ProviderCounts {
   company_phase_skipped: boolean
 }
 
+export interface EntityLinkStats {
+  attempted: number
+  linked: number
+  aliasMapSize: number
+}
+
 export function parseProviderCounts(meta: unknown): ProviderCounts | null {
   if (!meta || typeof meta !== 'object') return null
   const providers = (meta as Record<string, unknown>).providers
@@ -31,5 +37,26 @@ export function parseProviderCounts(meta: unknown): ProviderCounts | null {
     company_google: value.company_google,
     keyword_phase_skipped: value.keyword_phase_skipped,
     company_phase_skipped: value.company_phase_skipped ?? false,
+  }
+}
+
+export function parseEntityLinkStats(meta: unknown): EntityLinkStats | null {
+  if (!meta || typeof meta !== 'object') return null
+  const entityLinks = (meta as Record<string, unknown>).entityLinks
+  if (!entityLinks || typeof entityLinks !== 'object') return null
+  const value = entityLinks as Record<string, unknown>
+
+  if (
+    typeof value.attempted !== 'number' ||
+    typeof value.linked !== 'number' ||
+    typeof value.aliasMapSize !== 'number'
+  ) {
+    return null
+  }
+
+  return {
+    attempted: value.attempted,
+    linked: value.linked,
+    aliasMapSize: value.aliasMapSize,
   }
 }

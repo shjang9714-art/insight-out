@@ -24,7 +24,7 @@ import SearchProvidersPanel, {
   type Loaded,
   type SearchProviderData,
 } from '@/components/admin/SearchProvidersPanel'
-import { parseProviderCounts } from '@/lib/admin/crawl-providers'
+import { parseEntityLinkStats, parseProviderCounts } from '@/lib/admin/crawl-providers'
 import AdminOpsIssuesSummary, { type OpsIssueSummaryRow } from '@/components/admin/AdminOpsIssuesSummary'
 import AdminRequestsDialog from '@/components/admin/AdminRequestsDialog'
 
@@ -114,6 +114,7 @@ export default async function AdminPage() {
         available: true,
         data: {
           providers: result.data ? parseProviderCounts(result.data.meta) : null,
+          entityLinks: result.data ? parseEntityLinkStats(result.data.meta) : null,
           lastCrawledAt: result.data?.started_at ?? null,
         },
       }

@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ScoringGroup } from '@/lib/crawler/quality'
 import { tagYoutubeContent } from '@/lib/crawler/orchestrator'
+import { loadEntityAliasMap } from '@/lib/entities/alias-map'
 
 export interface BackfillYoutubeTaggingOpts {
   max?: number
@@ -50,13 +51,7 @@ export async function backfillYoutubeTagging(
     signal_hint: r.signal_hint,
   }))
 
-  const aliasMap = new Map<string, string>()
-  const aliasRes = await admin.from('entity_aliases').select('alias, entity_id').limit(5000)
-  if (!aliasRes.error) {
-    for (const row of (aliasRes.data ?? []) as { alias: string; entity_id: string }[]) {
-      aliasMap.set(row.alias.toLowerCase(), row.entity_id)
-    }
-  }
+  const aliasMap = await loadEntityAliasMap(admin)
 
   // 미분류 유튜브 후보 — matched_groups/keywords 기본값('{}')이라 null 체크로 못 걸러내므로
   // 최근분을 넉넉히 가져와 클라이언트에서 빈 배열만 필터(볼륨이 크지 않아 충분).
