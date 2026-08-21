@@ -14,6 +14,7 @@ export type EnrichJobKey =
   | 'admin:youtube-transcript'
   | 'admin:pdf-cover-backfill'
   | 'admin:cluster-backfill'
+  | 'admin:entity-relink'
   | 'admin:youtube-tagging'
   | 'admin:translate-backfill'
   | 'admin:competitor-weekly'
@@ -59,6 +60,7 @@ export interface EnrichJobResult {
   skipped: number
   remaining: number | null
   ready: boolean
+  batchCapped?: boolean
   extra?: Record<string, number>
 }
 
@@ -178,6 +180,17 @@ export const ENRICH_JOBS: readonly EnrichJobMeta[] = [
     limit: 20,
   },
   {
+    key: 'admin:entity-relink',
+    label: '엔티티 다시 연결',
+    endpoint: '/api/admin/entity-relink',
+    usesLlm: false,
+    surface: 'data',
+    kind: 'loop',
+    method: 'POST',
+    limit: 200,
+    dateRange: true,
+  },
+  {
     key: 'admin:youtube-tagging',
     label: '기존 유튜브 태그 생성',
     endpoint: '/api/admin/youtube-tagging',
@@ -248,8 +261,8 @@ for (const job of ENRICH_JOBS) {
   if (job.modes && job.kind !== 'loop') {
     throw new Error(`[enrich-jobs] ${job.key}: 실행 모드는 반복 작업에서만 사용할 수 있습니다.`)
   }
-  if (job.dateRange && job.key !== 'admin:body-backfill') {
-    throw new Error(`[enrich-jobs] ${job.key}: 날짜 범위는 본문 수집 작업에서만 사용할 수 있습니다.`)
+  if (job.dateRange && job.key !== 'admin:body-backfill' && job.key !== 'admin:entity-relink') {
+    throw new Error(`[enrich-jobs] ${job.key}: 날짜 범위를 지원하지 않는 작업입니다.`)
   }
 }
 
@@ -323,6 +336,13 @@ export function normalizeEnrichResult(key: EnrichJobKey, json: unknown): EnrichJ
       return normalizeLoopResult(key, record, 'resolved', undefined, ['deduped'])
     case 'admin:cluster-backfill':
       return normalizeLoopResult(key, record, 'merged', undefined, ['repChanged'])
+    case 'admin:entity-relink': {
+      const result = normalizeLoopResult(key, record, 'succeeded', 'skipped')
+      if (typeof record.batchCapped !== 'boolean') {
+        throw new Error(`[enrich-jobs] ${key}: 응답의 batchCapped 값이 boolean이 아닙니다.`)
+      }
+      return { ...result, batchCapped: record.batchCapped }
+    }
     case 'admin:sentiment':
     case 'admin:lgu-impact':
     case 'admin:youtube-summary':
