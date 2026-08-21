@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { EnrichJobResult } from '@/lib/admin/enrich-jobs'
-import { loadEntityAliasMap } from '@/lib/entities/alias-map'
+import { loadEntityAliasIndex } from '@/lib/entities/alias-map'
 
 interface EntityRelinkRow {
   id: string
@@ -14,10 +14,11 @@ export type EntityRelinkResult = EnrichJobResult & {
 }
 
 function applyTargetFilters<T extends {
+  overlaps(column: string, values: string[]): T
   gte(column: string, value: string): T
   lte(column: string, value: string): T
-}>(query: T, from?: string | null, to?: string | null): T {
-  let filtered = query
+}>(query: T, names: string[], from?: string | null, to?: string | null): T {
+  let filtered = query.overlaps('matched_keywords', names)
   if (from) filtered = filtered.gte('collected_at', from)
   if (to) filtered = filtered.lte('collected_at', `${to}T23:59:59.999Z`)
   return filtered
@@ -25,6 +26,7 @@ function applyTargetFilters<T extends {
 
 async function countRemaining(
   admin: SupabaseClient,
+  names: string[],
   from?: string | null,
   to?: string | null,
 ): Promise<number> {
@@ -34,7 +36,7 @@ async function countRemaining(
     .is('deleted_at', null)
     .not('matched_keywords', 'eq', '{}')
     .is('content_entities', null)
-  query = applyTargetFilters(query, from, to)
+  query = applyTargetFilters(query, names, from, to)
 
   const { count, error } = await query
   if (error) throw new Error(`남은 엔티티 재연결 대상 집계 실패: ${error.message}`)
@@ -46,8 +48,8 @@ export async function drainEntityRelink(
   admin: SupabaseClient,
   opts: { limit: number; from?: string | null; to?: string | null },
 ): Promise<EntityRelinkResult> {
-  const aliasMap = await loadEntityAliasMap(admin)
-  if (aliasMap.size === 0) {
+  const { map: aliasMap, names } = await loadEntityAliasIndex(admin)
+  if (aliasMap.size === 0 || names.length === 0) {
     return {
       processed: 0,
       succeeded: 0,
@@ -65,7 +67,7 @@ export async function drainEntityRelink(
     .is('deleted_at', null)
     .not('matched_keywords', 'eq', '{}')
     .is('content_entities', null)
-  targetQuery = applyTargetFilters(targetQuery, opts.from, opts.to)
+  targetQuery = applyTargetFilters(targetQuery, names, opts.from, opts.to)
 
   const { data, error } = await targetQuery
     .order('collected_at', { ascending: true })
@@ -86,11 +88,12 @@ export async function drainEntityRelink(
   }
 
   let succeeded = 0
-  let skipped = 0
+  let alreadyLinked = 0
+  let noEntityMatch = 0
 
   for (const target of targets) {
     if (linkedIds.has(target.id)) {
-      skipped++
+      alreadyLinked++
       continue
     }
 
@@ -100,7 +103,7 @@ export async function drainEntityRelink(
         .filter((entityId): entityId is string => entityId !== undefined),
     )]
     if (entityIds.length === 0) {
-      skipped++
+      noEntityMatch++
       continue
     }
 
@@ -120,12 +123,14 @@ export async function drainEntityRelink(
   }
 
   const processed = targets.length
+  const skipped = alreadyLinked + noEntityMatch
   return {
     processed,
     succeeded,
     skipped,
-    remaining: await countRemaining(admin, opts.from, opts.to),
+    remaining: await countRemaining(admin, names, opts.from, opts.to),
     ready: true,
     batchCapped: processed >= opts.limit,
+    extra: { alreadyLinked, noEntityMatch },
   }
 }
