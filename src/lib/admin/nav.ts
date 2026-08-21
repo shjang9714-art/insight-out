@@ -79,6 +79,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     group: '기업동향',
     items: [
       { href: '/admin/insights', label: '기업 주간 시사점', description: '생성·검수·발행한 카드가 서비스 기업동향의 \'LG U+ 시사점\'으로 노출됩니다.', icon: Sparkles },
+      { href: '/admin/companies', label: '주요기업', description: '서비스 기업동향에 노출되는 주요기업·그룹을 관리합니다.', icon: Building2 },
       { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재.', roadmap: '주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
       { href: '/admin/relations', label: '관계 그래프', description: '엔티티 동시출현 관계와 근거 콘텐츠를 그래프로 탐색합니다.', icon: Network },
       { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화.', roadmap: '(도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
@@ -110,7 +111,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/competitor-weekly/generate', label: '주간 브리핑 생성', description: '사실 추출 → 분석 2단계로 새 브리핑을 만듭니다.', icon: Sparkles },
       { href: '/admin/competitors', label: '경쟁사동향', description: '경쟁사 최근 뉴스 수집·선별·노출.', roadmap: '(준비중 — S8)', icon: TrendingUp, disabled: true, badge: '준비중' },
       { href: '/dashboard/lab', label: '사용자 실험실', description: '사용자 화면의 실험 기능과 프로토타입을 확인합니다.', icon: FlaskConical, external: true },
-      { href: '/admin/companies', label: '주요기업', description: '주요기업 목록·프로필·기업별 콘텐츠 관리.', roadmap: '(준비중 — S8)', icon: Building2, disabled: true, badge: '준비중' },
     ],
   },
 ]
