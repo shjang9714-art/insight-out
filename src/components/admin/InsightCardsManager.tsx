@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Sparkles, RefreshCw, Loader2, ExternalLink, CheckCircle2, Archive, Trash2 } from 'lucide-react'
+import { Sparkles, RefreshCw, Loader2, ExternalLink, CheckCircle2, Archive, Trash2, Pencil, Save, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -27,6 +28,17 @@ const STATUS_LABEL: Record<InsightCardStatus, string> = {
   draft: '초안',
   published: '발행됨',
   archived: '보관',
+}
+
+interface CompanyWeek {
+  periodStart: string
+  count: number
+}
+
+interface CardEditValues {
+  headline: string
+  card_headline: string
+  implication: string
 }
 
 // ─── 날짜 포맷 ────────────────────────────────────────────────────────────────
@@ -53,14 +65,19 @@ export default function InsightCardsManager() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [isGeneratingCompany, setIsGeneratingCompany] = useState(false)
   const [companyResult, setCompanyResult] = useState<{ created: number; topics: string[] } | null>(null)
+  const [companyWeeks, setCompanyWeeks] = useState<CompanyWeek[]>([])
+  const [selectedCompanyWeek, setSelectedCompanyWeek] = useState('auto')
   const [filterStatus, setFilterStatus] = useState<InsightCardStatus | 'all'>('all')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState<CardEditValues | null>(null)
 
   async function fetchCards() {
     try {
       const res = await fetch('/api/admin/insights')
-      const data = await res.json() as { cards?: InsightCard[]; error?: string }
+      const data = await res.json() as { cards?: InsightCard[]; companyWeeks?: CompanyWeek[]; error?: string }
       if (!res.ok) throw new Error(data.error ?? '목록 조회 실패')
       setCards(data.cards ?? [])
+      setCompanyWeeks(data.companyWeeks ?? [])
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오기 실패')
@@ -102,7 +119,13 @@ export default function InsightCardsManager() {
   }
 
   const handleGenerateCompany = async () => {
-    if (!(await confirm({ title: '업체별 AI 동향 생성', description: '워치리스트 업체별로 생성합니다. LLM을 호출합니다.', confirmLabel: '생성' }))) return
+    const selectedWeek = selectedCompanyWeek === 'auto'
+      ? null
+      : companyWeeks.find(week => week.periodStart === selectedCompanyWeek) ?? null
+    const description = selectedWeek
+      ? `${selectedWeek.periodStart} 주의 현재 카드 ${selectedWeek.count}개를 재생성할 수 있습니다. 워치리스트 업체별로 LLM을 호출합니다.`
+      : '직전 완결 주를 대상으로 워치리스트 업체별 카드를 생성합니다. LLM을 호출합니다.'
+    if (!(await confirm({ title: '기업 주간 시사점 재생성', description, confirmLabel: '재생성' }))) return
     setIsGeneratingCompany(true)
     setCompanyResult(null)
     setError(null)
@@ -110,7 +133,10 @@ export default function InsightCardsManager() {
       const res = await fetch('/api/admin/insights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: 'company' }),
+        body: JSON.stringify({
+          scope: 'company',
+          ...(selectedWeek ? { weekStart: selectedWeek.periodStart } : {}),
+        }),
       })
       const data = await res.json() as { created?: number; topics?: string[]; error?: string }
       if (!res.ok) throw new Error(data.error ?? '생성 실패')
@@ -120,6 +146,41 @@ export default function InsightCardsManager() {
       setError(e instanceof Error ? e.message : '관심업체 카드 생성에 실패했습니다.')
     } finally {
       setIsGeneratingCompany(false)
+    }
+  }
+
+  const startEditing = (card: InsightCard) => {
+    setEditingId(card.id)
+    setEditValues({
+      headline: card.headline,
+      card_headline: card.card_headline ?? card.headline,
+      implication: card.implication ?? '',
+    })
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditValues(null)
+  }
+
+  const handleSaveCard = async (id: string) => {
+    if (!editValues) return
+    setUpdatingId(id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/insights/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editValues),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? '카드 저장 실패')
+      cancelEditing()
+      await fetchCards()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '카드 저장에 실패했습니다.')
+    } finally {
+      setUpdatingId(null)
     }
   }
 
@@ -222,6 +283,22 @@ export default function InsightCardsManager() {
           <InfoHelp copy={COMPANY_INSIGHT_HELP} />
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">대상 주</span>
+            <Select value={selectedCompanyWeek} onValueChange={setSelectedCompanyWeek} disabled={isGeneratingCompany}>
+              <SelectTrigger className="h-8 w-52 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">직전 완결 주(자동)</SelectItem>
+                {companyWeeks.map(week => (
+                  <SelectItem key={week.periodStart} value={week.periodStart}>
+                    {week.periodStart} · {week.count}개
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             onClick={() => void handleGenerateCompany()}
             disabled={isGeneratingCompany}
@@ -231,7 +308,7 @@ export default function InsightCardsManager() {
             {isGeneratingCompany ? (
               <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />생성 중...</>
             ) : (
-              <><Sparkles className="h-3.5 w-3.5 mr-1.5" />관심업체 카드 생성</>
+              <><Sparkles className="h-3.5 w-3.5 mr-1.5" />기업 카드 재생성</>
             )}
           </Button>
         </div>
@@ -336,12 +413,82 @@ export default function InsightCardsManager() {
                       {card.period_start} ~ {card.period_end}
                     </span>
                   </div>
-                  <p className="text-sm font-semibold text-foreground leading-snug">
-                    {stripLlmArtifacts(card.headline)}
-                  </p>
+                  {editingId === card.id && editValues ? (
+                    <div className="space-y-3 pt-2">
+                      <label className="block space-y-1">
+                        <span className="text-xs font-medium text-muted-foreground">에디토리얼 헤드라인</span>
+                        <Input
+                          value={editValues.card_headline}
+                          onChange={event => setEditValues({ ...editValues, card_headline: event.target.value })}
+                          disabled={updatingId === card.id}
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs font-medium text-muted-foreground">핵심 동향</span>
+                        <Input
+                          value={editValues.headline}
+                          onChange={event => setEditValues({ ...editValues, headline: event.target.value })}
+                          disabled={updatingId === card.id}
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs font-medium text-muted-foreground">LG U+ 시사점</span>
+                        <textarea
+                          value={editValues.implication}
+                          onChange={event => setEditValues({ ...editValues, implication: event.target.value })}
+                          disabled={updatingId === card.id}
+                          rows={4}
+                          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <>
+                      {card.card_headline && card.card_headline !== card.headline && (
+                        <p className="text-sm font-semibold text-foreground leading-snug">
+                          {stripLlmArtifacts(card.card_headline)}
+                        </p>
+                      )}
+                      <p className="text-sm text-foreground leading-snug">
+                        {stripLlmArtifacts(card.headline)}
+                      </p>
+                    </>
+                  )}
                 </div>
                 {/* 액션 버튼 */}
                 <div className="flex items-center gap-1 shrink-0">
+                  {editingId === card.id ? (
+                    <>
+                      <button
+                        onClick={() => void handleSaveCard(card.id)}
+                        disabled={updatingId === card.id}
+                        className="rounded p-1.5 text-muted-foreground hover:bg-positive-soft hover:text-positive transition-colors disabled:opacity-40"
+                        title="저장"
+                      >
+                        {updatingId === card.id
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Save className="h-3.5 w-3.5" />
+                        }
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        disabled={updatingId === card.id}
+                        className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
+                        title="취소"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  ) : card.scope === 'company' ? (
+                    <button
+                      onClick={() => startEditing(card)}
+                      disabled={updatingId === card.id || editingId !== null}
+                      className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
+                      title="편집"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                   {card.status !== 'published' && (
                     <button
                       onClick={() => void handleStatusChange(card.id, 'published')}
@@ -380,7 +527,7 @@ export default function InsightCardsManager() {
               </div>
 
               {/* 시사점 */}
-              {card.implication && (
+              {editingId !== card.id && card.implication && (
                 <p className="text-xs text-muted-foreground leading-relaxed border-l-2 border-brand-600/30 pl-3">
                   {stripLlmArtifacts(card.implication)}
                 </p>

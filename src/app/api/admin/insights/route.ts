@@ -60,16 +60,33 @@ export async function GET() {
     if (!gate.ok) return gate.response
 
     const admin = gate.admin
-    const { data, error } = await admin
-      .from('insight_cards')
-      .select('*')
-      .order('period_start', { ascending: false })
-      .order('topic', { ascending: true })
-      .limit(100)
+    const [cardsResult, companyPeriodsResult] = await Promise.all([
+      admin
+        .from('insight_cards')
+        .select('*')
+        .order('period_start', { ascending: false })
+        .order('topic', { ascending: true })
+        .limit(100),
+      admin
+        .from('insight_cards')
+        .select('period_start')
+        .eq('scope', 'company')
+        .order('period_start', { ascending: false })
+        .limit(5000),
+    ])
 
-    if (error) throw error
+    if (cardsResult.error) throw cardsResult.error
+    if (companyPeriodsResult.error) throw companyPeriodsResult.error
 
-    return NextResponse.json({ cards: data ?? [] })
+    const companyWeekCounts = new Map<string, number>()
+    for (const row of companyPeriodsResult.data ?? []) {
+      companyWeekCounts.set(row.period_start, (companyWeekCounts.get(row.period_start) ?? 0) + 1)
+    }
+
+    return NextResponse.json({
+      cards: cardsResult.data ?? [],
+      companyWeeks: Array.from(companyWeekCounts, ([periodStart, count]) => ({ periodStart, count })),
+    })
   } catch (err) {
     console.error('[GET /api/admin/insights] 오류:', err)
     return NextResponse.json(

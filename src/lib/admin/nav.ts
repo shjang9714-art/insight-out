@@ -73,12 +73,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/issues', label: '급상승 뉴스', description: '홈 화면 "오늘의 급상승 뉴스"에 노출되는 이슈 생성·발행·키워드 매칭·콘텐츠 배정을 관리합니다.', icon: TrendingUp },
       // 522 — 인사이트 그룹 해체, 발행으로 이동.
       { href: '/admin/daily-insights', label: '핵심 인사이트', description: '주 1회(월요일) 생성되는 핵심 인사이트를 검토·편집·반려합니다.', icon: Sun },
-      { href: '/admin/insights', label: '인사이트 카드', description: 'AI 인사이트 카드 생성·검수·발행.', icon: Sparkles },
     ],
   },
   {
     group: '기업동향',
     items: [
+      { href: '/admin/insights', label: '기업 주간 시사점', description: '생성·검수·발행한 카드가 서비스 기업동향의 \'LG U+ 시사점\'으로 노출됩니다.', icon: Sparkles },
       { href: '/admin/company-documents', label: '기업자료 수집', description: '등록 기업의 DART 공시 수집·적재.', roadmap: '주요기업>기업자료로 이동 예정(S8).', icon: FileArchive },
       { href: '/admin/relations', label: '관계 그래프', description: '엔티티 동시출현 관계와 근거 콘텐츠를 그래프로 탐색합니다.', icon: Network },
       { href: '/admin/disclosures', label: '기업공시', description: '주요기업·경쟁사 공시 수집·콘텐츠화.', roadmap: '(도입 예정)', icon: Landmark, disabled: true, badge: '도입 예정' },
