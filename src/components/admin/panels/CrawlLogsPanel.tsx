@@ -261,7 +261,14 @@ export default async function CrawlLogsPanel({ searchParams }: CrawlLogsPanelPro
                     ? '환경변수로 비활성'
                     : null,
               },
-              { label: 'Google 회사', value: latestProviders.company_google, warn: false },
+              {
+                label: 'Google 회사',
+                value: latestProviders.company_google,
+                warn: false,
+                suffix: latestProviders.company_phase_skipped
+                  ? '별도 크론(cron:crawl-companies)'
+                  : null,
+              },
             ].map((provider) => (
               <span
                 key={provider.label}

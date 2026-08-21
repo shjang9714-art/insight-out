@@ -41,6 +41,7 @@ export default function SearchProvidersPanel({
   const providers = providerState.available ? providerState.data.providers : null
   const lastCrawledAt = providerState.available ? providerState.data.lastCrawledAt : null
   const phaseSkipped = providers?.keyword_phase_skipped ?? false
+  const companyPhaseSkipped = providers?.company_phase_skipped ?? false
   const providerRows = [
     {
       name: '네이버',
@@ -142,6 +143,14 @@ export default function SearchProvidersPanel({
             </div>
           )
           })}
+          {companyPhaseSkipped && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <span className="text-sm font-medium text-foreground">Google 회사</span>
+              <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                별도 크론(cron:crawl-companies)
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <AdminEmptyState
