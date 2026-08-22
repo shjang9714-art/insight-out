@@ -13,14 +13,11 @@ import { getKeywordDailyCounts } from '@/lib/keywords/detail'
 import { rankKeywords } from '@/lib/keywords/ranking'
 
 const WATCHLIST_LIMIT = 20
+const TOP_KEYWORDS_N = 30
 
-// 525 — trendRes 는 14일치 발행 콘텐츠를 매칭 키워드/그룹 집계용으로 통째로 끌어온다.
+// 525 — trendRes 는 14일치 발행 콘텐츠를 뜨는 토픽 그룹 집계용으로 통째로 끌어온다.
 // 실측(2026-08) 14일 7,887건 중 직전7일 4,166건 — 옛 limit(1000)·순서 미지정 조합이
-// 직전 7일을 통째로 잘라내 "급상승/신규/관심 지속/하락" 분류가 전부 신규로만 나오던 원인.
-// 근본 해법(matched_keywords/matched_groups unnest 후 주 버킷 집계 RPC/뷰)은 플래너에게
-// SQL 을 요청해야 한다 — 여기서는 임시로 (a) 상한을 실측 볼륨 이상으로 올리고
-// (b) collected_at 내림차순을 명시해 잘리더라도 최신(이번 주) 쪽을 보존하고,
-// (c) 실제 건수(count: 'exact')와 수신 건수를 비교해 잘렸으면 화면에 알린다.
+// 키워드 주간 집계는 543부터 서버 RPC가 담당하며, 이 행 목록은 키워드 수치에 쓰지 않는다.
 const TREND_ROWS_LIMIT = 20000
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -130,7 +127,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
     .order('created_at', { ascending: false })
 
   // 브리핑·이슈 모두 1회 패칭 (탭 전환 재패칭 0)
-  const [insightRes, trendRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes, lguAliasRes] = await Promise.all([
+  const [insightRes, trendRes, keywordBucketsRes, watchlistRes, keywordGroupsRes, issueCards, entityRes, allEntityRes, signalSummaryRes, dailyInsightRes, profileRes, lguAliasRes] = await Promise.all([
     supabase
       .from('insight_cards')
       .select('id, period_start, period_end, topic, headline, implication, source_content_ids, citations, generated_at')
@@ -141,11 +138,12 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .limit(30),
     supabase
       .from('contents')
-      .select('matched_groups, matched_keywords, collected_at', { count: 'exact' })
+      .select('matched_groups, collected_at')
       .eq('status', 'published')
       .gte('collected_at', fourteenDaysStart)
       .order('collected_at', { ascending: false })
       .limit(TREND_ROWS_LIMIT),
+    supabase.rpc('keyword_week_buckets', { p_days: 14, p_top: TOP_KEYWORDS_N }),
     user
       ? supabase
           .from('user_watchlist')
@@ -251,39 +249,34 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
   }
 
   type TrendRow = { matched_groups: string[] | null; collected_at: string }
-  // trendRes.count 는 limit 과 무관한 실제 매칭 건수(count: 'exact') — 수신 건수보다 크면 잘린 것.
-  const trendWindowTruncated =
-    typeof trendRes.count === 'number' && trendRes.count > (trendRes.data?.length ?? 0)
   const trendingTopics = computeTrendingTopics(
     (trendRes.data ?? []) as TrendRow[],
     todayStartMs,
   )
 
   // ─── 키워드 방향 계산 ─────────────────────────────────────────────────────
-  type KwRow = { matched_keywords: string[] | null }
+  type KeywordBucketRow = { name: string; total: number; cur: number; prev: number }
+  const keywordAggregationError = keywordBucketsRes.error
+    ? '키워드 집계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+    : null
+  if (keywordBucketsRes.error) {
+    console.error('[키워드 분석] 주간 집계 RPC 실패:', keywordBucketsRes.error.message)
+  }
+
   const kwFreq: Record<string, number> = {}
   const kwCurFreq: Record<string, number> = {}
   const kwPrevFreq: Record<string, number> = {}
-  const thisWeekStartMs = todayStartMs - 6 * 24 * 60 * 60 * 1000
-  const prevWeekStartMs = todayStartMs - 13 * 24 * 60 * 60 * 1000
-
-  for (const row of (trendRes.data ?? []) as (TrendRow & KwRow)[]) {
-    if (!row.matched_keywords?.length) continue
-    const kstMs = new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000
-    const isThisWeek = kstMs >= thisWeekStartMs + 9 * 60 * 60 * 1000
-    const isPrevWeek = !isThisWeek && kstMs >= prevWeekStartMs + 9 * 60 * 60 * 1000
-    for (const kw of row.matched_keywords) {
-      kwFreq[kw] = (kwFreq[kw] ?? 0) + 1
-      if (isThisWeek) kwCurFreq[kw]  = (kwCurFreq[kw]  ?? 0) + 1
-      if (isPrevWeek) kwPrevFreq[kw] = (kwPrevFreq[kw] ?? 0) + 1
-    }
+  const keywordBuckets = (keywordBucketsRes.data ?? []) as KeywordBucketRow[]
+  for (const row of keywordBuckets) {
+    kwFreq[row.name] = Number(row.total)
+    kwCurFreq[row.name] = Number(row.cur)
+    kwPrevFreq[row.name] = Number(row.prev)
   }
 
-  const TOP_KEYWORDS_N = 30
-  const topKeywords = Object.entries(kwFreq)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, TOP_KEYWORDS_N)
-    .map(([name, count]) => ({ name, count }))
+  const topKeywords = keywordBuckets.map(row => ({
+    name: row.name,
+    count: Number(row.total),
+  }))
 
   // ─── 관심업체 ─────────────────────────────────────────────────────────────
   const watchlistLower = watchlist.map(w => w.company.toLowerCase())
@@ -437,7 +430,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       insightGroups={insightGroups}
       contentMap={contentMapRecord}
       trendingTopics={trendingTopics}
-      trendWindowTruncated={trendWindowTruncated}
+      keywordAggregationError={keywordAggregationError}
       classifiedKeywords={classifiedKeywords}
       kwStrip={kwStrip}
       issueCards={issueCards}

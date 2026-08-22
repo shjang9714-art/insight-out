@@ -95,16 +95,20 @@ export async function getMajorCompaniesData(
   const companyNameLower = new Set(curatedCompanies.map(c => c.name.toLowerCase()))
 
   // 446 — 과거 롤링 카드가 섞여 있으므로 정확한 월~일 기간만 주간 아카이브로 인정한다.
-  const { data: rawPeriods, error: periodsError } = await supabase
+  const { data: rawPeriods, error: periodsError, count: rawPeriodCount } = await supabase
     .from('insight_cards')
-    .select('period_start, period_end')
+    .select('period_start, period_end', { count: 'exact' })
     .eq('status', 'published')
     .eq('scope', 'company')
     .order('period_start', { ascending: false })
-    .limit(1000)
+    .limit(5000)
 
   if (periodsError) {
     console.error('[major-companies] 가용 주 조회 실패:', periodsError.message)
+  } else if (typeof rawPeriodCount === 'number' && rawPeriodCount > (rawPeriods?.length ?? 0)) {
+    console.error(
+      `[주요 기업] 가용 주 조회가 잘렸습니다: 전체 ${rawPeriodCount}건, 수신 ${rawPeriods?.length ?? 0}건`,
+    )
   }
 
   const weekByStart = new Map<string, MajorCompanyWeek>()
