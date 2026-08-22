@@ -5,7 +5,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Bookmark, FlaskConical, FolderOpen, LogOut, Menu, Search, User, Waypoints } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
@@ -17,86 +16,20 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { ISSUES_L1_HREFS, NAV_TABS, resolveActiveNav } from '@/lib/nav/active'
 
-// ─── 5탭 네비게이션 정의 ────────────────────────────────────────────────────────
+export { ISSUES_L1_HREFS, NAV_TABS, isTabActive, resolveIssuesActiveHref } from '@/lib/nav/active'
 
-// 'AI 인사이트' L1은 제거됨(지시서 2026-08-04d) — 그 아래 있던 핵심 인사이트·
-// 키워드 분석·관계지도 3개 L2 탭을 각각 L1로 승격했다. 셋 다 같은 경로
-// (/dashboard/issues)를 view= 쿼리파라미터로만 구분해 쓰므로, href에 쿼리를
-// 그대로 박아두고 issuesL1HrefForView()가 view 값으로 활성 탭을 가른다(아래).
-export const NAV_TABS: { label: string; href: string; exact: boolean; icon?: LucideIcon }[] = [
-  { label: '홈',         href: '/dashboard',                     exact: true  },
-  { label: '핵심 인사이트', href: '/dashboard/issues',              exact: false },
-  { label: '키워드 분석',  href: '/dashboard/issues?view=keyword', exact: false },
-  { label: '기업동향',    href: '/dashboard/entities',            exact: false },
-  { label: '관계지도',    href: '/dashboard/issues?view=graph',   exact: false },
-  { label: '자료실',      href: '/dashboard/contents',            exact: false },
-]
+// ─── 6탭 네비게이션 ─────────────────────────────────────────────────────────────
+
+// NAV_TABS와 활성 판정은 active.ts에서 관리한다. 기존 외부 import 호환을 위해
+// 이 파일에서도 관련 심볼을 재export한다.
 // '리포트' L1 탭은 제거됨(지시서 2026-08-04c) — 전략보고서(/dashboard/reports)와
 // 지식보고서(콘텐츠 category='지식보고서')를 자료실의 "AI 리포트" 탭 하나로 합쳤다.
 // /dashboard/reports* 라우트는 그대로 남아 NAV_ALIAS_PREFIXES로 자료실 L1에 편입된다.
 
 // 관리자 전용 '실험실' 퀵링크 — 숨김 처리된 하위 카테고리를 모아 보는 별도 페이지
 // (/dashboard/lab, LabBoard.tsx) 하나로 이동. 현재/향후 실험 탭은 그 페이지 안에서 관리.
-
-// Lv.2 탭 유지(§지시서 20260713)로 일부 상세 라우트가 Lv.1 섹션과 다른 최상위 경로
-// 세그먼트를 쓰게 됨(예: daily-insights/[id]는 AI인사이트 소속이지만 /dashboard/issues
-// 하위가 아님) — href 접두사 매칭만으로는 이런 라우트에서 어떤 탭도 active가 안 돼
-// #l1-active-label이 아예 없어지고, NavGroupAlign이 marginLeft:0으로 폴백해 Lv.2 탭
-// 위치가 어긋난다(§지시서 20260713-Lv2탭-위치일관성). 여기에 별칭 경로를 등록해 보정.
-// '/dashboard/issues' 키는 DashboardHeader의 activeL1Href·MobileBottomNav(둘 다
-// resolveIssuesActiveHref로 판정, 위)에서는 이제 안 쓴다 — DashboardShell.tsx의
-// 모바일 드로어가 NAV_TABS(6개 L1)를 isTabActive로만 판정하며 아직 참조하므로
-// 지우지 않는다(드로어는 지시서 2026-08-05 Stage 6에서 의도적으로 손대지 않음 —
-// 핵심 인사이트·키워드 분석이 동시에 active로 보이는 기존 한계가 드로어엔 남아있음).
-const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
-  '/dashboard/issues':   ['/dashboard/daily-insights', '/dashboard/keywords'],
-  '/dashboard/entities': ['/dashboard/insights'],
-  // 전략보고서 목록·상세(/dashboard/reports, /dashboard/reports/[id])는 리포트 L1이
-  // 없어진 뒤로 자료실 소속이다(지시서 2026-08-04c) — 페이지 경로는 그대로 두고
-  // L1만 자료실로 편입.
-  '/dashboard/contents': ['/dashboard/reports'],
-}
-
-// 핵심 인사이트·키워드 분석·관계지도 3개 L1이 전부 /dashboard/issues를 공유하므로
-// (지시서 2026-08-04d) NAV_TABS의 href 문자열(쿼리 포함)을 그대로 활성 판정 값으로
-// 쓴다 — 아래서 pathname·view 쿼리로 이 셋 중 하나를 정확히 골라 activeL1Href에 넣는다.
-// export: MobileBottomNav·모바일 전용 아이콘(자료실 우측 액션 영역)이 데스크톱과
-// 정확히 같은 값으로 비교하기 위해 재사용한다(지시서 2026-08-05, Stage 6).
-export const ISSUES_L1_HREFS = {
-  brief: '/dashboard/issues',
-  keyword: '/dashboard/issues?view=keyword',
-  graph: '/dashboard/issues?view=graph',
-} as const
-
-function issuesL1HrefForView(
-  view: string | null,
-  fallback: keyof typeof ISSUES_L1_HREFS
-): string {
-  if (view === 'keyword' || view === 'graph' || view === 'brief') return ISSUES_L1_HREFS[view]
-  return ISSUES_L1_HREFS[fallback]
-}
-
-// daily-insights 상세→핵심 인사이트, keywords 상세→키워드 분석, /dashboard/issues
-// 자체(및 하위)는 view= 쿼리로 판정. 그 외 경로면 null(이 라우트들과 무관).
-// DashboardHeader의 activeL1Href·MobileBottomNav·모바일 전용 관계지도 아이콘이
-// 전부 이 함수 하나로 판정해 셋이 어긋나지 않는다(지시서 2026-08-05, Stage 6).
-export function resolveIssuesActiveHref(pathname: string, searchParams: URLSearchParams): string | null {
-  if (pathname.startsWith('/dashboard/daily-insights')) return ISSUES_L1_HREFS.brief
-  if (pathname.startsWith('/dashboard/keywords')) return ISSUES_L1_HREFS.keyword
-  if (pathname === '/dashboard/issues' || pathname.startsWith('/dashboard/issues/')) {
-    return issuesL1HrefForView(searchParams.get('view'), 'brief')
-  }
-  return null
-}
-
-export function isTabActive(href: string, exact: boolean, pathname: string): boolean {
-  if (exact) return pathname === href
-  if (pathname === href || pathname.startsWith(href + '/')) return true
-  return (NAV_ALIAS_PREFIXES[href] ?? []).some(
-    (prefix) => pathname === prefix || pathname.startsWith(prefix + '/')
-  )
-}
 
 interface Props {
   onMenuClick?: () => void
@@ -126,29 +59,12 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
     month: 'long', day: 'numeric', weekday: 'short',
   })
 
-  // entities/[id]는 경로상 기업동향 소속이지만, 키워드 분석 탭에서 진입한
-  // 경우(origin=issues)엔 그 탭(기본값)이나 view= 쿼리가 가리키는 탭이 active여야
-  // 한다 — 옛 FORCED_L2의 `sp.get('view') ?? 'keyword'`와 동일 기본값.
-  const isEntityDetailFromIssues =
-    pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
-  // /dashboard/entities?view=documents(기업·기술 자료 목록)는 경로 접두사가
-  // /dashboard/entities라 isTabActive가 기본적으로 "기업동향"을 골라버리지만,
-  // 이 뷰는 자료실의 "공시자료" 탭으로 이관됐다(taxonomy.tsx disclosure 항목,
-  // 지시서 2026-08-04b). 상단 L1이 기업동향으로 잘못 켜지는 버그(2026-08-05
-  // 리포트)를 막기 위해 여기서 자료실로 강제한다 — L2 활성 탭은
-  // taxonomy.tsx의 FORCED_L2(pathname==='/dashboard/entities') 항목이 맞춘다.
-  const isDocumentsViewFromEntities =
-    pathname === '/dashboard/entities' && searchParams.get('view') === 'documents'
-  const activeL1Href =
-    resolveIssuesActiveHref(pathname, searchParams)
-    ?? (isEntityDetailFromIssues ? issuesL1HrefForView(searchParams.get('view'), 'keyword') : null)
-    ?? (isDocumentsViewFromEntities ? '/dashboard/contents' : null)
-    ?? (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
+  const { l1Href: activeL1Href } = resolveActiveNav(pathname, searchParams)
 
   // 모바일 전용 관계지도·자료실 아이콘(우측 액션 영역, 지시서 2026-08-05 Stage 6)의
-  // 활성 판정 — 데스크톱 L1과 정확히 같은 기준(resolveIssuesActiveHref·isTabActive)을 쓴다.
-  const isGraphActive = resolveIssuesActiveHref(pathname, searchParams) === ISSUES_L1_HREFS.graph
-  const isContentsActive = isTabActive('/dashboard/contents', false, pathname) || isDocumentsViewFromEntities
+  // 활성 판정은 데스크톱 L1과 동일한 resolveActiveNav 결과에서 파생한다.
+  const isGraphActive = activeL1Href === ISSUES_L1_HREFS.graph
+  const isContentsActive = activeL1Href === '/dashboard/contents'
 
   useEffect(() => {
     const supabase = createClient()

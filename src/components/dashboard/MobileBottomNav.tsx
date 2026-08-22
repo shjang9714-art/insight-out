@@ -3,14 +3,13 @@
 import Link from 'next/link'
 import { Building2, Hash, Home, Layers, Search } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { isTabActive, resolveIssuesActiveHref, ISSUES_L1_HREFS } from '@/components/dashboard/DashboardHeader'
+import { ISSUES_L1_HREFS, resolveActiveNav } from '@/lib/nav/active'
 import { cn } from '@/lib/utils'
 
 // 지시서 2026-08-05(Stage 6) — 5탭(검색 FAB 포함) → 4탭 균등으로 재구성. 관계지도·
 // 자료실(옛 '리포트')은 DashboardHeader 우측 액션 영역의 모바일 전용 아이콘으로 이동.
 // 핵심 인사이트·키워드 분석은 같은 /dashboard/issues 경로를 공유하므로 href만으로는
-// 활성 탭을 못 가른다 — DashboardHeader.resolveIssuesActiveHref로 view= 쿼리까지
-// 함께 판정해 데스크톱 L1과 어긋나지 않게 한다.
+// 활성 탭을 못 가르므로 resolveActiveNav로 view= 쿼리까지 함께 판정한다.
 // 지시서 Stage 6-1(2026-08-05) — 헤더 우측이 관계지도·자료실·돋보기·다크모드 4개로
 // 붐벼 돋보기(검색)를 다시 이 하단바 중앙의 원형 FAB로 되돌렸다(A안: 4탭 균등은 유지,
 // 검색만 바 윗변에 살짝 겹쳐 떠 있는 별도 버튼).
@@ -24,9 +23,7 @@ const MOBILE_TABS = [
 export function MobileBottomNav({ onSearchClick }: { onSearchClick: () => void }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  // /dashboard/issues 계열이 아니거나 view=graph면 null 또는 관계지도 href가 되어
-  // 아래 두 탭 어느 것과도 일치하지 않는다 — 자연히 둘 다 비활성(관계지도는 하단바에 없음).
-  const issuesActiveHref = resolveIssuesActiveHref(pathname, searchParams)
+  const { l1Href: activeL1Href } = resolveActiveNav(pathname, searchParams)
 
   return (
     <nav
@@ -47,10 +44,7 @@ export function MobileBottomNav({ onSearchClick }: { onSearchClick: () => void }
 
       <div className="mx-auto grid h-16 max-w-md grid-cols-4 px-2">
         {MOBILE_TABS.map((tab) => {
-          const active =
-            tab.href === ISSUES_L1_HREFS.brief || tab.href === ISSUES_L1_HREFS.keyword
-              ? issuesActiveHref === tab.href
-              : isTabActive(tab.href, tab.exact, pathname)
+          const active = activeL1Href === tab.href
           const Icon = tab.icon
 
           return (
