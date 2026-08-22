@@ -4,7 +4,7 @@ import type { MajorCompanyWeek } from '@/lib/entities/major-companies'
 
 function formatWeekLabel(weekStart: string): string {
   const date = new Date(`${weekStart}T00:00:00+09:00`)
-  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', timeZone: 'Asia/Seoul' })
 }
 
 interface Props {
