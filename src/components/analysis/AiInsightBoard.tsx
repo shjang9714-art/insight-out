@@ -146,7 +146,7 @@ function entityTypeToBucket(type: EntityType): TagBucket {
 function buildKeywordChangeCards(keywords: KeywordItem[]): KeywordChangeCard[] {
   const cards: KeywordChangeCard[] = []
   const fastestRising = keywords
-    .filter(keyword => !keyword.isNew && (keyword.changePct ?? 0) > 0)
+    .filter(keyword => classifyKeyword(keyword) === 'rising')
     .sort((a, b) => (b.changePct ?? 0) - (a.changePct ?? 0) || (b.cur ?? 0) - (a.cur ?? 0))[0]
   if (fastestRising) {
     cards.push({
@@ -158,7 +158,7 @@ function buildKeywordChangeCards(keywords: KeywordItem[]): KeywordChangeCard[] {
     })
   }
 
-  const newKeywords = keywords.filter(keyword => keyword.isNew)
+  const newKeywords = keywords.filter(keyword => classifyKeyword(keyword) === 'new')
   if (newKeywords.length > 0) {
     const newByBucket = new Map<TagBucket, KeywordItem[]>()
     for (const keyword of newKeywords) {
@@ -179,7 +179,7 @@ function buildKeywordChangeCards(keywords: KeywordItem[]): KeywordChangeCard[] {
   const highlightedBuckets: TagBucket[] = ['정책·규제', '시장·산업']
   const highlight = highlightedBuckets
     .map(bucket => {
-      const rising = keywords.filter(keyword => keyword.bucket === bucket && (keyword.changePct ?? 0) > 0)
+      const rising = keywords.filter(keyword => keyword.bucket === bucket && classifyKeyword(keyword) === 'rising')
       const documentCount = rising.reduce((sum, keyword) => sum + (keyword.cur ?? keyword.count), 0)
       const representative = [...rising].sort(
         (a, b) => (b.changePct ?? 0) - (a.changePct ?? 0) || (b.cur ?? 0) - (a.cur ?? 0)
