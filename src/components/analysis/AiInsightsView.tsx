@@ -13,7 +13,8 @@ import { getKeywordDailyCounts } from '@/lib/keywords/detail'
 import { rankKeywords } from '@/lib/keywords/ranking'
 
 const WATCHLIST_LIMIT = 20
-const TOP_KEYWORDS_N = 30
+// 실측 후보 153개에 안전 여유를 둔 상한이며, 300개 노출을 목표로 하지 않는다.
+const KEYWORD_CANDIDATE_CAP = 300
 
 // 525 — trendRes 는 14일치 발행 콘텐츠를 뜨는 토픽 그룹 집계용으로 통째로 끌어온다.
 // 실측(2026-08) 14일 7,887건 중 직전7일 4,166건 — 옛 limit(1000)·순서 미지정 조합이
@@ -143,7 +144,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .gte('collected_at', fourteenDaysStart)
       .order('collected_at', { ascending: false })
       .limit(TREND_ROWS_LIMIT),
-    supabase.rpc('keyword_week_buckets', { p_days: 14, p_top: TOP_KEYWORDS_N }),
+    supabase.rpc('keyword_week_buckets', { p_days: 14, p_top: KEYWORD_CANDIDATE_CAP }),
     user
       ? supabase
           .from('user_watchlist')

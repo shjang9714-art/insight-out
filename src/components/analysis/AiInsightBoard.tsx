@@ -28,7 +28,7 @@ import PageHeader from '@/components/PageHeader'
 import type { IssueCard } from '@/lib/issues/activity'
 import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
-import { rankKeywords, type KeywordRankingMode } from '@/lib/keywords/ranking'
+import { classifyKeyword, rankKeywords, type KeywordRankingMode } from '@/lib/keywords/ranking'
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -266,14 +266,16 @@ export default function AiInsightBoard({
   const keywordByName = new Map(
     classifiedKeywords.map(keyword => [keyword.name.toLocaleLowerCase('ko-KR'), keyword])
   )
-  const risingKeywordCount = classifiedKeywords.filter(
-    keyword => !keyword.isNew && (keyword.changePct ?? 0) > 0
-  ).length
-  const newKeywordCount = classifiedKeywords.filter(keyword => keyword.isNew).length
-  const sustainedKeywordCount = classifiedKeywords.filter(
-    keyword => (keyword.cur ?? 0) > 0 && (keyword.prev ?? 0) > 0
-  ).length
-  const fallingKeywordCount = classifiedKeywords.filter(keyword => (keyword.changePct ?? 0) < 0).length
+  const keywordTrendCounts = {
+    rising: 0,
+    new: 0,
+    sustained: 0,
+    falling: 0,
+  }
+  for (const keyword of classifiedKeywords) {
+    const trendClass = classifyKeyword(keyword)
+    if (trendClass !== 'none') keywordTrendCounts[trendClass] += 1
+  }
   const keywordChangeCards = buildKeywordChangeCards(classifiedKeywords)
 
   const rankedKeywords = rankKeywords(classifiedKeywords, keywordRankingMode)
@@ -433,10 +435,10 @@ export default function AiInsightBoard({
 
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
             {[
-              { label: '급상승', count: risingKeywordCount, dot: 'bg-positive' },
-              { label: '신규', count: newKeywordCount, dot: 'bg-foreground' },
-              { label: '관심 지속', count: sustainedKeywordCount, dot: 'bg-blue-500' },
-              { label: '하락', count: fallingKeywordCount, dot: 'bg-negative' },
+              { label: '급상승', count: keywordTrendCounts.rising, dot: 'bg-positive' },
+              { label: '신규', count: keywordTrendCounts.new, dot: 'bg-foreground' },
+              { label: '관심 지속', count: keywordTrendCounts.sustained, dot: 'bg-blue-500' },
+              { label: '하락', count: keywordTrendCounts.falling, dot: 'bg-negative' },
             ].map(metric => (
               <div key={metric.label} className="flex items-center justify-between gap-3 bg-card px-4 py-3">
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
