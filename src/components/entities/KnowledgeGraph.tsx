@@ -843,16 +843,15 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     setContentsState({ nodeId: selectedNodeId, items: [], loading: true })
     const supabase = createClient()
     supabase
-      .from('content_entities')
-      .select('content_id, contents(id, title, collected_at)')
-      .eq('entity_id', selectedNodeId)
-      .limit(8)
-      .then(({ data }) => {
+      .rpc('entity_recent_contents', { p_entity_id: selectedNodeId, p_limit: 8 })
+      .then(({ data, error }) => {
         if (cancelled) return
-        type Row = { content_id: string; contents: ContentItem | null }
-        const items = ((data ?? []) as unknown as Row[])
-          .map((r) => r.contents)
-          .filter((c): c is ContentItem => c !== null)
+        if (error) {
+          console.error('관련 기사 조회에 실패했습니다.', error)
+          setContentsState({ nodeId: selectedNodeId, items: [], loading: false })
+          return
+        }
+        const items = ((data ?? []) as ContentItem[])
           .sort((a, b) => b.collected_at.localeCompare(a.collected_at))
         nodeContentCacheRef.current.set(selectedNodeId, items)
         setContentsState({ nodeId: selectedNodeId, items, loading: false })
