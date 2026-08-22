@@ -45,6 +45,7 @@ const DATA_JOB_RENDERERS: EnrichJobKey[] = [
   'admin:youtube-transcript',
   'admin:pdf-cover-backfill',
   'admin:cluster-backfill',
+  'admin:entity-relink',
   'admin:youtube-tagging',
   'admin:translate-backfill',
 ]
@@ -91,6 +92,7 @@ export default function AdminContentProcessing({ jobs }: Props) {
   const transcriptJob = requireEnrichJob(jobs, 'admin:youtube-transcript', 'data')
   const pdfCoverJob = requireEnrichJob(jobs, 'admin:pdf-cover-backfill', 'data')
   const clusterJob = requireEnrichJob(jobs, 'admin:cluster-backfill', 'data')
+  const entityRelinkJob = requireEnrichJob(jobs, 'admin:entity-relink', 'data')
   const youtubeTaggingJob = requireEnrichJob(jobs, 'admin:youtube-tagging', 'data')
   const translateJob = requireEnrichJob(jobs, 'admin:translate-backfill', 'data')
   const { runs, startJob } = useEnrichJobs()
@@ -189,6 +191,23 @@ export default function AdminContentProcessing({ jobs }: Props) {
       <JobCard job={clusterJob} isRunning={isRunning(clusterJob.key)} pending={pendingFor(clusterJob.key)} description="제목만으로 못 묶인 같은 사건 기사를 본문 유사도로 재평가해 병합하고, 신호 기반으로 대표를 재선정합니다.">
         <Button type="button" size="sm" variant="outline" disabled={isRunning(clusterJob.key)} onClick={() => startJob(clusterJob.key)}>
           관련기사 다시 묶기
+        </Button>
+      </JobCard>
+
+      <JobCard
+        job={entityRelinkJob}
+        isRunning={isRunning(entityRelinkJob.key)}
+        pending={pendingFor(entityRelinkJob.key)}
+        description={<>매칭 키워드는 있는데 엔티티 링크가 없는 기사를 규칙 기반으로 다시 잇습니다.<br />전체 범위로 실행하며 남은 대상이 0이 될 때까지 자동 반복합니다.</>}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isRunning(entityRelinkJob.key)}
+          onClick={() => startJob(entityRelinkJob.key)}
+        >
+          엔티티 다시 연결
         </Button>
       </JobCard>
 
