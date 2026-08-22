@@ -47,6 +47,15 @@ export function getKstDateString(date: Date = new Date()): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+/** 'YYYY-MM-DD' 문자열 두 개 사이의 일수 차이(toDateStr - fromDateStr). 홈 핵심 인사이트 스텝-윈도우 로테이션 시드용. */
+export function daysBetweenKstDateStrings(fromDateStr: string, toDateStr: string): number {
+  const [fy, fm, fd] = fromDateStr.split('-').map(Number)
+  const [ty, tm, td] = toDateStr.split('-').map(Number)
+  const fromUtc = Date.UTC(fy, fm - 1, fd)
+  const toUtc = Date.UTC(ty, tm - 1, td)
+  return Math.round((toUtc - fromUtc) / (24 * 60 * 60 * 1000))
+}
+
 /** 임의 시각이 속한 KST 주(월요일 시작)의 월요일을 'YYYY-MM-DD'로. */
 export function getKstWeekMondayString(date: Date = new Date()): string {
   const { year, month, day, weekday } = getKstDateParts(date)

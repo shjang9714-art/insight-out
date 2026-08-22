@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import { ArrowUpRight, Clock3 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
-import { getKstDateString } from '@/lib/date'
+import { getKstDateString, daysBetweenKstDateStrings } from '@/lib/date'
 import { formatMonthWeekLabel } from '@/lib/daily-insights/weeks'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
-import { pickSeededRandom } from '@/lib/daily-insights/home-rotation'
+import { pickRotatedWindow } from '@/lib/daily-insights/home-rotation'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -19,8 +19,9 @@ const TREND_PREVIEW: { key: 'market_trend' | 'competitor_trend' | 'implication';
 ]
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
-// 홈 "핵심 인사이트" — daily_insights(published) 소스. 이번 주(최근 week_of) 적재분 중
-// 날짜(KST) 시드 셔플로 3건만 로테이션 표시(§3, 지시서 20260715). 이번 주 0건이면 가장
+// 홈 "핵심 인사이트" — daily_insights(published) 소스. 이번 주(최근 week_of) 적재분을
+// 주(week_of) 시드로 한 번 고정 셔플한 뒤 날짜별 스텝-윈도우로 3건 로테이션 표시
+// (§20260822, 순수 랜덤 셔플은 인접일 겹침 체감 문제로 폐기). 이번 주 0건이면 가장
 // 최근 week_of 로 폴백, 그마저 0건이면 숨김.
 // (구) "오늘(day_of) 전량 표시(로테이션 없음)" 방식을 대체 — 매일→매주 발행 전환에 맞춤.
 
@@ -49,8 +50,11 @@ export default async function DailyInsightHomeHighlights() {
   const pool = (weekInsights ?? []) as DailyInsightRow[]
   if (pool.length === 0) return null
 
+  // id 기준 정렬로 안정적 기준 순서를 만든 뒤 스텝-윈도우 로테이션에 넘긴다.
+  const sortedPool = [...pool].sort((a, b) => a.id.localeCompare(b.id))
   const todayKst = getKstDateString()
-  const cards = pickSeededRandom(pool, 3, todayKst)
+  const daysSinceWeekOf = daysBetweenKstDateStrings(latestWeek, todayKst)
+  const cards = pickRotatedWindow(sortedPool, 3, latestWeek, daysSinceWeekOf)
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-6">
