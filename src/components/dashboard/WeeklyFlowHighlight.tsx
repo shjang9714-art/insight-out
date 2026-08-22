@@ -114,9 +114,16 @@ export default async function WeeklyFlowHighlight() {
         이번 주 한눈에 보는 흐름 · {formatWeekLabel(currentWeekOf)}
       </div>
 
-      <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-0">
         {rows.map((row, i) => (
-          <div key={row.rank} className={i > 0 ? 'border-t border-border/60 pt-6' : ''}>
+          <div
+            key={row.rank}
+            className={
+              i > 0
+                ? 'border-t border-border/60 pt-6 md:border-l md:border-t-0 md:pl-7 md:pt-0'
+                : 'md:pr-7'
+            }
+          >
             <FlowBlock row={row} />
           </div>
         ))}
