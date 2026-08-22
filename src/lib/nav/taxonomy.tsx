@@ -44,7 +44,7 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
   // '/dashboard/issues' 섹션은 제거됨(지시서 2026-08-04d) — brief·keyword·graph
   // 3개 L2 탭이 전부 L1로 승격되어(핵심 인사이트·키워드 분석·관계지도, DashboardHeader
   // NAV_TABS) L2 행이 통째로 중복이 됐다. 활성 L1 판정(3탭 중 어느 게 눌렸는지)은
-  // DashboardHeader.tsx의 issuesL1HrefForView가 view= 쿼리파라미터로 직접 계산한다 —
+  // active.ts의 resolveActiveNav가 view= 쿼리파라미터로 직접 계산한다 —
   // 페이지·라우트(/dashboard/issues?view=brief|keyword|graph)는 그대로 남아 있다.
   // '/dashboard/entities' 섹션은 제거됨(지시서 2026-08-04b) — 'documents'(기업·기술
   // 자료)는 자료실의 '공시자료'로, 'competitor'·'trend'는 실험실로 각각 이관되어
@@ -121,7 +121,7 @@ const FORCED_L2: {
     activeId: () => 'disclosure',
   },
   // 전략보고서 목록·상세(/dashboard/reports, /dashboard/reports/[id]) — 리포트 L1이
-  // 없어져 NAV_ALIAS_PREFIXES로 자료실 L1에 편입됐다(DashboardHeader.tsx). 여기서는
+  // 없어져 NAV_ALIAS_PREFIXES로 자료실 L1에 편입됐다(active.ts). 여기서는
   // 그 안의 L2를 정한다: view=external로 들어오면(자료실의 "컨설팅 리포트" 탭에서
   // 온 경우) "컨설팅 리포트"를, 그 외(기본 view=ai 목록·상세 페이지 전부)는
   // "AI 리포트"를 활성으로 — 상세 페이지엔 view 파라미터가 없어 자연히 AI 리포트로
@@ -132,8 +132,8 @@ const FORCED_L2: {
     activeId: (sp) => sp.get('view') === 'external' ? 'consulting-report' : 'ai-report',
   },
   // /dashboard/entities?view=documents(기업·기술 자료 목록) — 자료실의 "공시자료"
-  // 탭으로 이관된 화면(지시서 2026-08-04b). DashboardHeader.tsx가 이 경로+view일 때만
-  // l1Href를 '/dashboard/contents'로 강제하므로(isDocumentsViewFromEntities), 여기
+  // 탭으로 이관된 화면(지시서 2026-08-04b). resolveActiveNav가 이 경로+view일 때만
+  // l1Href를 '/dashboard/contents'로 강제하므로 여기
   // 도달 시점엔 항상 documents 뷰라 pathname만으로 판정해도 안전하다.
   {
     test: (p) => p === '/dashboard/entities',
