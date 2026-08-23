@@ -250,7 +250,6 @@ async function DocumentsView({ entityId, docType }: { entityId?: string; docType
     <div>
       <EntitySectionHeader
         title="기업 공시"
-        subtitle="공시·IR·기술자료 등 공식 문서를 한곳에서 확인합니다"
         meta={`총 ${stats.total}건 · 이번주 신규 ${stats.newThisWeek}건`}
       />
 
