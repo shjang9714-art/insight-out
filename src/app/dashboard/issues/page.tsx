@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import AiInsightsView from '@/components/analysis/AiInsightsView'
-import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import PageContainer from '@/components/PageContainer'
 
 export const dynamic = 'force-dynamic'
@@ -25,9 +24,6 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
 
   return (
     <PageContainer>
-      <Suspense fallback={null}>
-        <ContentsL2Tabs />
-      </Suspense>
       <Suspense fallback={
         <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
           로딩 중...
