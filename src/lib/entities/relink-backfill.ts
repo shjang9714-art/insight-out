@@ -13,15 +13,18 @@ export type EntityRelinkResult = EnrichJobResult & {
   error?: string
 }
 
-function applyTargetFilters<T extends {
-  overlaps(column: string, values: string[]): T
-  gte(column: string, value: string): T
-  lte(column: string, value: string): T
-}>(query: T, names: string[], from?: string | null, to?: string | null): T {
-  let filtered = query.overlaps('matched_keywords', names)
-  if (from) filtered = filtered.gte('collected_at', from)
-  if (to) filtered = filtered.lte('collected_at', `${to}T23:59:59.999Z`)
-  return filtered
+function buildRangeParams(names: string[], from?: string | null, to?: string | null) {
+  return {
+    p_names: names,
+    p_from: from ? `${from}T00:00:00.000Z` : null,
+    p_to: to ? `${to}T23:59:59.999Z` : null,
+  }
+}
+
+function parseCount(value: unknown, errorMessage: string): number {
+  const count = Number(value)
+  if (!Number.isFinite(count)) throw new Error(errorMessage)
+  return count
 }
 
 async function countRemaining(
@@ -30,17 +33,26 @@ async function countRemaining(
   from?: string | null,
   to?: string | null,
 ): Promise<number> {
-  let query = admin
-    .from('contents')
-    .select('id, content_entities()', { count: 'exact', head: true })
-    .is('deleted_at', null)
-    .not('matched_keywords', 'eq', '{}')
-    .is('content_entities', null)
-  query = applyTargetFilters(query, names, from, to)
-
-  const { count, error } = await query
+  const { data, error } = await admin.rpc(
+    'entity_relink_remaining',
+    buildRangeParams(names, from, to),
+  )
   if (error) throw new Error(`남은 엔티티 재연결 대상 집계 실패: ${error.message}`)
-  return count ?? 0
+  return parseCount(data, '남은 엔티티 재연결 대상 집계 결과가 올바른 숫자가 아닙니다.')
+}
+
+async function countUnlinkable(
+  admin: SupabaseClient,
+  names: string[],
+  from?: string | null,
+  to?: string | null,
+): Promise<number> {
+  const { data, error } = await admin.rpc(
+    'entity_relink_unlinkable',
+    buildRangeParams(names, from, to),
+  )
+  if (error) throw new Error(`연결 불가 엔티티 재연결 대상 집계 실패: ${error.message}`)
+  return parseCount(data, '연결 불가 엔티티 재연결 대상 집계 결과가 올바른 숫자가 아닙니다.')
 }
 
 /** matched_keywords가 있지만 엔티티 링크가 없는 콘텐츠를 규칙 기반으로 다시 연결한다. */
@@ -61,17 +73,10 @@ export async function drainEntityRelink(
     }
   }
 
-  let targetQuery = admin
-    .from('contents')
-    .select('id, matched_keywords, content_entities()')
-    .is('deleted_at', null)
-    .not('matched_keywords', 'eq', '{}')
-    .is('content_entities', null)
-  targetQuery = applyTargetFilters(targetQuery, names, opts.from, opts.to)
-
-  const { data, error } = await targetQuery
-    .order('collected_at', { ascending: true })
-    .limit(opts.limit)
+  const { data, error } = await admin.rpc('entity_relink_candidates', {
+    ...buildRangeParams(names, opts.from, opts.to),
+    p_limit: opts.limit,
+  })
   if (error) throw new Error(`엔티티 재연결 대상 조회 실패: ${error.message}`)
 
   const targets = (data ?? []) as EntityRelinkRow[]
@@ -124,13 +129,17 @@ export async function drainEntityRelink(
 
   const processed = targets.length
   const skipped = alreadyLinked + noEntityMatch
+  const [remaining, unlinkable] = await Promise.all([
+    countRemaining(admin, names, opts.from, opts.to),
+    countUnlinkable(admin, names, opts.from, opts.to),
+  ])
   return {
     processed,
     succeeded,
     skipped,
-    remaining: await countRemaining(admin, names, opts.from, opts.to),
+    remaining,
     ready: true,
     batchCapped: processed >= opts.limit,
-    extra: { alreadyLinked, noEntityMatch },
+    extra: { alreadyLinked, noEntityMatch, unlinkable },
   }
 }

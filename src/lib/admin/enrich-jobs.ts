@@ -341,7 +341,13 @@ export function normalizeEnrichResult(key: EnrichJobKey, json: unknown): EnrichJ
       if (typeof record.batchCapped !== 'boolean') {
         throw new Error(`[enrich-jobs] ${key}: 응답의 batchCapped 값이 boolean이 아닙니다.`)
       }
-      return { ...result, batchCapped: record.batchCapped }
+      const extraRecord = requireRecord(record.extra, key)
+      const extra = {
+        alreadyLinked: requireNumber(extraRecord, 'alreadyLinked', key),
+        noEntityMatch: requireNumber(extraRecord, 'noEntityMatch', key),
+        unlinkable: requireNumber(extraRecord, 'unlinkable', key),
+      }
+      return { ...result, batchCapped: record.batchCapped, extra }
     }
     case 'admin:sentiment':
     case 'admin:lgu-impact':
