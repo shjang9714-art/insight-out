@@ -30,10 +30,11 @@ import type { CompanyDocumentType } from '@/lib/types'
 import { COMPANY_DOC_TYPES } from '@/lib/company-docs/constants'
 import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
 import ListErrorState from '@/components/ui/ListErrorState'
+import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
-type SearchParams = Promise<{ view?: string; entity?: string; docType?: string; week?: string }>
+type SearchParams = Promise<{ view?: string; entity?: string; docType?: string; week?: string; watchlist?: string }>
 
 // view=documents(기업·기술 자료 목록)는 자료실의 "기업 공시" 탭으로 이관됐다(지시서
 // 2026-08-04b) — 탭을 눌러 들어왔을 때 브라우저 탭 제목이 "기업동향"으로 뜨면
@@ -98,7 +99,20 @@ function EntityPanelSkeleton() {
   )
 }
 
-async function WatchlistView({ weekStart }: { weekStart?: string }) {
+function watchlistFilterHref(weekStart: string | null, watchlistOnly: boolean): string {
+  const params = new URLSearchParams({ view: 'watchlist' })
+  if (weekStart) params.set('week', weekStart)
+  if (watchlistOnly) params.set('watchlist', 'only')
+  return `/dashboard/entities?${params.toString()}`
+}
+
+async function WatchlistView({
+  weekStart,
+  watchlistOnly,
+}: {
+  weekStart?: string
+  watchlistOnly: boolean
+}) {
   const supabase = await createSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   // ─── 주요 기업 탭 ─────────────────────────────────────────────────────────
@@ -109,18 +123,62 @@ async function WatchlistView({ weekStart }: { weekStart?: string }) {
     loadError,
     availableWeeks,
     selectedWeek,
-  } = await getMajorCompaniesData(supabase, { userId: user?.id, weekStart })
+    userPickedCount,
+  } = await getMajorCompaniesData(supabase, { userId: user?.id, weekStart, watchlistOnly })
+  const effectiveWatchlistOnly = watchlistOnly && userPickedCount > 0
   const MAJOR_REP_COUNT = 5
 
   return (
     <div className="space-y-8">
       {user && <WatchlistTabHeader />}
-      <MajorCompanyWeeklyTimeline
-        weeks={availableWeeks}
-        activeWeekStart={selectedWeek}
-        hrefBase="/dashboard/entities"
-        persistentParams={{ view: 'watchlist' }}
-      />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <MajorCompanyWeeklyTimeline
+            weeks={availableWeeks}
+            activeWeekStart={selectedWeek}
+            hrefBase="/dashboard/entities"
+            persistentParams={{
+              view: 'watchlist',
+              ...(effectiveWatchlistOnly ? { watchlist: 'only' } : {}),
+            }}
+          />
+        </div>
+
+        {userPickedCount > 0 ? (
+          <nav aria-label="주요 기업 필터" className="flex shrink-0 items-center rounded-lg border border-border bg-muted/30 p-1">
+            <Link
+              href={watchlistFilterHref(selectedWeek, false)}
+              prefetch={false}
+              aria-current={!effectiveWatchlistOnly ? 'page' : undefined}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                !effectiveWatchlistOnly ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              전체 기업
+            </Link>
+            <Link
+              href={watchlistFilterHref(selectedWeek, true)}
+              prefetch={false}
+              aria-current={effectiveWatchlistOnly ? 'page' : undefined}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                effectiveWatchlistOnly ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              관심 기업
+            </Link>
+          </nav>
+        ) : (
+          <Link
+            href="/dashboard/mypage"
+            prefetch={false}
+            className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-brand-600"
+          >
+            관심 기업 설정 →
+          </Link>
+        )}
+      </div>
       {loadError ? (
         <ListErrorState />
       ) : !curatedApplied ? (
@@ -131,7 +189,9 @@ async function WatchlistView({ weekStart }: { weekStart?: string }) {
       ) : majorGroups.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
           <p className="text-sm font-medium text-foreground">
-            {selectedWeek ? '선택한 주의 주요 기업 동향이 없습니다' : '주요 기업 동향이 아직 없습니다'}
+            {effectiveWatchlistOnly
+              ? '선택한 주의 관심 기업 동향이 없습니다'
+              : selectedWeek ? '선택한 주의 주요 기업 동향이 없습니다' : '주요 기업 동향이 아직 없습니다'}
           </p>
           <p className="text-xs text-muted-foreground">
             {selectedWeek ? '다른 주를 선택하거나 해당 주 카드를 재생성해 주세요.' : 'AI 생성·승인 후 이곳에 표시됩니다.'}
@@ -277,6 +337,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
   const view: ViewId = (VALID_VIEWS.includes(raw as ViewId) ? raw : 'watchlist') as ViewId
   const entityFilter = typeof params.entity === 'string' && params.entity ? params.entity : undefined
   const weekFilter = typeof params.week === 'string' && params.week ? params.week : undefined
+  const watchlistOnly = params.watchlist === 'only'
   const docTypeFilter = typeof params.docType === 'string' && (COMPANY_DOC_TYPES as string[]).includes(params.docType)
     ? (params.docType as CompanyDocumentType)
     : undefined
@@ -301,7 +362,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
       {/* 주요 기업 탭 */}
       {view === 'watchlist' && (
         <Suspense fallback={<EntityPanelSkeleton />}>
-          <WatchlistView weekStart={weekFilter} />
+          <WatchlistView weekStart={weekFilter} watchlistOnly={watchlistOnly} />
         </Suspense>
       )}
 

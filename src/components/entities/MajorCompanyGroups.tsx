@@ -13,6 +13,14 @@ function formatShortPeriod(start: string, end: string): string {
   return `${fmt(new Date(start))}–${fmt(new Date(end))}`
 }
 
+function formatStaleWeek(weekStart: string): string {
+  return new Date(`${weekStart}T00:00:00+09:00`).toLocaleDateString('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Seoul',
+  })
+}
+
 /** 중요도는 예외적인 항목만 강조 — high 외에는 표시하지 않는다 */
 function ImportanceMark({ importance }: { importance: 'high' | 'mid' | 'low' }) {
   if (importance !== 'high') return null
@@ -73,7 +81,7 @@ function CardFooter({ count, period }: { count: number; period: string }) {
 
 /** 모든 그룹에서 동일한 폭을 유지하는 3열 그리드용 세로형 카드 */
 function CompanyCard({ entry, weekStart }: { entry: MajorCompanyCard; weekStart?: string }) {
-  const { company, card, hashtags } = entry
+  const { company, card, hashtags, isStale, staleWeekStart } = entry
   const importance = computeImportance(card)
   const evidenceCount = card.citations.length || card.source_content_ids.length
   const detailParams = new URLSearchParams({ origin: 'entities', view: 'watchlist' })
@@ -94,6 +102,11 @@ function CompanyCard({ entry, weekStart }: { entry: MajorCompanyCard; weekStart?
       <div className="flex items-center gap-2">
         <CompanySymbol company={company} />
         <span className="truncate text-[13px] font-semibold text-muted-foreground">{company}</span>
+        {isStale && staleWeekStart && (
+          <span className="shrink-0 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-300">
+            지난주 동향 · {formatStaleWeek(staleWeekStart)} 주
+          </span>
+        )}
         <div className="flex-1" />
         <ImportanceMark importance={importance} />
       </div>
@@ -143,9 +156,7 @@ export default function MajorCompanyGroups({ groups, repCount, seeAllHrefBase, w
     <div className="space-y-11">
       {groups.map(group => {
         const representatives = repCount
-          ? (group.userPicked.length > 0
-              ? group.companies.filter(c => group.userPicked.includes(c.company)).slice(0, repCount)
-              : group.companies.slice(0, repCount))
+          ? group.companies.slice(0, repCount)
           : group.companies
         const hiddenCount = group.companies.length - representatives.length
 
