@@ -29,9 +29,6 @@ const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
 export const ISSUES_L1_HREFS = {
   brief: '/dashboard/issues',
   keyword: '/dashboard/issues?view=keyword',
-  // 542-C 전까지 모바일 관계지도 퀵링크의 기존 import 호환만 유지한다.
-  // NAV_TABS와 resolveIssuesActiveHref에서는 독립 L1 값으로 사용하지 않는다.
-  graph: '/dashboard/issues?view=graph',
 } as const
 
 function issuesL1HrefForView(
