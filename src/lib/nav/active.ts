@@ -15,30 +15,31 @@ export const NAV_TABS: ReadonlyArray<{
   icon?: LucideIcon
 }> = [
   { label: '홈', href: '/dashboard', exact: true },
-  { label: '핵심 인사이트', href: '/dashboard/issues', exact: false },
-  { label: '키워드 분석', href: '/dashboard/issues?view=keyword', exact: false },
+  { label: '인사이트', href: '/dashboard/issues', exact: false },
+  { label: '분석', href: '/dashboard/issues?view=keyword', exact: false },
   { label: '기업동향', href: '/dashboard/entities', exact: false },
-  { label: '관계지도', href: '/dashboard/issues?view=graph', exact: false },
   { label: '자료실', href: '/dashboard/contents', exact: false },
 ]
 
 const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
   '/dashboard/issues': ['/dashboard/daily-insights', '/dashboard/keywords'],
   '/dashboard/entities': ['/dashboard/insights'],
-  '/dashboard/contents': ['/dashboard/reports'],
 }
 
 export const ISSUES_L1_HREFS = {
   brief: '/dashboard/issues',
   keyword: '/dashboard/issues?view=keyword',
+  // 542-C 전까지 모바일 관계지도 퀵링크의 기존 import 호환만 유지한다.
+  // NAV_TABS와 resolveIssuesActiveHref에서는 독립 L1 값으로 사용하지 않는다.
   graph: '/dashboard/issues?view=graph',
 } as const
 
 function issuesL1HrefForView(
   view: string | null,
-  fallback: keyof typeof ISSUES_L1_HREFS
+  fallback: 'brief' | 'keyword'
 ): string {
-  if (view === 'keyword' || view === 'graph' || view === 'brief') return ISSUES_L1_HREFS[view]
+  if (view === 'keyword' || view === 'graph') return ISSUES_L1_HREFS.keyword
+  if (view === 'brief') return ISSUES_L1_HREFS.brief
   return ISSUES_L1_HREFS[fallback]
 }
 
@@ -48,6 +49,16 @@ export function resolveIssuesActiveHref(pathname: string, searchParams: URLSearc
   if (pathname === '/dashboard/issues' || pathname.startsWith('/dashboard/issues/')) {
     return issuesL1HrefForView(searchParams.get('view'), 'brief')
   }
+  return null
+}
+
+function resolveReportsActiveHref(pathname: string, searchParams: URLSearchParams): string | null {
+  if (pathname === '/dashboard/reports') {
+    return searchParams.get('view') === 'external'
+      ? '/dashboard/contents'
+      : ISSUES_L1_HREFS.brief
+  }
+  if (pathname.startsWith('/dashboard/reports/')) return ISSUES_L1_HREFS.brief
   return null
 }
 
@@ -68,11 +79,15 @@ export function resolveActiveNav(
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
   const isDocumentsViewFromEntities =
     pathname === '/dashboard/entities' && searchParams.get('view') === 'documents'
+  const isKnowledgeReportDetail =
+    /^\/dashboard\/contents\/[^/]+$/.test(pathname) && categoryHint === '지식보고서'
 
   const l1Href =
     resolveIssuesActiveHref(pathname, searchParams)
+    ?? resolveReportsActiveHref(pathname, searchParams)
     ?? (isEntityDetailFromIssues ? issuesL1HrefForView(searchParams.get('view'), 'keyword') : null)
     ?? (isDocumentsViewFromEntities ? '/dashboard/contents' : null)
+    ?? (isKnowledgeReportDetail ? ISSUES_L1_HREFS.brief : null)
     ?? (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
   const l2 = l1Href
     ? getL2ForSection(l1Href, pathname, searchParams, categoryHint)

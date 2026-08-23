@@ -97,7 +97,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     <PageContainer>
       {view === 'ai' && (
         <>
-          {/* 제목 블록 — ContentsBoard(유튜브·뉴스·기술Blog·컨설팅리포트)와 같은
+          {/* 제목 블록 — ContentsBoard(영상·뉴스·기술 블로그·전문기관 보고서)와 같은
               마크업·톤으로 맞춰, 아래 ContentsL2Tabs가 다른 목록 화면과 동일한
               세로 위치에 오게 한다. view='ai'만 ContentsBoard를 안 쓰다 보니
               이 블록이 없어 탭이 메인 네비 바로 밑에 붙는 어긋남이 있었다. */}
@@ -121,7 +121,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       )}
       {view === 'external' && (
         <Suspense fallback={<ReportGridSkeleton />}>
-          <ContentsBoard fixedCategory="리서치" title="컨설팅 리포트" />
+          <ContentsBoard fixedCategory="리서치" title="전문기관 보고서" />
         </Suspense>
       )}
     </PageContainer>
