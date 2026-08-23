@@ -133,7 +133,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     admin.from('tts_usage').select('chars').eq('period', new Date().toISOString().slice(0, 7)),
     admin
       .from('llm_task_routing')
-      .select('task_type, priority, provider, model_id')
+      .select('task_type, priority, provider, model_id, last_error')
       .eq('is_active', true)
       .gte('last_error_at', since),
     admin
@@ -240,13 +240,26 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     console.error('[운영이슈] LLM 라우팅 모델 오류 조회 실패:', routingModelErrors.error.message)
   }
   for (const route of routingModelErrors.data ?? []) {
+    if (route.last_error?.includes('모델 사용 불가(404)')) {
+      signals.push({
+        fingerprint: `llm:model_unavailable:${route.task_type}:${route.priority}`,
+        category: 'usage',
+        severity: 'warning',
+        title: 'LLM 라우팅 모델 사용 불가',
+        suspected_cause: `${route.provider}/${route.model_id} 가 404 를 반환 — 모델이 은퇴했거나 유료로 전환됨`,
+        recommended_action: '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 모델을 교체하세요.',
+        impact: `${route.task_type} 작업이 해당 순위를 건너뜀`,
+        count: 1,
+      })
+      continue
+    }
     signals.push({
-      fingerprint: `llm:model_unavailable:${route.task_type}:${route.priority}`,
+      fingerprint: `llm:route_error:${route.task_type}:${route.priority}`,
       category: 'usage',
       severity: 'warning',
-      title: 'LLM 라우팅 모델 사용 불가',
-      suspected_cause: `${route.provider}/${route.model_id} 가 404 를 반환 — 모델이 은퇴했거나 유료로 전환됨`,
-      recommended_action: '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 모델을 교체하세요.',
+      title: 'LLM 라우팅 오류',
+      suspected_cause: route.last_error ?? '오류 상세 없음',
+      recommended_action: '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 키·모델을 점검하고 연동 테스트를 실행하세요.',
       impact: `${route.task_type} 작업이 해당 순위를 건너뜀`,
       count: 1,
     })
