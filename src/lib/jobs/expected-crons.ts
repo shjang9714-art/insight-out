@@ -41,12 +41,13 @@ const CRON_META: Record<string, CronMeta> = {
   'cron:ai-refresh':          { label: 'AI 갱신',          maxAgeHours: 30 },
   'cron:link-health':         { label: '링크 헬스',        maxAgeHours: 30 },
   'cron:daily-insights':      { label: '일일 인사이트',    maxAgeHours: 30 },
+  'cron:entity-metrics-refresh': { label: '엔티티 지표 갱신', maxAgeHours: 30 },
   'cron:trending-snapshot':   { label: '트렌딩 스냅샷',    maxAgeHours: 30 },
   // vercel.json 은 "0 21 * * *"(일 1회) — 499: 과거 매시 스케줄 시절 주석/값(2)이 남아있던
   // 걸 현재 스케줄에 맞게 정정. job_runs 실측(8/10~8/14)도 하루 한 번씩이다.
   'cron:competitor-weekly':   { label: '경쟁사 주간',      maxAgeHours: 30 },
-  // 3일 주기(지시서 C) — 여유 두어 78시간(3.25일)
-  'cron:event-timeline-refresh': { label: '사건 타임라인 갱신', maxAgeHours: 78 },
+  // 매일 주기 — 여유 두어 30시간
+  'cron:event-timeline-refresh': { label: '사건 타임라인 갱신', maxAgeHours: 30 },
   'cron:ops-brief':            { label: '일일 운영 브리핑',    maxAgeHours: 30 },
   'cron:ops-weekly':           { label: '주간 운영 리포트',    maxAgeHours: 200 },
   // 499 — vercel.json 에는 없이 pg_cron 10분 주기로만 도는 운영 알림. 429/434 참고.
