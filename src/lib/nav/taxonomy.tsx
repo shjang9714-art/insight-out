@@ -40,6 +40,35 @@ export interface L2Section {
   tabs: L2Tab[]
 }
 
+export const L2_PAGE_META = {
+  'insight-report': {
+    title: '인사이트 리포트',
+    description: 'AI가 수집한 자료를 분석해 작성한 전략보고서와 지식보고서입니다.',
+  },
+  'consulting-report': {
+    title: '전문기관 보고서',
+    description: '가트너·KRG 등 외부 전문기관이 발행한 시장·기술 리포트입니다.',
+  },
+  disclosure: {
+    title: '기업 공시',
+    description: 'DART 공시와 기업이 직접 공개한 IR·기술 자료입니다.',
+  },
+  뉴스: {
+    title: '뉴스',
+    description: '국내외 매체에서 수집한 업계 뉴스입니다.',
+  },
+  유튜브: {
+    title: '영상',
+    description: '유튜브에서 수집한 업계 관련 영상입니다.',
+  },
+  웹인사이트: {
+    title: '기술 블로그',
+    description: '기업·개발자 블로그와 기술 오피니언 글입니다.',
+  },
+} as const
+
+export type L2PageMetaId = keyof typeof L2_PAGE_META
+
 export const NAV_SECTIONS: Record<string, L2Section> = {
   '/dashboard/issues': {
     l1Href: '/dashboard/issues',

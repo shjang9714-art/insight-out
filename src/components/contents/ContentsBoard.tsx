@@ -12,7 +12,8 @@ import ContentCard from '@/components/dashboard/ContentCard'
 import ContentReportCard from '@/components/contents/ContentReportCard'
 import ContentListRow from '@/components/dashboard/ContentListRow'
 import ContentCardSkeleton from '@/components/contents/ContentCardSkeleton'
-import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
+import PageHeader from '@/components/PageHeader'
+import { L2_PAGE_META, type L2PageMetaId } from '@/lib/nav/taxonomy'
 import ViewToggle, { type ContentsView } from '@/components/contents/ViewToggle'
 import { toExcerpt, tagsOf2 } from '@/lib/contents/excerpt'
 import { coverUrlsForList } from '@/lib/contents/topic-cover'
@@ -594,14 +595,22 @@ export default function ContentsBoard({
     || category === '리서치'
     || category === '지식보고서'
     || category === '유튜브'
+  const pageMetaId: L2PageMetaId = category === '리서치'
+    ? 'consulting-report'
+    : category === '지식보고서'
+      ? 'insight-report'
+      : category === '유튜브' || category === '웹인사이트'
+        ? category
+        : '뉴스'
+  const pageMeta = L2_PAGE_META[pageMetaId]
 
   return (
     <>
 
-      {/* ─── 자료종류(L2) 탭 + 카드/리스트 보기 토글 — 자료실 헤더 바로 아래 한 줄,
-          탭 왼쪽/토글 오른쪽. 볼드 섹션 제목·"총 N건"은 뉴스 화면 기준으로 삭제(지시서). */}
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <ContentsL2Tabs className="mb-0" />
+      <PageHeader title={pageMeta.title} description={pageMeta.description} />
+
+      {/* ─── 카드/리스트 보기 토글 — 헤더 L2로 탭을 옮긴 뒤에도 기존 줄을 유지한다. */}
+      <div className="mb-5 flex items-center justify-end gap-4">
         <ViewToggle value={contentsView} onChange={changeContentsView} groupAriaLabel="콘텐츠 보기 방식" />
       </div>
 
