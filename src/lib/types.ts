@@ -356,7 +356,7 @@ export const CONTENT_CATEGORY_LABEL: Record<ContentCategory, string> = {
 // 엔티티 지식계층 (99-entities)
 // ============================================================
 
-export type EntityType = 'company' | 'tech' | 'product' | 'person' | 'policy' | 'industry'
+export type EntityType = 'company' | 'tech' | 'product' | 'person' | 'policy' | 'industry' | 'org'
 
 export interface Entity {
   id: string
@@ -386,7 +386,10 @@ export const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
   person:   '인물',
   policy:   '정책',
   industry: '산업',
+  org:      '기관',
 }
+
+export const ENTITY_TYPES = Object.keys(ENTITY_TYPE_LABEL) as EntityType[]
 
 // ============================================================
 // 이슈 1급화 (101-issues)

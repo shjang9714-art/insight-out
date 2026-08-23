@@ -108,6 +108,7 @@ const TYPE_COLOR: Record<EntityType, string> = {
   person:   '#10B981',
   policy:   '#F59E0B',
   industry: '#9CA3AF',
+  org:      '#06B6D4',
 }
 const COMPETITOR_COLOR  = '#EF4444'
 const LINK_COLOR        = 'rgba(120,120,120,0.60)'

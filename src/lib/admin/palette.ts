@@ -8,6 +8,7 @@ export const ENTITY_TYPE_CLS: Record<EntityType, string> = {
   person:   'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   policy:   'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   industry: 'bg-muted text-muted-foreground',
+  org:      'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
 }
 
 // 차트 시리즈 (recharts는 색 문자열 필요 → hex 단일 상수로 집약, 유일 예외)

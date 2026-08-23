@@ -1,11 +1,8 @@
 import Link from 'next/link'
-import type { EntityType } from '@/lib/types'
-import { ENTITY_TYPE_LABEL } from '@/lib/types'
+import { ENTITY_TYPES, ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
 import { ENTITY_TYPE_CLS } from '@/lib/admin/palette'
 import { cn } from '@/lib/utils'
 import type { EntityBrief, ConnectedEntity, EvidenceContent } from '@/lib/admin/relations'
-
-const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'policy', 'industry']
 
 interface Props {
   entities: EntityBrief[]
