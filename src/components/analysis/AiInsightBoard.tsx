@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
@@ -25,6 +25,7 @@ import InsightCardsSectionClient, {
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import PageHeader from '@/components/PageHeader'
+import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import type { IssueCard } from '@/lib/issues/activity'
 import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
@@ -91,7 +92,7 @@ export interface AiInsightBoardProps {
 // 렌더 안 함, VALID_VIEW_IDS 구성용. 사용자에게 항상 보이는 하위 카테고리
 // (요청 순서 고정)는 ContentsL2Tabs가 NAV_SECTIONS를 기준으로 렌더한다.
 const PRIMARY_TABS: { id: AiInsightViewId; label: string }[] = [
-  { id: 'brief',   label: '핵심 인사이트' },
+  { id: 'brief',   label: '주간 인사이트' },
   { id: 'keyword', label: '키워드 분석' },
   { id: 'graph',   label: '관계지도' },
 ]
@@ -106,10 +107,10 @@ const LAB_TABS: { id: AiInsightViewId; label: string }[] = [
 const LAB_VIEW_IDS: readonly AiInsightViewId[] = LAB_TABS.map(t => t.id)
 const VALID_VIEW_IDS: readonly AiInsightViewId[] = [...PRIMARY_TABS, ...LAB_TABS].map(t => t.id)
 
-// 공통 페이지 헤더(§PageHeader) 문구 — 핵심 인사이트·키워드 분석·관계지도 3탭.
+// 공통 페이지 헤더(§PageHeader) 문구 — 주간 인사이트·키워드 분석·관계지도 3탭.
 const TAB_HEADER_META: Partial<Record<AiInsightViewId, { title: string; description: string }>> = {
   brief: {
-    title: '핵심 인사이트',
+    title: '주간 인사이트',
     description: '매주 업계 주요 이슈 중 보도량·업계 파급력·최신성을 기준으로 핵심 사안을 선별해, LG유플러스 관점의 기회·리스크·실행 제안으로 정리한 주간 인사이트입니다.',
   },
   keyword: {
@@ -284,13 +285,14 @@ export default function AiInsightBoard({
 
   return (
     <>
-      {/* 공통 페이지 헤더(핵심 인사이트·키워드 분석·관계지도) */}
+      {/* 공통 페이지 헤더(주간 인사이트·키워드 분석·관계지도) */}
       {headerMeta && <PageHeader title={headerMeta.title} description={headerMeta.description} />}
 
-      <div className="space-y-6">
-      {/* 하위 카테고리 탭(핵심 인사이트·키워드 분석·관계지도)은 DashboardHeader의
-          sticky L2 행으로 이동(372) — 이 보드는 view 상태만 URL에서 읽는다. */}
+      <Suspense fallback={null}>
+        <ContentsL2Tabs />
+      </Suspense>
 
+      <div className="space-y-6">
       {/* 핵심 인사이트 — 주간 daily_insights 목록(§2, 지시서 20260715 주간 복귀) */}
       {view === 'brief' && (
         <div className="space-y-4">
