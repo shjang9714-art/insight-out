@@ -30,6 +30,7 @@ import {
 import type { CompanyDocumentType } from '@/lib/types'
 import { COMPANY_DOC_TYPES } from '@/lib/company-docs/constants'
 import { CONTENT_GRID_CLASS } from '@/lib/contents/card-contract'
+import ListErrorState from '@/components/ui/ListErrorState'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,6 +107,7 @@ async function WatchlistView({ weekStart }: { weekStart?: string }) {
   const {
     groups: majorGroups,
     curatedApplied,
+    loadError,
     availableWeeks,
     selectedWeek,
   } = await getMajorCompaniesData(supabase, { userId: user?.id, weekStart })
@@ -120,7 +122,9 @@ async function WatchlistView({ weekStart }: { weekStart?: string }) {
         hrefBase="/dashboard/entities"
         persistentParams={{ view: 'watchlist' }}
       />
-      {!curatedApplied ? (
+      {loadError ? (
+        <ListErrorState />
+      ) : !curatedApplied ? (
         <div className="rounded-xl border border-dashed p-8 text-center space-y-2">
           <p className="text-sm font-medium text-foreground">주요 기업 데이터 준비 중입니다</p>
           <p className="text-xs text-muted-foreground">큐레이션 그룹·기업 목록이 곧 반영됩니다.</p>
