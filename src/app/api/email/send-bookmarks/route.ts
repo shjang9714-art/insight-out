@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { sendBrevoEmail, normalizeBrevoError, type BrevoAttachment } from '@/lib/email/brevo'
+import { sendResendEmail, normalizeResendError, type ResendAttachment } from '@/lib/email/resend'
 import { buildBookmarkEmailHtml, type BookmarkEmailItem } from '@/lib/email/bookmark-template'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const MAX_RECIPIENTS = 10
-const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8MB (Brevo 제한 ~10MB, 여유분)
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8MB (Resend 제한 40MB, 여유분)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function categorizeSendError(err: { name?: string; message?: string }): string {
@@ -15,13 +15,13 @@ function categorizeSendError(err: { name?: string; message?: string }): string {
   const name = (err.name ?? '').toLowerCase()
 
   if (name === 'missing_required_field') {
-    return '이메일 발송 설정이 완료되지 않았습니다. 관리자에게 환경변수(BREVO_FROM_EMAIL) 설정을 요청하세요.'
+    return '이메일 발송 설정이 완료되지 않았습니다. 관리자에게 환경변수(RESEND_FROM_EMAIL) 설정을 요청하세요.'
   }
   if (msg.includes('from') || msg.includes('domain')) {
-    return '발신 도메인이 검증되지 않았습니다. 관리자에게 Brevo 도메인 검증을 요청하세요.'
+    return '발신 도메인이 검증되지 않았습니다. 관리자에게 Resend 도메인 검증을 요청하세요.'
   }
   if (msg.includes('not allowed') || msg.includes('unauthorized') || msg.includes('forbidden')) {
-    return '발신 권한이 없습니다. 발신 도메인 검증(Brevo) 후 이용 가능합니다.'
+    return '발신 권한이 없습니다. 발신 도메인 검증(Resend) 후 이용 가능합니다.'
   }
   if (msg.includes('invalid') && msg.includes('email')) {
     return '수신 이메일 주소가 올바르지 않습니다.'
@@ -83,8 +83,8 @@ interface BookmarkJoinRow {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.BREVO_FROM_EMAIL) {
-      console.warn('[send-bookmarks] BREVO_FROM_EMAIL 미설정 — Brevo 발신 도메인 인증 후 설정 필요')
+    if (!process.env.RESEND_FROM_EMAIL) {
+      console.warn('[send-bookmarks] RESEND_FROM_EMAIL 미설정 — Resend 발신 도메인 인증 후 설정 필요')
     }
 
     // ── 1. 인증 ──────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
 
     // ── 5. 이메일 항목 빌드 + PDF 첨부 준비 ──────────────────────────────
     const items: BookmarkEmailItem[] = []
-    const attachments: BrevoAttachment[] = []
+    const attachments: ResendAttachment[] = []
     let totalAttachmentSize = 0
 
     const siteBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://insight-out-app.vercel.app'
@@ -282,22 +282,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '발송할 콘텐츠가 없습니다.' }, { status: 400 })
     }
 
-    // ── 6. Brevo 발송 ──────────────────────────────────────────────────────
+    // ── 6. Resend 발송 ─────────────────────────────────────────────────────
     const html = buildBookmarkEmailHtml({
       recipientName: userProfile?.name ?? '사용자',
       items,
     })
 
     try {
-      await sendBrevoEmail({
+      await sendResendEmail({
         to: recipientList,
         subject: `[Insight Out] 북마크 — ${items.length}건의 인사이트`,
         html,
         attachments: attachments.length > 0 ? attachments : undefined,
       })
     } catch (err) {
-      const norm = normalizeBrevoError(err)
-      console.error('[send-bookmarks] Brevo 발송 실패 | name=%s | message=%s', norm.name, norm.message)
+      const norm = normalizeResendError(err)
+      console.error('[send-bookmarks] Resend 발송 실패 | name=%s | message=%s', norm.name, norm.message)
       return NextResponse.json({ error: categorizeSendError(norm) }, { status: 500 })
     }
 
