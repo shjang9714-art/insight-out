@@ -8,14 +8,18 @@ export interface MajorCompanyCard {
   card: InsightCard
   hashtags: string[]
   isGold: boolean
+  /** 선택 주 카드가 없어 이전 주 카드로 대체한 경우 true */
+  isStale: boolean
+  /** isStale일 때 대체 카드의 주간 시작일 */
+  staleWeekStart: string | null
 }
 
 export interface MajorGroupBucket {
   key: string
   label: string
-  /** 이슈 중요도(computeImportance) desc → 최신순. 전체 회사(카드 있는 곳만). */
+  /** 관심 기업 → 이슈 중요도(computeImportance) → 최신순. */
   companies: MajorCompanyCard[]
-  /** 사용자가 이 그룹에서 직접 고른 회사명(원본 표기) — 없으면 대표는 중요도 top5 기본 */
+  /** 사용자가 이 그룹에서 직접 고른 회사명(원본 표기) */
   userPicked: string[]
 }
 
@@ -34,6 +38,8 @@ export interface MajorCompaniesData {
   availableWeeks: MajorCompanyWeek[]
   /** 요청 주가 가용하지 않으면 최신 가용 주로 폴백 */
   selectedWeek: string | null
+  /** curated 기업과 매칭된 사용자 관심 기업 수 */
+  userPickedCount: number
 }
 
 interface CuratedGroupRow { key: string; label: string; sort_order: number }
@@ -58,12 +64,12 @@ function isWeeklyPeriod(periodStart: string, periodEnd: string): boolean {
 
 /**
  * 주요 기업 계층 데이터(255) — curated_groups(kind='watchlist')·curated_companies(253) +
- * 회사별 최신 insight_cards(scope='company', topic=curated name) 조인.
+ * 회사별 선택 주 insight_cards를 조인하고, 없으면 이전 주 최신 카드로 보충.
  * 253/254 미적용 시 curatedApplied=false로 graceful(빈 화면 안내는 호출부).
  */
 export async function getMajorCompaniesData(
   supabase: SupabaseClient,
-  opts: { userId?: string; weekStart?: string; includeEmptyGroups?: boolean } = {},
+  opts: { userId?: string; weekStart?: string; includeEmptyGroups?: boolean; watchlistOnly?: boolean } = {},
 ): Promise<MajorCompaniesData> {
   const [groupsRes, companiesRes] = await Promise.all([
     supabase
@@ -80,17 +86,17 @@ export async function getMajorCompaniesData(
   ])
 
   if (groupsRes.error?.code === '42P01' || companiesRes.error?.code === '42P01') {
-    return { groups: [], curatedApplied: false, loadError: false, availableWeeks: [], selectedWeek: null }
+    return { groups: [], curatedApplied: false, loadError: false, availableWeeks: [], selectedWeek: null, userPickedCount: 0 }
   }
   if (groupsRes.error || companiesRes.error) {
     console.error('[major-companies] curated 조회 실패:', groupsRes.error?.message ?? companiesRes.error?.message)
-    return { groups: [], curatedApplied: true, loadError: true, availableWeeks: [], selectedWeek: null }
+    return { groups: [], curatedApplied: true, loadError: true, availableWeeks: [], selectedWeek: null, userPickedCount: 0 }
   }
 
   const curatedGroups = (groupsRes.data ?? []) as CuratedGroupRow[]
   const curatedCompanies = (companiesRes.data ?? []) as CuratedCompanyRow[]
   if (curatedGroups.length === 0 || curatedCompanies.length === 0) {
-    return { groups: [], curatedApplied: true, loadError: false, availableWeeks: [], selectedWeek: null }
+    return { groups: [], curatedApplied: true, loadError: false, availableWeeks: [], selectedWeek: null, userPickedCount: 0 }
   }
 
   let loadError = false
@@ -159,6 +165,36 @@ export async function getMajorCompaniesData(
     if (!cardByCompanyLower.has(key)) cardByCompanyLower.set(key, card) // 이미 최신순 정렬됨 → 첫 등장만
   }
 
+  // 선택 주에 카드가 없는 회사는 이전 주간 카드 중 회사별 최신 1건을 단일 조회로 보충한다.
+  const staleWeekByCompanyLower = new Map<string, string>()
+  const fallbackTopics = curatedCompanies
+    .filter(company => !cardByCompanyLower.has(company.name.toLowerCase()))
+    .map(company => company.name)
+  if (selectedWeek && fallbackTopics.length > 0) {
+    const fallbackRes = await supabase
+      .from('insight_cards')
+      .select('id, period_start, period_end, scope, topic, headline, card_headline, implication, source_content_ids, citations, generated_at, status')
+      .eq('status', 'published')
+      .eq('scope', 'company')
+      .in('topic', fallbackTopics)
+      .lt('period_start', selectedWeek)
+      .order('period_start', { ascending: false })
+      .order('generated_at', { ascending: false })
+
+    if (fallbackRes.error) {
+      loadError = true
+      console.error('[major-companies] 이전 주 카드 조회 실패:', fallbackRes.error.message)
+    } else {
+      for (const card of (fallbackRes.data ?? []) as InsightCard[]) {
+        const key = card.topic?.toLowerCase()
+        if (!key || !companyNameLower.has(key) || cardByCompanyLower.has(key)) continue
+        if (!isWeeklyPeriod(card.period_start, card.period_end)) continue
+        cardByCompanyLower.set(key, card) // period_start 최신순 → 회사별 첫 카드만
+        staleWeekByCompanyLower.set(key, card.period_start)
+      }
+    }
+  }
+
   // 해시태그 — 카드 근거 기사의 matched_groups 집계(최대 4)
   const allSourceIds = new Set<string>()
   for (const card of cardByCompanyLower.values()) {
@@ -190,10 +226,13 @@ export async function getMajorCompaniesData(
   // 사용자 선택(225 user_watchlist 재사용) — curated 이름과 매칭되는 것만 "대표 선택"으로 인정
   const userPickedLower = new Set<string>()
   if (opts.userId) {
-    const { data: watchRows } = await supabase
+    const { data: watchRows, error: watchlistError } = await supabase
       .from('user_watchlist')
       .select('company')
       .eq('user_id', opts.userId)
+    if (watchlistError) {
+      console.error('[major-companies] 관심 기업 조회 실패:', watchlistError.message)
+    }
     for (const row of (watchRows ?? []) as { company: string }[]) {
       const lower = row.company.toLowerCase()
       if (companyNameLower.has(lower)) userPickedLower.add(lower)
@@ -203,10 +242,12 @@ export async function getMajorCompaniesData(
   // 그룹별 버킷팅 — 회사는 groups[]에 속한 모든 watchlist 그룹에 나타날 수 있음
   const byGroup = new Map<string, MajorCompanyCard[]>()
   const pickedByGroup = new Map<string, string[]>()
+  const shouldFilterToWatchlist = Boolean(opts.userId && opts.watchlistOnly && userPickedLower.size > 0)
   for (const company of curatedCompanies) {
     const key = company.name.toLowerCase()
+    if (shouldFilterToWatchlist && !userPickedLower.has(key)) continue
     const card = cardByCompanyLower.get(key)
-    if (!card) continue // 카드 있는 회사만 노출(255 §2-1)
+    if (!card) continue
 
     const importance = computeImportance(card)
     const entry: MajorCompanyCard = {
@@ -214,6 +255,8 @@ export async function getMajorCompaniesData(
       card,
       hashtags: hashtagsFor(card),
       isGold: importance === 'high',
+      isStale: staleWeekByCompanyLower.has(key),
+      staleWeekStart: staleWeekByCompanyLower.get(key) ?? null,
     }
 
     for (const groupKey of company.groups ?? []) {
@@ -231,9 +274,12 @@ export async function getMajorCompaniesData(
   for (const g of curatedGroups) {
     const companies = byGroup.get(g.key) ?? []
     if (companies.length === 0 && !opts.includeEmptyGroups) continue
-    // 이슈 중요도(high>mid>low) desc → 최신(period_start) desc
+    // 관심 기업 → 이슈 중요도(high>mid>low) → 최신(period_start)
     const rank = { high: 0, mid: 1, low: 2 } as const
     companies.sort((a, b) => {
+      const pickedRank = Number(!userPickedLower.has(a.company.toLowerCase()))
+        - Number(!userPickedLower.has(b.company.toLowerCase()))
+      if (pickedRank !== 0) return pickedRank
       const r = rank[computeImportance(a.card)] - rank[computeImportance(b.card)]
       if (r !== 0) return r
       return b.card.period_start.localeCompare(a.card.period_start)
@@ -246,5 +292,12 @@ export async function getMajorCompaniesData(
     })
   }
 
-  return { groups, curatedApplied: true, loadError, availableWeeks, selectedWeek }
+  return {
+    groups,
+    curatedApplied: true,
+    loadError,
+    availableWeeks,
+    selectedWeek,
+    userPickedCount: userPickedLower.size,
+  }
 }

@@ -7,6 +7,7 @@ import PageContainer from '@/components/PageContainer'
 import MajorCompanyGroups from '@/components/entities/MajorCompanyGroups'
 import MajorCompanyWeeklyTimeline from '@/components/entities/MajorCompanyWeeklyTimeline'
 import { getMajorCompaniesData } from '@/lib/entities/major-companies'
+import ListErrorState from '@/components/ui/ListErrorState'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,11 +46,18 @@ export default async function MajorCompanyGroupPage({ params, searchParams }: Pa
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const { groups, availableWeeks, selectedWeek } = await getMajorCompaniesData(supabase, {
+  const { groups, availableWeeks, selectedWeek, loadError } = await getMajorCompaniesData(supabase, {
     userId: user?.id,
     weekStart: requestedWeek,
     includeEmptyGroups: true,
   })
+  if (loadError) {
+    return (
+      <PageContainer>
+        <ListErrorState />
+      </PageContainer>
+    )
+  }
   const group = groups.find(g => g.key === groupKey)
   if (!group) notFound()
 
