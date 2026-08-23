@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
+import { NAV_SECTIONS } from '@/lib/nav/taxonomy'
 import { Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
@@ -592,7 +593,11 @@ export default function ContentsBoard({
   }
 
   // ── 페이지 제목 ──────────────────────────────────────────────────────────────
-  const pageTitle = title ?? (category
+  // 자료실 L2 탭 라벨을 단일 출처로 삼아 섹션 제목을 맞춘다(탭="영상"인데 제목="유튜브"로
+  // 어긋나던 문제) — CONTENT_CATEGORY_LABEL은 카드 등 다른 곳에서도 쓰여 전역 수정하면
+  // 부작용이 있으니 여기서만 taxonomy 라벨로 대체한다. title prop이 있으면 그게 우선.
+  const activeL2Label = NAV_SECTIONS['/dashboard/contents'].tabs.find((tab) => tab.value === category)?.label
+  const pageTitle = title ?? activeL2Label ?? (category
     ? (CONTENT_CATEGORY_LABEL[category] ?? category)
     : '전체 콘텐츠')
 

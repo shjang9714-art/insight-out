@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
+import PageHeader from '@/components/PageHeader'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import AiReportBoardCard from '@/components/reports/AiReportBoardCard'
 import type { ReportViewId } from '@/components/reports/ReportTabs'
@@ -120,9 +121,17 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         </>
       )}
       {view === 'external' && (
-        <Suspense fallback={<ReportGridSkeleton />}>
-          <ContentsBoard fixedCategory="리서치" title="전문기관 보고서" />
-        </Suspense>
+        <>
+          {/* 자료실 L1 하위 탭(전문기관 보고서)이라 /dashboard/contents/page.tsx와
+              동일한 자료실 헤더를 맨 위에 붙인다(지시서: 자료실 화면 계위 통일). */}
+          <PageHeader
+            title="자료실"
+            description="수집한 뉴스·리포트·영상 원문을 카테고리별로 모아 둔 자료 아카이브입니다."
+          />
+          <Suspense fallback={<ReportGridSkeleton />}>
+            <ContentsBoard fixedCategory="리서치" title="전문기관 보고서" />
+          </Suspense>
+        </>
       )}
     </PageContainer>
   )

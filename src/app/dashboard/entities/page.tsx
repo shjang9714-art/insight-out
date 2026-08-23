@@ -290,8 +290,15 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   return (
     <PageContainer>
-      {/* 공통 페이지 헤더 — 자료실로 이관된 기업 공시(documents) 뷰는 제외 */}
-      {view !== 'documents' && (
+      {/* 공통 페이지 헤더 — 기업 공시(documents)는 자료실 L1 소속이라 그쪽 헤더를 쓴다.
+          /dashboard/contents/page.tsx와 완전히 동일한 title/description(지시서: 자료실
+          화면 계위 통일 — 어떤 탭을 눌러도 "자료실" 헤더가 보여야 한다). */}
+      {view === 'documents' ? (
+        <PageHeader
+          title="자료실"
+          description="수집한 뉴스·리포트·영상 원문을 카테고리별로 모아 둔 자료 아카이브입니다."
+        />
+      ) : (
         <PageHeader
           title="기업동향"
           description="주요 경쟁사·파트너 기업의 주간 동향을 자사 관점 시사점과 함께 정리한 기업 아카이브입니다."
