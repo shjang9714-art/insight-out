@@ -4,8 +4,7 @@ interface Props {
 }
 
 /**
- * 5개 탭(핵심 인사이트·키워드 분석·기업동향·관계지도·자료실) 공통 페이지 헤더.
- * 내비 바로 아래, 페이지 최상단 첫 요소로 둔다.
+ * 각 화면의 제목과 설명을 본문 맨 위에 표시하는 공통 페이지 헤더.
  */
 export default function PageHeader({ title, description }: Props) {
   return (

@@ -3,37 +3,29 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { resolveActiveNav } from '@/lib/nav/active'
-import { buildL2Href, NAV_SECTIONS } from '@/lib/nav/taxonomy'
+import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
 
-/** 자료실 L2(자료종류) 탭 — 이제 header가 아니라 각 페이지의 콘텐츠 영역
- *  안쪽(제목/건수 아래, 목록 위)에서 렌더한다(§지시서 2026-08-12). 자료실
- *  본문(/dashboard/contents)뿐 아니라 aliasing으로 자료실 L1에 편입된
- *  리포트(/dashboard/reports)·공시자료(/dashboard/entities?view=documents)
- *  목록에서도 각 페이지가 이 컴포넌트를 개별적으로 임베드해 동일하게 노출한다
- *  — 한 곳에만 두면 나머지 페이지에서 탭이 사라진다.
- *  스타일은 상단 메인 네비(NAV_TABS)와 같은 계열: 알약/밑줄이 아니라 활성 탭 앞
- *  점 + 굵게, 비활성은 흐린 텍스트. */
+/** 헤더의 L2 탭. DashboardHeader가 활성 또는 호버 중인 L1 href를 넘기면,
+ *  중앙 정의와 기존 판정 함수만 사용해 해당 섹션을 렌더한다. */
 interface Props {
-  /** 기본은 mb-5. 다른 요소(예: ViewToggle)와 한 줄에 나란히 놓일 때는 바깥 wrapper가
-   *  간격을 담당하므로 호출부에서 className="mb-0"으로 덮어쓴다. */
   className?: string
+  l1Href: string
 }
 
-export default function ContentsL2Tabs({ className }: Props) {
+export default function ContentsL2Tabs({ className, l1Href }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { l1Href, l2Id } = resolveActiveNav(pathname, searchParams)
-  const section = l1Href ? NAV_SECTIONS[l1Href] : null
-  if (!section || !l2Id || section.tabs.length === 0) return null
+  const l2 = getL2ForSection(l1Href, pathname, searchParams)
+  if (!l2 || l2.section.tabs.length === 0) return null
+  const { section, activeId } = l2
 
   return (
     <nav
       className={cn('mb-5 flex items-center gap-6 overflow-x-auto tracking-[-0.01em] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', className)}
-      aria-label="자료 종류"
+      aria-label="하위 메뉴"
     >
       {section.tabs.map((tab) => {
-        const active = tab.id === l2Id
+        const active = tab.id === activeId
         return (
           // prefetch-ok: L2 탭 — 개수 고정, 이동 잦음
           <Link

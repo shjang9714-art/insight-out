@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
 import PageHeader from '@/components/PageHeader'
-import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
+import { L2_PAGE_META } from '@/lib/nav/taxonomy'
 import WatchlistTabHeader from '@/components/watchlist/WatchlistTabHeader'
 import { getCompetitorNewsData } from '@/lib/entities/competitor-news'
 import CompetitorNewsGroups from '@/components/entities/CompetitorNewsGroups'
@@ -306,13 +306,6 @@ async function DocumentsView({ entityId, docType }: { entityId?: string; docType
 
   return (
     <div>
-      {/* 자료실 L2(자료종류) 탭 — 볼드 섹션 제목("기업 공시")·"총 N건"은 뉴스 화면
-          기준(지시서)으로 삭제하고, 이 화면은 자료실 L1의 "기업 공시" 탭으로 이관된
-          목록이라 다른 두 목록(콘텐츠·리포트)과 동일하게 맨 위에 탭만 노출한다. */}
-      <Suspense fallback={null}>
-        <ContentsL2Tabs />
-      </Suspense>
-
       <CompanyDocumentFilterBar entityOptions={entityOptions} />
 
       {docs.length === 0 ? (
@@ -344,14 +337,9 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   return (
     <PageContainer>
-      {/* 공통 페이지 헤더 — 기업 공시(documents)는 자료실 L1 소속이라 그쪽 헤더를 쓴다.
-          /dashboard/contents/page.tsx와 완전히 동일한 title/description(지시서: 자료실
-          화면 계위 통일 — 어떤 탭을 눌러도 "자료실" 헤더가 보여야 한다). */}
+      {/* 기업 공시는 자료실 L2 메타를, L2가 없는 기업동향은 기존 헤더를 쓴다. */}
       {view === 'documents' ? (
-        <PageHeader
-          title="자료실"
-          description="수집한 뉴스·리포트·영상 원문을 카테고리별로 모아 둔 자료 아카이브입니다."
-        />
+        <PageHeader {...L2_PAGE_META.disclosure} />
       ) : (
         <PageHeader
           title="기업동향"

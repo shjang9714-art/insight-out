@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
@@ -25,7 +25,6 @@ import InsightCardsSectionClient, {
 import IssueBoardClient from '@/components/issues/IssueBoardClient'
 import EntitiesPageClient from '@/components/entities/EntitiesPageClient'
 import PageHeader from '@/components/PageHeader'
-import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import type { IssueCard } from '@/lib/issues/activity'
 import { Building2, ChartNoAxesColumnIncreasing, Cpu, Landmark, Sparkles, TrendingUp } from 'lucide-react'
 import KeywordSparkline from '@/components/analysis/KeywordSparkline'
@@ -287,10 +286,6 @@ export default function AiInsightBoard({
     <>
       {/* 공통 페이지 헤더(주간 인사이트·키워드 분석·관계지도) */}
       {headerMeta && <PageHeader title={headerMeta.title} description={headerMeta.description} />}
-
-      <Suspense fallback={null}>
-        <ContentsL2Tabs />
-      </Suspense>
 
       <div className="space-y-6">
       {/* 핵심 인사이트 — 주간 daily_insights 목록(§2, 지시서 20260715 주간 복귀) */}

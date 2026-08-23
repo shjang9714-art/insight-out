@@ -6,7 +6,7 @@ import { createServerClient } from '@supabase/ssr'
 import { FileText } from 'lucide-react'
 import PageContainer from '@/components/PageContainer'
 import PageHeader from '@/components/PageHeader'
-import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
+import { L2_PAGE_META } from '@/lib/nav/taxonomy'
 import AiReportBoardCard from '@/components/reports/AiReportBoardCard'
 import type { ReportViewId } from '@/components/reports/ReportTabs'
 import ContentsBoard from '@/components/contents/ContentsBoard'
@@ -98,14 +98,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     <PageContainer>
       {view === 'ai' && (
         <>
-          {/* 볼드 섹션 제목("AI 리포트")·설명 문구는 뉴스 화면 기준(지시서)으로 삭제 —
-              ContentsL2Tabs가 이 뷰(인사이트 L1)에서도 맨 위에 바로 온다.
-              view='external'은 ContentsBoard가 자체적으로 렌더하므로 여기서는
-              view='ai'(자체 렌더, ContentsBoard 미사용)에서만 별도로 붙인다 —
-              둘 다 붙이면 external에서 중복 렌더된다. */}
-          <Suspense fallback={null}>
-            <ContentsL2Tabs />
-          </Suspense>
+          <PageHeader {...L2_PAGE_META['insight-report']} />
           <Suspense fallback={<ReportGridSkeleton />}>
             <AiReportBoard />
           </Suspense>
@@ -113,12 +106,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       )}
       {view === 'external' && (
         <>
-          {/* 자료실 L1 하위 탭(전문기관 보고서)이라 /dashboard/contents/page.tsx와
-              동일한 자료실 헤더를 맨 위에 붙인다(지시서: 자료실 화면 계위 통일). */}
-          <PageHeader
-            title="자료실"
-            description="수집한 뉴스·리포트·영상 원문을 카테고리별로 모아 둔 자료 아카이브입니다."
-          />
           <Suspense fallback={<ReportGridSkeleton />}>
             <ContentsBoard fixedCategory="리서치" />
           </Suspense>
