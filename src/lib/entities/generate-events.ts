@@ -160,7 +160,7 @@ export async function generateEntityEvents(
       .from('entities')
       .select('id, canonical_name')
       .eq('id', entityId)
-      .single()
+      .maybeSingle()
     if (entityError) throw new Error(`엔티티 조회 실패: ${entityError.message}`)
     if (!entityData) return { events: [], errorReason: '엔티티를 찾을 수 없음' }
     const entity = entityData as { id: string; canonical_name: string }
