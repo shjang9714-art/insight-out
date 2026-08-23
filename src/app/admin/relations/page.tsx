@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import type { EntityType } from '@/lib/types'
+import { ENTITY_TYPES, type EntityType } from '@/lib/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listEntities, getEntityRelations, getRelationEvidence } from '@/lib/admin/relations'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
@@ -11,8 +11,6 @@ export const metadata: Metadata = {
   title: '관계 그래프 | 어드민 | Insight Out',
   description: '엔티티 동시출현 관계·근거 콘텐츠를 탐색합니다.',
 }
-
-const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'policy', 'industry']
 
 function one(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value

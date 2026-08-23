@@ -90,6 +90,7 @@ const ENTITY_TYPE_COLOR: Record<EntityType, string> = {
   person:   'bg-emerald-50 text-emerald-700',
   policy:   'bg-amber-50 text-amber-700',
   industry: 'bg-muted text-muted-foreground',
+  org:      'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300',
 }
 
 // ─── 신호 유형 색상 ───────────────────────────────────────────────────────────

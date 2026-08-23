@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { GitMerge, Loader2, Pencil, Plus, Sparkles, Tag, Trash2, X } from 'lucide-react'
-import { type EntityType, ENTITY_TYPE_LABEL } from '@/lib/types'
+import { type EntityType, ENTITY_TYPES, ENTITY_TYPE_LABEL } from '@/lib/types'
 import type { NormalizationGroup } from '@/lib/entities/suggest-normalization'
 import type { MergeJob } from '@/lib/admin/merge-progress'
 import { Progress } from '@/components/ui/progress'
@@ -32,7 +32,6 @@ import { mergeEntities } from '@/app/admin/entities/actions'
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────
 
-const ENTITY_TYPES: EntityType[] = ['company', 'tech', 'product', 'person', 'policy', 'industry']
 /** 경쟁사(동향, 224) 그룹 — 자유 텍스트 허용, 이 3개는 추천값(datalist)만 */
 const COMPETITOR_GROUP_SUGGESTIONS = ['통신', '클라우드·플랫폼', '빅테크']
 
