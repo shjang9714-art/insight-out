@@ -5,9 +5,7 @@ import { generateCardInsights } from '@/lib/newsletter/card-insights'
 import { getKstWeekMondayString } from '@/lib/date'
 import {
   getKnowledgeReportTeasers,
-  getCompanyTrendLines,
   type KnowledgeReportTeaser,
-  type CompanyTrendLine,
 } from '@/lib/newsletter/teasers'
 import { buildTopTeaserPool, getWeeklyExposure, pickTopTeaser, type TopTeaser } from '@/lib/newsletter/top-teaser'
 import {
@@ -44,7 +42,6 @@ export interface PreparedNewsletterIssue {
   /** 최상단 티저 — 그 주(week_of) 흐름/핵심 인사이트 풀에서 로테이션 선택(§규칙1). 풀 소진 시 null. */
   topTeaser: TopTeaser | null
   knowledgeReports: KnowledgeReportTeaser[]
-  companyTrends: CompanyTrendLine[]
 }
 
 interface RawContentRow {
@@ -91,7 +88,14 @@ interface OverlapFilter {
 async function queryTopContents(supabase: SupabaseClient, overlap: OverlapFilter | null, limit: number): Promise<RawContentRow[]> {
   if (overlap && overlap.values.length === 0) return []
 
-  let query = supabase.from('contents').select(CONTENT_SELECT).eq('status', 'published').is('deleted_at', null)
+  // 요약 백필 큐 지연으로 summary_ko 가 비어있는 기사가 다수라, 뉴스레터 카드는
+  // 요약이 준비된 기사만 후보로 삼는다(창작 방지 — 요약 없이 인사이트를 지어내지 않음).
+  let query = supabase
+    .from('contents')
+    .select(CONTENT_SELECT)
+    .eq('status', 'published')
+    .is('deleted_at', null)
+    .not('summary_ko', 'is', null)
   if (overlap) query = query.overlaps(overlap.column, overlap.values)
 
   const { data, error } = await query
@@ -239,10 +243,7 @@ export async function prepareNewsletterIssue(
   const relatedGroups = Array.from(new Set(selected.flatMap((r) => r.matched_groups ?? [])))
 
   // 뉴스 카드 선정으로 usedIds 가 더 채워졌으니, 지식보고서 배제 집합은 usedIds 최종본을 사용.
-  const [knowledgeReports, companyTrends] = await Promise.all([
-    getKnowledgeReportTeasers(supabase, baseUrl, relatedGroups, usedIds),
-    getCompanyTrendLines(supabase),
-  ])
+  const knowledgeReports = await getKnowledgeReportTeasers(supabase, baseUrl, relatedGroups, usedIds)
 
-  return { newsGroups, topTeaser, knowledgeReports, companyTrends }
+  return { newsGroups, topTeaser, knowledgeReports }
 }

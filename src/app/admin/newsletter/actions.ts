@@ -118,7 +118,6 @@ export async function getPreviewHtml() {
     })),
     topTeaser: toTemplateTopTeaser(prepared.topTeaser),
     knowledgeReports: prepared.knowledgeReports,
-    companyTrends: prepared.companyTrends,
     unsubscribeUrl: `${baseUrl}/api/newsletter/unsubscribe?token=PREVIEW`,
   })
 
