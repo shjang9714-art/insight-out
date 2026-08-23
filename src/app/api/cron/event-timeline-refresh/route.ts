@@ -13,6 +13,7 @@ const DRAIN_LIMIT = 15
 
 interface EventTimelineRefreshResult {
   ok: boolean
+  pool: number
   timelines: number
   errors: string[]
 }
@@ -20,18 +21,20 @@ interface EventTimelineRefreshResult {
 /** 사건 타임라인 3일 주기 자동 갱신 (지시서 C). stalest(generated_at 오래된 순) 먼저. */
 async function runEventTimelineRefresh(admin: SupabaseClient): Promise<EventTimelineRefreshResult> {
   const deadline = Date.now() + 250_000
-  const result: EventTimelineRefreshResult = { ok: true, timelines: 0, errors: [] }
+  const result: EventTimelineRefreshResult = { ok: true, pool: 0, timelines: 0, errors: [] }
 
   try {
-    // 대상 엔티티: 경쟁사 + mention 상위
-    const { data: entities } = await admin
-      .from('entities')
-      .select('id, canonical_name, is_competitor, mention_count')
-      .or('is_competitor.eq.true,mention_count.gte.3')
-      .order('mention_count', { ascending: false })
-      .limit(60)
+    // 대상 엔티티: 경쟁사 우선 + 실제 링크 수 기준
+    const { data: targets, error } = await admin.rpc('entity_timeline_targets', { p_limit: 60 })
+    if (error) throw new Error(`타임라인 대상 조회 실패: ${error.message}`)
 
-    const targetEntities = (entities ?? []) as { id: string; canonical_name: string; is_competitor: boolean; mention_count: number }[]
+    const targetEntities = (targets ?? []) as {
+      id: string
+      canonical_name: string
+      is_competitor: boolean
+      link_count: number
+    }[]
+    result.pool = targetEntities.length
     if (targetEntities.length === 0) return result
 
     const targetIds = targetEntities.map(e => e.id)

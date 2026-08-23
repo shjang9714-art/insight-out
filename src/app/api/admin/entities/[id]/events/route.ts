@@ -68,7 +68,11 @@ export async function POST(
 
     return NextResponse.json({ count: events.length })
   } catch (err) {
-    console.error('[POST /api/admin/entities/[id]/events] 오류:', err instanceof Error ? err.message : String(err))
-    return NextResponse.json({ error: '서버 오류' }, { status: 500 })
+    const errorReason = err instanceof Error ? err.message : String(err)
+    console.error('[POST /api/admin/entities/[id]/events] 오류:', errorReason)
+    return NextResponse.json(
+      { error: `사건 타임라인 생성 실패: ${errorReason}` },
+      { status: 500 }
+    )
   }
 }
