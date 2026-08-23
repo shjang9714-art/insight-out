@@ -270,6 +270,14 @@ export async function llmCompleteDetailed(
             )
           } else {
             console.error(`[LLM] task=${task} provider=${route.provider} 호출 실패:`, errorReason)
+            await updateRoutingModelHealth(
+              admin,
+              task,
+              route.priority,
+              route.provider,
+              route.model_id,
+              errorReason
+            )
           }
           // permanent(모델 문제)면 쿨다운을 걸지 않는다 — 다음 호출에도 같은 모델이면 계속 실패할 뿐, 시간이 지나도 안 풀린다.
           if (hardLimit) {

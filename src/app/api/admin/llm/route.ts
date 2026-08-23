@@ -22,8 +22,10 @@ export async function GET() {
     const admin = gate.admin
     const period = getKstPeriod()
 
-    const [usageRes, settingsRes, routingRes, modelsRes] = await Promise.all([
-      admin.from('llm_usage').select('provider, tokens, calls').eq('period', period),
+    const [usageRes, lifetimeUsageRes, settingsRes, routingRes, modelsRes] = await Promise.all([
+      // tokens·calls 는 이번 달 집계이고, 마지막 성공은 월 경계 오탐을 막기 위해 전체 기간에서 구한다.
+      admin.from('llm_usage').select('provider, tokens, calls, updated_at').eq('period', period),
+      admin.from('llm_usage').select('provider, updated_at'),
       admin.from('llm_settings').select('provider, enabled, monthly_token_limit'),
       admin
         .from('llm_task_routing')
@@ -36,6 +38,12 @@ export async function GET() {
     const usageMap = new Map(
       (usageRes.data ?? []).map(r => [r.provider as string, r])
     )
+    const lastSuccessMap = new Map<string, string>()
+    for (const row of lifetimeUsageRes.data ?? []) {
+      if (!row.updated_at) continue
+      const current = lastSuccessMap.get(row.provider)
+      if (!current || row.updated_at > current) lastSuccessMap.set(row.provider, row.updated_at)
+    }
     const settingsMap = new Map(
       (settingsRes.data ?? []).map(r => [r.provider as string, r])
     )
@@ -53,6 +61,7 @@ export async function GET() {
         keyCount,
         tokens_used: u?.tokens ?? 0,
         calls_used: u?.calls ?? 0,
+        last_success_at: lastSuccessMap.get(p.name) ?? null,
       }
     })
 
