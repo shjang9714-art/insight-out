@@ -160,7 +160,6 @@ export async function runNewsletterDispatch({
       })),
       topTeaser: toTemplateTopTeaser(prepared.topTeaser),
       knowledgeReports: prepared.knowledgeReports,
-      companyTrends: prepared.companyTrends,
       unsubscribeUrl,
     })
 
