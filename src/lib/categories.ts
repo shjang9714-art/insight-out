@@ -47,7 +47,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
   {
     id: 'web-insight',
     Icon: Globe,
-    label: '기술 Blog',
+    label: '기술 블로그',
     category: '웹인사이트',
     dbCategories: ['웹인사이트', '오피니언'],
     iconClass: 'text-emerald-600 dark:text-emerald-400',
@@ -57,7 +57,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
   {
     id: 'youtube',
     Icon: Play,
-    label: '유튜브',
+    label: '영상',
     category: '유튜브',
     dbCategories: ['유튜브'],
     href: '/dashboard/youtube',

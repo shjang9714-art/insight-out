@@ -5,8 +5,8 @@ import type { ContentCategory } from '@/lib/types'
 // 카테고리 하나로만 보인다.
 //
 // 'report' 단일 버킷(리포트·가트너·KRG·AI보고서·지식보고서)은 통합검색 개편(2026-08-09)에서
-// 자료실 L2 탭 라벨(lib/nav/taxonomy.tsx NAV_SECTIONS)과 맞추기 위해 'ai-report'(AI 리포트)·
-// 'consulting-report'(컨설팅 리포트) 둘로 쪼갰다. 'disclosure'(공시자료 = 기업자료)는 이전엔
+// 자료실 L2 분류와 맞추기 위해 'ai-report'(AI 리포트)·
+// 'consulting-report'(전문기관 보고서) 둘로 쪼갰다. 'disclosure'(기업 공시 = 기업자료)는 이전엔
 // 어느 SEARCH_FILTER_DEFS에도 안 걸려 있어 검색에서 아예 조회되지 않던 카테고리라 이번에
 // 새로 추가했다. DB enum 값(ContentCategory) 자체는 전혀 안 바뀜 — 검색 결과를 어느
 // 버킷/라벨로 묶어 보여줄지만 바뀐 것.
@@ -38,12 +38,12 @@ export const SEARCH_FILTER_DEFS: SearchFilterDef[] = [
   { key: 'keyword', label: '키워드', source: 'keywords', badgeClass: 'bg-lime-50 text-lime-700 dark:bg-lime-950/40 dark:text-lime-300' },
   { key: 'company', label: '기업동향', source: 'entities', badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
   { key: 'news', label: '뉴스', source: 'content', categories: ['뉴스'], badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' },
-  { key: 'youtube', label: '유튜브', source: 'content', categories: ['유튜브'], badgeClass: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' },
-  // 라벨 '기술 Blog'는 lib/nav/taxonomy.tsx CATEGORY_DEFS의 'web-insight' 라벨과 동일(재사용)
-  { key: 'web-insight', label: '기술 Blog', source: 'content', categories: ['웹인사이트', '오피니언'], badgeClass: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300' },
+  { key: 'youtube', label: '영상', source: 'content', categories: ['유튜브'], badgeClass: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' },
+  // 사용자 노출 라벨은 NAV_SECTIONS와 같은 문자열로 맞추되, 정의는 각 목록에서 별도로 관리한다.
+  { key: 'web-insight', label: '기술 블로그', source: 'content', categories: ['웹인사이트', '오피니언'], badgeClass: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300' },
   { key: 'ai-report', label: 'AI 리포트', source: 'content', categories: ['AI보고서', '지식보고서'], badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
-  { key: 'consulting-report', label: '컨설팅 리포트', source: 'content', categories: ['리포트', '가트너', 'KRG'], badgeClass: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' },
-  { key: 'disclosure', label: '공시자료', source: 'content', categories: ['기업자료'], badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300' },
+  { key: 'consulting-report', label: '전문기관 보고서', source: 'content', categories: ['리포트', '가트너', 'KRG'], badgeClass: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' },
+  { key: 'disclosure', label: '기업 공시', source: 'content', categories: ['기업자료'], badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300' },
 ]
 
 export function isSearchFilterKey(v: string | null | undefined): v is SearchFilterKey {
@@ -59,7 +59,7 @@ export function searchFilterDef(key: SearchFilterKey): SearchFilterDef {
 }
 
 /** 검색 결과 섹션 표시 순서(고정) — 핵심인사이트 → 키워드 → 기업동향 → 뉴스 →
- *  유튜브 → 기술 Blog → AI 리포트 → 컨설팅 리포트 → 공시자료. 앱 상단 탭(카테고리 계위)에
+ *  영상 → 기술 블로그 → AI 리포트 → 전문기관 보고서 → 기업 공시. 앱 상단 탭(카테고리 계위)에
  *  없는 '이슈 브리핑'은 검색 버킷에서 제외했다(위 파일 상단 주석 참고). */
 export const SEARCH_SECTION_ORDER: SearchFilterKey[] = [
   'insight', 'keyword', 'company', 'news', 'youtube', 'web-insight', 'ai-report', 'consulting-report', 'disclosure',

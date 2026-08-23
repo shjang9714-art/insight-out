@@ -3,7 +3,7 @@ import type { ContentCategory } from '@/lib/types'
 import ReportStyleCard from '@/components/reports/ReportStyleCard'
 
 /**
- * 366 — 지식보고서·컨설팅 리포트 카드를 AI 리포트와 같은 시각 언어로 통일.
+ * 366 — 지식보고서·전문기관 보고서 카드를 AI 리포트와 같은 시각 언어로 통일.
  * AiMark(358, AI 산출물 전용)는 여기선 절대 부착하지 않는다 — 워드마크·배지 문구로만 구분.
  */
 
@@ -38,8 +38,8 @@ export default function ContentReportCard({
       coverImageUrl={coverImageUrl}
       coverGradientClassName={isKnowledge ? 'from-violet-700 to-violet-950' : 'from-indigo-700 to-indigo-950'}
       Icon={FileText}
-      wordmark={isKnowledge ? '지식보고서' : '컨설팅 리포트'}
-      badgeLabel={isKnowledge ? '지식보고서' : '컨설팅 리포트'}
+      wordmark={isKnowledge ? '지식보고서' : '전문기관 보고서'}
+      badgeLabel={isKnowledge ? '지식보고서' : '전문기관 보고서'}
       badgeClassName={
         isKnowledge
           ? 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900'
