@@ -88,7 +88,8 @@ export interface AiInsightBoardProps {
 
 // ─── 하위 카테고리 탭 ──────────────────────────────────────────────────────────
 
-// 사용자에게 항상 보이는 하위 카테고리 (요청 순서 고정)
+// 렌더 안 함, VALID_VIEW_IDS 구성용. 사용자에게 항상 보이는 하위 카테고리
+// (요청 순서 고정)는 ContentsL2Tabs가 NAV_SECTIONS를 기준으로 렌더한다.
 const PRIMARY_TABS: { id: AiInsightViewId; label: string }[] = [
   { id: 'brief',   label: '핵심 인사이트' },
   { id: 'keyword', label: '키워드 분석' },
