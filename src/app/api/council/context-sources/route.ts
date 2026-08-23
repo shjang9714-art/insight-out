@@ -76,22 +76,14 @@ async function sourcesFromEntity(
   entityId: string,
   origin: string,
 ): Promise<EmbedSource[]> {
-  const { data: ceData } = await supabase
-    .from('content_entities')
-    .select('content_id')
-    .eq('entity_id', entityId)
-    .limit(200)
-
-  const contentIds = ((ceData ?? []) as { content_id: string }[]).map((r) => r.content_id)
-  if (contentIds.length === 0) return []
-
-  const { data } = await supabase
-    .from('contents')
-    .select('id, title')
-    .in('id', contentIds)
-    .eq('status', 'published')
-    .order('collected_at', { ascending: false })
-    .limit(SOURCE_LIMIT)
+  const { data, error } = await supabase.rpc('entity_recent_contents', {
+    p_entity_id: entityId,
+    p_limit: SOURCE_LIMIT,
+  })
+  if (error) {
+    console.error('[council/context-sources] 엔티티 근거 조회 실패(graceful):', error)
+    return []
+  }
 
   return ((data ?? []) as { id: string; title: string }[])
     .map((r) => ({ title: r.title, url: `${origin}/dashboard/contents/${r.id}` }))

@@ -26,7 +26,6 @@ export interface EvidenceContent {
 const CONTENT_SAMPLE_LIMIT = 500
 const CONNECTED_LIMIT = 20
 const EVIDENCE_LIMIT = 20
-const EVIDENCE_CONTENT_ID_LIMIT = 500
 
 const ENTITY_BRIEF_COLUMNS = 'id, canonical_name, entity_type, is_competitor, mention_count'
 
@@ -145,24 +144,15 @@ export async function getEntityRelations(
 }
 
 export async function getRelationEvidence(admin: SupabaseClient, aId: string, bId: string): Promise<EvidenceContent[]> {
-  const [aRes, bRes] = await Promise.all([
-    admin.from('content_entities').select('content_id').eq('entity_id', aId).limit(EVIDENCE_CONTENT_ID_LIMIT),
-    admin.from('content_entities').select('content_id').eq('entity_id', bId).limit(EVIDENCE_CONTENT_ID_LIMIT),
-  ])
-  if (aRes.error || bRes.error || !aRes.data?.length || !bRes.data?.length) return []
+  const { data, error } = await admin.rpc('entity_pair_evidence', {
+    p_a: aId,
+    p_b: bId,
+    p_limit: EVIDENCE_LIMIT,
+  })
 
-  const bIds = new Set((bRes.data as { content_id: string }[]).map(r => r.content_id))
-  const shared = [...new Set((aRes.data as { content_id: string }[]).map(r => r.content_id))].filter(id => bIds.has(id))
-  if (!shared.length) return []
-
-  const { data, error } = await admin
-    .from('contents')
-    .select('id, title, category, published_at')
-    .in('id', shared)
-    .is('deleted_at', null)
-    .order('published_at', { ascending: false })
-    .limit(EVIDENCE_LIMIT)
-
-  if (error) return []
+  if (error) {
+    console.error('관계 근거 조회에 실패했습니다.', error)
+    return []
+  }
   return (data ?? []) as EvidenceContent[]
 }

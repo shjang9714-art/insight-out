@@ -722,17 +722,17 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       if (hoveredNodeRef.current !== nodeId) return
       const supabase = createClient()
       supabase
-        .from('content_entities')
-        .select('content_id, contents(id, title, collected_at)')
-        .eq('entity_id', nodeId)
-        .limit(8)
-        .then(({ data }) => {
+        .rpc('entity_recent_contents', { p_entity_id: nodeId, p_limit: 8 })
+        .then(({ data, error }) => {
           if (hoveredNodeRef.current !== nodeId) return
-          type Row = { content_id: string; contents: ContentItem | null }
-          const items = ((data ?? []) as unknown as Row[])
-            .map((row) => row.contents)
-            .filter((content): content is ContentItem => content !== null)
-            .sort((a, b) => b.collected_at.localeCompare(a.collected_at))
+          if (error) {
+            console.error('노드 미리보기 기사 조회에 실패했습니다.', error)
+            if (!selectedNodeIdRef.current && !lockedEdgeRef.current) {
+              setNodePreview({ nodeId, items: [], loading: false })
+            }
+            return
+          }
+          const items = (data ?? []) as ContentItem[]
           nodeContentCacheRef.current.set(nodeId, items)
           if (!selectedNodeIdRef.current && !lockedEdgeRef.current) {
             setNodePreview({ nodeId, items, loading: false })
