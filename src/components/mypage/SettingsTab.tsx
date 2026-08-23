@@ -1,7 +1,9 @@
 'use client'
 
+import { startTransition, useEffect, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { Building2 } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -78,6 +80,14 @@ export default function SettingsTab({
   onWatchlistChange,
 }: Props) {
   const watchlistLabels = watchlistItems.map((item) => item.company)
+  const [mounted, setMounted] = useState(false)
+  const { resolvedTheme, setTheme } = useTheme()
+
+  useEffect(() => {
+    startTransition(() => setMounted(true))
+  }, [])
+
+  const isDarkMode = resolvedTheme === 'dark'
 
   return (
     <div className="space-y-6">
@@ -226,6 +236,41 @@ export default function SettingsTab({
             {newsletterStatus === 'saving' ? '저장 중...' : newsletterStatus === 'saved' ? '저장되었습니다!' : '알림 설정 저장'}
           </Button>
         </form>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+        <h2 className="mb-5 text-base font-semibold text-foreground">화면 설정</h2>
+
+        <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">다크 모드</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              어두운 환경에서 눈의 피로를 줄이는 화면으로 전환합니다.
+            </p>
+          </div>
+          {mounted ? (
+            <button
+              type="button"
+              onClick={() => setTheme(isDarkMode ? 'light' : 'dark')}
+              className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                isDarkMode ? 'bg-brand-solid' : 'bg-muted'
+              )}
+              role="switch"
+              aria-checked={isDarkMode}
+              aria-label="다크 모드"
+            >
+              <span
+                className={cn(
+                  'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+                  isDarkMode ? 'translate-x-5' : 'translate-x-0'
+                )}
+              />
+            </button>
+          ) : (
+            <div className="h-6 w-11 shrink-0" aria-hidden="true" />
+          )}
+        </div>
       </section>
     </div>
   )
