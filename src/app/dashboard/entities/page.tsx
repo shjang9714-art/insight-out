@@ -36,7 +36,7 @@ export const dynamic = 'force-dynamic'
 
 type SearchParams = Promise<{ view?: string; entity?: string; docType?: string; week?: string }>
 
-// view=documents(기업·기술 자료 목록)는 자료실의 "공시자료" 탭으로 이관됐다(지시서
+// view=documents(기업·기술 자료 목록)는 자료실의 "기업 공시" 탭으로 이관됐다(지시서
 // 2026-08-04b) — 탭을 눌러 들어왔을 때 브라우저 탭 제목이 "기업동향"으로 뜨면
 // 상단 L1 활성 탭(자료실)과 어긋나 혼란을 준다(2026-08-05 버그 리포트). view별로
 // 분기해 이 화면에 맞는 제목을 낸다.
@@ -44,7 +44,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   const params = await searchParams
   if (params.view === 'documents') {
     return {
-      title: '공시자료 | Insight Out',
+      title: '기업 공시 | Insight Out',
       description: '공시·IR·기술자료 등 기업 공식 문서를 한곳에서 확인합니다.',
     }
   }
@@ -249,12 +249,12 @@ async function DocumentsView({ entityId, docType }: { entityId?: string; docType
   return (
     <div>
       <EntitySectionHeader
-        title="공시자료"
+        title="기업 공시"
         subtitle="공시·IR·기술자료 등 공식 문서를 한곳에서 확인합니다"
         meta={`총 ${stats.total}건 · 이번주 신규 ${stats.newThisWeek}건`}
       />
 
-      {/* 자료실 L2(자료종류) 탭 — 이 화면은 자료실 L1의 "공시자료" 탭으로 이관된
+      {/* 자료실 L2(자료종류) 탭 — 이 화면은 자료실 L1의 "기업 공시" 탭으로 이관된
           목록이라 다른 두 목록(콘텐츠·리포트)과 동일하게 노출한다. */}
       <Suspense fallback={null}>
         <ContentsL2Tabs />
@@ -290,7 +290,7 @@ export default async function EntitiesPage({ searchParams }: { searchParams: Sea
 
   return (
     <PageContainer>
-      {/* 공통 페이지 헤더 — 자료실로 이관된 공시자료(documents) 뷰는 제외 */}
+      {/* 공통 페이지 헤더 — 자료실로 이관된 기업 공시(documents) 뷰는 제외 */}
       {view !== 'documents' && (
         <PageHeader
           title="기업동향"

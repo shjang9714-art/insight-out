@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { ISSUES_L1_HREFS, NAV_TABS, resolveActiveNav } from '@/lib/nav/active'
+import { NAV_TABS, resolveActiveNav } from '@/lib/nav/active'
 
 export { ISSUES_L1_HREFS, NAV_TABS, isTabActive, resolveIssuesActiveHref } from '@/lib/nav/active'
 
@@ -59,11 +59,11 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
     month: 'long', day: 'numeric', weekday: 'short',
   })
 
-  const { l1Href: activeL1Href } = resolveActiveNav(pathname, searchParams)
+  const { l1Href: activeL1Href, l2Id: activeL2Id } = resolveActiveNav(pathname, searchParams)
 
   // 모바일 전용 관계지도·자료실 아이콘(우측 액션 영역, 지시서 2026-08-05 Stage 6)의
   // 활성 판정은 데스크톱 L1과 동일한 resolveActiveNav 결과에서 파생한다.
-  const isGraphActive = activeL1Href === ISSUES_L1_HREFS.graph
+  const isGraphActive = activeL2Id === 'graph'
   const isContentsActive = activeL1Href === '/dashboard/contents'
 
   useEffect(() => {
