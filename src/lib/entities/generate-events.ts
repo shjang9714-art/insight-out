@@ -156,11 +156,12 @@ export async function generateEntityEvents(
     const days = opts?.days ?? 120
 
     // 1. 엔티티 이름 조회
-    const { data: entityData } = await admin
+    const { data: entityData, error: entityError } = await admin
       .from('entities')
       .select('id, canonical_name')
       .eq('id', entityId)
       .single()
+    if (entityError) throw new Error(`엔티티 조회 실패: ${entityError.message}`)
     if (!entityData) return { events: [], errorReason: '엔티티를 찾을 수 없음' }
     const entity = entityData as { id: string; canonical_name: string }
 
