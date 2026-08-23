@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendBrevoEmail } from '@/lib/email/brevo'
+import { sendResendEmail } from '@/lib/email/resend'
 import {
   buildDailyBriefHtml,
   buildDailyBriefSubject,
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       const recipients = await getOpsRecipients(admin)
       if (!recipients.length) return { ok: true, skipped: true, reason: '수신 관리자 없음', alerts: brief.alerts.length, trashDeleted: trashCleanup.deleted, trashCapped: trashCleanup.capped, snapshotError }
       const subject = buildDailyBriefSubject(brief)
-      const messageId = await sendBrevoEmail({ to: recipients, subject, html: buildDailyBriefHtml(brief) })
+      const messageId = await sendResendEmail({ to: recipients, subject, html: buildDailyBriefHtml(brief) })
       return { ok: true, sent: recipients.length, messageId, subject, alerts: brief.alerts.length, trashDeleted: trashCleanup.deleted, trashCapped: trashCleanup.capped, snapshotError }
     })
     return Response.json(result)

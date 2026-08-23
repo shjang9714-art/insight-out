@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendBrevoEmail } from '@/lib/email/brevo'
+import { sendResendEmail } from '@/lib/email/resend'
 import { gatherWeeklyReport, buildWeeklyReportHtml } from '@/lib/ops/weekly-report'
 import { runJob } from '@/lib/jobs/run-job'
 import { getOpsRecipients } from '@/lib/ops/recipients'
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       if (!recipients.length) return { ok: true, skipped: true, reason: '수신 관리자 없음' }
       const fmt = (value: string) => new Date(value).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' })
       const subject = `[인사이트 아웃 주간 운영 리포트] ${fmt(report.periodStart)}~${fmt(report.periodEnd)} · 미해결 ${report.issues.stillOpen}`
-      const messageId = await sendBrevoEmail({ to: recipients, subject, html: buildWeeklyReportHtml(report) })
+      const messageId = await sendResendEmail({ to: recipients, subject, html: buildWeeklyReportHtml(report) })
       return { ok: true, sent: recipients.length, messageId, subject, stillOpen: report.issues.stillOpen }
     })
     return Response.json(result)

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { sendBrevoEmail, normalizeBrevoError } from '@/lib/email/brevo'
+import { sendResendEmail, normalizeResendError } from '@/lib/email/resend'
 import { buildNewsletterHtml } from '@/lib/email/newsletter-template'
 import { prepareNewsletterIssue } from '@/lib/newsletter/prepare-issue'
 import { toTemplateTopTeaser } from '@/lib/newsletter/top-teaser'
@@ -165,7 +165,7 @@ export async function runNewsletterDispatch({
     })
 
     try {
-      const messageId = await sendBrevoEmail({ to: sub.newsletter_email!, subject, html })
+      const messageId = await sendResendEmail({ to: sub.newsletter_email!, subject, html })
       if (!messageId) throw new Error('messageId 없음')
       await supabase.from('newsletter_recipients').insert({
         issue_id: issue.id,
@@ -176,7 +176,7 @@ export async function runNewsletterDispatch({
       })
       sent++
     } catch (err) {
-      const norm = normalizeBrevoError(err)
+      const norm = normalizeResendError(err)
       const errorDetail = norm.message ?? (err instanceof Error ? err.message : '발송 실패')
       console.error(
         '[newsletter-dispatch] 발송 실패 | domain=%s | name=%s | message=%s',
