@@ -53,7 +53,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <DashboardHeader
         className="print:hidden"
         onMenuClick={() => setSidebarOpen(true)}
-        onSearchClick={() => setSearchOpen(true)}
+        onOpenSearch={() => setSearchOpen(true)}
       />
 
       {/* 풀폭 본문 */}
@@ -61,7 +61,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         {children}
       </main>
 
-      <MobileBottomNav onSearchClick={() => setSearchOpen(true)} />
+      <MobileBottomNav />
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* 모바일 드로어 (md 미만에서만) */}

@@ -4,10 +4,9 @@ import { useState, useEffect, startTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Bookmark, FlaskConical, FolderOpen, LogOut, Menu, Search, User, Waypoints } from 'lucide-react'
+import { Bookmark, FlaskConical, LogOut, Menu, Search, User } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,13 +32,13 @@ export { ISSUES_L1_HREFS, NAV_TABS, isTabActive, resolveIssuesActiveHref } from 
 
 interface Props {
   onMenuClick?: () => void
-  onSearchClick?: () => void
+  onOpenSearch?: () => void
   className?: string
 }
 
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
-export default function DashboardHeader({ onMenuClick, onSearchClick, className }: Props) {
+export default function DashboardHeader({ onMenuClick, onOpenSearch, className }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const router        = useRouter()
@@ -59,12 +58,7 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
     month: 'long', day: 'numeric', weekday: 'short',
   })
 
-  const { l1Href: activeL1Href, l2Id: activeL2Id } = resolveActiveNav(pathname, searchParams)
-
-  // 모바일 전용 관계지도·자료실 아이콘(우측 액션 영역, 지시서 2026-08-05 Stage 6)의
-  // 활성 판정은 데스크톱 L1과 동일한 resolveActiveNav 결과에서 파생한다.
-  const isGraphActive = activeL2Id === 'graph'
-  const isContentsActive = activeL1Href === '/dashboard/contents'
+  const { l1Href: activeL1Href } = resolveActiveNav(pathname, searchParams)
 
   useEffect(() => {
     const supabase = createClient()
@@ -126,53 +120,21 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
 
         {/* 우측: 액션 */}
         <div className="ml-auto flex shrink-0 items-center gap-3 md:ml-0">
-          {/* 모바일 전용 — 관계지도·자료실은 데스크톱에선 이미 L1 탭이라 md:hidden 필수
-              (중복 노출 금지). 하단바가 4탭(홈·핵심 인사이트·키워드 분석·기업동향)으로
-              줄면서(지시서 2026-08-05 Stage 6) 나머지 2개 L1의 모바일 진입점을 여기로
-              옮겼다 — 검색 아이콘 좌측에 배치. */}
-          <Link
-            href="/dashboard/issues?view=graph"
-            className={cn(
-              'rounded-lg p-2 transition-colors hover:bg-accent md:hidden',
-              isGraphActive ? 'text-brand-600' : 'text-muted-foreground'
-            )}
-            aria-label="관계지도"
-            aria-current={isGraphActive ? 'page' : undefined}
-          >
-            <Waypoints className="h-5 w-5" />
-          </Link>
-          <Link
-            href="/dashboard/contents"
-            className={cn(
-              'rounded-lg p-2 transition-colors hover:bg-accent md:hidden',
-              isContentsActive ? 'text-brand-600' : 'text-muted-foreground'
-            )}
-            aria-label="자료실"
-            aria-current={isContentsActive ? 'page' : undefined}
-          >
-            <FolderOpen className="h-5 w-5" />
-          </Link>
-          {/* 모바일 검색은 하단바 중앙 원형 FAB로 되돌아감(지시서 Stage 6-1) — 좁은
-              화면에서 우측 액션이 관계지도·자료실·돋보기·다크모드 4개로 붐볐던 것을
-              완화. MobileBottomNav.tsx의 SearchFab 참고. */}
-
           {/* 검색 버튼 — 돋보기 아이콘만(후속 개편 2026-08-09b, 글자·⌘K 배지 제거).
-              단축키 힌트는 hover title 툴팁으로만 남김. 날짜 표시 왼쪽에 둬서
-              [돋보기][다크모드][날짜][프로필] 순서가 되게 한다(2026-08-10, 다크모드를
-              날짜 왼쪽으로 재배치 — 돋보기는 이미 날짜 왼쪽이라 그대로 둠).
-              모바일은 하단바 중앙 FAB(MobileBottomNav.tsx)가 같은 오버레이를 열므로 여기선 숨김. */}
+              단축키 힌트는 hover title 툴팁으로만 남기고 모바일에서도 같은 검색
+              오버레이를 연다. */}
           <button
             type="button"
-            onClick={onSearchClick}
+            onClick={onOpenSearch}
             title={`검색 (${kbdHint})`}
-            className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:inline-flex"
+            className="inline-flex rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             aria-label="검색"
           >
             <Search className="h-5 w-5" />
           </button>
 
           {/* 북마크 진입 — 죽은 Sidebar.tsx에만 있던 링크를 헤더로 옮김(지시서 513).
-              모바일·md 폭에서는 이미 관계지도·자료실·검색으로 우측이 붐벼 lg+에서만 노출.
+              북마크는 이번 모바일 내비게이션 범위가 아니므로 lg+ 노출을 유지한다.
               517 — 아카이브는 북마크로 통합돼 아이콘 제거. */}
           <Link
             href="/dashboard/bookmarks"
@@ -182,8 +144,6 @@ export default function DashboardHeader({ onMenuClick, onSearchClick, className 
           >
             <Bookmark className="h-5 w-5" />
           </Link>
-
-          <ThemeToggle />
 
           <div className="hidden flex-col items-end lg:flex">
             <span className="text-xs font-medium text-foreground">{today}</span>
