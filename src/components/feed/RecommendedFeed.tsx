@@ -11,6 +11,7 @@ import { hashtagsForCategories } from '@/lib/feed/categories'
 import EditPreferencesButton from './EditPreferencesButton'
 import FeedCategoryModal from './FeedCategoryModal'
 import FeedCarousel from './FeedCarousel'
+import ListErrorState from '@/components/ui/ListErrorState'
 
 export interface FeedItem {
   id: string
@@ -81,6 +82,7 @@ export default function RecommendedFeed({
   const [editOpen, setEditOpen] = useState(false)
   const [items, setItems] = useState<FeedItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   // 514 — 태그 희소도 정렬용 30일 문서빈도 맵. 홈 피드는 카테고리를 섞어 보여주므로
   // category 파라미터 없이(전체 기준) 한 번만 가져온다. 실패해도 tagsOf2가 기존
@@ -106,6 +108,7 @@ export default function RecommendedFeed({
 
     const loadFeed = async () => {
       setIsLoading(true)
+      setLoadError(false)
       const slotMeta = buildSlotMeta(fallbackTrending)
 
       // 2·3순위 슬롯이 quota를 못 채울 경우를 대비한 여유분(이론상 최대 부족분 =
@@ -118,10 +121,29 @@ export default function RecommendedFeed({
       const results = await Promise.all(
         slotMeta.map((meta, i) =>
           fetch(`/api/feed/recommended?slot=${meta.slot}&limit=${i === 0 ? meta.quota + backfillBuffer : meta.quota}`)
-            .then((res) => res.json())
-            .catch(() => ({ items: [] }))
+            .then((res) => {
+              if (!res.ok) throw new Error(`추천 피드 응답 오류: ${res.status}`)
+              return res.json() as Promise<{ items?: FeedItem[] }>
+            })
+            .catch((error: unknown) => {
+              console.error(`[추천 피드] ${meta.slot} 슬롯 조회 실패:`, error)
+              return null
+            })
         )
       )
+
+      const failedSlotCount = results.filter((result) => result === null).length
+      if (failedSlotCount === results.length) {
+        if (!cancelled) {
+          setItems([])
+          setLoadError(true)
+          setIsLoading(false)
+        }
+        return
+      }
+      if (failedSlotCount > 0) {
+        console.error(`[추천 피드] 일부 슬롯 조회 실패: ${failedSlotCount}/${results.length}`)
+      }
 
       const dominantAll = (results[0]?.items ?? []) as FeedItem[]
       const perSlotItems: FeedItem[][] = slotMeta.map((meta, i) =>
@@ -203,6 +225,8 @@ export default function RecommendedFeed({
             (_, i) => <CardSkeleton key={i} />
           )}
         </FeedCarousel>
+      ) : loadError ? (
+        <ListErrorState onRetry={() => setReloadKey((key) => key + 1)} />
       ) : items.length === 0 ? (
         hasSelection ? (
           <p className="py-8 text-center text-xs text-muted-foreground">

@@ -28,6 +28,8 @@ export interface MajorCompaniesData {
   groups: MajorGroupBucket[]
   /** curated_groups/curated_companies(253) 미적용 여부 — graceful 안내 문구 분기용 */
   curatedApplied: boolean
+  /** 주요 기업 목록을 구성하는 필수 조회 중 하나라도 실패했는지 여부 */
+  loadError: boolean
   /** 신규 주간 경계(월~일)로 생성된 가용 주 목록 — 최신순 */
   availableWeeks: MajorCompanyWeek[]
   /** 요청 주가 가용하지 않으면 최신 가용 주로 폴백 */
@@ -78,18 +80,20 @@ export async function getMajorCompaniesData(
   ])
 
   if (groupsRes.error?.code === '42P01' || companiesRes.error?.code === '42P01') {
-    return { groups: [], curatedApplied: false, availableWeeks: [], selectedWeek: null }
+    return { groups: [], curatedApplied: false, loadError: false, availableWeeks: [], selectedWeek: null }
   }
   if (groupsRes.error || companiesRes.error) {
     console.error('[major-companies] curated 조회 실패:', groupsRes.error?.message ?? companiesRes.error?.message)
-    return { groups: [], curatedApplied: false, availableWeeks: [], selectedWeek: null }
+    return { groups: [], curatedApplied: true, loadError: true, availableWeeks: [], selectedWeek: null }
   }
 
   const curatedGroups = (groupsRes.data ?? []) as CuratedGroupRow[]
   const curatedCompanies = (companiesRes.data ?? []) as CuratedCompanyRow[]
   if (curatedGroups.length === 0 || curatedCompanies.length === 0) {
-    return { groups: [], curatedApplied: true, availableWeeks: [], selectedWeek: null }
+    return { groups: [], curatedApplied: true, loadError: false, availableWeeks: [], selectedWeek: null }
   }
+
+  let loadError = false
 
   const groupLabelByKey = new Map(curatedGroups.map(g => [g.key, g.label]))
   const companyNameLower = new Set(curatedCompanies.map(c => c.name.toLowerCase()))
@@ -104,6 +108,7 @@ export async function getMajorCompaniesData(
     .limit(5000)
 
   if (periodsError) {
+    loadError = true
     console.error('[major-companies] 가용 주 조회 실패:', periodsError.message)
   } else if (typeof rawPeriodCount === 'number' && rawPeriodCount > (rawPeriods?.length ?? 0)) {
     console.error(
@@ -140,6 +145,7 @@ export async function getMajorCompaniesData(
       .limit(200)
 
     if (cardsRes.error) {
+      loadError = true
       console.error('[major-companies] 선택 주 카드 조회 실패:', cardsRes.error.message)
     } else {
       rawCards = cardsRes.data ?? []
@@ -240,5 +246,5 @@ export async function getMajorCompaniesData(
     })
   }
 
-  return { groups, curatedApplied: true, availableWeeks, selectedWeek }
+  return { groups, curatedApplied: true, loadError, availableWeeks, selectedWeek }
 }
