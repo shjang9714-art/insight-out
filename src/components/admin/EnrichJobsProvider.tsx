@@ -40,6 +40,7 @@ export interface RunState {
   startedAt: string
   message: string
   error?: string
+  extra?: Record<string, number>
   params?: EnrichJobParams
 }
 
@@ -238,6 +239,7 @@ export default function EnrichJobsProvider({ children }: { children: React.React
           ...current,
           acc,
           remaining: result.remaining,
+          extra: result.extra,
           message: '실행 중',
         }))
 

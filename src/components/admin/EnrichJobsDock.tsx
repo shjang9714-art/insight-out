@@ -60,6 +60,7 @@ export default function EnrichJobsDock() {
           const job = getEnrichJob(run.key)
           const progress = getProgress(run)
           const canResume = run.status === 'interrupted' || run.status === 'stopped' || run.status === 'error'
+          const unlinkable = run.key === 'admin:entity-relink' ? run.extra?.unlinkable ?? 0 : 0
           return (
             <div key={run.runId} className="space-y-2.5 px-4 py-3">
               <div className="flex items-start justify-between gap-3">
@@ -80,7 +81,13 @@ export default function EnrichJobsDock() {
               <p className="text-xs text-muted-foreground">
                 누적 {run.acc.processed.toLocaleString()} · 성공 {run.acc.succeeded.toLocaleString()}
                 {run.remaining !== null && ` · 남은 ${run.remaining.toLocaleString()}`}
+                {unlinkable > 0 && ` · 연결 불가 ${unlinkable.toLocaleString()}`}
               </p>
+              {unlinkable > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  엔티티 사전에 없는 키워드만 가진 콘텐츠입니다.
+                </p>
+              )}
               <p className={cn('text-xs', run.status === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
                 {run.error ?? run.message}
               </p>
