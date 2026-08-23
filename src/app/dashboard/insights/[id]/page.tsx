@@ -124,6 +124,13 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
   if (cardErr || !cardRow) notFound()
   const card = cardRow as InsightCard
 
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from('users').select('role').eq('id', user.id).single()
+    : { data: null }
+  const isAdmin = profile?.role === 'admin'
+  if (card.scope === 'industry' && !isAdmin) notFound()
+
   const citations = (card.citations ?? []) as InsightCardCitation[]
   const citedIds = new Set(citations.map(c => c.content_id))
   const referenceOnlyIds = card.source_content_ids.filter(cid => !citedIds.has(cid))
@@ -185,7 +192,6 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
   }
 
   // 내 관련도 — 로그인 사용자의 워치리스트(회사) 문자열 매칭(간이, lens.ts와 동일 방식)
-  const { data: { user } } = await supabase.auth.getUser()
   let relevanceMatched = false
   let hasPersonalization = false
   if (user) {
