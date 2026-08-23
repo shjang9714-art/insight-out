@@ -14,7 +14,13 @@ import { buildL2Href, NAV_SECTIONS } from '@/lib/nav/taxonomy'
  *  — 한 곳에만 두면 나머지 페이지에서 탭이 사라진다.
  *  스타일은 상단 메인 네비(NAV_TABS)와 같은 계열: 알약/밑줄이 아니라 활성 탭 앞
  *  점 + 굵게, 비활성은 흐린 텍스트. */
-export default function ContentsL2Tabs() {
+interface Props {
+  /** 기본은 mb-5. 다른 요소(예: ViewToggle)와 한 줄에 나란히 놓일 때는 바깥 wrapper가
+   *  간격을 담당하므로 호출부에서 className="mb-0"으로 덮어쓴다. */
+  className?: string
+}
+
+export default function ContentsL2Tabs({ className }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { l1Href, l2Id } = resolveActiveNav(pathname, searchParams)
@@ -23,7 +29,7 @@ export default function ContentsL2Tabs() {
 
   return (
     <nav
-      className="mb-5 flex items-center gap-6 overflow-x-auto tracking-[-0.01em] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className={cn('mb-5 flex items-center gap-6 overflow-x-auto tracking-[-0.01em] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', className)}
       aria-label="자료 종류"
     >
       {section.tabs.map((tab) => {

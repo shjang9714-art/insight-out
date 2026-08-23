@@ -25,7 +25,6 @@ import CompanyDocumentFilterBar from '@/components/entities/CompanyDocumentFilte
 import {
   getPublishedCompanyDocuments,
   getCompanyDocumentEntityOptions,
-  getCompanyDocumentStats,
 } from '@/lib/company-docs/query'
 import type { CompanyDocumentType } from '@/lib/types'
 import { COMPANY_DOC_TYPES } from '@/lib/company-docs/constants'
@@ -240,21 +239,16 @@ async function CompetitorTrendView() {
 async function DocumentsView({ entityId, docType }: { entityId?: string; docType?: CompanyDocumentType }) {
   const supabase = await createSupabase()
   // 355-B — 기업·기술 자료 탭. 355-A(DART)·355-C(검토함) 승인분(review_status='none')만 노출.
-  const [docs, entityOptions, stats] = await Promise.all([
+  const [docs, entityOptions] = await Promise.all([
     getPublishedCompanyDocuments(supabase, { entityId, docType }),
     getCompanyDocumentEntityOptions(supabase),
-    getCompanyDocumentStats(supabase),
   ])
 
   return (
     <div>
-      <EntitySectionHeader
-        title="기업 공시"
-        meta={`총 ${stats.total}건 · 이번주 신규 ${stats.newThisWeek}건`}
-      />
-
-      {/* 자료실 L2(자료종류) 탭 — 이 화면은 자료실 L1의 "기업 공시" 탭으로 이관된
-          목록이라 다른 두 목록(콘텐츠·리포트)과 동일하게 노출한다. */}
+      {/* 자료실 L2(자료종류) 탭 — 볼드 섹션 제목("기업 공시")·"총 N건"은 뉴스 화면
+          기준(지시서)으로 삭제하고, 이 화면은 자료실 L1의 "기업 공시" 탭으로 이관된
+          목록이라 다른 두 목록(콘텐츠·리포트)과 동일하게 맨 위에 탭만 노출한다. */}
       <Suspense fallback={null}>
         <ContentsL2Tabs />
       </Suspense>
