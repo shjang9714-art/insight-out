@@ -45,12 +45,6 @@ export interface NewsletterKnowledgeReport {
   detailUrl: string
 }
 
-export interface NewsletterCompanyTrend {
-  company: string
-  trend: string
-  isLgu: boolean
-}
-
 export interface NewsletterEmailData {
   dateLabel: string
   issueNo: number
@@ -58,7 +52,6 @@ export interface NewsletterEmailData {
   newsGroups: NewsletterNewsGroup[]
   topTeaser: NewsletterTopTeaser | null
   knowledgeReports: NewsletterKnowledgeReport[]
-  companyTrends: NewsletterCompanyTrend[]
   unsubscribeUrl: string
 }
 
@@ -217,30 +210,6 @@ function buildKnowledgeReportsSection(reports: NewsletterKnowledgeReport[]): str
   </tr>`
 }
 
-function buildCompanyTrendsSection(trends: NewsletterCompanyTrend[]): string {
-  if (trends.length === 0) return ''
-
-  const rows = trends
-    .map(
-      (t, i) => `
-        <tr><td style="padding:7px 0; ${i < trends.length - 1 ? 'border-bottom:1px solid #f5f6f7;' : ''} font-size:13px; color:#374151; line-height:1.6;"><strong style="color:${t.isLgu ? '#E6007E' : '#111827'};">${escapeHtml(t.company)}</strong> · ${escapeHtml(t.trend)}</td></tr>`
-    )
-    .join('')
-
-  return `
-  <tr>
-    <td style="padding:30px 40px 6px;">
-      <p style="margin:0; font-size:13px; font-weight:800; letter-spacing:0.06em; color:#111827; border-left:4px solid #E6007E; padding-left:10px;">🏢 기업 동향 브리핑</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:12px 40px 4px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}
-      </table>
-    </td>
-  </tr>`
-}
-
 export function buildNewsletterHtml(data: NewsletterEmailData): string {
   const totalCardCount = data.newsGroups.reduce((sum, g) => sum + g.cards.length, 0)
   const greeting = data.greetingName
@@ -302,7 +271,6 @@ export function buildNewsletterHtml(data: NewsletterEmailData): string {
 ${buildTopTeaserSection(data.topTeaser)}
 ${buildNewsCardsSection(data.newsGroups)}
 ${buildKnowledgeReportsSection(data.knowledgeReports)}
-${buildCompanyTrendsSection(data.companyTrends)}
 
   <tr>
     <td style="padding:28px 40px 32px;">

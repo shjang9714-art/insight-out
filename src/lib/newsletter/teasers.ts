@@ -9,12 +9,6 @@ export interface KnowledgeReportTeaser {
   detailUrl: string
 }
 
-export interface CompanyTrendLine {
-  company: string
-  trend: string
-  isLgu: boolean
-}
-
 const KNOWLEDGE_REPORT_CATEGORIES = ['지식보고서', '리포트', '가트너', 'KRG'] as const
 
 /**
@@ -64,46 +58,4 @@ function firstSentence(text: string | null): string {
   const trimmed = text.trim()
   const match = trimmed.match(/^[^.!?。]*[.!?。]/)
   return (match ? match[0] : trimmed).slice(0, 100)
-}
-
-/**
- * 2-3. 기업 동향 브리핑 — 가장 최근 발행된 경쟁사 주간 브리핑에서 회사별 한 줄 동향 3~5개.
- * 데이터 없으면 빈 배열(섹션 생략). 상세 페이지는 비로그인 공개 범위 밖이라 링크 없이 텍스트만.
- */
-export async function getCompanyTrendLines(supabase: SupabaseClient, limit = 5): Promise<CompanyTrendLine[]> {
-  const { data, error } = await supabase
-    .from('competitor_weekly_reports')
-    .select('sections')
-    .eq('status', 'published')
-    .order('week_start', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    console.error('[뉴스레터/티저] 기업 동향 브리핑 조회 실패:', error.message)
-    return []
-  }
-  if (!data?.sections || !Array.isArray(data.sections)) return []
-
-  interface RawSection {
-    companies?: string[]
-    moves?: string
-  }
-
-  // moves는 여러 문장 + [content_id] 인용 각주가 섞인 문단이라, 뉴스레터엔 첫 문장만
-  // 각주를 제거해 한 줄로 축약한다.
-  function toOneLiner(moves: string): string {
-    const withoutCitations = moves.replace(/\s*\[[0-9a-f-]{8,}\]/gi, '')
-    return firstSentence(withoutCitations)
-  }
-
-  const lines: CompanyTrendLine[] = []
-  for (const section of data.sections as RawSection[]) {
-    const company = section.companies?.[0]
-    if (!company || !section.moves) continue
-    lines.push({ company, trend: toOneLiner(section.moves), isLgu: /LG\s*유플러스|LGU\+|LG U\+/i.test(company) })
-    if (lines.length >= limit) break
-  }
-
-  return lines
 }
