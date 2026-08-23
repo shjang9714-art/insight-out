@@ -154,7 +154,6 @@ export async function generateEntityEvents(
 ): Promise<GenerateEntityEventsResult> {
   try {
     const days = opts?.days ?? 120
-    const since = new Date(Date.now() - days * 86_400_000).toISOString()
 
     // 1. 엔티티 이름 조회
     const { data: entityData } = await admin
@@ -165,29 +164,15 @@ export async function generateEntityEvents(
     if (!entityData) return { events: [], errorReason: '엔티티를 찾을 수 없음' }
     const entity = entityData as { id: string; canonical_name: string }
 
-    // 2. content_entities → 콘텐츠 (최근 days일, 최대 80건)
-    const { data: ceData } = await admin
-      .from('content_entities')
-      .select('content_id')
-      .eq('entity_id', entityId)
-      .limit(200)
+    // 2. 최근 days일 타임라인 후보 콘텐츠 (최대 80건)
+    const { data, error } = await admin.rpc('entity_timeline_contents', {
+      p_entity_id: entityId,
+      p_days: days,
+      p_limit: 80,
+    })
+    if (error) throw new Error(`타임라인 후보 조회 실패: ${error.message}`)
 
-    const allContentIds: string[] = (ceData ?? []).map((r: { content_id: string }) => r.content_id)
-    if (allContentIds.length === 0) {
-      return { events: [], errorReason: '연관된 콘텐츠 없음' }
-    }
-
-    const { data: contentsData } = await admin
-      .from('contents')
-      .select('id, title, summary_ko, published_at, sentiment')
-      .in('id', allContentIds)
-      .eq('status', 'published')
-      .gte('published_at', since)
-      .is('deleted_at', null)
-      .order('published_at', { ascending: false })
-      .limit(80)
-
-    const contentRows = (contentsData ?? []) as {
+    const contentRows = (data ?? []) as {
       id: string
       title: string
       summary_ko: string | null
@@ -250,6 +235,6 @@ export async function generateEntityEvents(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[generateEntityEvents] 오류:', message)
-    return { events: [], errorReason: `내부 오류: ${message}` }
+    throw err
   }
 }
