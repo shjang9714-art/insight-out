@@ -3,9 +3,8 @@
 import { Fragment, useState, useEffect, useMemo, useRef, useSyncExternalStore, startTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { CONTENT_CATEGORY_LABEL, type ContentCategory } from '@/lib/types'
+import type { ContentCategory } from '@/lib/types'
 import { getCategoryDbValues } from '@/lib/categories'
-import { NAV_SECTIONS } from '@/lib/nav/taxonomy'
 import { Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContentListCard from '@/components/dashboard/ContentListCard'
@@ -302,13 +301,11 @@ function ContentRowList({ items, sortByCollected, tagFreqMap }: {
 
 interface ContentsBoardProps {
   fixedCategory?: ContentCategory
-  title?: string
   schemaPendingMessage?: string
 }
 
 export default function ContentsBoard({
   fixedCategory,
-  title,
   schemaPendingMessage,
 }: ContentsBoardProps) {
   const router       = useRouter()
@@ -592,15 +589,6 @@ export default function ContentsBoard({
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
-  // ── 페이지 제목 ──────────────────────────────────────────────────────────────
-  // 자료실 L2 탭 라벨을 단일 출처로 삼아 섹션 제목을 맞춘다(탭="영상"인데 제목="유튜브"로
-  // 어긋나던 문제) — CONTENT_CATEGORY_LABEL은 카드 등 다른 곳에서도 쓰여 전역 수정하면
-  // 부작용이 있으니 여기서만 taxonomy 라벨로 대체한다. title prop이 있으면 그게 우선.
-  const activeL2Label = NAV_SECTIONS['/dashboard/contents'].tabs.find((tab) => tab.value === category)?.label
-  const pageTitle = title ?? activeL2Label ?? (category
-    ? (CONTENT_CATEGORY_LABEL[category] ?? category)
-    : '전체 콘텐츠')
-
   const usesContinuousLayout =
     category === '웹인사이트'
     || category === '리서치'
@@ -610,25 +598,12 @@ export default function ContentsBoard({
   return (
     <>
 
-      {/* 제목 + 건수 */}
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">{pageTitle}</h1>
-          {items.length === 0 && (loadingPhase === 'slow' || loadingPhase === 'verySlow') ? (
-            <p className="mt-0.5 text-xs text-muted-foreground">최신 콘텐츠를 불러오는 중</p>
-          ) : (
-            !isLoading && total !== null && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                총 {total.toLocaleString()}건
-              </p>
-            )
-          )}
-        </div>
+      {/* ─── 자료종류(L2) 탭 + 카드/리스트 보기 토글 — 자료실 헤더 바로 아래 한 줄,
+          탭 왼쪽/토글 오른쪽. 볼드 섹션 제목·"총 N건"은 뉴스 화면 기준으로 삭제(지시서). */}
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <ContentsL2Tabs className="mb-0" />
         <ViewToggle value={contentsView} onChange={changeContentsView} groupAriaLabel="콘텐츠 보기 방식" />
       </div>
-
-      {/* ─── 자료종류(L2) 탭 — 헤더가 아니라 콘텐츠 영역 안쪽, 제목/건수 아래 목록 위 */}
-      <ContentsL2Tabs />
 
       {/* ─── 검색(질의) + 인기 키워드(필터) — 511: 역할 분리, 한 줄에 나란히, 각각 독립 해제.
           검색 입력창은 항상 노출하되, 인기 키워드 칩·"모두 지우기"는 검색어·선택 키워드가

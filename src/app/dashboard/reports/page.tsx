@@ -98,18 +98,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     <PageContainer>
       {view === 'ai' && (
         <>
-          {/* 제목 블록 — ContentsBoard(영상·뉴스·기술 블로그·전문기관 보고서)와 같은
-              마크업·톤으로 맞춰, 아래 ContentsL2Tabs가 다른 목록 화면과 동일한
-              세로 위치에 오게 한다. view='ai'만 ContentsBoard를 안 쓰다 보니
-              이 블록이 없어 탭이 메인 네비 바로 밑에 붙는 어긋남이 있었다. */}
-          <div className="mb-5">
-            <h1 className="text-lg font-bold text-foreground">AI 리포트</h1>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              전략보고서·지식보고서를 함께 모은 AI 리포트
-            </p>
-          </div>
-
-          {/* view='external'은 ContentsBoard가 자체적으로 렌더하므로 여기서는
+          {/* 볼드 섹션 제목("AI 리포트")·설명 문구는 뉴스 화면 기준(지시서)으로 삭제 —
+              ContentsL2Tabs가 이 뷰(인사이트 L1)에서도 맨 위에 바로 온다.
+              view='external'은 ContentsBoard가 자체적으로 렌더하므로 여기서는
               view='ai'(자체 렌더, ContentsBoard 미사용)에서만 별도로 붙인다 —
               둘 다 붙이면 external에서 중복 렌더된다. */}
           <Suspense fallback={null}>
@@ -129,7 +120,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
             description="수집한 뉴스·리포트·영상 원문을 카테고리별로 모아 둔 자료 아카이브입니다."
           />
           <Suspense fallback={<ReportGridSkeleton />}>
-            <ContentsBoard fixedCategory="리서치" title="전문기관 보고서" />
+            <ContentsBoard fixedCategory="리서치" />
           </Suspense>
         </>
       )}
