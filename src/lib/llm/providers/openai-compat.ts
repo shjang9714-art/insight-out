@@ -76,7 +76,8 @@ async function tryComplete(
       retryable: false,
       permanent: false,
     }
-  } catch {
+  } catch (err) {
+    console.error(`[${providerName}] 호출 실패(네트워크/타임아웃):`, err)
     return { result: null, retryable: false, permanent: false }
   }
 }

@@ -35,6 +35,7 @@ interface ProviderInfo {
   keyCount: number
   tokens_used: number
   calls_used: number
+  last_success_at: string | null
 }
 
 interface RoutingRow {
@@ -72,6 +73,21 @@ const TASK_LABELS: Record<string, string> = {
   classify:  '분류',
   summarize: '요약',
   report:    '보고서',
+}
+
+const LAST_SUCCESS_WARNING_MS = 48 * 60 * 60 * 1000
+
+function formatLastSuccess(lastSuccessAt: string | null): { label: string; isWarning: boolean } {
+  if (!lastSuccessAt) return { label: '성공 기록 없음', isWarning: false }
+
+  const elapsedMs = Math.max(0, Date.now() - new Date(lastSuccessAt).getTime())
+  const elapsedHours = Math.floor(elapsedMs / (60 * 60 * 1000))
+  const label = elapsedHours >= 24
+    ? `마지막 성공 ${Math.floor(elapsedHours / 24)}일 전`
+    : elapsedHours >= 1
+      ? `마지막 성공 ${elapsedHours}시간 전`
+      : '마지막 성공 방금 전'
+  return { label, isWarning: elapsedMs >= LAST_SUCCESS_WARNING_MS }
 }
 
 const ROUTING_COLUMNS: AdminTableColumn<RoutingRow>[] = [
@@ -390,6 +406,7 @@ export default function LlmManager() {
               : 0
             const isBlocked = p.monthly_token_limit > 0
               && p.tokens_used >= p.monthly_token_limit
+            const lastSuccess = formatLastSuccess(p.last_success_at)
             return (
               <div
                 key={p.name}
@@ -432,6 +449,13 @@ export default function LlmManager() {
                     )} />
                   </button>
                 </div>
+
+                <p className={cn(
+                  'text-[11px] text-muted-foreground',
+                  lastSuccess.isWarning && 'font-medium text-destructive'
+                )}>
+                  {lastSuccess.label}
+                </p>
 
                 {/* 이번 달 사용량 */}
                 <div className="space-y-1.5">

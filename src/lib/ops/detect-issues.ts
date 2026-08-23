@@ -17,6 +17,12 @@ const since24h = () => new Date(Date.now() - 86_400_000).toISOString()
 const CRON_FAIL_MIN_COUNT = 2
 const CRON_FAIL_CRITICAL_COUNT = 5
 const CRON_FAIL_CRITICAL_RATE = 0.5
+const PROVIDER_SILENT_WARNING_HOURS = 48
+const PROVIDER_SILENT_CRITICAL_HOURS = 7 * 24
+
+function formatElapsedHours(hours: number): string {
+  return hours >= 24 ? `${Math.floor(hours / 24)}일 전` : `${Math.floor(hours)}시간 전`
+}
 
 /** "2026-08-12 01:25" 형식(KST) — suspected_cause 문구에 마지막 실행 시각을 박아넣는 용도. */
 function formatKst(iso: string): string {
@@ -115,12 +121,14 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const since = since24h()
   const signals: Signal[] = []
   const opsSettings = await getOpsSettings()
-  const [jobs, crawls, backlog, usage, settings, translation, tts, routingModelErrors, lastRunAtByKey] = await Promise.all([
+  const [jobs, crawls, backlog, usage, lifetimeUsage, settings, translation, tts, routingModelErrors, primaryRoutes, lastRunAtByKey] = await Promise.all([
     admin.from('job_runs').select('job_key, error').eq('status', 'failed').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
     admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
     admin.from('llm_usage').select('provider, tokens').eq('period', new Date().toISOString().slice(0, 7)),
-    admin.from('llm_settings').select('provider, monthly_token_limit').eq('enabled', true),
+    // 예산은 이번 달, 마지막 성공은 월 경계와 무관하게 전체 기간을 본다.
+    admin.from('llm_usage').select('provider, updated_at'),
+    admin.from('llm_settings').select('provider, enabled, monthly_token_limit'),
     admin.from('translation_usage').select('chars').eq('period', new Date().toISOString().slice(0, 7)),
     admin.from('tts_usage').select('chars').eq('period', new Date().toISOString().slice(0, 7)),
     admin
@@ -128,6 +136,12 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       .select('task_type, priority, provider, model_id')
       .eq('is_active', true)
       .gte('last_error_at', since),
+    admin
+      .from('llm_task_routing')
+      .select('task_type, provider')
+      .eq('is_active', true)
+      .eq('priority', 1)
+      .order('task_type'),
     fetchCronLastRunAtByKey(admin),
   ])
   // 523-B — Vercel maxDuration 하드킬을 reapStaleRunningJobs 가 failed 로 마감한 행은
@@ -198,7 +212,8 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   }
   const crawlCounts = new Map<string, number>(); for (const r of crawls.data ?? []) if (r.source_id) crawlCounts.set(r.source_id, (crawlCounts.get(r.source_id) ?? 0) + 1)
   for (const [sourceId, count] of crawlCounts) signals.push({ fingerprint: `crawl:fail:${sourceId}`, category: 'crawl', severity: 'warning', title: '수집 소스 오류 반복', suspected_cause: '해당 소스 응답 또는 파서 지연 추정', recommended_action: '실패 로그를 확인하고 소스를 일시 중지하세요.', impact: '콘텐츠 수집 누락', count })
-  const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
+  const disabledProviders = new Set((settings.data ?? []).filter(s => !s.enabled).map(s => s.provider))
+  const settingsMap = new Map((settings.data ?? []).filter(s => s.enabled).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
   const usedMap = new Map<string, number>(); for (const r of usage.data ?? []) usedMap.set(r.provider, (usedMap.get(r.provider) ?? 0) + Number(r.tokens ?? 0))
   for (const [provider, used] of usedMap) {
     const limit = monthlyBudget(settingsMap.get(provider))
@@ -234,6 +249,36 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       recommended_action: '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 모델을 교체하세요.',
       impact: `${route.task_type} 작업이 해당 순위를 건너뜀`,
       count: 1,
+    })
+  }
+
+  const lastSuccessAtByProvider = new Map<string, string>()
+  for (const row of lifetimeUsage.data ?? []) {
+    if (!row.updated_at) continue
+    const current = lastSuccessAtByProvider.get(row.provider)
+    if (!current || row.updated_at > current) lastSuccessAtByProvider.set(row.provider, row.updated_at)
+  }
+  const primaryTasksByProvider = new Map<string, string[]>()
+  for (const route of primaryRoutes.data ?? []) {
+    const tasks = primaryTasksByProvider.get(route.provider) ?? []
+    tasks.push(route.task_type)
+    primaryTasksByProvider.set(route.provider, tasks)
+  }
+  for (const [provider, tasks] of primaryTasksByProvider) {
+    if (disabledProviders.has(provider)) continue
+    const lastSuccessAt = lastSuccessAtByProvider.get(provider)
+    if (!lastSuccessAt) continue
+    const elapsedHours = (Date.now() - new Date(lastSuccessAt).getTime()) / 3_600_000
+    if (elapsedHours <= PROVIDER_SILENT_WARNING_HOURS) continue
+    signals.push({
+      fingerprint: `llm:provider_silent:${provider}`,
+      category: 'usage',
+      severity: elapsedHours > PROVIDER_SILENT_CRITICAL_HOURS ? 'critical' : 'warning',
+      title: 'LLM 제공자 무응답',
+      suspected_cause: `${provider} 마지막 성공 ${formatElapsedHours(elapsedHours)} — ${tasks.join('·')} 1순위`,
+      recommended_action: '어드민 > 시스템 설정 > AI 모델에서 키·모델을 점검하고 연동 테스트를 실행하세요.',
+      impact: '하위 순위로 폴백 중이며 해당 순위 제공자의 예산이 빠르게 소진될 수 있습니다.',
+      count: Math.floor(elapsedHours),
     })
   }
 
