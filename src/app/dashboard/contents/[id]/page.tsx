@@ -168,6 +168,10 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   const { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase } = await getContentRow(id)
   const { data: { user: authUser } } = await supabase.auth.getUser()
   const isLoggedIn = Boolean(authUser)
+  const { data: profile } = authUser
+    ? await supabase.from('users').select('role').eq('id', authUser.id).single()
+    : { data: null }
+  const isAdmin = profile?.role === 'admin'
 
   if (error || !data) {
     notFound()
@@ -520,8 +524,8 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
           />
 
           <div className="flex items-center gap-2">
-            {/* COUNCIL로 현재 맥락 토론 진입(362) — 로그인 전용 */}
-            {isLoggedIn && (
+            {/* COUNCIL로 현재 맥락 토론 진입(362) — 관리자 전용 */}
+            {isAdmin && (
               <CouncilDiscussButton
                 title={content.title}
                 summary={content.summary_ko}

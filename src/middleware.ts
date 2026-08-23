@@ -215,6 +215,10 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/dashboard/lab') && gate.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+
+    if (pathname.startsWith('/dashboard/council') && gate.role !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
   return supabaseResponse

@@ -239,6 +239,11 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   const isKeywordDetail = origin === 'issues'
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from('users').select('role').eq('id', user.id).single()
+    : { data: null }
+  const isAdmin = profile?.role === 'admin'
 
   // 1. 서로 독립인 쿼리(엔티티 자체 id 에만 의존) — 231: 한 배치로 병렬화
   const [
@@ -459,13 +464,15 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
         </div>
 
         {/* COUNCIL로 현재 맥락 토론 진입(362) */}
-        <CouncilDiscussButton
-          title={e.canonical_name}
-          summary={e.description}
-          refType="entities"
-          refId={e.id}
-          className="shrink-0"
-        />
+        {isAdmin && (
+          <CouncilDiscussButton
+            title={e.canonical_name}
+            summary={e.description}
+            refType="entities"
+            refId={e.id}
+            className="shrink-0"
+          />
+        )}
       </div>
 
       {/* 키워드 상세: 관련엔티티 해시태그 + LLM 핵심 인사이트 1줄 (지시서 B) */}
