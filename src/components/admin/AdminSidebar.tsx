@@ -3,9 +3,10 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Search, ChevronDown, ChevronRight, ExternalLink, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Search, ChevronDown, ChevronRight, ExternalLink, Lock, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ADMIN_NAV_GROUPS } from '@/lib/admin/nav'
+import { ADMIN_NAV_GROUPS, type AdminNavItem } from '@/lib/admin/nav'
+import { hasCapability } from '@/lib/admin/capabilities'
 import AdminEmptyState from '@/components/admin/ui/AdminEmptyState'
 import { AdminThemeToggle } from '@/components/admin/AdminThemeToggle'
 
@@ -22,7 +23,7 @@ function clampWidth(w: number) {
   return Math.min(MAX_W, Math.max(MIN_W, w))
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({ role }: { role: string | null }) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -187,6 +188,10 @@ export function AdminSidebar() {
     return true
   }
 
+  function isLocked(item: AdminNavItem) {
+    return Boolean(item.capability) && !hasCapability(role, item.capability)
+  }
+
   function groupHasUnread(group: typeof ADMIN_NAV_GROUPS[number]) {
     return group.items.some(
       (it) =>
@@ -208,6 +213,7 @@ export function AdminSidebar() {
     ? allItems.filter(
         (it) =>
           !it.disabled &&
+          !isLocked(it) &&
           (it.label.toLowerCase().includes(trimmedQuery) ||
             it.description.toLowerCase().includes(trimmedQuery))
       )
@@ -348,11 +354,12 @@ export function AdminSidebar() {
                   <ul className="space-y-0.5">
                     {group.items.map((item) => {
                       const Icon = item.icon
-                      if (item.disabled) {
+                      const locked = isLocked(item)
+                      if (item.disabled || locked) {
                         return (
                           <li key={item.href}>
                             <span
-                              title={collapsed ? item.label : item.roadmap}
+                              title={collapsed ? item.label : (locked ? '권한이 없어 접근할 수 없습니다' : item.roadmap)}
                               aria-label={collapsed ? item.label : undefined}
                               className={cn(
                                 'admin-sidebar-menu flex min-h-11 items-center gap-3 rounded-md px-3 py-2 opacity-70 cursor-default text-muted-foreground',
@@ -361,7 +368,10 @@ export function AdminSidebar() {
                             >
                               <Icon className="h-5 w-5 shrink-0" />
                               {!collapsed && <span className="flex-1">{item.label}</span>}
-                              {!collapsed && item.badge && (
+                              {!collapsed && locked && (
+                                <Lock className="h-3.5 w-3.5 shrink-0" aria-label="권한 필요" />
+                              )}
+                              {!collapsed && !locked && item.badge && (
                                 <span className="admin-caption rounded px-1.5 py-0.5 font-medium bg-muted text-muted-foreground">
                                   {item.badge}
                                 </span>

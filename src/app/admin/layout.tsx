@@ -38,7 +38,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <AdminConfirmHost>
       <EnrichJobsProvider>
         <Suspense fallback={null}>
-          <AdminSidebar />
+          <AdminSidebar role={profile?.role ?? null} />
         </Suspense>
         <main className="flex-1 min-w-0">
           <div className="mx-auto max-w-7xl px-8 py-8">{children}</div>

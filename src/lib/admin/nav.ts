@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import type { AdminCapability } from '@/lib/admin/capabilities'
 import {
   LayoutDashboard,
   Newspaper,
@@ -32,6 +33,8 @@ export interface AdminNavItem {
   badge?: string
   roadmap?: string
   external?: boolean
+  /** 이 능력이 없는 역할에게는 자물쇠 비활성으로 보인다(숨기지 않는다). */
+  capability?: AdminCapability
 }
 
 export interface AdminNavGroup {
@@ -94,7 +97,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { href: '/admin/analytics/users', label: '사용자 분석', description: 'DAU/WAU/MAU·조직별 활성·기능 이용률·검색/북마크.', roadmap: '(준비중 — S9)', icon: BarChart3, disabled: true, badge: '준비중' },
       // 522 — 인사이트 그룹 해체 시 분석 성격이 강해 여기로 배치(지시서 미명시 항목).
       { href: '/admin/keyword-analysis', label: '키워드분석', description: '키워드 언급량·시그널 분석 결과 검수·노출 설정. (준비중)', icon: BarChart3, disabled: true, badge: '준비중' },
-      { href: '/admin/users', label: '사용자', description: '사용자 승인 상태·역할·부서·팀 정보를 관리합니다.', icon: Users },
+      { href: '/admin/users', label: '사용자', description: '사용자 승인 상태·역할·부서·팀 정보를 관리합니다.', icon: Users, capability: 'manage_admins' },
       { href: '/admin/organizations', label: '조직', description: '조직 등록·조직별 사용량·활성 사용자 관리.', roadmap: '(준비중 — S10)', icon: Building2, disabled: true, badge: '준비중' },
       { href: '/admin/approvals', label: '초대·가입 승인', description: '초대·가입 허용목록·승인 워크플로우.', roadmap: '(준비중 — S10)', icon: UserCheck, disabled: true, badge: '준비중' },
       { href: '/admin/roles', label: '역할·권한', description: '역할 기반 접근 권한 관리.', roadmap: '(준비중 — S10)', icon: KeyRound, disabled: true, badge: '준비중' },
