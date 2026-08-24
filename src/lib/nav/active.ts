@@ -13,10 +13,12 @@ export const NAV_TABS: ReadonlyArray<{
   href: string
   exact: boolean
   icon?: LucideIcon
+  mobileVisible?: boolean
 }> = [
   { label: '홈', href: '/dashboard', exact: true },
   { label: '인사이트', href: '/dashboard/issues', exact: false },
-  { label: '분석', href: '/dashboard/issues?view=keyword', exact: false },
+  { label: '키워드 분석', href: '/dashboard/issues?view=keyword', exact: false },
+  { label: '관계지도', href: '/dashboard/issues?view=graph', exact: false, mobileVisible: false },
   { label: '기업동향', href: '/dashboard/entities', exact: false },
   { label: '자료실', href: '/dashboard/contents', exact: false },
 ]
@@ -29,13 +31,15 @@ const NAV_ALIAS_PREFIXES: Record<string, string[]> = {
 export const ISSUES_L1_HREFS = {
   brief: '/dashboard/issues',
   keyword: '/dashboard/issues?view=keyword',
+  graph: '/dashboard/issues?view=graph',
 } as const
 
 function issuesL1HrefForView(
   view: string | null,
   fallback: 'brief' | 'keyword'
 ): string {
-  if (view === 'keyword' || view === 'graph') return ISSUES_L1_HREFS.keyword
+  if (view === 'keyword') return ISSUES_L1_HREFS.keyword
+  if (view === 'graph') return ISSUES_L1_HREFS.graph
   if (view === 'brief') return ISSUES_L1_HREFS.brief
   return ISSUES_L1_HREFS[fallback]
 }

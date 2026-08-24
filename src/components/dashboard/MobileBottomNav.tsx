@@ -25,7 +25,7 @@ export function MobileBottomNav() {
       className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur md:hidden print:hidden"
     >
       <div className="mx-auto grid h-16 max-w-md grid-cols-5 px-2">
-        {NAV_TABS.map((tab) => {
+        {NAV_TABS.filter((tab) => tab.mobileVisible !== false).map((tab) => {
           const active = activeL1Href === tab.href
           const Icon = MOBILE_TAB_ICONS[tab.href as keyof typeof MOBILE_TAB_ICONS]
 
