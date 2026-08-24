@@ -7,6 +7,7 @@ import PageContainer from '@/components/PageContainer'
 import LabBoard from '@/components/analysis/LabBoard'
 import { getLabData } from '@/lib/lab/data'
 import { LAB_VIEW_IDS, type LabViewId } from '@/lib/lab/tabs'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,7 @@ export default async function LabPage({ searchParams }: { searchParams: SearchPa
   // 방어적 이중 체크 — 실제 차단은 middleware.ts 에서 수행(빌드 매니페스트 등록 검증 필수).
   if (!user) redirect('/login')
   const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') redirect('/dashboard')
+  if (!isAdminRole(profile?.role)) redirect('/dashboard')
 
   const params = await searchParams
   const raw = typeof params.view === 'string' ? params.view : ''

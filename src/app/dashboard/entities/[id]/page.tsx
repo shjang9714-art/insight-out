@@ -18,6 +18,7 @@ import { getOrGenerateKeywordInsight } from '@/lib/insight/keyword-insight'
 import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
 import CompanyDocumentCard from '@/components/entities/CompanyDocumentCard'
 import { entityStyle } from '@/lib/entities/entity-style'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const dynamic = 'force-dynamic'
 
@@ -230,7 +231,7 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   const { data: profile } = user
     ? await supabase.from('users').select('role').eq('id', user.id).single()
     : { data: null }
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = isAdminRole(profile?.role)
 
   // 1. 서로 독립인 쿼리(엔티티 자체 id 에만 의존) — 231: 한 배치로 병렬화
   const [

@@ -31,6 +31,7 @@ import { CONTENT_CATEGORY_LABEL, ENTITY_TYPE_LABEL, type ContentCategory, type E
 import PageContainer from '@/components/PageContainer'
 import { cn } from '@/lib/utils'
 import { extractVideoId } from '@/lib/youtube'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const dynamic = 'force-dynamic'
 
@@ -172,7 +173,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
   const { data: profile } = authUser
     ? await supabase.from('users').select('role').eq('id', authUser.id).single()
     : { data: null }
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = isAdminRole(profile?.role)
 
   if (error || !data) {
     notFound()

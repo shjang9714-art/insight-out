@@ -19,6 +19,7 @@ import {
 } from '@/lib/insight/card-meta'
 import { buildCompanyMatchOr, getCompanyNewsSinceIso } from '@/lib/insight/company-match'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const dynamic = 'force-dynamic'
 
@@ -128,7 +129,7 @@ export default async function InsightDetailPage({ params, searchParams }: PagePr
   const { data: profile } = user
     ? await supabase.from('users').select('role').eq('id', user.id).single()
     : { data: null }
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = isAdminRole(profile?.role)
   if (card.scope === 'industry' && !isAdmin) notFound()
 
   const citations = (card.citations ?? []) as InsightCardCitation[]

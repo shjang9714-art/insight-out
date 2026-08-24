@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { titleHash } from '@/lib/crawler/normalize'
 import { COMPANY_DOC_TYPES, DOC_GROUP_BY_TYPE } from '@/lib/company-docs/constants'
 import type { CompanyDocumentType } from '@/lib/types'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
   }
   const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = isAdminRole(profile?.role)
 
   let body: UploadBody
   try {

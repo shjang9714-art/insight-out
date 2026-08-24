@@ -27,3 +27,9 @@ export function hasCapability(role: string | null | undefined, cap?: AdminCapabi
   if (!cap) return true
   return ROLE_CAPABILITIES[role]?.includes(cap) ?? false
 }
+
+/** 어드민 역할인가(= admin 또는 super_admin). 역할 판정의 유일한 철자.
+ *  ⚠️ 개별 역할명을 직접 비교하지 마라 — super_admin 이 조용히 배제된다(570). */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return ADMIN_ROLES.includes(role as typeof ADMIN_ROLES[number])
+}
