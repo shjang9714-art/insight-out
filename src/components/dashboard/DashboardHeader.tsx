@@ -19,6 +19,7 @@ import { NAV_TABS, resolveActiveNav } from '@/lib/nav/active'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import { getL2ForSection } from '@/lib/nav/taxonomy'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export { ISSUES_L1_HREFS, NAV_TABS, isTabActive, resolveIssuesActiveHref } from '@/lib/nav/active'
 
@@ -99,8 +100,8 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
           setUserName(data?.name ?? '')
           if (data?.team) setUserTeam(data.team)
           // 실험실(관리자 전용) 5탭줄 노출 판정용 — AiInsightBoard.tsx의 서버측
-          // isAdmin 계산(users.role === 'admin')과 동일 기준
-          setIsAdmin(data?.role === 'admin')
+          // isAdmin 계산(isAdminRole)과 동일 기준
+          setIsAdmin(isAdminRole(data?.role))
         })
     })
   }, [])

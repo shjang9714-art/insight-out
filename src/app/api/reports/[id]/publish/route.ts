@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidStorageUrlValue } from '@/lib/storage/resolve-url'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -35,7 +36,7 @@ async function verifyAdmin() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || profile.role !== 'admin') {
+  if (!isAdminRole(profile?.role)) {
     return { error: NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 }) }
   }
 

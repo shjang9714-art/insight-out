@@ -12,6 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { auditLog, actorFrom, hasScope, type McpActor } from '@/lib/mcp/auth'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 const REPORT_TYPES = ['시장동향', '경쟁사분석', '키워드분석', '서비스리포트', '자유주제'] as const
 
@@ -163,7 +164,7 @@ export function registerReportTools(server: McpServer) {
         if (fetchErr) return dbError(fetchErr, 'ai_reports')
 
         const row = existing as { user_id: string; title: string }
-        if (row.user_id !== actor.userId && actor.role !== 'admin') {
+        if (row.user_id !== actor.userId && !isAdminRole(actor.role)) {
           return fail('본인이 작성한 보고서만 수정할 수 있습니다.')
         }
 

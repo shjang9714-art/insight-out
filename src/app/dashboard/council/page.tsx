@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import PageContainer from '@/components/PageContainer'
 import CouncilWorkspace from '@/components/dashboard/CouncilWorkspace'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,7 @@ export default async function CouncilPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') redirect('/dashboard')
+  if (!isAdminRole(profile?.role)) redirect('/dashboard')
 
   return (
     <PageContainer>

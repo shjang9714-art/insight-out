@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { createHmac } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const runtime = 'nodejs'
 
@@ -51,7 +52,7 @@ export async function GET() {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') {
+  if (!isAdminRole(profile?.role)) {
     return NextResponse.json({ error: '관리자 권한이 필요합니다.' }, { status: 403 })
   }
 

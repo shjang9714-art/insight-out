@@ -11,6 +11,7 @@ import { buildWeekSummary } from '@/lib/daily-insights/weeks'
 import AiInsightBoard, { type TopicTrend, type SignalItem } from '@/components/analysis/AiInsightBoard'
 import { getKeywordDailyCounts } from '@/lib/keywords/detail'
 import { rankKeywords } from '@/lib/keywords/ranking'
+import { isAdminRole } from '@/lib/admin/capabilities'
 
 const WATCHLIST_LIMIT = 20
 // 실측 후보 153개에 안전 여유를 둔 상한이며, 300개 노출을 목표로 하지 않는다.
@@ -185,7 +186,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .in('alias', ['LG유플러스', 'LGU+', 'LG U+']),
   ])
 
-  const isAdmin = profileRes.data?.role === 'admin'
+  const isAdmin = isAdminRole(profileRes.data?.role)
 
   const cards = (insightRes.data ?? []) as InsightCard[]
   const watchlist = (watchlistRes.data ?? []) as WatchlistItem[]

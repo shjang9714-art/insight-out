@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { ADMIN_ROLES } from '@/lib/admin/capabilities'
+import { isAdminRole } from '@/lib/admin/capabilities'
 import {
   PROFILE_COOKIE_NAME,
   PROFILE_COOKIE_TTL_SECONDS,
@@ -197,26 +197,26 @@ export async function middleware(request: NextRequest) {
     if (
       gate.onboarding_completed &&
       gate.approval_status !== 'approved' &&
-      gate.role !== 'admin' &&
+      !isAdminRole(gate.role) &&
       pathname !== '/pending'
     ) {
       return NextResponse.redirect(new URL('/pending', request.url))
     }
 
-    if (pathname === '/pending' && (gate.approval_status === 'approved' || gate.role === 'admin')) {
+    if (pathname === '/pending' && (gate.approval_status === 'approved' || isAdminRole(gate.role))) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    if (pathname.startsWith('/admin') && !ADMIN_ROLES.includes(gate.role as typeof ADMIN_ROLES[number])) {
+    if (pathname.startsWith('/admin') && !isAdminRole(gate.role)) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
     // 실험실(숨김 처리된 하위 카테고리 확인용) — 관리자 전용
-    if (pathname.startsWith('/dashboard/lab') && gate.role !== 'admin') {
+    if (pathname.startsWith('/dashboard/lab') && !isAdminRole(gate.role)) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    if (pathname.startsWith('/dashboard/council') && gate.role !== 'admin') {
+    if (pathname.startsWith('/dashboard/council') && !isAdminRole(gate.role)) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
