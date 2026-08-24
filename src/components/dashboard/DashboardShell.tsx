@@ -8,6 +8,7 @@ import DashboardHeader, { NAV_TABS } from '@/components/dashboard/DashboardHeade
 import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
 import { MobileBottomNav } from '@/components/dashboard/MobileBottomNav'
 import SearchOverlay from '@/components/mobile/SearchOverlay'
+import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import { resolveActiveNav } from '@/lib/nav/active'
 
 // layout.tsx · DashboardHeader.tsx의 CONTENT_DETAIL_PATTERN과 반드시 동일해야 한다.
@@ -55,6 +56,19 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         onMenuClick={() => setSidebarOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
       />
+
+      {/* 564 — 모바일 L2. 데스크톱은 헤더 호버 패널(563)이 담당하지만 모바일은 호버가
+          없어 활성 L1의 L2를 항상 가로로 노출한다. 헤더 밖·비sticky로 둬서 ContentsBoard
+          (:262,:737)와 search/page(:135)의 top-14/md:top-24 오프셋을 건드리지 않는다.
+          L2가 없는 L1(홈·키워드 분석·관계지도·기업동향)에서는 이 컴포넌트가 null을
+          반환해 아무것도 렌더되지 않는다. */}
+      {activeL1Href && (
+        <ContentsL2Tabs
+          l1Href={activeL1Href}
+          orientation="horizontal"
+          className="border-b border-border bg-card md:hidden print:hidden"
+        />
+      )}
 
       {/* 풀폭 본문 */}
       <main className="mx-auto w-full max-w-6xl pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 print:max-w-none print:pb-0">
