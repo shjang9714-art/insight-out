@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import AiMark from '@/components/ui/AiMark'
 
 // ─── L2(하위 탭) 중앙 정의(372) ─────────────────────────────────────────────────
-// DashboardHeader가 L1 아래 sticky L2 행을 렌더할 때 이 파일 하나만 참조한다.
+// DashboardHeader가 L1 아래 세로 L2 패널을 렌더할 때 이 파일 하나만 참조한다.
 // 각 섹션의 L2 항목·URL(param/value)·기본 활성 탭은 기존 InsightViewTabs 사용처
 // (ContentsBoard·AiInsightBoard·AiInsightTabs·EntityTabs·ReportTabs)와 1:1 일치.
 
@@ -79,17 +79,6 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
     tabs: [
       { id: 'brief', label: '주간 인사이트', value: 'brief' },
       { id: 'insight-report', label: aiLabel('인사이트 리포트'), value: 'insight-report', href: '/dashboard/reports?view=ai' },
-    ],
-  },
-  '/dashboard/issues?view=keyword': {
-    l1Href: '/dashboard/issues?view=keyword',
-    basePath: '/dashboard/issues',
-    paramKey: 'view',
-    defaultId: 'keyword',
-    preserveParams: false,
-    tabs: [
-      { id: 'keyword', label: '키워드 분석', value: 'keyword' },
-      { id: 'graph', label: '관계지도', value: 'graph' },
     ],
   },
   // '/dashboard/entities' 섹션은 제거됨(지시서 2026-08-04b) — 'documents'(기업·기술

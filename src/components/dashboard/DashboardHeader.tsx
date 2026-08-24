@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, startTransition } from 'react'
+import { useState, useEffect, useRef, startTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { NAV_TABS, resolveActiveNav } from '@/lib/nav/active'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
+import { getL2ForSection } from '@/lib/nav/taxonomy'
 
 export { ISSUES_L1_HREFS, NAV_TABS, isTabActive, resolveIssuesActiveHref } from '@/lib/nav/active'
 
@@ -49,6 +50,7 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
   const [userTeam, setUserTeam]     = useState('')
   const [isAdmin, setIsAdmin]       = useState(false)
   const [hoveredL1Href, setHoveredL1Href] = useState<string | null>(null)
+  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 검색 버튼의 단축키 힌트 배지 — 서버 렌더는 항상 '⌘K'로 고정해 하이드레이션 불일치를
   // 막고, mount 후에만(클라이언트 전용 navigator 값) Windows/Linux면 'Ctrl+K'로 갱신한다.
   const [kbdHint, setKbdHint] = useState('⌘K')
@@ -63,6 +65,26 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
 
   const { l1Href: activeL1Href } = resolveActiveNav(pathname, searchParams)
   const displayedL1Href = hoveredL1Href ?? activeL1Href
+  const hoveredL2 = hoveredL1Href
+    ? getL2ForSection(hoveredL1Href, pathname, searchParams)
+    : null
+
+  const cancelHoverClose = () => {
+    if (hoverCloseTimerRef.current) {
+      clearTimeout(hoverCloseTimerRef.current)
+      hoverCloseTimerRef.current = null
+    }
+  }
+
+  const scheduleHoverClose = () => {
+    cancelHoverClose()
+    hoverCloseTimerRef.current = setTimeout(() => {
+      setHoveredL1Href(null)
+      hoverCloseTimerRef.current = null
+    }, 120)
+  }
+
+  useEffect(() => () => cancelHoverClose(), [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -93,7 +115,8 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
   return (
     <header
       className={cn('sticky top-0 z-20 bg-card/90 backdrop-blur-sm', className)}
-      onMouseLeave={() => setHoveredL1Href(null)}
+      onMouseLeave={scheduleHoverClose}
+      onMouseEnter={cancelHoverClose}
     >
 
       {/* ── 메인 바 ─────────────────────────────────────────────────────────────── */}
@@ -201,7 +224,7 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
         </div>
       </div>
 
-      {/* ── 5탭 네비게이션 (md+, CategoryGrid 톤 참고) ──────────────────────────── */}
+      {/* ── 6탭 네비게이션 (md+, CategoryGrid 톤 참고) ──────────────────────────── */}
       <nav
         className="hidden md:flex"
         aria-label="주 메뉴"
@@ -214,9 +237,15 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
               <Link
                 key={tab.href}
                 href={tab.href}
-                onMouseEnter={() => setHoveredL1Href(tab.href)}
-                onFocus={() => setHoveredL1Href(tab.href)}
-                onBlur={() => setHoveredL1Href(null)}
+                onMouseEnter={() => {
+                  cancelHoverClose()
+                  setHoveredL1Href(tab.href)
+                }}
+                onFocus={() => {
+                  cancelHoverClose()
+                  setHoveredL1Href(tab.href)
+                }}
+                onBlur={scheduleHoverClose}
                 className={`inline-flex items-center gap-2 py-1.5 text-[17px] transition-colors ${
                   active
                     ? 'font-medium text-foreground'
@@ -254,15 +283,26 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
         </div>
       </nav>
 
-      {/* L1 호버 중에는 해당 섹션을 미리 보여주고, 해제하면 활성 섹션으로 복귀한다.
-          L2가 없는 섹션도 고정 높이를 유지해 본문이 위아래로 움직이지 않는다. */}
-      <div className="hidden h-9 border-b border-border md:block">
-        {displayedL1Href && (
-          <NavGroupAlign remeasureKey={displayedL1Href}>
-            <ContentsL2Tabs l1Href={displayedL1Href} className="mb-0 h-9" />
-          </NavGroupAlign>
-        )}
-      </div>
+      {/* L2가 있는 L1만 떠 있는 세로 패널을 표시한다. 닫기를 120ms 늦추고 패널
+          진입 시 취소해 L1과 absolute 패널 사이를 이동할 때 호버가 끊기지 않는다. */}
+      {hoveredL1Href && hoveredL2 && (
+        <div
+          className="pointer-events-none absolute inset-x-0 top-full hidden md:block"
+          onMouseEnter={cancelHoverClose}
+          onMouseLeave={scheduleHoverClose}
+          onFocus={cancelHoverClose}
+          onBlur={scheduleHoverClose}
+        >
+          <div className="mx-auto w-full max-w-6xl px-4 sm:px-5">
+            <NavGroupAlign remeasureKey={hoveredL1Href} className="pointer-events-auto">
+              <ContentsL2Tabs
+                l1Href={hoveredL1Href}
+                className="rounded-lg border border-border bg-card shadow-lg"
+              />
+            </NavGroupAlign>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
