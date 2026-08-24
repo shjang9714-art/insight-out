@@ -114,7 +114,7 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
 
   return (
     <header
-      className={cn('sticky top-0 z-20 bg-card/90 backdrop-blur-sm', className)}
+      className={cn('sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur-sm', className)}
       onMouseLeave={scheduleHoverClose}
       onMouseEnter={cancelHoverClose}
     >
