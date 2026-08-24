@@ -334,6 +334,7 @@ export async function llmCompleteDetailed(
       return {
         text: null,
         errorReason: lastErrorReason ?? '활성 라우팅 없음',
+        transient: lastTransient,
       }
     }
 
