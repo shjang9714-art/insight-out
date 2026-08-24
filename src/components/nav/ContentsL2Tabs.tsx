@@ -10,9 +10,11 @@ import { buildL2Href, getL2ForSection } from '@/lib/nav/taxonomy'
 interface Props {
   className?: string
   l1Href: string
+  /** 'vertical' = 데스크톱 헤더 호버 패널(563). 'horizontal' = 모바일 가로 줄(564). */
+  orientation?: 'vertical' | 'horizontal'
 }
 
-export default function ContentsL2Tabs({ className, l1Href }: Props) {
+export default function ContentsL2Tabs({ className, l1Href, orientation = 'vertical' }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const l2 = getL2ForSection(l1Href, pathname, searchParams)
@@ -22,7 +24,9 @@ export default function ContentsL2Tabs({ className, l1Href }: Props) {
   return (
     <nav
       className={cn(
-        'flex min-w-48 flex-col py-2 tracking-[-0.01em]',
+        orientation === 'vertical'
+          ? 'flex min-w-48 flex-col py-2 tracking-[-0.01em]'
+          : 'flex items-center gap-5 overflow-x-auto px-4 py-2.5 tracking-[-0.01em] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
       aria-label="하위 메뉴"
@@ -35,8 +39,12 @@ export default function ContentsL2Tabs({ className, l1Href }: Props) {
             key={tab.id}
             href={buildL2Href(section, tab, pathname, searchParams)}
             className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-[14px] transition-colors',
-              active ? 'font-medium text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              orientation === 'vertical'
+                ? 'inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-[14px] transition-colors'
+                : 'inline-flex shrink-0 items-center gap-1.5 py-1 text-[14px] transition-colors',
+              active
+                ? 'font-medium text-foreground'
+                : cn('text-muted-foreground', orientation === 'vertical' && 'hover:bg-accent hover:text-foreground')
             )}
           >
             <span className={cn('h-[5px] w-[5px] shrink-0 rounded-full', active ? 'bg-brand-600' : 'bg-transparent')} />
