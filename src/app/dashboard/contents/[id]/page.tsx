@@ -110,39 +110,41 @@ const CATEGORY_STYLE: Partial<Record<ContentCategory, string>> = {
 
 // ─── 데이터 조회 (요청당 1회로 dedupe — generateMetadata/Page가 공유) ──────────
 // react cache()로 감싸 동일 id 호출 시 실제 쿼리는 한 번만 나가도록 함.
-// 메인 쿼리와 link_ok 가드 쿼리도 순차 대기 대신 Promise.all로 병렬 실행.
 const getContentRow = cache(async (id: string) => {
   const cookieStore = await cookies()
   const supabase = createSupabaseClient(cookieStore)
 
-  const [{ data, error }, { data: lh }, { data: md }, { data: tr }, { data: lg }] = await Promise.all([
-    supabase
-      .from('contents')
-      .select(`
-        id, title, title_original, category,
-        summary_ko, body_original, body_translated_ko, original_language, body_fetched_at,
-        file_path, original_url, author, published_at, collected_at,
-        matched_keywords, matched_groups, cluster_id,
-        sources(name),
-        content_keywords(keywords(name))
-      `)
-      .eq('id', id)
-      .eq('status', 'published')
-      .single(),
-    // 별도 가드 쿼리: link_ok(컬럼 없으면 null→정상 링크 표시, 42703 graceful)
-    supabase.from('contents').select('link_ok').eq('id', id).single(),
-    // 별도 가드 쿼리: body_markdown(212, 컬럼 없으면 null→기존 평문 렌더, 42703 graceful)
-    supabase.from('contents').select('body_markdown').eq('id', id).single(),
-    // 별도 가드 쿼리: 유튜브 자막(265, 컬럼 없으면 null→스크립트 섹션 생략, 42703 graceful)
-    supabase.from('contents').select('transcript, transcript_ko, transcript_lang').eq('id', id).single(),
-    // 별도 가드 쿼리: lgu_impact(313, 컬럼 없으면 null→배지 생략, 42703 graceful)
-    supabase.from('contents').select('lgu_impact').eq('id', id).single(),
-  ])
-
-  const linkDead = (lh as { link_ok: boolean | null } | null)?.link_ok === false
-  const bodyMarkdown = (md as { body_markdown: string | null } | null)?.body_markdown ?? null
-  const transcriptRow = tr as { transcript: string | null; transcript_ko: string | null; transcript_lang: string | null } | null
-  const lguImpact = (lg as { lgu_impact: string | null } | null)?.lgu_impact ?? null
+  const { data: rows, error } = await supabase.rpc('get_public_content', { p_id: id })
+  const row = rows?.[0] ?? null
+  const data = row ? {
+    id: row.id,
+    title: row.title,
+    title_original: row.title_original,
+    category: row.category,
+    summary_ko: row.summary_ko,
+    body_original: row.body_original,
+    body_translated_ko: row.body_translated_ko,
+    original_language: row.original_language,
+    body_fetched_at: row.body_fetched_at,
+    file_path: row.file_path,
+    original_url: row.original_url,
+    author: row.author,
+    published_at: row.published_at,
+    collected_at: row.collected_at,
+    matched_keywords: row.matched_keywords,
+    matched_groups: row.matched_groups,
+    cluster_id: row.cluster_id,
+    sources: row.source_name ? { name: row.source_name } : null,
+    content_keywords: (row.keyword_names ?? []).map((name: string) => ({ keywords: { name } })),
+  } : null
+  const linkDead = row?.link_ok === false
+  const bodyMarkdown = row?.body_markdown ?? null
+  const transcriptRow = row ? {
+    transcript: row.transcript,
+    transcript_ko: row.transcript_ko,
+    transcript_lang: row.transcript_lang,
+  } : null
+  const lguImpact = row?.lgu_impact ?? null
 
   return { data, error, linkDead, bodyMarkdown, transcriptRow, lguImpact, supabase }
 })

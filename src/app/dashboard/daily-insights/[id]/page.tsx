@@ -14,7 +14,8 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params
   const supabase = await createClient()
-  const { data } = await supabase.from('daily_insights').select('headline, summary_ko').eq('id', id).single()
+  const { data: rows } = await supabase.rpc('get_public_daily_insight', { p_id: id })
+  const data = rows?.[0] ?? null
 
   return {
     title: data ? `${stripLlmArtifacts(data.headline)} | Insight Out` : '핵심 Insight | Insight Out',
@@ -26,7 +27,8 @@ export default async function DailyInsightDetailPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await createClient()
 
-  const { data } = await supabase.from('daily_insights').select('*').eq('id', id).eq('status', 'published').single()
+  const { data: rows } = await supabase.rpc('get_public_daily_insight', { p_id: id })
+  const data = rows?.[0] ?? null
 
   if (!data) notFound()
 
