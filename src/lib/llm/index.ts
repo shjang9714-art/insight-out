@@ -176,6 +176,9 @@ export interface LlmCompleteResult {
   text: string | null
   /** 모든 provider 시도가 실패했을 때 마지막 실패 원인. 성공 시 null */
   errorReason: string | null
+  /** true 면 provider 쪽 일시 장애(401·402·403·429·5xx)로 실패했다.
+   *  호출부는 이 경우 대상을 영구 실패로 마킹하면 안 된다. */
+  transient?: boolean
 }
 
 export interface LlmCompleteOptions {
@@ -210,6 +213,7 @@ export async function llmCompleteDetailed(
 ): Promise<LlmCompleteResult> {
   const { allowFallbackPool = true } = options
   let lastErrorReason: string | null = null
+  let lastTransient = false
 
   try {
     const admin = createAdminClient()
@@ -255,6 +259,7 @@ export async function llmCompleteDetailed(
           // 쿨다운으로 건너뛴 경우도 사유를 남긴다 — 안 남기면 최종 사유가
           // "활성 라우팅 없음"으로 잘못 보고된다(라우팅은 멀쩡한데 쿨다운 중일 뿐인데도).
           lastErrorReason = `${route.provider}: 쿨다운 중(429/401)`
+          lastTransient = true
           continue
         }
 
@@ -267,6 +272,7 @@ export async function llmCompleteDetailed(
         const { result, errorReason, hardLimit, permanent, cooldownKind } = await completeWithRetry(provider, system, user, route.model_id)
         if (!result) {
           lastErrorReason = errorReason
+          lastTransient = hardLimit
           if (permanent) {
             console.error(`[LLM] task=${task} provider=${route.provider} model=${route.model_id} 모델 사용 불가 — 라우팅 행 점검 필요`)
             // 404만 고정 문자열('모델 사용 불가(404)') 사용 — detect-issues.ts:243 계약. 400/422는 errorReason 그대로.
@@ -311,10 +317,11 @@ export async function llmCompleteDetailed(
           null
         )
         await incrementUsage(admin, route.provider, period, result.tokens)
-        return { text: result.text, errorReason: null }
+        return { text: result.text, errorReason: null, transient: false }
       }
     } else if (routingResult.error) {
       lastErrorReason = `라우팅 조회 실패: ${routingResult.error.message}`
+      lastTransient = false
       console.warn(
         allowFallbackPool
           ? '[LLM] 라우팅 테이블 조회 실패, 고정 폴백 사용:'
@@ -327,6 +334,7 @@ export async function llmCompleteDetailed(
       return {
         text: null,
         errorReason: lastErrorReason ?? '활성 라우팅 없음',
+        transient: lastTransient,
       }
     }
 
@@ -336,6 +344,7 @@ export async function llmCompleteDetailed(
       if (!provider.isConfigured() || s?.enabled === false) continue
       if (isOnCooldown(provider.name)) {
         lastErrorReason = `${provider.name}: 쿨다운 중(429/401)`
+        lastTransient = true
         continue
       }
       const tokenLimit = monthlyBudget(s?.limit)
@@ -345,6 +354,7 @@ export async function llmCompleteDetailed(
       const { result, errorReason, hardLimit, permanent, cooldownKind } = await completeWithRetry(provider, system, user)
       if (!result) {
         lastErrorReason = errorReason
+        lastTransient = hardLimit
         if (permanent) {
           console.error(`[LLM] fallback provider=${provider.name} 모델 사용 불가 — 라우팅 행 점검 필요`)
         } else {
@@ -361,12 +371,13 @@ export async function llmCompleteDetailed(
       }
 
       await incrementUsage(admin, provider.name, period, result.tokens)
-      return { text: result.text, errorReason: null }
+      return { text: result.text, errorReason: null, transient: false }
     }
   } catch (err) {
     lastErrorReason = `내부 오류: ${err instanceof Error ? err.message : String(err)}`
+    lastTransient = false
     console.error('[LLM] 처리 실패:', lastErrorReason)
   }
 
-  return { text: null, errorReason: lastErrorReason ?? '사용 가능한 provider 없음' }
+  return { text: null, errorReason: lastErrorReason ?? '사용 가능한 provider 없음', transient: lastTransient }
 }
