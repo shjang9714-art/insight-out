@@ -8,12 +8,8 @@ export const SUMMARY_MIN_BODY_LEN = 200
 
 export interface SummarizeResult {
   text: string | null
-  /** true 면 LLM 한도 소진(429/401) — 영구 실패가 아니다. 호출부는 재시도 마킹을 하면 안 된다. */
+  /** true 면 provider 일시 장애(401·402·403·429·5xx) — 영구 실패가 아니다. 호출부는 재시도 마킹을 하면 안 된다. */
   rateLimited: boolean
-}
-
-function isRateLimited(errorReason: string | null): boolean {
-  return Boolean(errorReason?.includes('한도소진'))
 }
 
 const SYSTEM_PROMPT =
@@ -24,13 +20,13 @@ const SYSTEM_PROMPT =
 /**
  * LLM 으로 한국어 2~3문장 요약을 생성한다.
  * 키 미등록·실패 시 text: null (호출부는 summary_ko 미설정 → UI 폴백).
- * 한도소진(429/401) 시 rateLimited: true — 영구 실패와 구분해야 한다(310/312).
+ * provider 일시 장애(401·402·403·429·5xx) 시 rateLimited: true — 영구 실패와 구분해야 한다(310/312).
  */
 export async function summarizeKo(titleKo: string, bodyKo: string): Promise<SummarizeResult> {
   try {
     const user = `제목: ${titleKo}\n본문: ${bodyKo.slice(0, SUMMARY_INPUT_MAXCHARS)}`
-    const { text, errorReason } = await llmCompleteDetailed('summarize', SYSTEM_PROMPT, user)
-    if (!text) return { text: null, rateLimited: isRateLimited(errorReason) }
+    const { text, transient } = await llmCompleteDetailed('summarize', SYSTEM_PROMPT, user)
+    if (!text) return { text: null, rateLimited: transient === true }
     const trimmed = text.trim()
     return { text: trimmed || null, rateLimited: false }
   } catch (e) {
@@ -51,8 +47,8 @@ const YOUTUBE_SYSTEM_PROMPT =
 export async function summarizeYoutubeKo(title: string, channelName: string | null): Promise<SummarizeResult> {
   try {
     const user = `제목: ${title}${channelName ? `\n채널: ${channelName}` : ''}`
-    const { text, errorReason } = await llmCompleteDetailed('summarize', YOUTUBE_SYSTEM_PROMPT, user)
-    if (!text) return { text: null, rateLimited: isRateLimited(errorReason) }
+    const { text, transient } = await llmCompleteDetailed('summarize', YOUTUBE_SYSTEM_PROMPT, user)
+    if (!text) return { text: null, rateLimited: transient === true }
     const trimmed = text.trim()
     return { text: trimmed || null, rateLimited: false }
   } catch (e) {

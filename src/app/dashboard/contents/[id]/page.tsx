@@ -251,14 +251,14 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
     <PageContainer variant="reading">
 
       {/* 366 — 문서(PDF/PPTX) 상세는 sticky 해제(정적): PdfViewer를 가리지 않게 한다 */}
-      {/* 콘텐츠(뉴스/유튜브/웹인사이트) 탭바는 DashboardHeader의 sticky L2 행과 중복이라 생략(372).
-          기업동향에서 진입(origin=entities)한 경우만, 그 맥락(경쟁사 최근 뉴스 등)으로 되돌아갈
-          수 있게 이 페이지 자체의 보조 탭바를 유지한다. */}
+      {/* 이 라우트(/dashboard/contents/[id])는 DashboardShell 이 헤더·하단내비를 걷어내 위에
+          아무것도 없다 — sticky 기준은 top-0. 기업동향에서 진입(origin=entities)한 경우만,
+          그 맥락(경쟁사 최근 뉴스 등)으로 되돌아갈 수 있게 이 페이지 자체의 보조 탭바를 유지한다. */}
       {origin === 'entities' && !(isExternalReport || isKnowledgeReport) && (
         <div
           className={cn(
             '-mx-4 -mt-3 mb-6 bg-background/95 px-4 pb-2 backdrop-blur-sm sm:-mx-5 sm:px-5',
-            !isReport && 'sticky top-14 z-10 md:top-[132px]'
+            !isReport && 'sticky top-0 z-10'
           )}
         >
           <EntityTabs value={view ?? 'competitor'} />
