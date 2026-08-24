@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import UserManager from '@/components/admin/UserManager'
 import AdminPageHeader from '@/components/admin/ui/AdminPageHeader'
 import { createClient } from '@/lib/supabase/server'
+import { hasCapability } from '@/lib/admin/capabilities'
 
 export const metadata: Metadata = {
   title: '사용자 관리 | 어드민 | Insight Out',
@@ -31,6 +33,15 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  // 미들웨어의 15분 프로필 캐시를 신뢰하지 않고 매번 DB에서 확인해 독립적인 방어선을 유지한다.
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', user?.id ?? '')
+    .single()
+
+  if (!hasCapability(profile?.role, 'manage_admins')) redirect('/admin')
 
   const [usersResult, adminCountResult] = await Promise.all([
     svc
