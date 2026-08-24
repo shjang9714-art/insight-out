@@ -21,7 +21,11 @@ export interface LlmProvider {
  * 'rate' 를 명시적으로 넘겨 30초 쿨다운을 받는다.
  */
 export class LlmRateLimitError extends Error {
-  constructor(public readonly providerName: string, public readonly kind: 'rate' | 'auth' = 'auth') {
+  constructor(
+    public readonly providerName: string,
+    public readonly kind: 'rate' | 'auth' = 'auth',
+    public readonly status?: number,
+  ) {
     super(`${providerName}: rate limited (429/401)`)
     this.name = 'LlmRateLimitError'
   }
@@ -29,7 +33,10 @@ export class LlmRateLimitError extends Error {
 
 /** provider 모델이 영구적으로 사용 불가(404/400) — 같은 모델로 재시도해도 결과가 같다. 쿨다운 대상 아님(모델 문제이지 한도 문제가 아님). */
 export class LlmModelUnavailableError extends Error {
-  constructor(public readonly providerName: string) {
+  constructor(
+    public readonly providerName: string,
+    public readonly status?: number,
+  ) {
     super(`${providerName}: model unavailable (404/400)`)
     this.name = 'LlmModelUnavailableError'
   }

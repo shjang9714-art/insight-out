@@ -1,5 +1,6 @@
 import type { LlmProvider, LlmResult } from '@/lib/llm/types'
-import { LlmRateLimitError } from '@/lib/llm/types'
+import { LlmModelUnavailableError, LlmRateLimitError } from '@/lib/llm/types'
+import { classifyHttpStatus } from '@/lib/llm/http-status'
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -38,6 +39,8 @@ const geminiProvider: LlmProvider = {
     // (openai-compat 프로바이더와 동일 계약. 이게 없으면 Gemini 만 쿨다운이 안 걸려
     //  크롤 매 요약 호출마다 재시도되는 "재시도 지옥"이 발생 — 2026-07-12 504 원인.)
     let sawHardLimit = false
+    let hardLimitKind: 'rate' | 'auth' | undefined
+    let hardLimitStatus: number | undefined
 
     for (const key of orderedKeys) {
       try {
@@ -55,8 +58,12 @@ const geminiProvider: LlmProvider = {
         if (!res.ok) {
           const body = await res.text().catch(() => '')
           console.error(`[gemini] HTTP ${res.status}: ${body.slice(0, 500)}`)
-          if (res.status === 401 || res.status === 429) {
+          const { permanent, retryable, kind } = classifyHttpStatus(res.status, { treat400AsAuth: true })
+          if (permanent) throw new LlmModelUnavailableError('gemini', res.status)
+          if (retryable) {
             sawHardLimit = true
+            hardLimitKind = kind
+            hardLimitStatus = res.status
             continue
           }
           return null
@@ -73,12 +80,14 @@ const geminiProvider: LlmProvider = {
           text,
           tokens: data.usageMetadata?.totalTokenCount ?? 0,
         } satisfies LlmResult
-      } catch {
+      } catch (err) {
+        if (err instanceof LlmModelUnavailableError) throw err
+        console.error('[gemini] 호출 실패(네트워크/타임아웃):', err)
         continue
       }
     }
 
-    if (sawHardLimit) throw new LlmRateLimitError('gemini')
+    if (sawHardLimit) throw new LlmRateLimitError('gemini', hardLimitKind, hardLimitStatus)
     return null
   },
 }
