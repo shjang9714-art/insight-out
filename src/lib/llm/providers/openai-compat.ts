@@ -1,5 +1,6 @@
 import type { LlmProvider, LlmResult } from '@/lib/llm/types'
 import { LlmModelUnavailableError, LlmRateLimitError } from '@/lib/llm/types'
+import { classifyHttpStatus } from '@/lib/llm/http-status'
 
 interface OpenAICompatConfig {
   name: string
@@ -20,12 +21,14 @@ function getKeys(keysEnv: string): string[] {
 
 interface TryCompleteResult {
   result: LlmResult | null
-  /** 401/429 — 다른 키로 재시도해볼 가치가 있음 */
+  /** 401/402/403/408/429/5xx — 다른 키로 재시도해볼 가치가 있음 */
   retryable: boolean
-  /** 404/400 — 같은 모델로 다시 불러도 결과가 같다. 키 재시도 없이 즉시 종료 대상 */
+  /** 400/404/422 — 같은 모델로 다시 불러도 결과가 같다. 키 재시도 없이 즉시 종료 대상 */
   permanent: boolean
   /** retryable이 true일 때만 의미 있음. 429='rate'(수십 초면 풀림), 401='auth'(스스로 안 낫음) */
   kind?: 'rate' | 'auth'
+  /** 실패한 HTTP 상태코드. 성공 시 undefined */
+  status?: number
 }
 
 async function tryComplete(
@@ -57,11 +60,8 @@ async function tryComplete(
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       console.error(`[${providerName}] HTTP ${res.status}: ${body.slice(0, 500)}`)
-      // 404/400은 영구 오류 — 같은 모델로 재시도해도 같은 결과. 재시도 대상(401/429)과 분리한다.
-      const permanent = res.status === 404 || res.status === 400
-      const retryable = res.status === 401 || res.status === 429
-      const kind = res.status === 429 ? 'rate' : res.status === 401 ? 'auth' : undefined
-      return { result: null, retryable, permanent, kind }
+      const { permanent, retryable, kind } = classifyHttpStatus(res.status)
+      return { result: null, retryable, permanent, kind, status: res.status }
     }
 
     const data = (await res.json()) as ChatCompletionResponse
@@ -108,24 +108,26 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
 
       const first = await tryComplete(name, baseURL, firstKey, resolvedModel, system, user)
       if (first.result) return first.result
-      // 404/400은 영구 오류 — 다른 키로 재시도해도 같은 모델이 같은 이유로 실패한다. 즉시 종료.
-      if (first.permanent) throw new LlmModelUnavailableError(name)
+      // 400/404/422는 영구 오류 — 다른 키로 재시도해도 같은 모델이 같은 이유로 실패한다. 즉시 종료.
+      if (first.permanent) throw new LlmModelUnavailableError(name, first.status)
       let sawHardLimit = first.retryable
       let hardLimitKind = first.kind
+      let hardLimitStatus = first.status
 
       if (first.retryable && keys.length > 1) {
         const remaining = keys.filter((_, i) => i !== idx)
         const secondKey = remaining[Math.floor(Math.random() * remaining.length)]
         const second = await tryComplete(name, baseURL, secondKey, resolvedModel, system, user)
         if (second.result) return second.result
-        if (second.permanent) throw new LlmModelUnavailableError(name)
+        if (second.permanent) throw new LlmModelUnavailableError(name, second.status)
         sawHardLimit = sawHardLimit || second.retryable
         hardLimitKind = second.kind ?? hardLimitKind
+        hardLimitStatus = second.status ?? hardLimitStatus
       }
 
-      // 429/401(한도소진·인증실패)은 재시도 무의미 — 상위(completeWithRetry)가 즉시 다음 provider로 넘어가게 throw.
-      // 그 외(5xx/timeout/빈응답)는 일시 오류로 보고 null(상위 재시도 허용).
-      if (sawHardLimit) throw new LlmRateLimitError(name, hardLimitKind)
+      // 재시도 무의미한 실패(401/402/403/429/5xx)는 상위가 즉시 다음 provider 로 넘어가게 throw.
+      // 그 외(타임아웃·빈응답·미분류 상태)만 null 로 두고 상위 재시도를 허용한다.
+      if (sawHardLimit) throw new LlmRateLimitError(name, hardLimitKind, hardLimitStatus)
       return null
     },
   }

@@ -84,16 +84,25 @@ async function completeWithRetry(
       lastReason = `${provider.name}: 응답 없음`
     } catch (err) {
       if (err instanceof LlmModelUnavailableError) {
-        // 404/400은 같은 모델을 다시 불러도 결과가 같다 — 재시도하지 않고 즉시 종료.
+        // 404/400/422는 같은 모델을 다시 불러도 결과가 같다 — 재시도하지 않고 즉시 종료.
+        // 404의 사유 문자열은 detect-issues.ts:243 이 부분 일치로 읽는 계약 — 절대 바꾸지 마라.
+        const reasonLabel = err.status === 404 ? '모델 사용 불가(404)' : `요청 거부(${err.status})`
         return {
           result: null,
-          errorReason: `${provider.name}: 모델 사용 불가(404)`,
+          errorReason: `${provider.name}: ${reasonLabel}`,
           hardLimit: false,
           permanent: true,
         }
       }
       if (err instanceof LlmRateLimitError) {
-        const reasonLabel = err.kind === 'auth' ? '인증실패(401, 키 점검 필요)' : '한도소진(429)'
+        const reasonLabel =
+          err.status === 429 ? '한도소진(429)' :
+          err.status === 401 ? '인증실패(401, 키 점검 필요)' :
+          // 402의 사유 문자열은 summarize.ts:16 이 '한도소진' 부분 일치로 읽는 계약 — '한도소진' 문구 필수.
+          err.status === 402 ? '결제 한도소진(402, 크레딧 점검 필요)' :
+          err.status === 403 ? '권한 거부(403, 키 점검 필요)' :
+          err.status !== undefined && err.status >= 500 && err.status <= 599 ? `서버 오류(${err.status})` :
+          err.kind === 'auth' ? '인증실패(401, 키 점검 필요)' : '한도소진(429)'
         return {
           result: null,
           errorReason: `${provider.name}: ${reasonLabel}`,
@@ -260,13 +269,16 @@ export async function llmCompleteDetailed(
           lastErrorReason = errorReason
           if (permanent) {
             console.error(`[LLM] task=${task} provider=${route.provider} model=${route.model_id} 모델 사용 불가 — 라우팅 행 점검 필요`)
+            // 404만 고정 문자열('모델 사용 불가(404)') 사용 — detect-issues.ts:243 계약. 400/422는 errorReason 그대로.
             await updateRoutingModelHealth(
               admin,
               task,
               route.priority,
               route.provider,
               route.model_id,
-              `${route.provider}: 모델 사용 불가(404) — ${route.model_id}`
+              errorReason?.includes('모델 사용 불가(404)')
+                ? `${route.provider}: 모델 사용 불가(404) — ${route.model_id}`
+                : errorReason
             )
           } else {
             console.error(`[LLM] task=${task} provider=${route.provider} 호출 실패:`, errorReason)
