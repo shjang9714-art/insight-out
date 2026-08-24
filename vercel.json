@@ -26,6 +26,10 @@
       "schedule": "0 23 * * *"
     },
     {
+      "path": "/api/cron/newsletter?run=catchup",
+      "schedule": "15 23 * * *"
+    },
+    {
       "path": "/api/cron/body-backfill",
       "schedule": "0 19 * * *"
     },
@@ -60,6 +64,10 @@
     {
       "path": "/api/cron/ops-brief",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/ops-brief?run=catchup",
+      "schedule": "15 23 * * *"
     },
     {
       "path": "/api/cron/ops-weekly",
