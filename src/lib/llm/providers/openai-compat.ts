@@ -21,9 +21,9 @@ function getKeys(keysEnv: string): string[] {
 
 interface TryCompleteResult {
   result: LlmResult | null
-  /** 401/429 — 다른 키로 재시도해볼 가치가 있음 */
+  /** 401/402/403/408/429/5xx — 다른 키로 재시도해볼 가치가 있음 */
   retryable: boolean
-  /** 404/400 — 같은 모델로 다시 불러도 결과가 같다. 키 재시도 없이 즉시 종료 대상 */
+  /** 400/404/422 — 같은 모델로 다시 불러도 결과가 같다. 키 재시도 없이 즉시 종료 대상 */
   permanent: boolean
   /** retryable이 true일 때만 의미 있음. 429='rate'(수십 초면 풀림), 401='auth'(스스로 안 낫음) */
   kind?: 'rate' | 'auth'
@@ -108,7 +108,7 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
 
       const first = await tryComplete(name, baseURL, firstKey, resolvedModel, system, user)
       if (first.result) return first.result
-      // 404/400은 영구 오류 — 다른 키로 재시도해도 같은 모델이 같은 이유로 실패한다. 즉시 종료.
+      // 400/404/422는 영구 오류 — 다른 키로 재시도해도 같은 모델이 같은 이유로 실패한다. 즉시 종료.
       if (first.permanent) throw new LlmModelUnavailableError(name, first.status)
       let sawHardLimit = first.retryable
       let hardLimitKind = first.kind
@@ -125,8 +125,8 @@ export function openaiCompatProvider(config: OpenAICompatConfig): LlmProvider {
         hardLimitStatus = second.status ?? hardLimitStatus
       }
 
-      // 429/401(한도소진·인증실패)은 재시도 무의미 — 상위(completeWithRetry)가 즉시 다음 provider로 넘어가게 throw.
-      // 그 외(5xx/timeout/빈응답)는 일시 오류로 보고 null(상위 재시도 허용).
+      // 재시도 무의미한 실패(401/402/403/429/5xx)는 상위가 즉시 다음 provider 로 넘어가게 throw.
+      // 그 외(타임아웃·빈응답·미분류 상태)만 null 로 두고 상위 재시도를 허용한다.
       if (sawHardLimit) throw new LlmRateLimitError(name, hardLimitKind, hardLimitStatus)
       return null
     },
