@@ -112,9 +112,9 @@ export const NAV_SECTIONS: Record<string, L2Section> = {
 // ─── 라우트별 강제 활성 탭(기존 페이지의 value prop 하드코딩과 1:1) ───────────────
 // l1Href가 호출 측에서 이미 결정돼 넘어오므로, 여기서는 pathname만으로 판정한다.
 const FORCED_L2: {
-  test: (pathname: string, categoryHint?: string | null) => boolean
+  test: (pathname: string) => boolean
   l1Href: string
-  activeId: (searchParams: URLSearchParams, categoryHint?: string | null) => string
+  activeId: (searchParams: URLSearchParams) => string
 }[] = [
   // '/dashboard/entities'·'/dashboard/issues' 섹션 자체가 NAV_SECTIONS에서
   // 제거되어(위 참고) 이 l1Href들을 향한 항목은 이제 전부 무의미하다
@@ -124,31 +124,6 @@ const FORCED_L2: {
   // issues L2 강제 매핑은 그래서 전부 제거했다 — 이 라우트들의 L1 판정은 이제
   // DashboardHeader.tsx가 직접 한다.
   //
-  // 콘텐츠 상세(/dashboard/contents/[id])가 지식보고서인 경우 — 인사이트 L1의
-  // "인사이트 리포트" 탭이 활성이어야 한다. categoryHint는 링크의 ?category= 쿼리파라미터
-  // (첫 렌더부터 확정, 우선)이거나 그게 없을 때 RecordActiveCategoryHint가 mount
-  // 시 알려주는 값(폴백)이다.
-  {
-    test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && cat === '지식보고서',
-    l1Href: '/dashboard/issues',
-    activeId: () => 'insight-report',
-  },
-  // 콘텐츠 상세가 외부 리포트(리포트/가트너/KRG)인 경우 — 자료실 L1의 "전문기관 보고서"
-  // 탭이 활성이어야 한다(지시서 2026-08-04b). l1Href가 '/dashboard/contents'라
-  // DashboardHeader의 기본 매칭(경로 접두사)과도 일치한다.
-  {
-    test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && ['리포트', '가트너', 'KRG'].includes(cat ?? ''),
-    l1Href: '/dashboard/contents',
-    activeId: () => 'consulting-report',
-  },
-  // 콘텐츠 상세가 기업·기술 자료(기업자료)인 경우 — 자료실 L1의 "기업 공시" 탭이
-  // 활성이어야 한다(지시서 2026-08-04b). L1은 이미 기본 매칭으로 자료실이라 여기서는
-  // L2만 강제한다.
-  {
-    test: (p, cat) => /^\/dashboard\/contents\/[^/]+$/.test(p) && cat === '기업자료',
-    l1Href: '/dashboard/contents',
-    activeId: () => 'disclosure',
-  },
   // 전략보고서 목록·상세는 인사이트의 "인사이트 리포트"로 활성화한다.
   {
     test: (p) => p.startsWith('/dashboard/reports'),
@@ -181,15 +156,14 @@ export interface ActiveL2 {
 export function getL2ForSection(
   l1Href: string,
   pathname: string,
-  searchParams: URLSearchParams,
-  categoryHint: string | null = null
+  searchParams: URLSearchParams
 ): ActiveL2 | null {
   const section = NAV_SECTIONS[l1Href]
   if (!section) return null
 
-  const forced = FORCED_L2.find((f) => f.l1Href === l1Href && f.test(pathname, categoryHint))
+  const forced = FORCED_L2.find((f) => f.l1Href === l1Href && f.test(pathname))
   const activeId = forced
-    ? forced.activeId(searchParams, categoryHint)
+    ? forced.activeId(searchParams)
     : (searchParams.get(section.paramKey) ?? section.defaultId)
   return { section, activeId }
 }

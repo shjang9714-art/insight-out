@@ -73,25 +73,21 @@ export function isTabActive(href: string, exact: boolean, pathname: string): boo
 
 export function resolveActiveNav(
   pathname: string,
-  searchParams: URLSearchParams,
-  categoryHint: string | null = null
+  searchParams: URLSearchParams
 ): ActiveNav {
   const isEntityDetailFromIssues =
     pathname.startsWith('/dashboard/entities/') && searchParams.get('origin') === 'issues'
   const isDocumentsViewFromEntities =
     pathname === '/dashboard/entities' && searchParams.get('view') === 'documents'
-  const isKnowledgeReportDetail =
-    /^\/dashboard\/contents\/[^/]+$/.test(pathname) && categoryHint === '지식보고서'
 
   const l1Href =
     resolveIssuesActiveHref(pathname, searchParams)
     ?? resolveReportsActiveHref(pathname, searchParams)
     ?? (isEntityDetailFromIssues ? issuesL1HrefForView(searchParams.get('view'), 'keyword') : null)
     ?? (isDocumentsViewFromEntities ? '/dashboard/contents' : null)
-    ?? (isKnowledgeReportDetail ? ISSUES_L1_HREFS.brief : null)
     ?? (NAV_TABS.find((tab) => isTabActive(tab.href, tab.exact, pathname))?.href ?? null)
   const l2 = l1Href
-    ? getL2ForSection(l1Href, pathname, searchParams, categoryHint)
+    ? getL2ForSection(l1Href, pathname, searchParams)
     : null
 
   return { l1Href, l2Id: l2?.activeId ?? null }

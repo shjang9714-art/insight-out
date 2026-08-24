@@ -10,7 +10,6 @@ import LoginGatedActions from '@/components/contents/LoginGatedActions'
 import CouncilDiscussButton from '@/components/dashboard/CouncilDiscussButton'
 import TranslatedArticle from '@/components/contents/TranslatedArticle'
 import RecordRecentView from '@/components/contents/RecordRecentView'
-import RecordActiveCategoryHint from '@/components/contents/RecordActiveCategoryHint'
 import ViewTracker from '@/components/contents/ViewTracker'
 import BackLink from '@/components/BackLink'
 import EntityTabs from '@/components/entities/EntityTabs'
@@ -276,7 +275,6 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
       </div>
 
       <RecordRecentView id={content.id} title={content.title} category={content.category} />
-      <RecordActiveCategoryHint category={content.category} />
       {isLoggedIn && <ViewTracker contentId={content.id} />}
 
       <article>
