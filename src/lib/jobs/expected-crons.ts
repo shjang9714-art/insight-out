@@ -56,8 +56,12 @@ const CRON_META: Record<string, CronMeta> = {
   'cron:pending-expire':       { label: '검토대기 만료',       maxAgeHours: 30, pgCronOnly: true },
 }
 
+// catch-up 크론(508)은 같은 경로를 `?run=catchup` 쿼리로만 구분해 vercel.json 에 별도
+// 스케줄로 등록한다(라우트 코드는 job_key 를 그대로 'cron:{name}'으로 남긴다) — 쿼리스트링은
+// "어떤 크론인지"와 무관하므로 key 산출 전에 잘라낸다.
 function cronKeyFromPath(path: string): string {
-  const match = path.match(/^\/api\/cron\/(.+)$/)
+  const pathname = path.split('?')[0]
+  const match = pathname.match(/^\/api\/cron\/(.+)$/)
   if (!match) {
     throw new Error(`vercel.json 의 크론 경로 형식이 예상과 다릅니다: ${path} (기대: /api/cron/{name})`)
   }
@@ -68,7 +72,14 @@ function toExpectedCron(key: string, meta: CronMeta): ExpectedCron {
   return { key, label: meta.label, maxAgeHours: meta.maxAgeHours, highFrequency: meta.highFrequency }
 }
 
-const vercelCrons: ExpectedCron[] = (vercelConfig.crons as Array<{ path: string }>).map((cron) => {
+// catch-up 크론이 원본과 같은 key 로 매핑되므로(위 주석), 그대로 두면 감시 목록에 같은
+// 크론이 두 번 잡혀 어드민 패널·운영 브리핑에 중복 행이 뜬다 — key 기준으로 한 번만 남긴다.
+function dedupeByKey(crons: ExpectedCron[]): ExpectedCron[] {
+  const seen = new Set<string>()
+  return crons.filter((c) => (seen.has(c.key) ? false : (seen.add(c.key), true)))
+}
+
+const vercelCrons: ExpectedCron[] = dedupeByKey((vercelConfig.crons as Array<{ path: string }>).map((cron) => {
   const key = cronKeyFromPath(cron.path)
   const meta = CRON_META[key]
   if (!meta) {
@@ -78,7 +89,7 @@ const vercelCrons: ExpectedCron[] = (vercelConfig.crons as Array<{ path: string 
     )
   }
   return toExpectedCron(key, meta)
-})
+}))
 
 // 499 — vercel.json 파생분(위) + pgCronOnly 항목(pg_cron 으로만 도는 크론, vercel.json 에
 // 없어 위 파생 대상에 안 잡힘)의 합집합. cron:key-insights 처럼 CRON_META 에 남아 있어도

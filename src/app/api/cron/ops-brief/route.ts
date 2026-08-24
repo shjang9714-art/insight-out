@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendResendEmail } from '@/lib/email/resend'
 import {
@@ -11,18 +12,46 @@ import { detectOpsIssues } from '@/lib/ops/detect-issues'
 import { getOpsRecipients } from '@/lib/ops/recipients'
 import { cleanupExpiredTrash } from '@/lib/ops/trash-cleanup'
 import { recordDailySnapshot } from '@/lib/ops/daily-snapshot'
+import { getKstTodayStartIso } from '@/lib/date'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+/**
+ * 오늘(KST) 이미 이 크론이 succeeded/skipped 로 끝난 적이 있는지 확인한다.
+ * 08:15 catch-up 크론(vercel.json `?run=catchup`)이 08:00 정규 tick 뒤에 중복 발송하지
+ * 않도록 하는 멱등 가드 — ops-brief 는 뉴스레터의 last_sent_on 같은 자체 상태 컬럼이 없어
+ * job_runs 이력을 그 대신 근거로 삼는다. 'running'(현재 실행 자신 포함)·'failed' 는 제외해
+ * 유실·에러로 못 보낸 날은 catch-up 이 정상적으로 재시도할 수 있게 한다.
+ */
+async function hasOpsBriefRunToday(admin: SupabaseClient): Promise<boolean> {
+  const { data, error } = await admin
+    .from('job_runs')
+    .select('id')
+    .eq('job_key', 'cron:ops-brief')
+    .in('status', ['succeeded', 'skipped'])
+    .gte('started_at', getKstTodayStartIso())
+    .limit(1)
+
+  if (error) {
+    console.error('[크론/ops-brief] 중복 실행 확인 실패, 안전하게 실행 허용:', error.message)
+    return false
+  }
+  return (data?.length ?? 0) > 0
+}
+
 export async function GET(request: NextRequest) {
   if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET ?? ''}`) {
     return Response.json({ ok: false, error: '인증 실패' }, { status: 401 })
   }
+  const isCatchup = request.nextUrl.searchParams.get('run') === 'catchup'
   try {
     const admin = createAdminClient()
-    const result = await runJob(admin, { key: 'cron:ops-brief', trigger: 'cron' }, async () => {
+    const result = await runJob(admin, { key: 'cron:ops-brief', trigger: 'cron', mode: isCatchup ? 'catchup' : undefined }, async () => {
+      if (await hasOpsBriefRunToday(admin)) {
+        return { ok: true, skipped: 'already_run_today' as const }
+      }
       await detectOpsIssues(admin)
       // 492 · 3단계 C — 휴지통 30일 초과분 자동 정리. 새 cron 신설 대신 기존 ops-brief 안에서 처리.
       // cleanupExpiredTrash 는 실패해도 예외를 던지지 않으므로 브리핑 발송 본체는 계속 돈다.
