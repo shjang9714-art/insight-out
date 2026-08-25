@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import PageContainer from '@/components/PageContainer'
 import SettingsTab from '@/components/mypage/SettingsTab'
-import SecurityTab from '@/components/mypage/SecurityTab'
 import { saveProfile } from '@/app/dashboard/mypage/actions'
 import type { Department } from '@/lib/types'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
@@ -279,8 +278,6 @@ export default function MyPage() {
             watchlistItems={watchlistItems}
             onWatchlistChange={refreshWatchlistSummary}
           />
-
-          <SecurityTab authEmail={authEmail} />
         </div>
       </div>
     </PageContainer>

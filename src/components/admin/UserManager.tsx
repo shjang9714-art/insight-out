@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, ShieldCheck, Pencil, LogOut, Unlock, UserPlus } from 'lucide-react'
+import { Loader2, ShieldCheck, Pencil, LogOut, Mail, Unlock, UserPlus, UserX } from 'lucide-react'
 import { toast } from 'sonner'
 import AdminErrorBox from '@/components/admin/ui/AdminErrorBox'
 import { useAdminConfirm } from '@/components/admin/ui/AdminConfirm'
@@ -32,6 +32,8 @@ import {
   updateUserProfileByAdmin,
   forceSignOutUser,
   liftSignOutBan,
+  changeUserEmailByAdmin,
+  deactivateUserByAdmin,
 } from '@/app/admin/users/actions'
 import type { UserRole, ApprovalStatus } from '@/lib/types'
 import { DEPARTMENT_DISPLAY_LABEL, FIXED_DEPARTMENT, isOrgGroup, ORG_GROUPS } from '@/lib/org'
@@ -308,6 +310,77 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
     }
   }
 
+  // ── 이메일 변경(572) ──────────────────────────────────────────────────────
+
+  const [emailEditUser, setEmailEditUser] = useState<UserRow | null>(null)
+  const [draftEmail, setDraftEmail] = useState('')
+  const [emailEditError, setEmailEditError] = useState<string | null>(null)
+  const [isSavingEmail, setIsSavingEmail] = useState(false)
+
+  const handleEmailEditOpen = (user: UserRow) => {
+    setEmailEditUser(user)
+    setDraftEmail(user.email)
+    setEmailEditError(null)
+  }
+
+  const handleEmailEditOpenChange = (open: boolean) => {
+    if (!open && !isSavingEmail) {
+      setEmailEditUser(null)
+      setEmailEditError(null)
+    }
+  }
+
+  const handleEmailSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!emailEditUser || isSavingEmail) return
+
+    setEmailEditError(null)
+    setIsSavingEmail(true)
+
+    try {
+      const { error: err } = await changeUserEmailByAdmin(emailEditUser.id, draftEmail)
+      if (err) {
+        setEmailEditError(err)
+        return
+      }
+
+      const savedEmail = draftEmail.trim().toLowerCase()
+      setUsers(prev => prev.map(user => (
+        user.id === emailEditUser.id ? { ...user, email: savedEmail } : user
+      )))
+      toast.success('이메일을 변경했습니다.')
+      setEmailEditUser(null)
+    } finally {
+      setIsSavingEmail(false)
+    }
+  }
+
+  // ── 계정 비활성화(572) ────────────────────────────────────────────────────
+
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+
+  const handleDeactivate = async (user: UserRow) => {
+    if (!(await confirm({
+      title: '계정 비활성화',
+      description: '즉시 로그아웃되고 다시 로그인할 수 없습니다. 계정 복구는 승인 상태를 다시 바꿔야 합니다.',
+      targets: [`${user.name || '이름 미입력'} (${user.email})`],
+      confirmLabel: '비활성화',
+      destructive: true,
+    }))) return
+
+    setDeactivatingId(user.id)
+    startTransition(async () => {
+      const { error: err } = await deactivateUserByAdmin(user.id)
+      if (err) {
+        setError(err)
+      } else {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, approval_status: 'deactivated' as ApprovalStatus } : u))
+        toast.success(`${user.email} 계정을 비활성화했습니다.`)
+      }
+      setDeactivatingId(null)
+    })
+  }
+
   // ── 렌더 ──────────────────────────────────────────────────────────────────
 
   const columns: AdminTableColumn<UserRow>[] = [
@@ -326,6 +399,10 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
         <div className="flex flex-col items-end gap-1">
           <div className="flex items-center justify-end gap-1.5">
             <button type="button" onClick={() => handleEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Pencil className="h-3 w-3" />정보 수정</button>
+            <button type="button" onClick={() => handleEmailEditOpen(user)} className="inline-flex items-center gap-1 rounded bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"><Mail className="h-3 w-3" />이메일 변경</button>
+            {user.approval_status === 'approved' && (
+              <button type="button" onClick={() => handleDeactivate(user)} disabled={deactivatingId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors disabled:opacity-40">{deactivatingId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}비활성화</button>
+            )}
             {user.id !== currentUserId && (
               isBanActive(user.bannedUntil)
                 ? <button type="button" onClick={() => handleLiftBan(user)} disabled={liftingBanId === user.id || isPending} className="inline-flex items-center gap-1 rounded bg-positive-soft px-2.5 py-1.5 text-xs font-medium text-positive transition-colors disabled:opacity-40">{liftingBanId === user.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}차단 해제</button>
@@ -501,6 +578,55 @@ export default function UserManager({ initialUsers, currentUserId, initialAdminC
                   <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />저장 중...</>
                 ) : (
                   '저장'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emailEditUser !== null} onOpenChange={handleEmailEditOpenChange}>
+        <DialogContent className="max-w-md">
+          <form onSubmit={handleEmailSave}>
+            <DialogHeader>
+              <DialogTitle>이메일 변경</DialogTitle>
+              <DialogDescription>
+                이 계정의 로그인 이메일을 변경합니다. Auth 계정과 사용자 정보가 함께 갱신됩니다.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-user-email">
+                  새 이메일 <span className="text-negative">*</span>
+                </Label>
+                <Input
+                  id="edit-user-email"
+                  type="email"
+                  value={draftEmail}
+                  onChange={event => setDraftEmail(event.target.value)}
+                  placeholder="example@company.com"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {emailEditError && (
+                <p className="text-xs text-negative" role="alert">{emailEditError}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline" size="sm" disabled={isSavingEmail}>
+                  취소
+                </Button>
+              </DialogClose>
+              <Button type="submit" size="sm" disabled={isSavingEmail}>
+                {isSavingEmail ? (
+                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />변경 중...</>
+                ) : (
+                  '변경'
                 )}
               </Button>
             </DialogFooter>
