@@ -18,7 +18,6 @@ export interface DrainSummaryResult {
   notReady: number
   /** job_runs 의 스킵 칸에 notReady 를 표시하기 위한 호환 필드 */
   skipped: number
-  /** -1: summary_attempted_at 컬럼 미적용(SQL 295 미실행) */
   remaining: number
   /** true 면 LLM 한도 소진으로 드레인을 중단했다 — 내일 한도 리셋 후 재개(312). */
   rateLimited?: boolean
@@ -34,73 +33,27 @@ interface ContentRow {
   original_language: string
 }
 
-const SUMMARY_READY_OR = [
-  'category.eq.유튜브',
-  `and(original_language.eq.ko,body_len.gte.${SUMMARY_MIN_BODY_LEN})`,
-  'and(original_language.neq.ko,body_translated_ko.not.is.null)',
-].join(',')
-
-const SUMMARY_ATTEMPTED_MISSING_ERROR = 'summary_attempted_at 컬럼이 없어 요약 백필을 진행할 수 없습니다. SQL 295 적용이 필요합니다.'
-
-function isUndefinedColumn(error: PostgrestError | null): boolean {
-  return error?.code === '42703'
-}
-
-async function runPendingSummaryCount(
-  admin: SupabaseClient,
-  useReadinessFilter: boolean,
-): Promise<{ remaining: number; useReadinessFilter: boolean; error: PostgrestError | null }> {
-  let query = admin
-    .from('contents')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'published')
-    .is('summary_ko', null)
-    .is('summary_attempted_at', null)
-    .is('deleted_at', null)
-  if (useReadinessFilter) query = query.or(SUMMARY_READY_OR)
-
-  const { count, error } = await query
-  if (!error) return { remaining: count ?? 0, useReadinessFilter, error: null }
-
-  if (useReadinessFilter && isUndefinedColumn(error)) {
-    return runPendingSummaryCount(admin, false)
-  }
-
-  return {
-    remaining: isUndefinedColumn(error) ? -1 : 0,
-    useReadinessFilter,
-    error,
-  }
-}
-
+/**
+ * 요약 백필 후보를 RPC 로 조회한다 — 클러스터 대표 1건만 대상(571).
+ * 나머지 조건(status/summary_ko/summary_attempted_at/deleted_at/body 준비 여부)은
+ * 전부 RPC 함수 안으로 들어갔다. RPC 부재(PGRST202, 선행 SQL 미적용) 시 error 를 반환한다.
+ */
 async function fetchSummaryTargets(
   admin: SupabaseClient,
   limit: number,
-  useReadinessFilter: boolean,
-): Promise<{ targets: ContentRow[] | null; useReadinessFilter: boolean; error: PostgrestError | null }> {
-  let query = admin
-    .from('contents')
-    .select('id, category, title, author, body_original, body_translated_ko, original_language')
-    .eq('status', 'published')
-    .is('summary_ko', null)
-    .is('summary_attempted_at', null)
-    .is('deleted_at', null)
-    .order('collected_at', { ascending: false })
-    .limit(limit)
-  if (useReadinessFilter) query = query.or(SUMMARY_READY_OR)
+): Promise<{ targets: ContentRow[] | null; error: PostgrestError | null }> {
+  const { data, error } = await admin.rpc('summary_backfill_targets', { p_limit: limit })
+  if (error) return { targets: null, error }
+  return { targets: (data ?? []) as ContentRow[], error: null }
+}
 
-  const { data, error } = await query
-  if (!error) return { targets: (data ?? []) as ContentRow[], useReadinessFilter, error: null }
-
-  if (useReadinessFilter && isUndefinedColumn(error)) {
-    const retry = await fetchSummaryTargets(admin, limit, false)
-    if (!retry.error) {
-      console.warn('[요약백필] body_len 후보 조건을 사용할 수 없어 조회 조건을 완화했습니다.')
-    }
-    return retry
-  }
-
-  return { targets: null, useReadinessFilter, error }
+/** 남은 후보 건수 — RPC 가 클러스터 대표 기준으로 정확히 센다(571). */
+async function runPendingSummaryCount(
+  admin: SupabaseClient,
+): Promise<{ remaining: number; error: PostgrestError | null }> {
+  const { data, error } = await admin.rpc('summary_backfill_remaining')
+  if (error) return { remaining: 0, error }
+  return { remaining: typeof data === 'number' ? data : 0, error: null }
 }
 
 /**
@@ -160,26 +113,9 @@ async function summarizeOne(admin: SupabaseClient, row: ContentRow): Promise<'fi
   return 'failed'
 }
 
-function sql295MissingResult(
-  processed: number,
-  filled: number,
-  failed: number,
-  notReady: number,
-): DrainSummaryResult {
-  return {
-    ok: false,
-    error: SUMMARY_ATTEMPTED_MISSING_ERROR,
-    processed,
-    filled,
-    failed,
-    notReady,
-    skipped: notReady,
-    remaining: -1,
-  }
-}
-
 /**
  * summary_ko IS NULL 인 published 콘텐츠를 드레인한다(크롤 크리티컬 패스에서 분리, 293).
+ * 571 — 후보는 클러스터 대표 1건으로 RPC 가 이미 걸러 넘긴다.
  * deadline 미설정: 단일 배치(limit 건) 처리 후 반환.
  * deadline 설정: deadline 초과 또는 remaining=0 까지 반복 — 평상시 하루치를 전부 비운다.
  */
@@ -194,31 +130,24 @@ export async function drainSummaries(
   let notReady = 0
   let remaining = 0
   let rateLimited = false
-  let useReadinessFilter = true
 
   while (true) {
     if (deadline !== undefined && Date.now() >= deadline) break
 
-    const targetRes = await fetchSummaryTargets(admin, limit, useReadinessFilter)
-    useReadinessFilter = targetRes.useReadinessFilter
-    const { targets, error } = targetRes
+    const { targets, error } = await fetchSummaryTargets(admin, limit)
 
     if (error) {
-      // 컬럼 미존재 (SQL 295 핸드오프 미실행)
-      if (isUndefinedColumn(error)) {
-        return sql295MissingResult(processed, filled, failed, notReady)
-      }
+      // RPC 부재(PGRST202, 선행 SQL 미적용) 등 — 조용히 0건 성공으로 보고하지 않는다.
       console.error('[요약백필] 조회 오류:', error)
-      break
+      return { ok: false, error: error.message, processed, filled, failed, notReady, skipped: notReady, remaining }
     }
 
     if (!targets?.length) {
-      const countRes = await runPendingSummaryCount(admin, useReadinessFilter)
-      useReadinessFilter = countRes.useReadinessFilter
-      if (countRes.remaining === -1) {
-        return sql295MissingResult(processed, filled, failed, notReady)
+      const countRes = await runPendingSummaryCount(admin)
+      if (countRes.error) {
+        console.error('[요약백필] 남은 건수 조회 오류:', countRes.error)
+        return { ok: false, error: countRes.error.message, processed, filled, failed, notReady, skipped: notReady, remaining }
       }
-      if (countRes.error) console.error('[요약백필] 남은 건수 조회 오류:', countRes.error)
       remaining = countRes.remaining
       break
     }
@@ -239,12 +168,11 @@ export async function drainSummaries(
       processed++
     }
 
-    const countRes = await runPendingSummaryCount(admin, useReadinessFilter)
-    useReadinessFilter = countRes.useReadinessFilter
-    if (countRes.remaining === -1) {
-      return sql295MissingResult(processed, filled, failed, notReady)
+    const countRes = await runPendingSummaryCount(admin)
+    if (countRes.error) {
+      console.error('[요약백필] 남은 건수 조회 오류:', countRes.error)
+      return { ok: false, error: countRes.error.message, processed, filled, failed, notReady, skipped: notReady, remaining }
     }
-    if (countRes.error) console.error('[요약백필] 남은 건수 조회 오류:', countRes.error)
     remaining = countRes.remaining
     if (rateLimited) break
     if (remaining === 0) break
