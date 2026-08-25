@@ -31,10 +31,10 @@ export async function POST(request: NextRequest) {
     throw error
   }
 
-  if (result.remaining === -1) {
+  if (result.ok === false) {
     return NextResponse.json(
       {
-        error: result.error ?? 'summary_attempted_at 컬럼이 아직 적용되지 않았습니다. SQL 295 적용이 필요합니다.',
+        error: result.error ?? '요약 백필에 실패했습니다.',
       },
       { status: 503 },
     )
