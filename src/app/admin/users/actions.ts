@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { FIXED_DEPARTMENT, isOrgGroup } from '@/lib/org'
 import { requireAdminAction } from '@/lib/admin/require-admin-action'
 import { completeAudit } from '@/lib/admin/audit'
+import { deactivateAccountById } from '@/lib/users/deactivate-account'
 
 function serviceClient() {
   return createServiceClient(
@@ -160,6 +161,54 @@ export async function liftSignOutBan(userId: string) {
 
   await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, outcome: error ? 'failed' : 'ok', error: error?.message })
   if (error) return { error: `차단 해제 실패: ${error.message}` }
+  return { error: null }
+}
+
+export async function changeUserEmailByAdmin(userId: string, newEmail: string) {
+  const gate = await requireAdminAction({ action: 'user.email.update', capability: 'manage_admins' })
+  if (!gate.ok) return { error: gate.error }
+
+  const email = newEmail.trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: '올바른 이메일 형식을 입력해주세요.' }
+  }
+
+  const svc = serviceClient()
+
+  // auth.users 와 public.users 둘 다 반영한다 — Auth 갱신 없이 public.users 만 바꾸면
+  // 로그인 이메일과 어긋난다(mypage changeEmail 은 세션 본인이 auth.updateUser 로 갱신하지만,
+  // 관리자는 admin.updateUserById 로 대상 계정을 대신 갱신한다).
+  const { error: authError } = await svc.auth.admin.updateUserById(userId, { email, email_confirm: true })
+  if (authError) {
+    await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, payload: { newEmail: email }, outcome: 'failed', error: authError.message })
+    return { error: `이메일 변경 실패: ${authError.message}` }
+  }
+
+  const { error } = await svc.from('users').update({ email }).eq('id', userId)
+
+  await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, payload: { newEmail: email }, outcome: error ? 'failed' : 'ok', error: error?.message })
+  if (error) return { error: `이메일 변경 실패: ${error.message}` }
+
+  revalidatePath('/admin/users')
+  return { error: null }
+}
+
+export async function deactivateUserByAdmin(userId: string) {
+  const gate = await requireAdminAction({ action: 'user.deactivate', capability: 'manage_admins' })
+  if (!gate.ok) return { error: gate.error }
+
+  const svc = serviceClient()
+
+  try {
+    await deactivateAccountById(userId)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, outcome: 'failed', error: message })
+    return { error: `계정 비활성화 실패: ${message}` }
+  }
+
+  await completeAudit(svc, gate.auditId, { targetType: 'users', targetId: userId, outcome: 'ok' })
+  revalidatePath('/admin/users')
   return { error: null }
 }
 

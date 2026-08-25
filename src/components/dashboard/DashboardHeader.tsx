@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, startTransition } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Bookmark, FlaskConical, LogOut, Menu, Search, User } from 'lucide-react'
+import { Bookmark, FlaskConical, KeyRound, LogOut, Menu, Search, User } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -20,6 +20,7 @@ import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import NavGroupAlign from '@/components/dashboard/NavGroupAlign'
 import { getL2ForSection } from '@/lib/nav/taxonomy'
 import { isAdminRole } from '@/lib/admin/capabilities'
+import PasswordChangeDialog from '@/components/dashboard/PasswordChangeDialog'
 
 export { ISSUES_L1_HREFS, NAV_TABS, isTabActive, resolveIssuesActiveHref } from '@/lib/nav/active'
 
@@ -50,6 +51,11 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
   const [userName, setUserName]     = useState<string | null>(null)
   const [userTeam, setUserTeam]     = useState('')
   const [isAdmin, setIsAdmin]       = useState(false)
+  const [authEmail, setAuthEmail]   = useState('')
+  // has_password 컬럼이 있으면 그 값으로 가드(SSO 계정은 비밀번호 변경이 무의미) —
+  // 조회 전/컬럼 없음(42703)이면 가드 없이 노출(fail open).
+  const [hasPassword, setHasPassword] = useState(true)
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const [hoveredL1Href, setHoveredL1Href] = useState<string | null>(null)
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 검색 버튼의 단축키 힌트 배지 — 서버 렌더는 항상 '⌘K'로 고정해 하이드레이션 불일치를
@@ -91,17 +97,21 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { setUserName(''); return }
+      setAuthEmail(user.email ?? '')
       supabase
         .from('users')
-        .select('name, team, role')
+        .select('name, team, role, has_password')
         .eq('id', user.id)
         .single()
-        .then(({ data }) => {
+        .then(({ data, error }) => {
           setUserName(data?.name ?? '')
           if (data?.team) setUserTeam(data.team)
           // 실험실(관리자 전용) 5탭줄 노출 판정용 — AiInsightBoard.tsx의 서버측
           // isAdmin 계산(isAdminRole)과 동일 기준
           setIsAdmin(isAdminRole(data?.role))
+          // 42703(컬럼 없음)이면 가드 없이 그대로 둔다 — has_password 는 340 트리거가
+          // 유지하는 컬럼이라 마이그레이션 전 환경에서는 없을 수 있다.
+          if (error?.code !== '42703') setHasPassword(data?.has_password !== false)
         })
     })
   }, [])
@@ -215,6 +225,20 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
                   마이페이지
                 </Link>
               </DropdownMenuItem>
+              {hasPassword && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    // DropdownMenuItem의 onSelect는 메뉴를 먼저 닫는다 — 메뉴가 닫히기
+                    // 전에 다이얼로그를 열면 Radix 포커스 반환과 충돌해 즉시 닫힌다.
+                    // 메뉴가 닫힌 뒤(다음 tick) 열리게 지연시킨다.
+                    e.preventDefault()
+                    setTimeout(() => setPasswordDialogOpen(true), 0)
+                  }}
+                >
+                  <KeyRound className="h-4 w-4" />
+                  비밀번호 변경
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={handleLogout} className="text-negative">
                 <LogOut className="h-4 w-4" />
@@ -224,6 +248,12 @@ export default function DashboardHeader({ onMenuClick, onOpenSearch, className }
           </DropdownMenu>
         </div>
       </div>
+
+      <PasswordChangeDialog
+        open={passwordDialogOpen}
+        onOpenChange={setPasswordDialogOpen}
+        authEmail={authEmail}
+      />
 
       {/* ── 6탭 네비게이션 (md+, CategoryGrid 톤 참고) ──────────────────────────── */}
       <nav
