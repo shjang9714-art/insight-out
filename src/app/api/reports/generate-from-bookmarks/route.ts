@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .gte('created_at', dayStartIso)
+      .neq('status', 'failed')
 
     if (countError) {
       console.error('[generate-from-bookmarks] 한도 조회 실패:', countError.message)
@@ -120,6 +121,19 @@ export async function POST(request: NextRequest) {
       title,
       contentIds,
     })
+
+    // generateStrategyReport 는 예외를 던지지 않는다 — LLM 실패 시에도 status:'failed' 행을
+    // 저장하고 정상 반환한다. 이 판정이 없으면 실패가 200 ok:true 로 보인다(조용한 성공).
+    // 실패 행은 지우지 않는다 — 진단용으로 DB 에 남긴다.
+    if (result.status === 'failed') {
+      return NextResponse.json(
+        {
+          error: result.error ?? '보고서 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+          reportId: result.reportId,
+        },
+        { status: 502 },
+      )
+    }
 
     return NextResponse.json({
       ok: true,
