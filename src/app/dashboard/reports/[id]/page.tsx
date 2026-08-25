@@ -63,8 +63,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
 
   const report = await getReport(supabase, id)
 
-  // 275 — 서비스는 발행된(published_at not null) 보고서만 열람 가능(어드민 미리보기는 276)
-  if (!report || !report.published_at) notFound()
+  // 574 — 열람 권한은 RLS 가 정확히 판정한다(본인 것 OR published_at 있음 OR admin).
+  // 코드에서 published_at 을 다시 보면 본인이 방금 만든 미발행 보고서를 본인이 못 연다.
+  if (!report) notFound()
 
   const { data: { user } } = await supabase.auth.getUser()
   const isLoggedIn = Boolean(user)
@@ -146,7 +147,9 @@ export default async function ReportDetailPage({ params }: PageProps) {
             </span>
             <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
               <CalendarDays className="h-3.5 w-3.5" aria-hidden />
-              {formatDate(report.published_at)}
+              {report.published_at
+                ? formatDate(report.published_at)
+                : `${formatDate(report.created_at)} 작성 · 미발행`}
             </span>
             {report.publisher && (
               <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
