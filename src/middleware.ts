@@ -55,6 +55,7 @@ export async function middleware(request: NextRequest) {
   // STEP 0에서 /dashboard/reports/[id] 는 별개의 사용자 생성 AI 보고서 라우트임을 확인했다.)
   const publicPaths = [
     '/login', '/auth/callback', '/api/cron', '/api/version', '/api/newsletter/unsubscribe',
+    '/api/newsletter/today', // PA01: PA 서버-투-서버, CRON_SECRET 자체 인증
     '/api/webhooks/brevo', '/api/mcp', '/api/council', '/manifest.webmanifest', '/sw.js',
     '/dashboard/contents/', '/dashboard/daily-insights/',
   ]
