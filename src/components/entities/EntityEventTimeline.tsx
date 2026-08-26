@@ -59,9 +59,13 @@ interface Props {
   events: EntityEventItem[]
   /** 사건 배치의 최신 생성 시각(entity_events.generated_at 중 최대값). 없으면 미표시 */
   updatedAt?: string | null
+  /** 579 — 관계지도 우측 패널(폭 400px)용 축약 모드.
+   *  간격을 좁히고, 위기/기회 사유를 title 툴팁이 아니라 본문에 노출한다.
+   *  ⚠️ 기본값 false — 엔티티 상세·키워드 상세의 렌더는 그대로여야 한다. */
+  compact?: boolean
 }
 
-export default function EntityEventTimeline({ events, updatedAt }: Props) {
+export default function EntityEventTimeline({ events, updatedAt, compact = false }: Props) {
   if (events.length === 0) return null
 
   return (
@@ -76,7 +80,7 @@ export default function EntityEventTimeline({ events, updatedAt }: Props) {
           aria-hidden="true"
         />
 
-        <ol className="space-y-6">
+        <ol className={compact ? 'space-y-3' : 'space-y-6'}>
         {events.map((ev) => {
           const headline = stripLlmArtifacts(ev.headline)
           const detail = ev.detail ? stripLlmArtifacts(ev.detail) : null
@@ -144,6 +148,12 @@ export default function EntityEventTimeline({ events, updatedAt }: Props) {
                 {detail && (
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     {detail}
+                  </p>
+                )}
+
+                {compact && ev.biz_impact_reason && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {stripLlmArtifacts(ev.biz_impact_reason)}
                   </p>
                 )}
 
