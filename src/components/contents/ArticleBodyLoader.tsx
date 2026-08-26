@@ -115,8 +115,10 @@ export default function ArticleBodyLoader({ contentId, contentTitle, snippet, or
         </p>
       )}
       <div className="mt-6 rounded-lg border border-dashed border-border p-4">
+        {/* 575 — 이 분기는 state === 'failed' 전용이다(fetch 실패 또는 10초 타임아웃, :37).
+            "미리보기 끝"이 아니라 실패다. 위의 snippet 은 요약/본문 앞부분 폴백이다. */}
         <p className="text-sm text-muted-foreground">
-          본문 미리보기는 여기까지예요. 전체 내용은 원문에서 확인하세요.
+          본문을 불러오지 못했습니다. 원문에서 확인해주세요.
         </p>
         {originalUrl && (
           <a

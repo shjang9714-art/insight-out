@@ -313,27 +313,6 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
-                  {content.original_url && (
-                    linkDead ? (
-                      <span
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
-                        title="원문을 찾을 수 없습니다"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        원문 없음
-                      </span>
-                    ) : (
-                      <a
-                        href={`/api/contents/${content.id}/source`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        원문 보기
-                      </a>
-                    )
-                  )}
                 </div>
               </div>
 
@@ -365,30 +344,7 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
             hashtags={isYoutube ? youtubeHashtags : undefined}
             lguImpact={lguImpact}
             actions={
-              <>
-                <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
-                {!isReport && content.original_url && (
-                  linkDead ? (
-                    <span
-                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-50"
-                      title="원문을 찾을 수 없습니다"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      원문 없음
-                    </span>
-                  ) : (
-                    <a
-                      href={`/api/contents/${content.id}/source`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-brand-600 hover:text-brand-600"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      {isYoutube ? 'YouTube에서 보기' : '원문 보기'}
-                    </a>
-                  )
-                )}
-              </>
+              <LoginGatedActions isLoggedIn={isLoggedIn} contentId={content.id} />
             }
           >
             {isYoutube ? (
@@ -533,7 +489,8 @@ export default async function ContentDetailPage({ params, searchParams }: PagePr
               />
             )}
 
-            {/* 리포트 외(뉴스·유튜브)엔 원문 보기 링크 표시 */}
+            {/* 575 — 상세 화면의 원문 링크는 여기 하나뿐이다(상단 중복 제거, David 결정).
+                리포트(file_path)는 ReportBodyTabs 가 대신하므로 !isReport 로 막는다. */}
             {!isReport && content.original_url && (
               linkDead ? (
                 <span
