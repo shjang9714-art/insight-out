@@ -7,6 +7,7 @@ import { Plus, RotateCcw, Search, Undo2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ENTITY_TYPE_LABEL, type EntityType } from '@/lib/types'
+import EntityEventTimeline, { type EntityEventItem } from '@/components/entities/EntityEventTimeline'
 import {
   useLensContext,
   useActiveLens,
@@ -85,6 +86,11 @@ interface NodeContentsState {
   nodeId: string
   items: ContentItem[]
   loading: boolean
+}
+
+interface NodeEventsState {
+  nodeId: string
+  items: EntityEventItem[]
 }
 
 interface ExpStackEntry {
@@ -273,6 +279,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   // 노드 호버 미리보기 (선택·엣지 잠금보다 낮은 우선순위)
   const [nodePreview, setNodePreview] = useState<NodeContentsState | null>(null)
   const nodeContentCacheRef = useRef<Map<string, ContentItem[]>>(new Map())
+  const [eventsState, setEventsState] = useState<NodeEventsState | null>(null)
+  const nodeEventCacheRef = useRef<Map<string, EntityEventItem[]>>(new Map())
   const nodeHoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hoveredNodeRef = useRef<string | null>(null)
 
@@ -339,6 +347,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     loadingNodeIdRef.current = null
     pairCacheRef.current.clear()
     nodeContentCacheRef.current.clear()
+    nodeEventCacheRef.current.clear()
     hoveredLinkRef.current = null
     hoveredNodeRef.current = null
 
@@ -384,6 +393,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           setExpandStack([initEntry])
           setLoadStatus('no-neighbors')
           setLoadedKey(thisKey)
+          selectedNodeIdRef.current = rootId
+          setSelectedNodeId(rootId)
           return
         }
 
@@ -435,6 +446,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             setExpandStack([initEntry])
             setLoadStatus('loaded')
             setLoadedKey(thisKey)
+            selectedNodeIdRef.current = rootId
+            setSelectedNodeId(rootId)
           })
       })
 
@@ -697,11 +710,11 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     setEdgeTooltip(null)
     lockedEdgeRef.current = null
     setLockedEdge(null)
-    selectedNodeIdRef.current = null
-    setSelectedNodeId(null)
+    selectedNodeIdRef.current = rootId
+    setSelectedNodeId(rootId)
     hoveredNodeRef.current = null
     setNodePreview(null)
-  }, [])
+  }, [rootId])
 
   // ── 노드 호버 (디바운스 200ms + 캐시) ─────────────────────────────────────
 
@@ -854,7 +867,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     setContentsState({ nodeId: selectedNodeId, items: [], loading: true })
     const supabase = createClient()
     supabase
-      .rpc('entity_recent_contents', { p_entity_id: selectedNodeId, p_limit: 8 })
+      .rpc('entity_recent_contents', { p_entity_id: selectedNodeId, p_limit: 5 })
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) {
@@ -866,6 +879,39 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           .sort((a, b) => b.collected_at.localeCompare(a.collected_at))
         nodeContentCacheRef.current.set(selectedNodeId, items)
         setContentsState({ nodeId: selectedNodeId, items, loading: false })
+      })
+    return () => { cancelled = true }
+  }, [selectedNodeId])
+
+  // ── 선택 노드 최근 신호 조회 ───────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!selectedNodeId) return
+
+    const cached = nodeEventCacheRef.current.get(selectedNodeId)
+    if (cached) {
+      setEventsState({ nodeId: selectedNodeId, items: cached })
+      return
+    }
+
+    let cancelled = false
+    const supabase = createClient()
+    supabase
+      .from('entity_events')
+      .select('id, event_date, signal_type, headline, detail, biz_impact, biz_impact_reason, citations')
+      .eq('entity_id', selectedNodeId)
+      .order('event_date', { ascending: false })
+      .limit(2)
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) {
+          console.error('최근 신호 조회에 실패했습니다.', error)
+          setEventsState({ nodeId: selectedNodeId, items: [] })
+          return
+        }
+        const items = (data ?? []) as EntityEventItem[]
+        nodeEventCacheRef.current.set(selectedNodeId, items)
+        setEventsState({ nodeId: selectedNodeId, items })
       })
     return () => { cancelled = true }
   }, [selectedNodeId])
@@ -899,19 +945,24 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const selectedContentsLoading = selectedNodeId !== null && (
     contentsState === null || contentsState.nodeId !== selectedNodeId || contentsState.loading
   )
+  const selectedEvents = eventsState?.nodeId === selectedNodeId ? eventsState.items : []
   const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null
   const previewNode = nodePreview && !selectedNode && !activeLockedEdge
     ? nodes.find((node) => node.id === nodePreview.nodeId) ?? null
     : null
   const selectedNeighbors = selectedNodeId
-    ? nodes.filter((n) => {
-        if (n.id === selectedNodeId) return false
-        return links.some((l) => {
+    ? links
+        .map((l) => {
           const s = getLinkEndId(l.source)
           const t = getLinkEndId(l.target)
-          return (s === selectedNodeId && t === n.id) || (t === selectedNodeId && s === n.id)
+          if (s !== selectedNodeId && t !== selectedNodeId) return null
+          const otherId = s === selectedNodeId ? t : s
+          const node = nodes.find((n) => n.id === otherId)
+          if (!node) return null
+          return { node, lift: l.lift ?? MIN_LIFT }
         })
-      })
+        .filter((x): x is { node: EgoNode; lift: number } => x !== null)
+        .sort((a, b) => b.lift - a.lift)
     : []
   const isSelectedExpanded = selectedNodeId ? expandStack.some((e) => e.nodeId === selectedNodeId) : false
 
@@ -1069,7 +1120,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       </div>
 
       {/* 290 — 데스크톱(lg+): 그래프 + 우측 고정 인스펙터 2열. 모바일: 1열(그래프 아래 카드, DOM 순서 그대로). */}
-      <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-4">
+      <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-4">
 
       {/* 그래프 캔버스 */}
       <div
@@ -1295,46 +1346,29 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               <p className="text-xs text-muted-foreground">
                 {ENTITY_TYPE_LABEL[selectedNode.type]}
                 {selectedNode.isCompetitor && ' · 경쟁사'}
-                {' · 언급 '}{selectedNode.mentionCount.toLocaleString()}회
               </p>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                onClick={() => void expandNode(selectedNode.id)}
-                disabled={isSelectedExpanded || !!loadingNodeId}
-                className="rounded-lg border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {loadingNodeId === selectedNode.id ? '확장 중…' : isSelectedExpanded ? '이미 펼쳐짐' : '이웃 펼치기'}
-              </button>
-              <Link
-                href={`/dashboard/entities/${selectedNode.id}`}
-                prefetch={false}
-                className="rounded-lg border px-2.5 py-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors"
-              >
-                상세 보기 →
-              </Link>
-              <button
-                onClick={() => setSelectedNodeId(null)}
-                className="rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="닫기"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
             </div>
           </div>
 
+          {selectedEvents.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-[11px] text-muted-foreground/70">최근 신호</p>
+              <EntityEventTimeline events={selectedEvents} compact />
+            </div>
+          )}
+
           {selectedNeighbors.length > 0 && (
             <div>
-              <p className="mb-1.5 text-[11px] text-muted-foreground/70">함께 등장하는 주제</p>
+              <p className="mb-1.5 text-[11px] text-muted-foreground/70">특징적 연결</p>
               <div className="flex flex-wrap gap-1.5">
-                {selectedNeighbors.slice(0, 10).map((n) => (
+                {selectedNeighbors.slice(0, 5).map(({ node, lift }) => (
                   <button
-                    key={n.id}
-                    onClick={() => setSelectedNodeId(n.id)}
+                    key={node.id}
+                    onClick={() => setSelectedNodeId(node.id)}
                     className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs hover:bg-muted/50 transition-colors"
                   >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: nodeColor(n) }} />
-                    {n.label}
+                    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: nodeColor(node) }} />
+                    {node.label} {lift.toFixed(1)}배
                   </button>
                 ))}
               </div>
@@ -1367,6 +1401,30 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              onClick={() => void expandNode(selectedNode.id)}
+              disabled={isSelectedExpanded || !!loadingNodeId}
+              className="rounded-lg border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loadingNodeId === selectedNode.id ? '확장 중…' : isSelectedExpanded ? '이미 펼쳐짐' : '이웃 펼치기'}
+            </button>
+            <Link
+              href={`/dashboard/entities/${selectedNode.id}`}
+              prefetch={false}
+              className="rounded-lg border px-2.5 py-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors"
+            >
+              상세 보기 →
+            </Link>
+            <button
+              onClick={() => setSelectedNodeId(null)}
+              className="rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="닫기"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       )}
