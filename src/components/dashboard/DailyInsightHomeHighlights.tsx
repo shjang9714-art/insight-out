@@ -6,6 +6,7 @@ import { formatMonthWeekLabel } from '@/lib/daily-insights/weeks'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { pickRotatedWindow } from '@/lib/daily-insights/home-rotation'
+import { dedupeSourceArticles } from '@/lib/daily-insights/dedupeSourceArticles'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -80,11 +81,12 @@ export default async function DailyInsightHomeHighlights() {
 
       <ol className="flex flex-1 flex-col gap-3">
         {cards.map((card) => {
-          const sourceCount = card.source_articles?.length ?? 0
+          const dedupedSources = dedupeSourceArticles(card.source_articles)
+          const sourceCount = dedupedSources.length
           const pastCount = card.related_past?.length ?? 0
-          const repSource = card.source_articles?.[0]?.source ?? null
+          const repSource = dedupedSources[0]?.source ?? null
           const extraSourceCount = Math.max(0, sourceCount - 1)
-          const publishedAt = card.source_articles?.[0]?.published_at ?? null
+          const publishedAt = dedupedSources[0]?.published_at ?? null
 
           return (
             <li key={card.id} className="relative rounded-xl border border-border/70 bg-background/40">

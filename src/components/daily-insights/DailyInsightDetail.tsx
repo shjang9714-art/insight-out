@@ -6,6 +6,7 @@ import NextSteps from '@/components/daily-insights/NextSteps'
 import BookmarkButton from '@/components/bookmark/BookmarkButton'
 import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
+import { dedupeSourceArticles } from '@/lib/daily-insights/dedupeSourceArticles'
 
 interface DailyInsightDetailProps {
   insight: DailyInsightRow
@@ -49,7 +50,7 @@ export default function DailyInsightDetail({ insight, relatedInsights = [] }: Da
         sections={sections}
         implicationLenses={insight.implication_lenses}
         implicationFallback={insight.implication}
-        sourceArticles={insight.source_articles ?? []}
+        sourceArticles={dedupeSourceArticles(insight.source_articles)}
       />
 
       {insight.competitor_matrix && insight.competitor_matrix.length > 0 && (
