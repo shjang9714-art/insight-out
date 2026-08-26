@@ -5,6 +5,7 @@ import { LENS_META } from '@/components/daily-insights/EvidenceDrilldown'
 import type { DailyInsightRow, ImplicationLenses } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { stripActionTeamSubject } from '@/lib/daily-insights/normalize-action'
+import { dedupeSourceArticles } from '@/lib/daily-insights/dedupeSourceArticles'
 import { cn } from '@/lib/utils'
 import AiMark from '@/components/ui/AiMark'
 
@@ -24,7 +25,7 @@ const SOURCE_PREVIEW_COUNT = 3
 /** 1단계 카드 — 홈보다 정보가 많아야 한다(§2): 라벨칩 + summary + 3C 전문 + 근거기사 목록 + 과거기사. */
 function InsightCard({ item, isLatestWeek }: { item: DailyInsightRow; isLatestWeek: boolean }) {
   const sections = TREND_SECTIONS.filter((s) => item[s.key])
-  const sourceArticles = item.source_articles ?? []
+  const sourceArticles = dedupeSourceArticles(item.source_articles)
   const previewSources = sourceArticles.slice(0, SOURCE_PREVIEW_COUNT)
   const extraSourceCount = Math.max(0, sourceArticles.length - previewSources.length)
   const pastArticles = item.related_past ?? []
