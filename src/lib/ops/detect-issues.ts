@@ -24,6 +24,26 @@ function formatElapsedHours(hours: number): string {
   return hours >= 24 ? `${Math.floor(hours / 24)}일 전` : `${Math.floor(hours)}시간 전`
 }
 
+/**
+ * 576 — last_error 문자열에서 오류 종류를 읽어 권장 조치를 고른다.
+ * ⚠️ 계약: 이 문자열들의 원본은 `src/lib/llm/index.ts:99-105` 다(566에서 정한 철자).
+ *    그쪽 문구를 바꾸면 여기도 같이 봐야 한다. 404 는 호출부에서 먼저 분기하므로 여기 없다.
+ */
+function routeErrorAdvice(lastError: string | null | undefined): string {
+  const e = lastError ?? ''
+  if (e.includes('(429)')) {
+    return '제공사의 무료 쿼터 소진입니다 — 키 문제가 아닙니다. 라우팅 우선순위나 처리량을 조정하세요.'
+  }
+  if (e.includes('(402')) return '제공사 크레딧이 소진됐습니다. 결제 상태를 확인하세요.'
+  if (e.includes('(401') || e.includes('(403')) {
+    return '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 키를 점검하고 연동 테스트를 실행하세요.'
+  }
+  if (e.includes('응답 없음')) {
+    return '제공사 응답이 없습니다. 일시 장애일 수 있으니 반복되면 해당 순위를 비활성화하세요.'
+  }
+  return '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 키·모델을 점검하고 연동 테스트를 실행하세요.'
+}
+
 /** "2026-08-12 01:25" 형식(KST) — suspected_cause 문구에 마지막 실행 시각을 박아넣는 용도. */
 function formatKst(iso: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -213,9 +233,14 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   const crawlCounts = new Map<string, number>(); for (const r of crawls.data ?? []) if (r.source_id) crawlCounts.set(r.source_id, (crawlCounts.get(r.source_id) ?? 0) + 1)
   for (const [sourceId, count] of crawlCounts) signals.push({ fingerprint: `crawl:fail:${sourceId}`, category: 'crawl', severity: 'warning', title: '수집 소스 오류 반복', suspected_cause: '해당 소스 응답 또는 파서 지연 추정', recommended_action: '실패 로그를 확인하고 소스를 일시 중지하세요.', impact: '콘텐츠 수집 누락', count })
   const disabledProviders = new Set((settings.data ?? []).filter(s => !s.enabled).map(s => s.provider))
-  const settingsMap = new Map((settings.data ?? []).filter(s => s.enabled).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
+  // 576 — enabled 로 거르면 비활성 provider 가 맵에서 빠져 monthlyBudget(undefined) →
+  // DEFAULT_MONTHLY_TOKEN_LIMIT(100만) 이 분모가 된다. cerebras 는 실제 예산이 2,000만인데
+  // 24.4% 가 489% 로 찍혔다. 맵은 전체를 담고, 경보 제외는 아래 continue 분기에서 한다.
+  const settingsMap = new Map((settings.data ?? []).map(s => [s.provider, Number(s.monthly_token_limit ?? DEFAULT_MONTHLY_TOKEN_LIMIT)]))
   const usedMap = new Map<string, number>(); for (const r of usage.data ?? []) usedMap.set(r.provider, (usedMap.get(r.provider) ?? 0) + Number(r.tokens ?? 0))
   for (const [provider, used] of usedMap) {
+    // 576 — 비활성 provider 는 라우팅에서 빠져 있어 사용량이 늘 수 없다. 조치할 게 없는 경보다.
+    if (disabledProviders.has(provider)) continue
     const limit = monthlyBudget(settingsMap.get(provider))
     // limit 은 항상 양수(DEFAULT_MONTHLY_TOKEN_LIMIT 이하로 떨어지지 않음)이지만 0 나눗셈 방어로 남겨둔다.
     const percent = limit > 0 ? used / limit * 100 : 0
@@ -240,6 +265,9 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
     console.error('[운영이슈] LLM 라우팅 모델 오류 조회 실패:', routingModelErrors.error.message)
   }
   for (const route of routingModelErrors.data ?? []) {
+    // 576 — is_active 는 "경로"의 활성이지 "provider"의 활성이 아니다.
+    // 비활성 provider 를 가리키는 활성 경로가 실측 6건 있고, 그 오류가 그대로 경보가 된다.
+    if (disabledProviders.has(route.provider)) continue
     if (route.last_error?.includes('모델 사용 불가(404)')) {
       signals.push({
         fingerprint: `llm:model_unavailable:${route.task_type}:${route.priority}`,
@@ -258,8 +286,9 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       category: 'usage',
       severity: 'warning',
       title: 'LLM 라우팅 오류',
-      suspected_cause: route.last_error ?? '오류 상세 없음',
-      recommended_action: '어드민 > 시스템 설정 > AI 모델에서 해당 순위의 키·모델을 점검하고 연동 테스트를 실행하세요.',
+      // 576 — 같은 문장이 4줄 반복되던 원인: 어느 작업의 몇 순위인지가 impact 에만 있었다.
+      suspected_cause: `${route.task_type} ${route.priority}순위 — ${route.last_error ?? '오류 상세 없음'}`,
+      recommended_action: routeErrorAdvice(route.last_error),
       impact: `${route.task_type} 작업이 해당 순위를 건너뜀`,
       count: 1,
     })
