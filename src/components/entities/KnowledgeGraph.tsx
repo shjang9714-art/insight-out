@@ -56,6 +56,8 @@ interface EgoLink {
   source: string
   target: string
   weight: number
+  lift: number
+  share: number
 }
 
 interface PairContent {
@@ -144,8 +146,15 @@ function entityToNode(e: EntitySummary, isCenter: boolean): EgoNode {
   }
 }
 
-function linkWidthFromWeight(weight: number): number {
-  return Math.max(1.0, Math.min(5, Math.log2(weight + 1) * 0.9))
+/** 578 — 이 값 미만의 연결은 그리지 않는다. lift < 1 은 역상관(우연보다 덜 같이 나온다).
+ *  실측: lift>=2 로 418 엣지 / 101 엔티티가 남는다(전체 971 엣지 / 140 엔티티). */
+const MIN_LIFT = 2.0
+
+/** 578 — lift 는 실측 2 ~ 1,100 범위라 선형 매핑이 불가능하다. log10 으로 눕힌다.
+ *  lift 2 → 1.00 · 10 → 2.54 · 100 → 4.74 · 132 부터 5.00(상한) */
+function linkWidthFromLift(lift: number): number {
+  const safe = Math.max(lift, MIN_LIFT)
+  return Math.max(1.0, Math.min(5, 1.0 + Math.log10(safe / MIN_LIFT) * 2.2))
 }
 
 function mkLinkKey(a: string, b: string): string {
@@ -338,7 +347,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     const supabase = createClient()
 
     supabase
-      .rpc('entity_neighbors', { p_entity_id: rootId, p_limit: 20, p_min_weight: 1 })
+      .rpc('entity_neighbors_v2', { p_entity_id: rootId, p_limit: 20, p_min_lift: MIN_LIFT })
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) {
@@ -354,7 +363,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           return
         }
 
-        const rows = (data ?? []) as { entity_id: string; weight: number }[]
+        const rows = (data ?? []) as { entity_id: string; weight: number; lift: number; share: number }[]
         const rootEnt = entities.find((e) => e.id === rootId)
         const rootNode = rootEnt ? entityToNode(rootEnt, true) : null
 
@@ -405,7 +414,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               const lk = mkLinkKey(rootId, row.entity_id)
               if (!newLinkKeys.has(lk)) {
                 newLinkKeys.add(lk)
-                newLinks.push({ source: rootId, target: row.entity_id, weight: row.weight })
+                newLinks.push({ source: rootId, target: row.entity_id, weight: row.weight, lift: row.lift, share: row.share })
                 addedLinkKeys.push(lk)
               }
             }
@@ -450,8 +459,9 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const link = (fg as any).d3Force?.('link')
     // 290 — 강한 관계일수록 목표 거리를 짧게 해 "가까움 = 관련 깊음"이 실제 의미를 갖게 한다.
+    // 578 — 관계가 셀수록 가깝게. lift 범위(2~1100) 때문에 log10 을 쓴다.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (link?.distance) link.distance((l: any) => 140 - Math.min(80, Math.log2((l.weight ?? 1) + 1) * 20))
+    if (link?.distance) link.distance((l: any) => 140 - Math.min(80, Math.log10(Math.max(l.lift ?? MIN_LIFT, MIN_LIFT) / MIN_LIFT) * 30))
     forcesAppliedRef.current = true
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(fg as any).d3ReheatSimulation?.()
@@ -525,16 +535,16 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
     try {
       const supabase = createClient()
-      const { data, error } = await supabase.rpc('entity_neighbors', {
+      const { data, error } = await supabase.rpc('entity_neighbors_v2', {
         p_entity_id: nodeId,
         p_limit: 12,
-        p_min_weight: 1,
+        p_min_lift: MIN_LIFT,
       })
 
       if (resetKeyRef.current !== capturedResetKey) return
       if (error || !data) return
 
-      const rows = (data as { entity_id: string; weight: number }[])
+      const rows = (data as { entity_id: string; weight: number; lift: number; share: number }[])
       const newNeighborIds = rows.map((r) => r.entity_id).filter((id) => !nodeIdsRef.current.has(id))
 
       if (nodesRef.current.length + newNeighborIds.length > MAX_NODES) {
@@ -567,14 +577,14 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         const lk = mkLinkKey(nodeId, row.entity_id)
         if (!newLinkKeys.has(lk)) {
           newLinkKeys.add(lk)
-          newLinks.push({ source: nodeId, target: row.entity_id, weight: row.weight })
+          newLinks.push({ source: nodeId, target: row.entity_id, weight: row.weight, lift: row.lift, share: row.share })
           addedLinkKeys.push(lk)
         } else {
           const existIdx = newLinks.findIndex(
             (l) => mkLinkKey(getLinkEndId(l.source), getLinkEndId(l.target)) === lk
           )
-          if (existIdx >= 0 && row.weight > (newLinks[existIdx].weight ?? 0)) {
-            newLinks[existIdx] = { ...newLinks[existIdx], weight: row.weight }
+          if (existIdx >= 0 && row.lift > (newLinks[existIdx].lift ?? 0)) {
+            newLinks[existIdx] = { ...newLinks[existIdx], weight: row.weight, lift: row.lift, share: row.share }
           }
         }
 
@@ -1199,8 +1209,8 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               return activeTooltip?.pairKey === pk ? LINK_COLOR_HI : LINK_COLOR
             }}
             linkWidth={(link) => {
-              const raw = link as { weight?: number; source?: unknown; target?: unknown }
-              const base = linkWidthFromWeight(raw.weight ?? 1)
+              const raw = link as { lift?: number; source?: unknown; target?: unknown }
+              const base = linkWidthFromLift(raw.lift ?? MIN_LIFT)
               const pk = mkLinkKey(getLinkEndId(raw.source), getLinkEndId(raw.target))
               if (activeLockedEdge) return activeLockedEdge.pairKey === pk ? Math.max(4, base * 2.5) : base
               return activeTooltip?.pairKey === pk ? base + 1.5 : base

@@ -24,7 +24,17 @@ export async function GET(request: NextRequest) {
       throw new Error('엔티티 언급 수 갱신 결과가 숫자가 아닙니다.')
     }
 
-    return { ok: true as const, updated }
+    // 578 — 관계지도 lift 엣지의 원천. 실시간 계산은 2.77초라 매트뷰로 내렸다.
+    // 비동시 갱신이 ~3초간 ACCESS EXCLUSIVE 락을 잡는다 — KST 05:50 이라 수용한다.
+    const { data: pairData, error: pairError } = await admin.rpc('refresh_entity_pair_stats')
+    if (pairError) throw new Error(`엔티티 쌍 통계 갱신 실패: ${pairError.message}`)
+
+    const pairs = Number(pairData)
+    if (!Number.isFinite(pairs)) {
+      throw new Error('엔티티 쌍 통계 갱신 결과가 숫자가 아닙니다.')
+    }
+
+    return { ok: true as const, updated, pairs }
   })
   return Response.json(result)
 }
