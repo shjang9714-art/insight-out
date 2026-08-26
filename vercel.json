@@ -71,7 +71,7 @@
     },
     {
       "path": "/api/cron/ops-weekly",
-      "schedule": "0 23 * * 0"
+      "schedule": "30 23 * * 0"
     }
   ]
 }
