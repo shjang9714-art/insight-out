@@ -21,8 +21,6 @@ import { cleanBodyText, htmlToPlainText } from '@/lib/contents/clean-body'
 import { getReportSignedUrl } from '@/lib/contents/report-url'
 import { buildReportDownloadName } from '@/lib/contents/report-filename'
 import { getRelatedGrouped, getRelatedYoutube } from '@/lib/contents/related'
-import { getContentCitations } from '@/lib/contents/citations'
-import CitationsBlock from '@/components/contents/CitationsBlock'
 import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
 import CompanyDocumentCard from '@/components/entities/CompanyDocumentCard'
 import LguImpactBadge from '@/components/contents/LguImpactBadge'
@@ -600,7 +598,7 @@ async function ContentSupplementSections({
 }) {
   const isCompanyDoc = category === '기업자료'
 
-  const [grouped, youtubeRelated, entityRes, citations, companyDocRes] = await Promise.all([
+  const [grouped, youtubeRelated, entityRes, companyDocRes] = await Promise.all([
     getRelatedGrouped(supabase, currentMeta),
     getRelatedYoutube(supabase, currentMeta),
     supabase
@@ -608,7 +606,6 @@ async function ContentSupplementSections({
       .select('entities(id, canonical_name, entity_type, is_competitor)')
       .eq('content_id', contentId)
       .limit(20),
-    getContentCitations(supabase, contentId),
     isCompanyDoc
       ? supabase
           .from('company_documents')
@@ -642,9 +639,6 @@ async function ContentSupplementSections({
 
   return (
     <>
-      {/* 이 기사를 인용한 리포트·인사이트(313 역참조) — 비어 있으면 CitationsBlock 자체가 렌더 안 함 */}
-      <CitationsBlock citations={citations} />
-
       {/* 355-D — 기업자료 상세: 연결 기업 링크 + 같은 기업의 다른 자료 */}
       {isCompanyDoc && linkedEntity && (
         <section className="mt-6 border-t border-border pt-5">
