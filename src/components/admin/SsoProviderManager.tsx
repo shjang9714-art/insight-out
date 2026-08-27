@@ -18,6 +18,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { PublicSsoProvider } from '@/lib/admin/sso-admin'
 import {
+  isSsoNameIdFormat,
   SSO_NAME_ID_FORMATS,
   SSO_NAME_ID_LABEL,
   type SsoNameIdFormat,
@@ -259,6 +260,25 @@ export default function SsoProviderManager() {
     }
   }
 
+  const applyNameIdFormat = async (provider: PublicSsoProvider, next: string) => {
+    if (!isSsoNameIdFormat(next)) return
+    setPendingProviderId(provider.id)
+    setError(null)
+    try {
+      const response = await fetch(`/api/admin/sso/providers/${encodeURIComponent(provider.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name_id_format: next }),
+      })
+      if (!response.ok) throw new Error(await readApiError(response))
+      await loadProviders()
+    } catch (formatError) {
+      setError(formatError instanceof Error ? formatError.message : String(formatError))
+    } finally {
+      setPendingProviderId(null)
+    }
+  }
+
   const removeProvider = async (provider: PublicSsoProvider) => {
     const label = provider.resource_id ?? provider.saml.entity_id ?? provider.id
     const ok = await confirm({
@@ -345,6 +365,33 @@ export default function SsoProviderManager() {
         )
       },
       width: 'min-w-72',
+    },
+    {
+      key: 'nameId',
+      header: 'NameID 형식',
+      cell: (provider) => {
+        const isPending = pendingProviderId === provider.id
+        return (
+          <Select
+            value={provider.saml.name_id_format ?? ''}
+            disabled={isPending}
+            onValueChange={(value) => void applyNameIdFormat(provider, value)}
+          >
+            <SelectTrigger
+              className="min-w-40"
+              aria-label={`${provider.resource_id ?? 'SSO 프로바이더'} NameID 형식`}
+            >
+              <SelectValue placeholder="미설정" />
+            </SelectTrigger>
+            <SelectContent>
+              {SSO_NAME_ID_FORMATS.map((format) => (
+                <SelectItem key={format} value={format}>{SSO_NAME_ID_LABEL[format]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      },
+      width: 'min-w-48',
     },
     {
       key: 'status',

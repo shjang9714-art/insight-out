@@ -1,5 +1,5 @@
 import 'server-only'
-import type { SsoNameIdFormat } from '@/lib/admin/sso-name-id'
+import { isSsoNameIdFormat, type SsoNameIdFormat } from '@/lib/admin/sso-name-id'
 
 export type { SsoNameIdFormat }
 
@@ -10,6 +10,7 @@ export interface PublicSsoProvider {
   saml: {
     entity_id: string | null
     metadata_url: string | null
+    name_id_format: SsoNameIdFormat | null
   }
   domains: Array<{ domain: string }>
   created_at: string | null
@@ -60,6 +61,13 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
 
+function pickNameIdFormat(...values: unknown[]): SsoNameIdFormat | null {
+  for (const value of values) {
+    if (isSsoNameIdFormat(value)) return value
+  }
+  return null
+}
+
 export function toPublicProvider(value: unknown): PublicSsoProvider {
   const provider = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const saml = provider.saml && typeof provider.saml === 'object'
@@ -80,6 +88,9 @@ export function toPublicProvider(value: unknown): PublicSsoProvider {
     saml: {
       entity_id: stringOrNull(saml.entity_id),
       metadata_url: stringOrNull(saml.metadata_url),
+      // GoTrue 응답에서 이 값의 위치가 버전에 따라 다를 수 있어 두 자리를 다 본다.
+      // 우리 스키마상 원본은 auth.saml_providers 행이므로 saml 하위가 1순위다.
+      name_id_format: pickNameIdFormat(saml.name_id_format, provider.name_id_format),
     },
     domains,
     created_at: stringOrNull(provider.created_at),
