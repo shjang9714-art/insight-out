@@ -65,6 +65,33 @@ export function getKstWeekMondayString(date: Date = new Date()): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
+/** 'YYYY-MM-DD' 문자열을 그 표기 그대로(달력일 단위, 시간대 변환 없이) days만큼 이동한다. */
+export function addDaysToDateStr(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** 'YYYY-MM-DD'(KST 날짜) 문자열이 가리키는 KST 0시를 UTC ISO 문자열로. getKstDayStartIso와 동일한
+ * 계산이지만 `${dateStr}T00:00:00+09:00` 파싱 방식 — competitor-weekly/generate.ts 원본 시그니처 유지. */
+export function kstDateToUtcIso(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00+09:00`).toISOString()
+}
+
+/** KST 기준 "가장 최근에 완결된" 월~일 주(현재 진행 중인 주가 아니라 그 직전 주).
+ * daily-insights·competitor-weekly 배치가 공유하는 주차 계산 — 배치를 월요일에 돌리든
+ * 캐치업으로 화·수에 돌리든 항상 같은 주(직전 완결 주)를 가리켜야 라벨과 수집 구간이 어긋나지 않는다. */
+export function getLastCompletedWeekKst(): { weekStart: string; weekEnd: string } {
+  const todayStr = getKstDateString()
+  const today = new Date(`${todayStr}T00:00:00Z`)
+  const dow = today.getUTCDay() // 0=Sun..6=Sat
+  const daysSinceMonday = (dow + 6) % 7
+  const thisMondayStr = addDaysToDateStr(todayStr, -daysSinceMonday)
+  const lastMondayStr = addDaysToDateStr(thisMondayStr, -7)
+  const lastSundayStr = addDaysToDateStr(lastMondayStr, 6)
+  return { weekStart: lastMondayStr, weekEnd: lastSundayStr }
+}
+
 /** 임의 시각을 KST 기준 시(0~23)로. */
 export function getKstHour(date: Date = new Date()): number {
   const hour = new Intl.DateTimeFormat('en-US', {
