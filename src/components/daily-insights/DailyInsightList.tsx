@@ -6,6 +6,7 @@ import type { DailyInsightRow, ImplicationLenses } from '@/lib/daily-insights/ty
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { stripActionTeamSubject } from '@/lib/daily-insights/normalize-action'
 import { dedupeSourceArticles } from '@/lib/daily-insights/dedupeSourceArticles'
+import { groupSameEventArticles } from '@/lib/daily-insights/groupSameEventArticles'
 import { cn } from '@/lib/utils'
 import AiMark from '@/components/ui/AiMark'
 
@@ -25,7 +26,10 @@ const SOURCE_PREVIEW_COUNT = 3
 /** 1단계 카드 — 홈보다 정보가 많아야 한다(§2): 라벨칩 + summary + 3C 전문 + 근거기사 목록 + 과거기사. */
 function InsightCard({ item, isLatestWeek }: { item: DailyInsightRow; isLatestWeek: boolean }) {
   const sections = TREND_SECTIONS.filter((s) => item[s.key])
-  const sourceArticles = dedupeSourceArticles(item.source_articles)
+  // 목록 카드는 미리보기 — 같은 사건 그룹 대표만 노출(접기 UI는 상세에서만, §2-2).
+  const sourceArticles = groupSameEventArticles(dedupeSourceArticles(item.source_articles)).map(
+    (g) => g.representative
+  )
   const previewSources = sourceArticles.slice(0, SOURCE_PREVIEW_COUNT)
   const extraSourceCount = Math.max(0, sourceArticles.length - previewSources.length)
   const pastArticles = item.related_past ?? []
