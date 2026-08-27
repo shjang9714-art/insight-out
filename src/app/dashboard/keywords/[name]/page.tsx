@@ -396,12 +396,6 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
         </div>
       </header>
 
-      {snapshot.isTruncated && (
-        <p className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
-          관련 문서가 많아 최신 2,000건을 기준으로 집계했습니다.
-        </p>
-      )}
-
       <section aria-labelledby="keyword-metrics" className="mb-8">
         <h2 id="keyword-metrics" className="sr-only">핵심 지표</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
