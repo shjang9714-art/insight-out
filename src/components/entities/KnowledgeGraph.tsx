@@ -1289,7 +1289,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         {/* 안내 힌트 */}
         {!isInitLoading && !rpcError && nodes.length > 0 && (
           <div className="absolute bottom-3 left-3 rounded-lg border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
-            점 클릭 → 관련 기사 · 이웃 펼치기 버튼 → 확장 · 선 클릭 → 연결 이유
+            점을 누르면 오른쪽에 요약이 열립니다 · 선을 누르면 연결 이유가 보입니다
           </div>
         )}
 
@@ -1345,12 +1345,35 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       {selectedNode && (
         <div className="rounded-xl border bg-card p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">{selectedNode.label}</p>
               <p className="text-xs text-muted-foreground">
                 {ENTITY_TYPE_LABEL[selectedNode.type]}
                 {selectedNode.isCompetitor && ' · 경쟁사'}
               </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => void expandNode(selectedNode.id)}
+                disabled={isSelectedExpanded || !!loadingNodeId}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {loadingNodeId === selectedNode.id ? '확장 중…' : isSelectedExpanded ? '이미 펼쳐짐' : '이웃 펼치기'}
+              </button>
+              <Link
+                href={`/dashboard/entities/${selectedNode.id}`}
+                prefetch={false}
+                className="rounded-lg border px-2.5 py-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors"
+              >
+                상세 보기 →
+              </Link>
+              <button
+                onClick={() => setSelectedNodeId(null)}
+                className="rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="닫기"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
 
@@ -1407,29 +1430,6 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-1.5">
-            <button
-              onClick={() => void expandNode(selectedNode.id)}
-              disabled={isSelectedExpanded || !!loadingNodeId}
-              className="rounded-lg border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {loadingNodeId === selectedNode.id ? '확장 중…' : isSelectedExpanded ? '이미 펼쳐짐' : '이웃 펼치기'}
-            </button>
-            <Link
-              href={`/dashboard/entities/${selectedNode.id}`}
-              prefetch={false}
-              className="rounded-lg border px-2.5 py-1 text-xs font-medium text-brand-600 hover:text-brand-700 transition-colors"
-            >
-              상세 보기 →
-            </Link>
-            <button
-              onClick={() => setSelectedNodeId(null)}
-              className="rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="닫기"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
         </div>
       )}
 
