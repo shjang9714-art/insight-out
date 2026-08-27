@@ -3,6 +3,9 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { llmComplete } from '@/lib/llm'
 import { loadPrompt } from '@/lib/prompts/load-prompt'
+import { addDaysToDateStr, kstDateToUtcIso, getLastCompletedWeekKst } from '@/lib/date'
+
+export { getLastCompletedWeekKst }
 
 // ─── 사업 영역 축 (261 §2) ────────────────────────────────────────────────────
 // matched_groups 에는 keyword_groups.name(한글 라벨)이 저장된다 — kind 슬러그가 아님.
@@ -24,39 +27,8 @@ const AREA_DEFS: AreaDef[] = [
 
 type ImpactValue = '위기' | '기회' | '관망'
 
-// ─── KST 날짜 유틸 (lib/insight/generate.ts 패턴 재사용) ──────────────────────
-
-function kstDateString(offsetDays = 0): string {
-  const now = Date.now()
-  const kst = new Date(now + 9 * 60 * 60 * 1000)
-  const shifted = new Date(kst.getTime() - offsetDays * 24 * 60 * 60 * 1000)
-  const y = shifted.getUTCFullYear()
-  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(shifted.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function kstDateToUtcIso(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00+09:00`).toISOString()
-}
-
-function addDaysToDateStr(dateStr: string, days: number): string {
-  const d = new Date(`${dateStr}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
-/** KST 기준 "가장 최근에 완결된" 월~일 주(현재 진행 중인 주가 아니라 그 직전 주). 크론 게이트(284)의 멱등 확인에도 재사용. */
-export function getLastCompletedWeekKst(): { weekStart: string; weekEnd: string } {
-  const todayStr = kstDateString(0)
-  const today = new Date(`${todayStr}T00:00:00Z`)
-  const dow = today.getUTCDay() // 0=Sun..6=Sat
-  const daysSinceMonday = (dow + 6) % 7
-  const thisMondayStr = addDaysToDateStr(todayStr, -daysSinceMonday)
-  const lastMondayStr = addDaysToDateStr(thisMondayStr, -7)
-  const lastSundayStr = addDaysToDateStr(lastMondayStr, 6)
-  return { weekStart: lastMondayStr, weekEnd: lastSundayStr }
-}
+// KST 날짜 유틸(addDaysToDateStr/kstDateToUtcIso/getLastCompletedWeekKst)은
+// daily-insights 배치와 공유하는 공용 유틸로 승격되어 @/lib/date 로 이동(지시서 20260827c).
 
 // ─── LLM 프롬프트 (llm_prompts DB 우선, 미적용 시 코드 상수 폴백) ─────────────
 

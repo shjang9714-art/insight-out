@@ -108,17 +108,31 @@ export interface CandidatePoolResult {
  * LLM 호출 전 순수 DB 조회 단계 — generate.ts 가 이 풀을 그대로 프롬프트에 싣는다.
  * @param opts.windowDays 조회 창(일). 기본값은 주간 배치용 WINDOW_DAYS(7) — 일일 종합
  *   파이프라인(daily-insights)이 1을 넘겨 "그날 발행분"으로 좁힐 때만 사용, 나머지 로직은 불변.
+ * @param opts.windowStartIso / opts.windowEndIso 주어지면 windowDays 기반 상대 계산 대신 이
+ *   절대 경계를 그대로 쓴다(둘 다 gte/lt 양쪽 적용) — daily-insights 배치가 "직전 완결 주"처럼
+ *   실행 시각과 무관한 고정 구간을 조회할 때 사용(지시서 20260827c, 캐치업 재실행 시 창이
+ *   실행 요일에 따라 밀리는 걸 막기 위함). windowEndIso 없이 windowStartIso만 주면 상한 없이
+ *   기존과 동일하게 동작.
  */
-export async function buildCandidatePool(opts?: { windowDays?: number }): Promise<CandidatePoolResult> {
+export async function buildCandidatePool(opts?: {
+  windowDays?: number
+  windowStartIso?: string
+  windowEndIso?: string
+}): Promise<CandidatePoolResult> {
   const admin = createAdminClient()
   const windowDays = opts?.windowDays ?? WINDOW_DAYS
-  const windowStart = new Date(Date.now() - windowDays * 24 * 3600 * 1000).toISOString()
+  const windowStart = opts?.windowStartIso ?? new Date(Date.now() - windowDays * 24 * 3600 * 1000).toISOString()
+  const windowEnd = opts?.windowEndIso ?? null
+
+  const publishedAtFilter = windowEnd
+    ? `and(published_at.gte.${windowStart},published_at.lt.${windowEnd}),and(published_at.is.null,collected_at.gte.${windowStart},collected_at.lt.${windowEnd})`
+    : `published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`
 
   const { data: rawContents, error } = await admin
     .from('contents')
     .select('id, title, summary_ko, category, matched_groups, published_at, collected_at, original_url, importance_score, source_id')
     .eq('status', 'published')
-    .or(`published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`)
+    .or(publishedAtFilter)
     .is('deleted_at', null)
     .limit(3000)
 

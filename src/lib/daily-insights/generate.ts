@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, type KeyInsightCandidate, type PastArticleRef } from '@/lib/key-insights/candidates'
-import { getKstDateString, getKstWeekMondayString } from '@/lib/date'
+import { getKstDateString, addDaysToDateStr, kstDateToUtcIso, getLastCompletedWeekKst } from '@/lib/date'
 import { dedupeSimilarArticles, jaccardSimilarity, titleTokens } from '@/lib/daily-insights/dedupe'
 import {
   classifyPastArticleCategories,
@@ -25,7 +25,7 @@ import type { DailyInsightCategory } from '@/lib/daily-insights/constants'
 
 // 지시서 20260715: "매일 3개(day_of)" → "매주 최대 10개(week_of)" 복귀. 콘텐츠 모델(3C 종합·
 // 근거/과거기사·환각가드)은 지시서 20260711 그대로, 수집 범위·발행 주기만 주간으로 되돌린다.
-const WEEKLY_WINDOW_DAYS = 7
+// (지시서 20260827c: 수집 창은 windowDays 상대 계산 대신 절대 경계로 고정 — WEEKLY_WINDOW_DAYS 상수는 폐기)
 const MAX_GROUPS = 10
 const MAX_MEMBERS_PER_GROUP = 6
 // 카테고리당 인사이트 상한(가이드 §4.1) — 한 카테고리가 그 주 화제를 독식하지 않도록.
@@ -971,7 +971,7 @@ function isNoProgressVsPastWeek(candidate: FlowCandidate, pastFlows: PastWeekFlo
 export async function generateWeeklyFlows(
   admin: ReturnType<typeof createAdminClient>
 ): Promise<WeeklyFlowGenEntry[]> {
-  const weekOf = getKstWeekMondayString(new Date())
+  const weekOf = getLastCompletedWeekKst().weekStart
   const prevWeekOf = shiftDateString(weekOf, -7)
   const pastFlows = await loadPastWeekFlowSignatures(admin, prevWeekOf)
 
@@ -1174,18 +1174,22 @@ export interface GenerateDailyInsightResult {
 }
 
 /**
- * 지난 7일(KST) 발행 기사를 최대 10개(최소 1개) 주제로 종합해 daily_insights 에 자동게시.
+ * 직전 완결 주(KST 월~일, getLastCompletedWeekKst)에 발행된 기사를 최대 10개(최소 1개) 주제로
+ * 종합해 daily_insights 에 자동게시. 수집 구간은 그 주의 월요일 00:00 ~ 다음주 월요일 00:00(KST)
+ * 절대 경계로 고정 — 배치가 월요일 정시에 돌든 캐치업으로 화·수에 돌든 실행 시각과 무관하게 항상
+ * 같은 결과를 낸다(지시서 20260827c. 이전엔 라벨=실행 주의 월요일, 수집=실행 시각 기준 "지난
+ * 7일"이라 라벨이 실제 기사 발행 구간보다 정확히 1주 앞서는 버그가 있었다).
  * 멱등: 같은 week_of 배치가 이미 있으면 skip. 그룹 단위 부분 실패 허용(성공분만 저장).
- * day_of = week_of = 배치 실행 주의 월요일(KST) — 기존 day_of 기반 화면 로직과 호환 유지.
+ * day_of = week_of = 직전 완결 주의 월요일(KST) — 기존 day_of 기반 화면 로직과 호환 유지.
  * @param opts.dryRun true면 멱등 체크·DB insert를 모두 건너뛰고 생성될 행만 previewRows로 반환
  *   (지시서 20260715 검증 — 이미 이번 주 배치가 있는 상태에서 로직만 검증할 때 사용, 운영 경로 아님).
  */
 export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Promise<GenerateDailyInsightResult> {
   const dryRun = opts?.dryRun ?? false
   const admin = createAdminClient()
-  const now = new Date()
-  const dayOf = getKstDateString(now)
-  const weekOf = getKstWeekMondayString(now)
+  const { weekStart, weekEnd } = getLastCompletedWeekKst()
+  const weekOf = weekStart
+  const dayOf = weekOf
 
   if (!dryRun) {
     // status='rejected'(반려·재생성 대비 보존)는 "이미 배치가 있다"로 치지 않는다 — published만 카운트.
@@ -1216,7 +1220,11 @@ export async function generateDailyInsightBatch(opts?: { dryRun?: boolean }): Pr
     }
   }
 
-  const pool = await buildCandidatePool({ windowDays: WEEKLY_WINDOW_DAYS })
+  // 절대 경계(직전 완결 주의 월요일 00:00 ~ 다음주 월요일 00:00 KST)로 고정 — 실행 시각 기준
+  // 상대 창(windowDays)을 쓰면 캐치업 재실행(화·수) 시 수집 구간이 실행 요일에 따라 밀린다.
+  const windowStartIso = kstDateToUtcIso(weekStart)
+  const windowEndIso = kstDateToUtcIso(addDaysToDateStr(weekEnd, 1))
+  const pool = await buildCandidatePool({ windowStartIso, windowEndIso })
   if (pool.candidates.length === 0) {
     return { ok: true, dayOf, weekOf, generated: 0, skipped: true, failed: false, reason: '후보 없음(프리필터 통과분 0건)' }
   }
