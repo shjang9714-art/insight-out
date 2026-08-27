@@ -34,7 +34,18 @@ export async function GET(request: NextRequest) {
       throw new Error('엔티티 쌍 통계 갱신 결과가 숫자가 아닙니다.')
     }
 
-    return { ok: true as const, updated, pairs }
+    // 588 — 이슈 활동도(30일 창) 집계. 라이브 계산은 8.3초라 매트뷰로 내렸다.
+    //   top_keywords 의 unnest 가 124만 행으로 불어나는 게 원인이다.
+    //   비동시 갱신이 ~8초간 락을 잡는다 — KST 05:50 이라 수용한다.
+    const { data: issueData, error: issueError } = await admin.rpc('refresh_issue_activity_stats')
+    if (issueError) throw new Error(`이슈 활동도 갱신 실패: ${issueError.message}`)
+
+    const issueStats = Number(issueData)
+    if (!Number.isFinite(issueStats)) {
+      throw new Error('이슈 활동도 갱신 결과가 숫자가 아닙니다.')
+    }
+
+    return { ok: true as const, updated, pairs, issueStats }
   })
   return Response.json(result)
 }
