@@ -82,7 +82,6 @@ export interface KeywordRelated {
   companyCount: number
   articles: KeywordArticle[]
   events: KeywordEvent[]
-  recentIssueCount: number
 }
 
 interface ContentRow {
@@ -275,16 +274,12 @@ const loadKeywordRelations = cache(async (name: string): Promise<KeywordRelated>
     createClient(),
   ])
 
-  const [entitiesRes, recentIssueRes, keywordGroupsRes, eventsRes] = await Promise.all([
+  const [entitiesRes, keywordGroupsRes, eventsRes] = await Promise.all([
     supabase.rpc('keyword_related_entities', {
       p_match_name: matchName,
       p_days: DEFAULT_DAYS,
       p_exclude_entity_id: entity?.id ?? null,
       p_limit: 12,
-    }),
-    supabase.rpc('keyword_recent_issue_count', {
-      p_match_name: matchName,
-      p_recent_days: 7,
     }),
     supabase
       .from('keyword_groups')
@@ -302,9 +297,6 @@ const loadKeywordRelations = cache(async (name: string): Promise<KeywordRelated>
 
   if (entitiesRes.error) {
     console.error('[키워드 상세] 연관 엔티티 조회 오류:', entitiesRes.error.message)
-  }
-  if (recentIssueRes.error) {
-    console.error('[키워드 상세] 관련 사건 조회 오류:', recentIssueRes.error.message)
   }
   const relatedEntityRows = (entitiesRes.data ?? []) as RelatedEntityRow[]
   const entities = relatedEntityRows.map((row) => ({
@@ -386,7 +378,6 @@ const loadKeywordRelations = cache(async (name: string): Promise<KeywordRelated>
     companyCount: relatedEntityRows[0]?.company_count ?? 0,
     articles,
     events,
-    recentIssueCount: typeof recentIssueRes.data === 'number' ? recentIssueRes.data : 0,
   }
 })
 
