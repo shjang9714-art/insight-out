@@ -115,6 +115,7 @@ interface Props {
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
 const MAX_NODES = 60
+const GRAPH_HEIGHT = 520
 
 // canvas 기반 — CSS 변수 불가 → hex 예외 (AGENTS.md §1-9 참고, 이 파일 canvas 한정)
 const TYPE_COLOR: Record<EntityType, string> = {
@@ -228,9 +229,20 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   const fitRequestedRef = useRef(true)
   const engineRunningRef = useRef(false)
   const dimensionsWidthRef = useRef(0)
+  const dimensionsHeightRef = useRef(0)
   const lastFittedWidthRef = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 520 })
+  const [dimensions, setDimensions] = useState({ width: 0, height: GRAPH_HEIGHT })
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const isFullscreenRef = useRef(false)
+  useEffect(() => { isFullscreenRef.current = isFullscreen }, [isFullscreen])
+
+  useEffect(() => {
+    if (!isFullscreen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [isFullscreen])
 
   // 렌즈 (canvas 콜백은 RAF 루프에서 실행 → ref로 최신값 전달)
   const [activeLens] = useActiveLens()
@@ -318,10 +330,13 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
     if (!el) return
     const measure = () => {
       const width = el.offsetWidth
-      if (width <= 0 || width === dimensionsWidthRef.current) return
+      const height = el.offsetHeight
+      if (width <= 0 || height <= 0) return
+      if (width === dimensionsWidthRef.current && height === dimensionsHeightRef.current) return
       if (lastFittedWidthRef.current > 0) fitRequestedRef.current = true
       dimensionsWidthRef.current = width
-      setDimensions({ width, height: 520 })
+      dimensionsHeightRef.current = height
+      setDimensions({ width, height })
     }
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -333,6 +348,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      if (isFullscreenRef.current) { setIsFullscreen(false); return }
       setLockedEdge(null)
       setSelectedNodeId(null)
     }
@@ -1124,14 +1140,26 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       </div>
 
       {/* 290 — 데스크톱(lg+): 그래프 + 우측 고정 인스펙터 2열. 모바일: 1열(그래프 아래 카드, DOM 순서 그대로). */}
-      <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-4">
+      <div className={cn(
+        'min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-4',
+        isFullscreen && 'fixed inset-0 z-50 bg-background p-4 lg:items-stretch',
+      )}>
 
       {/* 그래프 캔버스 */}
       <div
         ref={containerRef}
         className="relative min-w-0 max-w-full overflow-hidden rounded-xl border bg-muted/20"
-        style={{ height: 520 }}
+        style={{ height: isFullscreen ? '100%' : GRAPH_HEIGHT }}
       >
+        <button
+          type="button"
+          onClick={() => setIsFullscreen((value) => !value)}
+          className="absolute right-3 top-3 z-10 rounded-lg border bg-background/80 px-2.5 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground"
+          aria-label={isFullscreen ? '전체화면 닫기' : '전체화면으로 보기'}
+        >
+          {isFullscreen ? '전체화면 닫기' : '전체화면'}
+        </button>
+
         {isInitLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 text-sm text-muted-foreground">
             이웃 엔티티 로딩 중…
@@ -1168,7 +1196,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
             ref={graphRef}
             graphData={{ nodes: nodes as unknown as { id: string }[], links }}
             width={dimensions.width}
-            height={520}
+            height={dimensions.height}
             nodeId="id"
             nodeLabel={() => '클릭 → 관련 기사 보기'}
             nodeVal={(node) => (node as unknown as EgoNode).val}
@@ -1340,7 +1368,10 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       </div>
 
       {/* 290 — 우측 고정 인스펙터(lg+) / 그래프 아래 카드(모바일) — 선택 노드 패널 · 엣지 잠금 패널 */}
-      <div className="mt-3 lg:sticky lg:top-4 lg:mt-0">
+      <div className={cn(
+        'mt-3 lg:sticky lg:top-4 lg:mt-0',
+        isFullscreen && 'lg:h-full lg:overflow-y-auto',
+      )}>
       {/* 선택 노드 패널 */}
       {selectedNode && (
         <div className="rounded-xl border bg-card p-4 space-y-3">
