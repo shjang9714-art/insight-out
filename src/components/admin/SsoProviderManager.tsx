@@ -16,7 +16,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { PublicSsoProvider, SsoNameIdFormat } from '@/lib/admin/sso-admin'
+import type { PublicSsoProvider } from '@/lib/admin/sso-admin'
+import {
+  SSO_NAME_ID_FORMATS,
+  SSO_NAME_ID_LABEL,
+  type SsoNameIdFormat,
+} from '@/lib/admin/sso-name-id'
 
 const PROJECT_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '') ?? ''
 const SP_VALUES = PROJECT_URL
@@ -80,7 +85,9 @@ export default function SsoProviderManager() {
   const [metadataUrl, setMetadataUrl] = useState(ALPHAKEY_METADATA_URL)
   const [metadataXml, setMetadataXml] = useState('')
   const [domains, setDomains] = useState('')
-  const [nameIdFormat, setNameIdFormat] = useState<SsoNameIdFormat | ''>('emailAddress')
+  const [nameIdFormat, setNameIdFormat] = useState<SsoNameIdFormat | ''>(
+    'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+  )
   const [attributeMapping, setAttributeMapping] = useState('')
   const [disabled, setDisabled] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -134,7 +141,7 @@ export default function SsoProviderManager() {
     if (nextPreset === 'alphakey') {
       setResourceId('alphakey')
       setMetadataUrl(ALPHAKEY_METADATA_URL)
-      setNameIdFormat('emailAddress')
+      setNameIdFormat('urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress')
       return
     }
 
@@ -501,12 +508,14 @@ export default function SsoProviderManager() {
                 <SelectTrigger id="sso-name-id-format"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">선택 안 함</SelectItem>
-                  <SelectItem value="emailAddress">emailAddress</SelectItem>
-                  <SelectItem value="persistent">persistent</SelectItem>
-                  <SelectItem value="transient">transient</SelectItem>
-                  <SelectItem value="unspecified">unspecified</SelectItem>
+                  {SSO_NAME_ID_FORMATS.map((format) => (
+                    <SelectItem key={format} value={format}>{SSO_NAME_ID_LABEL[format]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                emailAddress·unspecified 는 SAML 1.1, persistent·transient 는 SAML 2.0 네임스페이스입니다.
+              </p>
             </div>
           </div>
 

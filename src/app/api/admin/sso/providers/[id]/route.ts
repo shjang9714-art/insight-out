@@ -4,20 +4,13 @@ import {
   getProvider,
   SsoAdminError,
   updateProvider,
-  type SsoNameIdFormat,
   type UpdateSsoProviderInput,
 } from '@/lib/admin/sso-admin'
+import { isSsoNameIdFormat } from '@/lib/admin/sso-name-id'
 import { verifyAdminRequest } from '@/lib/admin/verify-admin-request'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-const NAME_ID_FORMATS = new Set<SsoNameIdFormat>([
-  'persistent',
-  'emailAddress',
-  'transient',
-  'unspecified',
-])
 
 function errorResponse(error: unknown) {
   if (error instanceof SsoAdminError) {
@@ -69,10 +62,10 @@ function parseUpdateInput(body: unknown): UpdateSsoProviderInput {
     if (resourceId) input.resource_id = resourceId
   }
   if (body.name_id_format !== undefined) {
-    if (typeof body.name_id_format !== 'string' || !NAME_ID_FORMATS.has(body.name_id_format as SsoNameIdFormat)) {
-      throw new SsoAdminError(400, 'name_id_format 값이 올바르지 않습니다.')
+    if (!isSsoNameIdFormat(body.name_id_format)) {
+      throw new SsoAdminError(400, 'name_id_format 은 SAML NameID 형식 URN 이어야 합니다.')
     }
-    input.name_id_format = body.name_id_format as SsoNameIdFormat
+    input.name_id_format = body.name_id_format
   }
   if (body.attribute_mapping !== undefined) {
     if (!isRecord(body.attribute_mapping)) throw new SsoAdminError(400, 'attribute_mapping 은 JSON 객체여야 합니다.')
