@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PreparedNewsletterIssue } from '@/lib/newsletter/prepare-issue'
+import type { KnowledgeReportTeaser } from '@/lib/newsletter/teasers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,18 @@ interface TeamsNewsletterItem {
   url: string | null
 }
 
+interface TeamsNewsletterGroup {
+  label: string
+  cards: TeamsNewsletterItem[]
+}
+
+interface TeamsFlowStep {
+  phase: string
+  text: string
+  articleTitle: string | null
+  articleUrl: string | null
+}
+
 /** dispatch.ts 의 getTodayKST 와 동일 규칙(now + 9h). */
 function getTodayKST(): string {
   const now = new Date()
@@ -21,24 +34,44 @@ function getTodayKST(): string {
   return kst.toISOString().slice(0, 10)
 }
 
-function flattenPayload(payload: unknown): TeamsNewsletterItem[] {
+/** payload → 그룹 구조. items 는 이 결과를 평탄화해 만든다(두 벌 금지). */
+function buildGroups(payload: unknown): TeamsNewsletterGroup[] {
   const p = payload as Partial<PreparedNewsletterIssue> | null | undefined
   if (!p || !Array.isArray(p.newsGroups)) return []
-  const items: TeamsNewsletterItem[] = []
+  const groups: TeamsNewsletterGroup[] = []
   for (const group of p.newsGroups) {
     if (!group || !Array.isArray(group.cards)) continue
-    for (const card of group.cards) {
-      items.push({
+    groups.push({
+      label: group.label,
+      cards: group.cards.map((card) => ({
         group: group.label,
         title: card.title,
         summary: card.summaryKo ?? '',
         insight: card.insight ?? '',
         source: card.sourceName ?? '',
         url: card.originalUrl ?? card.detailUrl ?? null,
-      })
-    }
+      })),
+    })
   }
-  return items
+  return groups
+}
+
+function buildKnowledgeReports(payload: unknown): KnowledgeReportTeaser[] {
+  const p = payload as Partial<PreparedNewsletterIssue> | null | undefined
+  return Array.isArray(p?.knowledgeReports) ? p.knowledgeReports : []
+}
+
+function buildFlowSteps(payload: unknown): TeamsFlowStep[] {
+  const p = payload as Partial<PreparedNewsletterIssue> | null | undefined
+  const teaser = p?.topTeaser
+  // steps 를 가진 건 flow 뿐이다. insight 유형과 null 은 빈 배열로 떨어진다.
+  if (!teaser || teaser.type !== 'flow' || !Array.isArray(teaser.steps)) return []
+  return teaser.steps.map((step) => ({
+    phase: step.phase,
+    text: step.text,
+    articleTitle: step.article?.title ?? null,
+    articleUrl: step.article?.url ?? null,
+  }))
 }
 
 export async function GET(request: NextRequest) {
@@ -84,11 +117,15 @@ export async function GET(request: NextRequest) {
   }
 
   const p = issue.payload as Partial<PreparedNewsletterIssue> | null
+  const groups = buildGroups(issue.payload)
   return Response.json({
     date,
     sent: true,
     subject: issue.subject,
     teaser: p?.topTeaser?.headline ?? null,
-    items: flattenPayload(issue.payload),
+    items: groups.flatMap((g) => g.cards),
+    groups,
+    knowledgeReports: buildKnowledgeReports(issue.payload),
+    flowSteps: buildFlowSteps(issue.payload),
   })
 }
