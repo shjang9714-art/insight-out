@@ -2,12 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getKstTodayStartIso } from '@/lib/date'
 import type { InsightCard, InsightCardCitation } from '@/lib/types'
 import { tagTypeToBucket, type KeywordItem, type TagBucket } from '@/lib/tag-buckets'
-import {
-  computeIssueActivity,
-  type ActivityRow,
-  type IssueCard,
-  type IssueRow,
-} from '@/lib/issues/activity'
+import { fetchIssueActivity, type IssueCard } from '@/lib/issues/activity'
 import type { InsightGroup, ContentMetaRecord } from '@/components/analysis/InsightCardsSectionClient'
 import type { TopicTrend } from '@/components/analysis/AiInsightBoard'
 import { getCompetitorNewsData, type CompetitorNewsData } from '@/lib/entities/competitor-news'
@@ -179,35 +174,11 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
       }
     })(),
     (async (): Promise<IssueCard[]> => {
-      let issues: IssueRow[] = []
       try {
-        const { data, error } = await supabase
-          .from('issues')
-          .select('id, title, summary')
-          .eq('status', 'published')
-          .order('created_at', { ascending: false })
-        if (error) throw error
-        issues = (data ?? []) as IssueRow[]
-      } catch (error) {
-        recordLabError(errors, 'issues', error)
-        return []
-      }
-
-      const issueIds = issues.map(issue => issue.id)
-      if (issueIds.length === 0) return []
-
-      try {
-        const { data, error } = await supabase
-          .from('issue_contents')
-          .select('issue_id, contents!inner(collected_at, sentiment, matched_keywords, status)')
-          .in('issue_id', issueIds)
-          .eq('contents.status', 'published')
-          .limit(5000)
-        if (error) throw error
-        return computeIssueActivity(issues, (data ?? []) as unknown as ActivityRow[])
+        return await fetchIssueActivity(supabase)
       } catch (error) {
         recordLabError(errors, 'issue_contents', error)
-        return computeIssueActivity(issues, [])
+        return []
       }
     })(),
     (async (): Promise<CompetitorNewsData> => {
