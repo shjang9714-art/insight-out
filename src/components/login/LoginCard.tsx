@@ -15,6 +15,8 @@ const OTP_VALIDITY_SECONDS = 600
 type Step = 'password' | 'otp-send' | 'otp-verify' | 'set-password'
 type Intent = 'signup' | 'recover'
 
+export interface SsoProviderOption { id: string; label: string }
+
 const REMEMBERED_EMAIL_COOKIE = 'io_remember_email'
 const REMEMBERED_EMAIL_MAX_AGE_SECONDS = 60 * 60 * 24 * 180 // 180일
 
@@ -74,7 +76,7 @@ function formatMmSs(totalSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-export function LoginCard() {
+export function LoginCard({ ssoProviders = [] }: { ssoProviders?: SsoProviderOption[] }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackError = searchParams.get('error')
@@ -290,6 +292,23 @@ export function LoginCard() {
     }
   }
 
+  const handleSsoLogin = async (providerId: string) => {
+    setLoading(true)
+    setError(null)
+    const supabase = createClient()
+    const { data, error: ssoError } = await supabase.auth.signInWithSSO({
+      providerId,
+      options: { redirectTo: `${location.origin}/auth/callback` },
+    })
+    if (ssoError || !data?.url) {
+      setError('회사 계정 로그인을 시작하지 못했습니다. 관리자에게 문의해 주세요.')
+      console.error('[SSO] signInWithSSO 실패:', ssoError)
+      setLoading(false)
+      return
+    }
+    window.location.assign(data.url)
+  }
+
   const descriptions: Record<Step, string> = {
     password: '회사 이메일과 비밀번호로 로그인하세요',
     'otp-send': intent === 'recover' ? '가입하신 이메일로 인증 코드를 보냅니다' : '회사 이메일로 인증 코드를 보내 계정을 만듭니다',
@@ -361,6 +380,25 @@ export function LoginCard() {
             <button type="button" onClick={() => { setStep('otp-send'); setIntent('recover'); setError(null); setShowRecovery(false) }} className="rounded text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline">
               이메일로 인증 코드 받기
             </button>
+          )}
+          {ssoProviders.length > 0 && (
+            <>
+              <div className="my-1 flex items-center gap-3 text-xs text-slate-400">
+                <span className="h-px flex-1 bg-slate-200" />또는<span className="h-px flex-1 bg-slate-200" />
+              </div>
+              {ssoProviders.map((provider) => (
+                <Button
+                  key={provider.id}
+                  type="button"
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => void handleSsoLogin(provider.id)}
+                  className="h-12 w-full rounded-xl text-[15px] font-semibold"
+                >
+                  {ssoProviders.length > 1 ? `회사 계정으로 로그인 (${provider.label})` : '회사 계정으로 로그인'}
+                </Button>
+              ))}
+            </>
           )}
         </form>
       )}

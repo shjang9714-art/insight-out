@@ -1,12 +1,29 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import { listProviders } from '@/lib/admin/sso-admin'
 import { BulbScene } from '@/components/login/BulbScene'
-import { LoginCard } from '@/components/login/LoginCard'
+import { LoginCard, type SsoProviderOption } from '@/components/login/LoginCard'
 import { LoginScreen } from '@/components/login/LoginScreen'
 
 export const metadata: Metadata = {
   title: '로그인 · Insight Out',
   description: '흩어진 인텔리전스를 하나의 흐름으로. 계정에 로그인하세요.',
+}
+
+// 584 — 활성 SSO 프로바이더만 로그인 화면에 내린다.
+// listProviders 는 service_role 로 GoTrue Admin API 를 부른다(sso-admin.ts, 'server-only').
+// ⚠️ 화면에 내리는 값은 id·label 둘뿐이다. metadata_xml·entity_id·키는 절대 내리지 마라.
+async function LoginCardWithSso() {
+  let ssoProviders: SsoProviderOption[] = []
+  try {
+    ssoProviders = (await listProviders())
+      .filter((provider) => !provider.disabled)
+      .map((provider) => ({ id: provider.id, label: provider.resource_id ?? 'SSO' }))
+  } catch (error) {
+    // 실패해도 로그인 화면은 죽지 않는다. ID/PW 로그인은 계속 된다.
+    console.error('[SSO] listProviders 실패:', error)
+  }
+  return <LoginCard ssoProviders={ssoProviders} />
 }
 
 /**
@@ -55,7 +72,7 @@ export default function LoginPage() {
                 <div className="h-[560px] w-full rounded-[30px] border border-slate-200/70 bg-white shadow-[0_40px_90px_-30px_rgba(24,39,75,0.30)]" />
               }
             >
-              <LoginCard />
+              <LoginCardWithSso />
             </Suspense>
           </section>
         </div>
