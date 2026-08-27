@@ -1142,7 +1142,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
       {/* 290 — 데스크톱(lg+): 그래프 + 우측 고정 인스펙터 2열. 모바일: 1열(그래프 아래 카드, DOM 순서 그대로). */}
       <div className={cn(
         'min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-4',
-        isFullscreen && 'fixed inset-0 z-50 bg-background p-4 lg:items-stretch',
+        isFullscreen && 'fixed inset-0 z-50 bg-background p-4 overflow-y-auto lg:items-stretch',
       )}>
 
       {/* 그래프 캔버스 */}
@@ -1154,7 +1154,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
         <button
           type="button"
           onClick={() => setIsFullscreen((value) => !value)}
-          className="absolute right-3 top-3 z-10 rounded-lg border bg-background/80 px-2.5 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground"
+          className="absolute right-3 top-3 z-20 rounded-lg border bg-background/80 px-2.5 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground"
           aria-label={isFullscreen ? '전체화면 닫기' : '전체화면으로 보기'}
         >
           {isFullscreen ? '전체화면 닫기' : '전체화면'}
