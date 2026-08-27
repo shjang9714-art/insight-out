@@ -58,6 +58,10 @@ interface EgoLink {
   target: string
   weight: number
   lift: number
+  /** ⚠️ 방향 주의(580) — 이 링크를 만들 때 조회한 엔티티 기준의 "그 엔티티 기사 중 %" 다.
+   *  반대쪽 노드를 선택하면 엉뚱한 퍼센트가 된다. 화면에 그대로 쓰지 마라.
+   *  방향이 맞는 값이 필요하면 그 엔티티로 entity_neighbors_v2 를 다시 부른다.
+   *  lift 는 대칭이라 안전하다. */
   share: number
 }
 
@@ -74,6 +78,10 @@ interface EdgeTooltip {
   nameB: string
   contents: PairContent[]
   loading: boolean
+  /** 580 — 578 이 링크에 실어준 값. 추가 쿼리 없이 그대로 쓴다. */
+  lift: number
+  /** 실제 동시 출현 건수. contents.length 는 p_limit 로 잘린 페이지라 총계가 아니다. */
+  weight: number
 }
 
 interface ContentItem {
@@ -768,7 +776,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
   // ── 엣지 호버 (디바운스 200ms + 캐시) ─────────────────────────────────────
 
   const handleLinkHover = useCallback((
-    link: { source?: unknown; target?: unknown } | null,
+    link: { source?: unknown; target?: unknown; lift?: number; weight?: number } | null,
   ) => {
     if (hoverDebounceRef.current) clearTimeout(hoverDebounceRef.current)
 
@@ -795,11 +803,11 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
     const cached = pairCacheRef.current.get(pk)
     if (cached) {
-      setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false })
+      setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false, lift: link.lift ?? MIN_LIFT, weight: link.weight ?? 0 })
       return
     }
 
-    setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true })
+    setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true, lift: link.lift ?? MIN_LIFT, weight: link.weight ?? 0 })
 
     hoverDebounceRef.current = setTimeout(() => {
       if (hoveredLinkRef.current !== pk) return
@@ -810,14 +818,14 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
           if (hoveredLinkRef.current !== pk) return
           const rows = (data ?? []) as PairContent[]
           pairCacheRef.current.set(pk, rows)
-          setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: rows, loading: false })
+          setEdgeTooltip({ forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: rows, loading: false, lift: link.lift ?? MIN_LIFT, weight: link.weight ?? 0 })
         })
     }, 200)
   }, [])
 
   // ── 엣지 클릭 → 잠금 패널 ────────────────────────────────────────────────
 
-  const handleLinkClick = useCallback((link: { source?: unknown; target?: unknown }) => {
+  const handleLinkClick = useCallback((link: { source?: unknown; target?: unknown; lift?: number; weight?: number }) => {
     const srcId = getLinkEndId(link.source)
     const tgtId = getLinkEndId(link.target)
     const pk = mkLinkKey(srcId, tgtId)
@@ -834,12 +842,12 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
     const cached = pairCacheRef.current.get(pk)
     if (cached) {
-      const nextLockedEdge = { forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false }
+      const nextLockedEdge = { forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: cached, loading: false, lift: link.lift ?? MIN_LIFT, weight: link.weight ?? 0 }
       lockedEdgeRef.current = nextLockedEdge
       setLockedEdge(nextLockedEdge)
       return
     }
-    const nextLockedEdge = { forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true }
+    const nextLockedEdge = { forLoadedKey: currentLoadedKey, pairKey: pk, nameA, nameB, contents: [], loading: true, lift: link.lift ?? MIN_LIFT, weight: link.weight ?? 0 }
     lockedEdgeRef.current = nextLockedEdge
     setLockedEdge(nextLockedEdge)
     const supabase = createClient()
@@ -1083,29 +1091,25 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
 
       {/* 색상 범례 + 렌즈 안내 */}
       <div className="mb-3">
-        <div className="mb-2 space-y-0.5 text-xs text-muted-foreground">
-          <p>점 = 기업·기술·인물 등 주요 대상 · 크기 = 언급 횟수</p>
-          <p>선 = 함께 뉴스에 등장한 관계 · 굵기·가까움 = 관계 강도</p>
-          <p>점을 누르면 관련 기사, 선을 누르면 두 대상의 관계가 보여요.</p>
-        </div>
-        <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">색상 = 유형</p>
+        <p className="mb-2 text-xs text-muted-foreground">
+          기사에서 유난히 자주 같이 나오는 대상들입니다. 점을 누르면 오른쪽에 자세히 나와요.
+        </p>
         <div className="flex flex-wrap gap-2">
-          {TYPE_ENTRIES.map(({ type, label, color }) => {
-            const count = nodes.filter((n) => n.type === type).length
-            return (
+          {TYPE_ENTRIES.map(({ type, label, color }) => ({
+            type, label, color, count: nodes.filter((n) => n.type === type).length,
+          }))
+            .filter(({ count }) => count > 0)
+            .map(({ type, label, color, count }) => (
               <span
                 key={type}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
-                  count === 0 && 'opacity-40',
-                )}
+                className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+                title="색은 유형, 점 크기는 언급 횟수, 선 굵기와 거리는 관계 강도를 나타냅니다."
               >
                 <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
                 {label}
                 <span className="text-muted-foreground/70">{count}</span>
               </span>
-            )
-          })}
+            ))}
           <span className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-70">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
             경쟁사
@@ -1301,7 +1305,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               </p>
               {!activeTooltip.loading && (
                 <p className="text-xs text-muted-foreground">
-                  함께 등장 {activeTooltip.contents.length}건
+                  평균의 {activeTooltip.lift.toFixed(1)}배 · {activeTooltip.weight.toLocaleString()}건
                 </p>
               )}
             </div>
@@ -1439,7 +1443,7 @@ export default function KnowledgeGraph({ initialCenter, entities }: Props) {
               </p>
               {!activeLockedEdge.loading && (
                 <p className="text-xs text-muted-foreground">
-                  기사 {activeLockedEdge.contents.length}건에서 함께 등장
+                  평균의 {activeLockedEdge.lift.toFixed(1)}배 · 근거 기사 {activeLockedEdge.weight.toLocaleString()}건
                 </p>
               )}
             </div>
