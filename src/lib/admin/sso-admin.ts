@@ -1,6 +1,7 @@
 import 'server-only'
+import type { SsoNameIdFormat } from '@/lib/admin/sso-name-id'
 
-export type SsoNameIdFormat = 'persistent' | 'emailAddress' | 'transient' | 'unspecified'
+export type { SsoNameIdFormat }
 
 export interface PublicSsoProvider {
   id: string
@@ -147,4 +148,3 @@ export async function updateProvider(id: string, input: UpdateSsoProviderInput):
 export async function deleteProvider(id: string): Promise<void> {
   await request(`/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
-
