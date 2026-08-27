@@ -1,7 +1,9 @@
-import { ExternalLink, Rocket, ShieldAlert, ListChecks, PenLine } from 'lucide-react'
+import { Rocket, ShieldAlert, ListChecks, PenLine } from 'lucide-react'
 import type { DailyInsightSourceArticle, ImplicationLenses } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { stripActionTeamSubject } from '@/lib/daily-insights/normalize-action'
+import { groupSameEventArticles } from '@/lib/daily-insights/groupSameEventArticles'
+import SameEventArticleGroup from '@/components/daily-insights/SameEventArticleGroup'
 import { cn } from '@/lib/utils'
 
 interface TrendSection {
@@ -39,7 +41,8 @@ export default function EvidenceDrilldown({
   implicationFallback,
   sourceArticles,
 }: EvidenceDrilldownProps) {
-  const sourceCount = sourceArticles.length
+  const sourceGroups = groupSameEventArticles(sourceArticles)
+  const sourceCount = sourceGroups.length
 
   return (
     <>
@@ -91,26 +94,12 @@ export default function EvidenceDrilldown({
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">📰 근거 기사</p>
           <p className="text-[11px] text-muted-foreground/70">{SOURCES_WINDOW_LABEL}</p>
           <ul className="space-y-2">
-            {sourceArticles.map((a) => (
-              <li key={a.content_id} className="text-sm">
-                {a.url ? (
-                  <a
-                    href={a.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-foreground hover:text-brand-600 hover:underline"
-                  >
-                    {a.title}
-                    <ExternalLink className="h-3 w-3 shrink-0" />
-                  </a>
-                ) : (
-                  <span className="font-medium text-foreground">{a.title}</span>
-                )}
-                <span className="ml-1.5 text-muted-foreground">
-                  ({a.source}
-                  {a.published_at ? ` · ${a.published_at}` : ''})
-                </span>
-              </li>
+            {sourceGroups.map((group) => (
+              <SameEventArticleGroup
+                key={group.representative.content_id}
+                representative={group.representative}
+                others={group.others}
+              />
             ))}
           </ul>
         </section>

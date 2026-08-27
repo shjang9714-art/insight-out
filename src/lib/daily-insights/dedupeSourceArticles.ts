@@ -39,8 +39,8 @@ function normalizeUrl(url: string): string {
 
 const TITLE_PUNCTUATION_RE = /["'“”‘’[\]()<>·,.…\-–—]/g
 
-/** 제목 정규화 — 매체 접미사(`- 매체`/`| 매체`/`[매체]`) 제거 후 구두점·공백 정리. */
-function normalizeTitle(title: string): string {
+/** 제목 정규화 — 매체 접미사(`- 매체`/`| 매체`/`[매체]`) 제거 후 구두점·공백 정리. groupSameEventArticles.ts 공유용으로 export. */
+export function normalizeTitle(title: string): string {
   let t = title.trim()
   t = t.replace(/\s*\[[^[\]]{1,40}\]\s*$/, '')
   t = t.replace(/\s*[-|–—]\s*[^-|–—]{1,40}$/, '')

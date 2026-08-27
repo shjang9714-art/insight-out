@@ -7,6 +7,7 @@ import type { DailyInsightRow } from '@/lib/daily-insights/types'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import { pickRotatedWindow } from '@/lib/daily-insights/home-rotation'
 import { dedupeSourceArticles } from '@/lib/daily-insights/dedupeSourceArticles'
+import { groupSameEventArticles } from '@/lib/daily-insights/groupSameEventArticles'
 import CategoryBadge from '@/components/daily-insights/CategoryBadge'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -81,12 +82,15 @@ export default async function DailyInsightHomeHighlights() {
 
       <ol className="flex flex-1 flex-col gap-3">
         {cards.map((card) => {
-          const dedupedSources = dedupeSourceArticles(card.source_articles)
-          const sourceCount = dedupedSources.length
+          // 홈 카드는 미리보기 — 같은 사건 그룹 대표만 노출(접기 UI는 상세에서만, §2-2).
+          const sourceRepresentatives = groupSameEventArticles(dedupeSourceArticles(card.source_articles)).map(
+            (g) => g.representative
+          )
+          const sourceCount = sourceRepresentatives.length
           const pastCount = card.related_past?.length ?? 0
-          const repSource = dedupedSources[0]?.source ?? null
+          const repSource = sourceRepresentatives[0]?.source ?? null
           const extraSourceCount = Math.max(0, sourceCount - 1)
-          const publishedAt = dedupedSources[0]?.published_at ?? null
+          const publishedAt = sourceRepresentatives[0]?.published_at ?? null
 
           return (
             <li key={card.id} className="relative rounded-xl border border-border/70 bg-background/40">
