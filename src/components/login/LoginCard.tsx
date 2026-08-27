@@ -390,10 +390,9 @@ export function LoginCard({ ssoProviders = [] }: { ssoProviders?: SsoProviderOpt
                 <Button
                   key={provider.id}
                   type="button"
-                  variant="outline"
                   disabled={loading}
                   onClick={() => void handleSsoLogin(provider.id)}
-                  className="h-12 w-full rounded-xl text-[15px] font-semibold"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white text-[15px] font-semibold text-slate-900 hover:bg-slate-50"
                 >
                   {ssoProviders.length > 1 ? `회사 계정으로 로그인 (${provider.label})` : '회사 계정으로 로그인'}
                 </Button>
