@@ -1,8 +1,8 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const ENTITY_LIMIT = 5000
-const ALIAS_LIMIT = 5000
+const ENTITY_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다 — 넘길 일이 생기면 range() 페이지네이션이 필요하다
+const ALIAS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다 — 넘길 일이 생기면 range() 페이지네이션이 필요하다
 
 export interface EntityAliasIndex {
   map: Map<string, string>
