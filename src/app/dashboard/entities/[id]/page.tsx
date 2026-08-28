@@ -22,6 +22,8 @@ import { isAdminRole } from '@/lib/admin/capabilities'
 
 export const dynamic = 'force-dynamic'
 
+const RELATED_ROWS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다
+
 interface PageProps {
   params: Promise<{ id: string }>
   searchParams: Promise<{ origin?: string; view?: string }>
@@ -288,7 +290,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
           .select('entity_id, entities(id, canonical_name, entity_type, is_competitor)')
           .in('content_id', contentIds)
           .neq('entity_id', id)
-          .limit(1000)
+          .order('content_id', { ascending: true })
+          .limit(RELATED_ROWS_LIMIT)
       : Promise.resolve({ data: [] as unknown[] }),
     contentIds.length > 0
       ? supabase
@@ -298,6 +301,8 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
           .limit(500)
       : Promise.resolve({ data: [] as { issue_id: string }[] }),
   ])
+
+  if ((coRes.data ?? []).length >= RELATED_ROWS_LIMIT) console.warn('[엔티티 상세] 관련 엔티티: PostgREST max-rows 도달 — 첫 1,000건만 반영됨')
 
   const contents = (contentsRes.data ?? []) as unknown as ContentRow[]
 

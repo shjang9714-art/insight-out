@@ -20,7 +20,7 @@ const KEYWORD_CANDIDATE_CAP = 300
 // 525 — trendRes 는 14일치 발행 콘텐츠를 뜨는 토픽 그룹 집계용으로 통째로 끌어온다.
 // 실측(2026-08) 14일 7,887건 중 직전7일 4,166건 — 옛 limit(1000)·순서 미지정 조합이
 // 키워드 주간 집계는 543부터 서버 RPC가 담당하며, 이 행 목록은 키워드 수치에 쓰지 않는다.
-const TREND_ROWS_LIMIT = 20000
+const TREND_ROWS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -185,6 +185,8 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .select('entity_id, alias')
       .in('alias', ['LG유플러스', 'LGU+', 'LG U+']),
   ])
+
+  if ((trendRes.data ?? []).length >= TREND_ROWS_LIMIT) console.warn('[AI인사이트] 뜨는 토픽: PostgREST max-rows 도달 — 최신 1,000건만 반영됨')
 
   const isAdmin = isAdminRole(profileRes.data?.role)
 
