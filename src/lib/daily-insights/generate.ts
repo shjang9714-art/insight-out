@@ -654,13 +654,17 @@ async function gatherEntityTimeline(
     for (let page = 0; page < CONTENT_ENTITY_MAX_PAGES; page++) {
       const from = page * CONTENT_ENTITY_PAGE_SIZE
       const to = from + CONTENT_ENTITY_PAGE_SIZE - 1
-      const { data } = await admin
+      const { data, error: entityHitError } = await admin
         .from('content_entities')
         .select('content_id')
         .eq('entity_id', entityId)
         .order('content_id', { ascending: true })
         .range(from, to)
 
+      if (entityHitError) {
+        console.warn(`[daily-insights] content_entities 조회 실패: ${entityHitError.message}`)
+        break
+      }
       entityHits.push(...((data ?? []) as { content_id: string }[]))
       if (!data || data.length < CONTENT_ENTITY_PAGE_SIZE) break
 

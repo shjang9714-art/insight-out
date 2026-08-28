@@ -42,7 +42,7 @@ export async function classifyPastArticleCategories(
   ])
 
   const telecomEntityIds = (telecomEntities ?? []).map((e) => e.id as string)
-  const entityHits = telecomEntityIds.length
+  const entityHitResult = telecomEntityIds.length
     ? await fetchInChunks(contentIds, (chunk) =>
         admin
           .from('content_entities')
@@ -50,7 +50,12 @@ export async function classifyPastArticleCategories(
           .in('content_id', chunk)
           .in('entity_id', telecomEntityIds)
       )
-    : ([] as { content_id: string; entity_id: string }[])
+    : { rows: [] as { content_id: string; entity_id: string }[], error: null }
+
+  if (entityHitResult.error) {
+    console.warn(`과거기사 통신사 엔티티 조회에 실패했습니다: ${entityHitResult.error}`)
+  }
+  const entityHits = entityHitResult.rows
 
   const hasTelecomEntity = new Set(entityHits.map((r) => r.content_id as string))
 

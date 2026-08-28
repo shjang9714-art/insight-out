@@ -136,7 +136,7 @@ export async function buildCandidatePool(opts?: {
     }
   }
 
-  const [{ data: sources }, issueRows, { data: telecomEntities }] = await Promise.all([
+  const [{ data: sources }, { rows: issueRows }, { data: telecomEntities }] = await Promise.all([
     admin.from('sources').select('id, name'),
     fetchInChunks(ids, (chunk) =>
       admin.from('issue_contents').select('content_id, issue_id').in('content_id', chunk)
@@ -188,13 +188,13 @@ export async function buildCandidatePool(opts?: {
   const entityNameById = new Map((telecomEntities ?? []).map((e) => [e.id as string, e.canonical_name as string]))
 
   const entityHits = telecomEntityIds.length
-    ? await fetchInChunks(ids, (chunk) =>
+    ? (await fetchInChunks(ids, (chunk) =>
         admin
           .from('content_entities')
           .select('content_id, entity_id')
           .in('content_id', chunk)
           .in('entity_id', telecomEntityIds)
-      )
+      )).rows
     : ([] as { content_id: string; entity_id: string }[])
 
   const companiesByContent = new Map<string, string[]>()
@@ -256,13 +256,13 @@ export async function buildCandidatePool(opts?: {
   const dedupedIssueIds = [...new Set(deduped.map((d) => trustedIssueByContent.get(d.raw.id)).filter((x): x is string => !!x))]
   const pastByIssue = new Map<string, PastArticleRef[]>()
   if (dedupedIssueIds.length > 0) {
-    const pastLinks = await fetchInChunks(dedupedIssueIds, (chunk) =>
+    const { rows: pastLinks } = await fetchInChunks(dedupedIssueIds, (chunk) =>
       admin.from('issue_contents').select('issue_id, content_id').in('issue_id', chunk)
     )
 
     const pastContentIds = [...new Set(pastLinks.map((r) => r.content_id as string))]
     const pastContentsUnsorted = pastContentIds.length
-      ? await fetchInChunks(pastContentIds, (chunk) =>
+      ? (await fetchInChunks(pastContentIds, (chunk) =>
           admin
             .from('contents')
             .select('id, title, published_at, collected_at, original_url, source_id')
@@ -270,7 +270,7 @@ export async function buildCandidatePool(opts?: {
             .lt('published_at', windowStart)
             .is('deleted_at', null)
             .order('published_at', { ascending: false })
-        )
+        )).rows
       : ([] as { id: string; title: string; published_at: string | null; collected_at: string; original_url: string | null; source_id: string }[])
     // 청크별로는 정렬돼 오지만 청크 간 순서는 아니므로(각 청크 내부만 desc), 합친 뒤 전체를 다시 정렬한다.
     const pastContents = [...pastContentsUnsorted].sort(

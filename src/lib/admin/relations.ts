@@ -96,7 +96,7 @@ export async function getEntityRelations(
   const contentIds = (contentRows as { content_id: string }[]).map(r => r.content_id)
   const truncated = contentIds.length >= CONTENT_SAMPLE_LIMIT
 
-  const coRows = await fetchInChunks(contentIds, (chunk) =>
+  const { rows: coRows, error: coError } = await fetchInChunks(contentIds, (chunk) =>
     admin
       .from('content_entities')
       .select('entity_id, content_id')
@@ -104,7 +104,7 @@ export async function getEntityRelations(
       .neq('entity_id', entityId)
   )
 
-  if (!coRows.length) {
+  if (coError || !coRows.length) {
     return { focus, connected: [], contentSampled: contentIds.length, truncated }
   }
 

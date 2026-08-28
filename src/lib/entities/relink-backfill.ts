@@ -85,12 +85,13 @@ export async function drainEntityRelink(
   const linkedIds = new Set<string>()
 
   if (ids.length > 0) {
-    const existingLinks = await fetchInChunks(ids, (chunk) =>
+    const { rows: existingLinks, error: linksError } = await fetchInChunks(ids, (chunk) =>
       admin
         .from('content_entities')
         .select('content_id')
         .in('content_id', chunk)
     )
+    if (linksError) throw new Error(`기존 엔티티 링크 조회 실패: ${linksError}`)
     for (const row of existingLinks as { content_id: string }[]) linkedIds.add(row.content_id)
   }
 
