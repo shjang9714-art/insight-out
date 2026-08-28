@@ -72,7 +72,8 @@ export async function GET() {
         .select('period_start')
         .eq('scope', 'company')
         .order('period_start', { ascending: false })
-        .limit(5000),
+        // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다 — 넘길 일이 생기면 range() 페이지네이션이 필요하다
+        .limit(1000),
     ])
 
     if (cardsResult.error) throw cardsResult.error

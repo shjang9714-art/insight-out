@@ -97,7 +97,7 @@ export interface PublishAnalytics {
   newsletter: { period: string; issues: number; recipients: number }[]
 }
 
-const LEAD_TIME_SAMPLE_LIMIT = 2000
+const LEAD_TIME_SAMPLE_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다 — 넘길 일이 생기면 range() 페이지네이션이 필요하다
 
 function periodOf(iso: string): string {
   const kst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000)

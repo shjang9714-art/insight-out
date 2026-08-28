@@ -51,7 +51,8 @@ export async function POST(request: NextRequest) {
       .select('id, entity_id, event_date, headline, detail, signal_type')
       .is('biz_impact', null)
       .order('entity_id', { ascending: true })
-      .limit(2000)
+      // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다 — 넘길 일이 생기면 range() 페이지네이션이 필요하다
+      .limit(1000)
 
     if (pendingError) {
       return NextResponse.json({ error: `조회 실패: ${pendingError.message}` }, { status: 500 })
