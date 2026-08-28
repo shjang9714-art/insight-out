@@ -15,6 +15,8 @@ import type { IssueBrief } from '@/lib/issues/brief'
 import PageContainer from '@/components/PageContainer'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 
+const RELATED_ROWS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다
+
 interface PageProps {
   params: Promise<{ id: string }>
 }
@@ -300,7 +302,10 @@ export default async function IssueDetailPage({ params }: PageProps) {
       .from('content_entities')
       .select('content_id')
       .in('entity_id', topEntityIds)
-      .limit(500)
+      .order('content_id', { ascending: true })
+      .limit(RELATED_ROWS_LIMIT)
+
+    if ((sharedContentsData ?? []).length >= RELATED_ROWS_LIMIT) console.warn('[이슈 상세] 관련 이슈 콘텐츠: PostgREST max-rows 도달 — 첫 1,000건만 반영됨')
 
     const sharedContentIds = [...new Set(
       (sharedContentsData ?? []).map((r: { content_id: string }) => r.content_id)
@@ -312,7 +317,10 @@ export default async function IssueDetailPage({ params }: PageProps) {
         .select('issue_id')
         .in('content_id', sharedContentIds)
         .neq('issue_id', id)
-        .limit(1000)
+        .order('content_id', { ascending: true })
+        .limit(RELATED_ROWS_LIMIT)
+
+      if ((sharedIssuesData ?? []).length >= RELATED_ROWS_LIMIT) console.warn('[이슈 상세] 관련 이슈 집계: PostgREST max-rows 도달 — 첫 1,000건만 반영됨')
 
       const scoreMap = new Map<string, number>()
       for (const row of (sharedIssuesData ?? []) as { issue_id: string }[]) {

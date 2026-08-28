@@ -13,6 +13,8 @@ import {
   type CompetitorWeeklyTimelineEntry,
 } from '@/lib/competitor-weekly/query'
 
+const TREND_ROWS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다
+
 // 실험실(관리자 전용) 페이지 전용 데이터 헬퍼.
 // AiInsightsView.tsx 의 헤드라인/뜨는 토픽/이슈 타임라인 3개 탭에 필요한 부분만
 // 별도로 패칭한다 — 운영 중인 AI 인사이트 페이지(AiInsightsView.tsx)는 건드리지 않음.
@@ -151,8 +153,10 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
           .select('matched_groups, matched_keywords, collected_at')
           .eq('status', 'published')
           .gte('collected_at', fourteenDaysStart)
-          .limit(1000)
+          .order('collected_at', { ascending: false })
+          .limit(TREND_ROWS_LIMIT)
         if (error) throw error
+        if ((data ?? []).length >= TREND_ROWS_LIMIT) console.warn('[실험실] 뜨는 토픽: PostgREST max-rows 도달 — 최신 1,000건만 반영됨')
         return (data ?? []) as TrendRow[]
       } catch (error) {
         recordLabError(errors, 'contents trend', error)
