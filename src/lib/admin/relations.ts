@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fetchInChunks } from '@/lib/supabase/chunked'
 import type { EntityType } from '@/lib/types'
 
 export interface EntityBrief {
@@ -95,13 +96,15 @@ export async function getEntityRelations(
   const contentIds = (contentRows as { content_id: string }[]).map(r => r.content_id)
   const truncated = contentIds.length >= CONTENT_SAMPLE_LIMIT
 
-  const { data: coRows, error: coError } = await admin
-    .from('content_entities')
-    .select('entity_id, content_id')
-    .in('content_id', contentIds)
-    .neq('entity_id', entityId)
+  const coRows = await fetchInChunks(contentIds, (chunk) =>
+    admin
+      .from('content_entities')
+      .select('entity_id, content_id')
+      .in('content_id', chunk)
+      .neq('entity_id', entityId)
+  )
 
-  if (coError || !coRows?.length) {
+  if (!coRows.length) {
     return { focus, connected: [], contentSampled: contentIds.length, truncated }
   }
 

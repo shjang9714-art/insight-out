@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchInChunks } from '@/lib/supabase/chunked'
 import { jaccardSimilarity } from '@/lib/daily-insights/dedupe'
 import type { DailyInsightCategory } from '@/lib/daily-insights/constants'
 
@@ -41,15 +42,17 @@ export async function classifyPastArticleCategories(
   ])
 
   const telecomEntityIds = (telecomEntities ?? []).map((e) => e.id as string)
-  const { data: entityHits } = telecomEntityIds.length
-    ? await admin
-        .from('content_entities')
-        .select('content_id, entity_id')
-        .in('content_id', contentIds)
-        .in('entity_id', telecomEntityIds)
-    : { data: [] as { content_id: string; entity_id: string }[] }
+  const entityHits = telecomEntityIds.length
+    ? await fetchInChunks(contentIds, (chunk) =>
+        admin
+          .from('content_entities')
+          .select('content_id, entity_id')
+          .in('content_id', chunk)
+          .in('entity_id', telecomEntityIds)
+      )
+    : ([] as { content_id: string; entity_id: string }[])
 
-  const hasTelecomEntity = new Set((entityHits ?? []).map((r) => r.content_id as string))
+  const hasTelecomEntity = new Set(entityHits.map((r) => r.content_id as string))
 
   for (const row of contentRows ?? []) {
     const groups: string[] = row.matched_groups ?? []

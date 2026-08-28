@@ -578,6 +578,8 @@ const TIMELINE_MAX_ARTICLES = 20
 const TIMELINE_MIN_DATES = 3
 /** 이 기간 내 기사가 0건이면 "지금 살아있는 서사"가 아니라 오래전에 끝난 이야기이므로 스킵한다. */
 const TIMELINE_RECENCY_DAYS = 14
+const CONTENT_ENTITY_PAGE_SIZE = 1000
+const CONTENT_ENTITY_MAX_PAGES = 20
 
 /** 'KT' 별칭은 'KT&G' 오매칭을 제외하고 판정한다. */
 function titleMatchesEntityAlias(title: string, alias: string): boolean {
@@ -648,8 +650,27 @@ async function gatherEntityTimeline(
 
   let entityContentIds = new Set<string>()
   if (entityId) {
-    const { data: entityHits } = await admin.from('content_entities').select('content_id').eq('entity_id', entityId)
-    entityContentIds = new Set((entityHits ?? []).map((r) => r.content_id as string))
+    const entityHits: { content_id: string }[] = []
+    for (let page = 0; page < CONTENT_ENTITY_MAX_PAGES; page++) {
+      const from = page * CONTENT_ENTITY_PAGE_SIZE
+      const to = from + CONTENT_ENTITY_PAGE_SIZE - 1
+      const { data } = await admin
+        .from('content_entities')
+        .select('content_id')
+        .eq('entity_id', entityId)
+        .order('content_id', { ascending: true })
+        .range(from, to)
+
+      entityHits.push(...((data ?? []) as { content_id: string }[]))
+      if (!data || data.length < CONTENT_ENTITY_PAGE_SIZE) break
+
+      if (page === CONTENT_ENTITY_MAX_PAGES - 1) {
+        console.warn(
+          `[daily-insights] content_entities 페이지네이션 안전장치 도달 — PostgREST max-rows 기준 ${CONTENT_ENTITY_MAX_PAGES * CONTENT_ENTITY_PAGE_SIZE}건 초과 가능성`
+        )
+      }
+    }
+    entityContentIds = new Set(entityHits.map((r) => r.content_id))
   }
 
   const matched = rawContents.filter(
