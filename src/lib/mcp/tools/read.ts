@@ -9,6 +9,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { actorFrom, hasScope } from '@/lib/mcp/auth'
+import { getEntityBrief } from '@/lib/entities/brief'
 
 interface ContentRow {
   id: string
@@ -262,6 +263,72 @@ export function registerReadTools(server: McpServer) {
         )
       } catch (err) {
         return dbError(err, 'entities')
+      }
+    }
+  )
+
+  // ── 기업·기관 종합 조회 ──────────────────────────────────
+  server.registerTool(
+    'entity_brief',
+    {
+      title: '기업·기관 종합',
+      description:
+        '특정 기업/기관의 최근 상황을 한 번에 조회합니다. entity_list → content_search → content_get 을 ' +
+        '순서대로 부르는 대신 이 툴을 먼저 부르세요. 이름(name)만으로 조회됩니다.',
+      inputSchema: {
+        name: z.string().optional().describe('기업·기관 이름'),
+        entity_id: z.string().optional().describe('기업·기관 id'),
+        events: z.number().int().min(1).max(30).optional().describe('최근 사건 개수 (기본 10)'),
+        neighbors: z.number().int().min(1).max(30).optional().describe('관계 기업·기관 개수 (기본 8)'),
+        contents: z.number().int().min(1).max(30).optional().describe('최근 뉴스 개수 (기본 10)'),
+      },
+    },
+    async ({ name, entity_id, events, neighbors, contents }, extra) => {
+      const g = guard(extra)
+      if (g.err) return g.err
+      if (!name && !entity_id) return fail('name 또는 entity_id 중 하나를 입력해주세요.')
+
+      try {
+        const brief = await getEntityBrief(
+          createAdminClient(),
+          entity_id ? { id: entity_id } : { name: name! },
+          { events, neighbors, contents },
+        )
+        const label = name ?? entity_id
+        if (!brief) return ok(`${label}을(를) 찾을 수 없습니다.`)
+
+        const summary = brief.signalSummary
+          ? `시그널 ${brief.signalSummary.signalCount}건 | 콘텐츠 ${brief.signalSummary.contentCount}건 | 유형: ${brief.signalSummary.signalTypes.join(', ') || '-'} | 최근: ${brief.signalSummary.lastSeen ?? '-'}`
+          : '조회 결과 없음'
+        const lines = [
+          `기업·기관: ${brief.entity.canonicalName} (${brief.entity.entityType})`,
+          `id=${brief.entity.id}${brief.entity.isCompetitor ? ' | 경쟁사' : ''}`,
+          brief.entity.description ? `설명: ${brief.entity.description}` : null,
+          `별칭: ${brief.aliases.join(', ') || '-'}`,
+          '',
+          '## 시그널 요약',
+          summary,
+          '',
+          '## 최근 사건',
+          brief.events.length > 0
+            ? brief.events.map((event) => `• ${event.eventDate} | ${event.headline}\n  id=${event.id} | 유형:${event.signalType ?? '-'} | 사업영향:${event.bizImpact ?? '-'}${event.detail ? `\n  ${event.detail}` : ''}`).join('\n')
+            : '• 없음',
+          '',
+          '## 관계',
+          brief.neighbors.length > 0
+            ? brief.neighbors.map((neighbor) => `• ${neighbor.canonicalName} (${neighbor.entityType}) | 평균의 ${neighbor.lift.toFixed(1)}배 | 공동언급 ${neighbor.weight}건\n  id=${neighbor.entityId}`).join('\n')
+            : '• 없음',
+          '',
+          '## 최근 뉴스',
+          brief.contents.length > 0
+            ? brief.contents.map((content) => `• ${content.title}\n  id=${content.id} | 수집:${content.collectedAt.slice(0, 10)}`).join('\n')
+            : '• 없음',
+          brief.errors.length > 0 ? `\n⚠️ 일부 섹션 조회 실패: ${brief.errors.join(' / ')}` : null,
+        ]
+
+        return ok(lines.filter((line): line is string => line !== null).join('\n'))
+      } catch (err) {
+        return dbError(err, 'entity_brief')
       }
     }
   )
