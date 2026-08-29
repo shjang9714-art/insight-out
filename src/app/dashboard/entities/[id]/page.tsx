@@ -298,11 +298,13 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
           .from('issue_contents')
           .select('issue_id')
           .in('content_id', contentIds)
-          .limit(500)
+          .order('content_id', { ascending: true })
+          .limit(RELATED_ROWS_LIMIT)
       : Promise.resolve({ data: [] as { issue_id: string }[] }),
   ])
 
   if ((coRes.data ?? []).length >= RELATED_ROWS_LIMIT) console.warn('[엔티티 상세] 관련 엔티티: PostgREST max-rows 도달 — 첫 1,000건만 반영됨')
+  if ((icRes.data ?? []).length >= RELATED_ROWS_LIMIT) console.warn('[엔티티 상세] 관련 이슈: PostgREST max-rows 도달 — 첫 1,000건만 반영됨')
 
   const contents = (contentsRes.data ?? []) as unknown as ContentRow[]
 

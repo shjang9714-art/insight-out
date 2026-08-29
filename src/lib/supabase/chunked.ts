@@ -9,6 +9,8 @@
  * 150 × 3.74 ≈ 561 로 PostgREST max-rows(1000) 에 여유를 둔다.
  */
 export const IN_FILTER_CHUNK_SIZE = 150
+export const PAGE_SIZE = 1000 // PostgREST max-rows
+export const DEFAULT_MAX_PAGES = 30 // 안전장치: 최대 30,000행
 
 export async function fetchInChunks<Row>(
   ids: string[],
@@ -25,4 +27,26 @@ export async function fetchInChunks<Row>(
     if (data) rows.push(...data)
   }
   return { rows, error: null }
+}
+
+export async function fetchAllPages<Row>(
+  runPage: (from: number, to: number) => PromiseLike<{
+    data: Row[] | null
+    error?: { message: string } | null
+  }>,
+  maxPages = DEFAULT_MAX_PAGES,
+): Promise<{ rows: Row[]; error: string | null; truncated: boolean }> {
+  const rows: Row[] = []
+
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    const { data, error } = await runPage(from, to)
+
+    if (error) return { rows, error: error.message, truncated: false }
+    if (data) rows.push(...data)
+    if (!data || data.length < PAGE_SIZE) return { rows, error: null, truncated: false }
+  }
+
+  return { rows, error: null, truncated: true }
 }

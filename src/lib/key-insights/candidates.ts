@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { fetchInChunks } from '@/lib/supabase/chunked'
+import { fetchAllPages, fetchInChunks } from '@/lib/supabase/chunked'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
 import { KEY_INSIGHT_CATEGORIES, type KeyInsightCategory } from '@/lib/key-insights/constants'
 
@@ -107,15 +107,19 @@ export async function buildCandidatePool(opts?: {
     ? `and(published_at.gte.${windowStart},published_at.lt.${windowEnd}),and(published_at.is.null,collected_at.gte.${windowStart},collected_at.lt.${windowEnd})`
     : `published_at.gte.${windowStart},and(published_at.is.null,collected_at.gte.${windowStart})`
 
-  const { data: rawContents, error } = await admin
-    .from('contents')
-    .select('id, title, summary_ko, category, matched_groups, published_at, collected_at, original_url, importance_score, source_id')
-    .eq('status', 'published')
-    .or(publishedAtFilter)
-    .is('deleted_at', null)
-    .limit(3000)
+  const { rows: rawContents, error, truncated } = await fetchAllPages((from, to) =>
+    admin
+      .from('contents')
+      .select('id, title, summary_ko, category, matched_groups, published_at, collected_at, original_url, importance_score, source_id')
+      .eq('status', 'published')
+      .or(publishedAtFilter)
+      .is('deleted_at', null)
+      .order('collected_at', { ascending: false })
+      .range(from, to)
+  )
 
-  if (error) throw new Error(`후보 조회 실패: ${error.message}`)
+  if (truncated) console.warn('[핵심Insight] 후보 조회 페이지네이션 안전장치 도달')
+  if (error) throw new Error(`후보 조회 실패: ${error}`)
 
   const rawCount = rawContents?.length ?? 0
 
