@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllPages } from '@/lib/supabase/chunked'
 import { llmCompleteDetailed } from '@/lib/llm'
 import { looseJsonParse } from '@/lib/llm/parse'
 import { buildCandidatePool, type KeyInsightCandidate, type PastArticleRef } from '@/lib/key-insights/candidates'
@@ -578,8 +579,6 @@ const TIMELINE_MAX_ARTICLES = 20
 const TIMELINE_MIN_DATES = 3
 /** 이 기간 내 기사가 0건이면 "지금 살아있는 서사"가 아니라 오래전에 끝난 이야기이므로 스킵한다. */
 const TIMELINE_RECENCY_DAYS = 14
-const CONTENT_ENTITY_PAGE_SIZE = 1000
-const CONTENT_ENTITY_MAX_PAGES = 20
 
 /** 'KT' 별칭은 'KT&G' 오매칭을 제외하고 판정한다. */
 function titleMatchesEntityAlias(title: string, alias: string): boolean {
@@ -639,41 +638,33 @@ async function gatherEntityTimeline(
 ): Promise<DailyInsightSourceArticle[]> {
   const windowStart = new Date(Date.now() - TIMELINE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
 
-  const { data: rawContents, error } = await admin
-    .from('contents')
-    .select('id, title, published_at, original_url, source_id, importance_score')
-    .eq('status', 'published')
-    .gte('published_at', windowStart)
-    .is('deleted_at', null)
-    .limit(3000)
+  const { rows: rawContents, error, truncated } = await fetchAllPages((from, to) =>
+    admin
+      .from('contents')
+      .select('id, title, published_at, original_url, source_id, importance_score')
+      .eq('status', 'published')
+      .gte('published_at', windowStart)
+      .is('deleted_at', null)
+      .order('published_at', { ascending: false })
+      .range(from, to)
+  )
+  if (error) console.warn(`[daily-insights] 엔티티 타임라인 콘텐츠 조회 실패: ${error}`)
+  if (truncated) console.warn('[daily-insights] 엔티티 타임라인 콘텐츠 페이지네이션 안전장치 도달')
   if (error || !rawContents || rawContents.length === 0) return []
 
   let entityContentIds = new Set<string>()
   if (entityId) {
-    const entityHits: { content_id: string }[] = []
-    for (let page = 0; page < CONTENT_ENTITY_MAX_PAGES; page++) {
-      const from = page * CONTENT_ENTITY_PAGE_SIZE
-      const to = from + CONTENT_ENTITY_PAGE_SIZE - 1
-      const { data, error: entityHitError } = await admin
+    const { rows: entityHits, error: entityHitError, truncated: entityHitsTruncated } = await fetchAllPages(
+      (from, to) => admin
         .from('content_entities')
         .select('content_id')
         .eq('entity_id', entityId)
         .order('content_id', { ascending: true })
-        .range(from, to)
-
-      if (entityHitError) {
-        console.warn(`[daily-insights] content_entities 조회 실패: ${entityHitError.message}`)
-        break
-      }
-      entityHits.push(...((data ?? []) as { content_id: string }[]))
-      if (!data || data.length < CONTENT_ENTITY_PAGE_SIZE) break
-
-      if (page === CONTENT_ENTITY_MAX_PAGES - 1) {
-        console.warn(
-          `[daily-insights] content_entities 페이지네이션 안전장치 도달 — PostgREST max-rows 기준 ${CONTENT_ENTITY_MAX_PAGES * CONTENT_ENTITY_PAGE_SIZE}건 초과 가능성`
-        )
-      }
-    }
+        .range(from, to),
+      20,
+    )
+    if (entityHitError) console.warn(`[daily-insights] content_entities 조회 실패: ${entityHitError}`)
+    if (entityHitsTruncated) console.warn('[daily-insights] content_entities 페이지네이션 안전장치 도달')
     entityContentIds = new Set(entityHits.map((r) => r.content_id))
   }
 
@@ -749,13 +740,18 @@ async function gatherTopicTimeline(
 ): Promise<DailyInsightSourceArticle[]> {
   const windowStart = new Date(Date.now() - TIMELINE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
 
-  const { data: rawContents, error } = await admin
-    .from('contents')
-    .select('id, title, published_at, original_url, source_id, importance_score, matched_groups')
-    .eq('status', 'published')
-    .gte('published_at', windowStart)
-    .is('deleted_at', null)
-    .limit(3000)
+  const { rows: rawContents, error, truncated } = await fetchAllPages((from, to) =>
+    admin
+      .from('contents')
+      .select('id, title, published_at, original_url, source_id, importance_score, matched_groups')
+      .eq('status', 'published')
+      .gte('published_at', windowStart)
+      .is('deleted_at', null)
+      .order('published_at', { ascending: false })
+      .range(from, to)
+  )
+  if (error) console.warn(`[daily-insights] 주제 타임라인 콘텐츠 조회 실패: ${error}`)
+  if (truncated) console.warn('[daily-insights] 주제 타임라인 콘텐츠 페이지네이션 안전장치 도달')
   if (error || !rawContents || rawContents.length === 0) return []
 
   const matched = rawContents.filter((c) => {
