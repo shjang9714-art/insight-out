@@ -1,6 +1,5 @@
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { getKstTodayStartIso } from '@/lib/date'
 import { ENTITY_TYPE_LABEL, type EntityType, type InsightCard, type InsightCardCitation, type WatchlistItem } from '@/lib/types'
 import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 import { tagTypeToBucket, type KeywordItem } from '@/lib/tag-buckets'
@@ -17,12 +16,6 @@ const WATCHLIST_LIMIT = 20
 // 실측 후보 153개에 안전 여유를 둔 상한이며, 300개 노출을 목표로 하지 않는다.
 const KEYWORD_CANDIDATE_CAP = 300
 
-// 525·588-E — trendRes 는 14일치 발행 콘텐츠를 뜨는 토픽 그룹 집계용으로 끌어온다.
-// 실측(2026-08-27) 14일 8,720건 — PostgREST 가 1,000에서 자르므로 이 목록은 최신 1,000건의
-// 표본이다(집계값이 아니다). 키워드 주간 집계는 543부터 서버 RPC 가 담당하며 이 행 목록을 쓰지 않는다.
-// 근본 해결(뜨는 토픽 집계 RPC)은 백로그 D-2 로 열려 있다.
-const TREND_ROWS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다
-
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
 interface ContentMeta {
@@ -32,48 +25,11 @@ interface ContentMeta {
   matchedKeywords: string[] | null
 }
 
-// ─── 뜨는 토픽 집계 ──────────────────────────────────────────────────────────
-
-function computeTrendingTopics(
-  rows: { matched_groups: string[] | null; collected_at: string }[],
-  todayStartMs: number,
-  topN = 8,
-): TopicTrend[] {
-  const curMap: Record<string, number> = {}
-  const prevMap: Record<string, number> = {}
-
-  const thisWeekStart = todayStartMs - 6 * 24 * 60 * 60 * 1000
-  const prevWeekStart = todayStartMs - 13 * 24 * 60 * 60 * 1000
-
-  for (const row of rows) {
-    if (!row.matched_groups?.length) continue
-    const kstMs = new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000
-    const isThisWeek = kstMs >= thisWeekStart + 9 * 60 * 60 * 1000
-    const isPrevWeek = !isThisWeek && kstMs >= prevWeekStart + 9 * 60 * 60 * 1000
-    for (const g of row.matched_groups) {
-      if (isThisWeek) curMap[g]  = (curMap[g]  ?? 0) + 1
-      if (isPrevWeek) prevMap[g] = (prevMap[g] ?? 0) + 1
-    }
-  }
-
-  const results: TopicTrend[] = []
-  for (const group of Object.keys(curMap)) {
-    const cur  = curMap[group]  ?? 0
-    const prev = prevMap[group] ?? 0
-    if (cur === 0) continue
-    const changePct = prev > 0 ? Math.round((cur - prev) / prev * 100) : null
-    results.push({ group, cur, prev, changePct })
-  }
-
-  return results
-    .sort((a, b) => {
-      const aScore = a.changePct === null ? Infinity : a.changePct
-      const bScore = b.changePct === null ? Infinity : b.changePct
-      if (bScore !== aScore) return bScore - aScore
-      return b.cur - a.cur
-    })
-    .filter(t => t.changePct === null || t.changePct >= 0)
-    .slice(0, topN)
+interface TrendingTopicRow {
+  group_name: string
+  cur: number
+  prev: number
+  change_pct: number | null
 }
 
 // ─── 뷰 ───────────────────────────────────────────────────────────────────────
@@ -102,10 +58,6 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-
-  const todayStart   = getKstTodayStartIso()
-  const todayStartMs = new Date(todayStart).getTime()
-  const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
   // "핵심 인사이트" 목록(§2, 지시서 20260715 주간 복귀) — week_of(월요일) 단위로 그룹핑.
   // 주차 선택기가 고를 수 있는 week 목록을 먼저 조회한 뒤, 선택된 주(기본값 최신)만 필터한다.
@@ -139,13 +91,7 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .order('period_start', { ascending: false })
       .order('generated_at', { ascending: false })
       .limit(30),
-    supabase
-      .from('contents')
-      .select('matched_groups, collected_at')
-      .eq('status', 'published')
-      .gte('collected_at', fourteenDaysStart)
-      .order('collected_at', { ascending: false })
-      .limit(TREND_ROWS_LIMIT),
+    supabase.rpc('trending_topic_groups', { p_days: 14, p_top: 8 }),
     supabase.rpc('keyword_week_buckets', { p_days: 14, p_top: KEYWORD_CANDIDATE_CAP }),
     user
       ? supabase
@@ -186,8 +132,6 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
       .select('entity_id, alias')
       .in('alias', ['LG유플러스', 'LGU+', 'LG U+']),
   ])
-
-  if ((trendRes.data ?? []).length >= TREND_ROWS_LIMIT) console.warn('[AI인사이트] 뜨는 토픽: PostgREST max-rows 도달 — 최신 1,000건만 반영됨')
 
   const isAdmin = isAdminRole(profileRes.data?.role)
 
@@ -253,11 +197,15 @@ export default async function AiInsightsView({ view = 'brief', week }: AiInsight
     }
   }
 
-  type TrendRow = { matched_groups: string[] | null; collected_at: string }
-  const trendingTopics = computeTrendingTopics(
-    (trendRes.data ?? []) as TrendRow[],
-    todayStartMs,
-  )
+  if (trendRes.error) console.warn(`[AI인사이트] 뜨는 토픽 RPC 조회 실패: ${trendRes.error.message}`)
+  const trendingTopics: TopicTrend[] = trendRes.error
+    ? []
+    : ((trendRes.data ?? []) as TrendingTopicRow[]).map((row) => ({
+        group: row.group_name,
+        cur: row.cur,
+        prev: row.prev,
+        changePct: row.change_pct,
+      }))
 
   // ─── 키워드 방향 계산 ─────────────────────────────────────────────────────
   type KeywordBucketRow = { name: string; total: number; cur: number; prev: number }

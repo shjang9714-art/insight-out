@@ -13,7 +13,9 @@ import {
   type CompetitorWeeklyTimelineEntry,
 } from '@/lib/competitor-weekly/query'
 
-const TREND_ROWS_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다
+// 키워드 방향(topKeywords) 계산용. PostgREST max-rows 로 최신 1,000건만 온다 —
+// 뜨는 토픽은 D-2 에서 RPC 로 옮겼지만 이 집계는 아직 앱에서 센다(백로그 D-2 잔여).
+const KEYWORD_ROWS_LIMIT = 1000
 
 // 실험실(관리자 전용) 페이지 전용 데이터 헬퍼.
 // AiInsightsView.tsx 의 헤드라인/뜨는 토픽/이슈 타임라인 3개 탭에 필요한 부분만
@@ -26,47 +28,11 @@ interface ContentMeta {
   matchedKeywords: string[] | null
 }
 
-// ─── 뜨는 토픽 집계 (AiInsightsView.tsx 와 동일 로직, 실험실 전용 복제) ──────────
-function computeTrendingTopics(
-  rows: { matched_groups: string[] | null; collected_at: string }[],
-  todayStartMs: number,
-  topN = 8,
-): TopicTrend[] {
-  const curMap: Record<string, number> = {}
-  const prevMap: Record<string, number> = {}
-
-  const thisWeekStart = todayStartMs - 6 * 24 * 60 * 60 * 1000
-  const prevWeekStart = todayStartMs - 13 * 24 * 60 * 60 * 1000
-
-  for (const row of rows ?? []) {
-    if (!(row.matched_groups ?? []).length) continue
-    const kstMs = new Date(row.collected_at).getTime() + 9 * 60 * 60 * 1000
-    const isThisWeek = kstMs >= thisWeekStart + 9 * 60 * 60 * 1000
-    const isPrevWeek = !isThisWeek && kstMs >= prevWeekStart + 9 * 60 * 60 * 1000
-    for (const g of row.matched_groups ?? []) {
-      if (isThisWeek) curMap[g]  = (curMap[g]  ?? 0) + 1
-      if (isPrevWeek) prevMap[g] = (prevMap[g] ?? 0) + 1
-    }
-  }
-
-  const results: TopicTrend[] = []
-  for (const group of Object.keys(curMap)) {
-    const cur  = curMap[group]  ?? 0
-    const prev = prevMap[group] ?? 0
-    if (cur === 0) continue
-    const changePct = prev > 0 ? Math.round((cur - prev) / prev * 100) : null
-    results.push({ group, cur, prev, changePct })
-  }
-
-  return results
-    .sort((a, b) => {
-      const aScore = a.changePct === null ? Infinity : a.changePct
-      const bScore = b.changePct === null ? Infinity : b.changePct
-      if (bScore !== aScore) return bScore - aScore
-      return b.cur - a.cur
-    })
-    .filter(t => t.changePct === null || t.changePct >= 0)
-    .slice(0, topN)
+interface TrendingTopicRow {
+  group_name: string
+  cur: number
+  prev: number
+  change_pct: number | null
 }
 
 export interface LabData {
@@ -122,13 +88,12 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
   const fourteenDaysStart = new Date(todayStartMs - 13 * 24 * 60 * 60 * 1000).toISOString()
 
   type TrendRow = {
-    matched_groups: string[] | null
     matched_keywords: string[] | null
     collected_at: string
   }
   type KgRow = { name: string; tag_type: string; include_patterns: string[] | null }
 
-  const [cards, trendRows, keywordGroups, issueCards, competitorNews, weeklyReports, weeklyTimeline] = await Promise.all([
+  const [cards, trendRows, trendingTopics, keywordGroups, issueCards, competitorNews, weeklyReports, weeklyTimeline] = await Promise.all([
     (async (): Promise<InsightCard[]> => {
       try {
         const { data, error } = await supabase
@@ -150,18 +115,31 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
       try {
         const { data, error } = await supabase
           .from('contents')
-          .select('matched_groups, matched_keywords, collected_at')
+          .select('matched_keywords, collected_at')
           .eq('status', 'published')
           .gte('collected_at', fourteenDaysStart)
           .order('collected_at', { ascending: false })
-          .limit(TREND_ROWS_LIMIT)
+          .limit(KEYWORD_ROWS_LIMIT)
         if (error) throw error
-        if ((data ?? []).length >= TREND_ROWS_LIMIT) console.warn('[실험실] 뜨는 토픽: PostgREST max-rows 도달 — 최신 1,000건만 반영됨')
+        if ((data ?? []).length >= KEYWORD_ROWS_LIMIT) console.warn('[실험실] 키워드 방향: PostgREST max-rows 도달 — 최신 1,000건만 반영됨')
         return (data ?? []) as TrendRow[]
       } catch (error) {
         recordLabError(errors, 'contents trend', error)
         return []
       }
+    })(),
+    (async (): Promise<TopicTrend[]> => {
+      const { data, error } = await supabase.rpc('trending_topic_groups', { p_days: 14, p_top: 8 })
+      if (error) {
+        console.warn(`[실험실] 뜨는 토픽 RPC 조회 실패: ${error.message}`)
+        return []
+      }
+      return ((data ?? []) as TrendingTopicRow[]).map((row) => ({
+        group: row.group_name,
+        cur: row.cur,
+        prev: row.prev,
+        changePct: row.change_pct,
+      }))
     })(),
     (async (): Promise<KgRow[]> => {
       try {
@@ -210,11 +188,6 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
       }
     })(),
   ])
-  const trendingTopics = computeTrendingTopics(
-    trendRows ?? [],
-    todayStartMs,
-  )
-
   // ─── 키워드 방향 계산 ─────────────────────────────────────────────────────
   const kwFreq: Record<string, number> = {}
   const kwCurFreq: Record<string, number> = {}
