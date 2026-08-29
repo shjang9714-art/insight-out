@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { EnrichJobResult } from '@/lib/admin/enrich-jobs'
 import { loadEntityAliasIndex } from '@/lib/entities/alias-map'
+import { fetchInChunks } from '@/lib/supabase/chunked'
 
 interface EntityRelinkRow {
   id: string
@@ -84,12 +85,14 @@ export async function drainEntityRelink(
   const linkedIds = new Set<string>()
 
   if (ids.length > 0) {
-    const { data: existingLinks, error: linksError } = await admin
-      .from('content_entities')
-      .select('content_id')
-      .in('content_id', ids)
-    if (linksError) throw new Error(`기존 엔티티 링크 조회 실패: ${linksError.message}`)
-    for (const row of (existingLinks ?? []) as { content_id: string }[]) linkedIds.add(row.content_id)
+    const { rows: existingLinks, error: linksError } = await fetchInChunks(ids, (chunk) =>
+      admin
+        .from('content_entities')
+        .select('content_id')
+        .in('content_id', chunk)
+    )
+    if (linksError) throw new Error(`기존 엔티티 링크 조회 실패: ${linksError}`)
+    for (const row of existingLinks as { content_id: string }[]) linkedIds.add(row.content_id)
   }
 
   let succeeded = 0

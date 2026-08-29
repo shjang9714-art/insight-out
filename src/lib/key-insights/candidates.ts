@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchInChunks } from '@/lib/supabase/chunked'
 import { isBriefingRelevant } from '@/lib/feed-blocklist'
 import { KEY_INSIGHT_CATEGORIES, type KeyInsightCategory } from '@/lib/key-insights/constants'
 
@@ -45,28 +46,6 @@ const TELECOM_COMPANY_NAMES = ['LG유플러스', 'SKT', 'KT', 'SK브로드밴드
 /** 후보 프리필터 임계값 — 중요도 0.6 미만(0.00 정크 포함)은 하드 제외. */
 const IMPORTANCE_THRESHOLD = 0.6
 const WINDOW_DAYS = 7
-
-/**
- * PostgREST `.in()` 필터는 값 목록을 쿼리스트링에 그대로 싣는다 — content_id(uuid) 400개
- * 안팎부터 요청 헤더가 16KB를 넘어 서버가 요청 자체를 거부한다(HeadersOverflowError, 응답조차
- * 못 받고 실패). windowDays=1(하루)일 때는 후보 수가 적어 드러나지 않다가, 주간 전환(7일)으로
- * ids 가 수백~천 단위로 늘면서 발현됨 — 자사·통신사 동향(entity 매칭) 버킷이 통째로 비는 형태로
- * 나타났다(에러가 아니라 조용한 빈 결과라 발견이 늦음). id 목록이 큰 in() 필터는 반드시 청크로 나눈다.
- */
-const IN_FILTER_CHUNK_SIZE = 200
-
-async function fetchInChunks<Row>(
-  ids: string[],
-  runQuery: (chunk: string[]) => PromiseLike<{ data: Row[] | null }>
-): Promise<Row[]> {
-  const results: Row[] = []
-  for (let i = 0; i < ids.length; i += IN_FILTER_CHUNK_SIZE) {
-    const chunk = ids.slice(i, i + IN_FILTER_CHUNK_SIZE)
-    const { data } = await runQuery(chunk)
-    if (data) results.push(...data)
-  }
-  return results
-}
 
 export interface PastArticleRef {
   contentId: string
@@ -157,7 +136,7 @@ export async function buildCandidatePool(opts?: {
     }
   }
 
-  const [{ data: sources }, issueRows, { data: telecomEntities }] = await Promise.all([
+  const [{ data: sources }, { rows: issueRows }, { data: telecomEntities }] = await Promise.all([
     admin.from('sources').select('id, name'),
     fetchInChunks(ids, (chunk) =>
       admin.from('issue_contents').select('content_id, issue_id').in('content_id', chunk)
@@ -209,13 +188,13 @@ export async function buildCandidatePool(opts?: {
   const entityNameById = new Map((telecomEntities ?? []).map((e) => [e.id as string, e.canonical_name as string]))
 
   const entityHits = telecomEntityIds.length
-    ? await fetchInChunks(ids, (chunk) =>
+    ? (await fetchInChunks(ids, (chunk) =>
         admin
           .from('content_entities')
           .select('content_id, entity_id')
           .in('content_id', chunk)
           .in('entity_id', telecomEntityIds)
-      )
+      )).rows
     : ([] as { content_id: string; entity_id: string }[])
 
   const companiesByContent = new Map<string, string[]>()
@@ -277,13 +256,13 @@ export async function buildCandidatePool(opts?: {
   const dedupedIssueIds = [...new Set(deduped.map((d) => trustedIssueByContent.get(d.raw.id)).filter((x): x is string => !!x))]
   const pastByIssue = new Map<string, PastArticleRef[]>()
   if (dedupedIssueIds.length > 0) {
-    const pastLinks = await fetchInChunks(dedupedIssueIds, (chunk) =>
+    const { rows: pastLinks } = await fetchInChunks(dedupedIssueIds, (chunk) =>
       admin.from('issue_contents').select('issue_id, content_id').in('issue_id', chunk)
     )
 
     const pastContentIds = [...new Set(pastLinks.map((r) => r.content_id as string))]
     const pastContentsUnsorted = pastContentIds.length
-      ? await fetchInChunks(pastContentIds, (chunk) =>
+      ? (await fetchInChunks(pastContentIds, (chunk) =>
           admin
             .from('contents')
             .select('id, title, published_at, collected_at, original_url, source_id')
@@ -291,7 +270,7 @@ export async function buildCandidatePool(opts?: {
             .lt('published_at', windowStart)
             .is('deleted_at', null)
             .order('published_at', { ascending: false })
-        )
+        )).rows
       : ([] as { id: string; title: string; published_at: string | null; collected_at: string; original_url: string | null; source_id: string }[])
     // 청크별로는 정렬돼 오지만 청크 간 순서는 아니므로(각 청크 내부만 desc), 합친 뒤 전체를 다시 정렬한다.
     const pastContents = [...pastContentsUnsorted].sort(

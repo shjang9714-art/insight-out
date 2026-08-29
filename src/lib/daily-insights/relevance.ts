@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchInChunks } from '@/lib/supabase/chunked'
 import { jaccardSimilarity } from '@/lib/daily-insights/dedupe'
 import type { DailyInsightCategory } from '@/lib/daily-insights/constants'
 
@@ -41,15 +42,22 @@ export async function classifyPastArticleCategories(
   ])
 
   const telecomEntityIds = (telecomEntities ?? []).map((e) => e.id as string)
-  const { data: entityHits } = telecomEntityIds.length
-    ? await admin
-        .from('content_entities')
-        .select('content_id, entity_id')
-        .in('content_id', contentIds)
-        .in('entity_id', telecomEntityIds)
-    : { data: [] as { content_id: string; entity_id: string }[] }
+  const entityHitResult = telecomEntityIds.length
+    ? await fetchInChunks(contentIds, (chunk) =>
+        admin
+          .from('content_entities')
+          .select('content_id, entity_id')
+          .in('content_id', chunk)
+          .in('entity_id', telecomEntityIds)
+      )
+    : { rows: [] as { content_id: string; entity_id: string }[], error: null }
 
-  const hasTelecomEntity = new Set((entityHits ?? []).map((r) => r.content_id as string))
+  if (entityHitResult.error) {
+    console.warn(`과거기사 통신사 엔티티 조회에 실패했습니다: ${entityHitResult.error}`)
+  }
+  const entityHits = entityHitResult.rows
+
+  const hasTelecomEntity = new Set(entityHits.map((r) => r.content_id as string))
 
   for (const row of contentRows ?? []) {
     const groups: string[] = row.matched_groups ?? []
