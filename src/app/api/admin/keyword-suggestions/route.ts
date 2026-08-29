@@ -8,7 +8,6 @@ export const dynamic = 'force-dynamic'
 
 const DEFAULT_LIMIT = 10
 const MAX_LIMIT = 30
-const CONTENT_FETCH_LIMIT = 5000
 const ENTITY_FETCH_LIMIT = 1000 // PostgREST max-rows. 이 이상 요청해도 서버가 조용히 자른다 — 넘길 일이 생기면 range() 페이지네이션이 필요하다
 
 interface KeywordScore {
@@ -56,13 +55,10 @@ export async function GET(request: NextRequest) {
   const queryKey = normalizeKey(query)
   const limit = parseLimit(request.nextUrl.searchParams.get('limit'))
 
-  const [contentsResult, groupsResult, entitiesResult] = await Promise.all([
+  const [statsResult, groupsResult, entitiesResult] = await Promise.all([
     auth.admin
-      .from('contents')
-      .select('matched_keywords')
-      .not('matched_keywords', 'is', null)
-      .is('deleted_at', null)
-      .limit(CONTENT_FETCH_LIMIT),
+      .from('keyword_suggestion_stats')
+      .select('keyword, cnt'),
     auth.admin
       .from('keyword_groups')
       .select('name')
@@ -74,9 +70,9 @@ export async function GET(request: NextRequest) {
       .limit(ENTITY_FETCH_LIMIT),
   ])
 
-  if (contentsResult.error || groupsResult.error || entitiesResult.error) {
+  if (statsResult.error || groupsResult.error || entitiesResult.error) {
     console.error('[keyword-suggestions] 후보 조회 실패:', {
-      contents: contentsResult.error?.message,
+      stats: statsResult.error?.message,
       groups: groupsResult.error?.message,
       entities: entitiesResult.error?.message,
     })
@@ -85,10 +81,8 @@ export async function GET(request: NextRequest) {
 
   const candidates = new Map<string, KeywordScore>()
 
-  for (const row of (contentsResult.data ?? []) as { matched_keywords: string[] | null }[]) {
-    for (const keyword of row.matched_keywords ?? []) {
-      addCandidate(candidates, keyword, 1)
-    }
+  for (const row of (statsResult.data ?? []) as { keyword: string; cnt: number }[]) {
+    addCandidate(candidates, row.keyword, row.cnt)
   }
   for (const row of (groupsResult.data ?? []) as { name: string }[]) {
     addCandidate(candidates, row.name, 0)

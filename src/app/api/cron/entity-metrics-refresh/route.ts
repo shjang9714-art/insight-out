@@ -45,7 +45,13 @@ export async function GET(request: NextRequest) {
       throw new Error('이슈 활동도 갱신 결과가 숫자가 아닙니다.')
     }
 
-    return { ok: true as const, updated, pairs, issueStats }
+    // 590-C — 어드민 키워드 자동완성 후보. 전량 집계가 3.3초라 매트뷰로 내렸다.
+    const { data: kwData, error: kwError } = await admin.rpc('refresh_keyword_suggestion_stats')
+    if (kwError) throw new Error(`키워드 후보 갱신 실패: ${kwError.message}`)
+    const keywordStats = Number(kwData)
+    if (!Number.isFinite(keywordStats)) throw new Error('키워드 후보 갱신 결과가 숫자가 아닙니다.')
+
+    return { ok: true as const, updated, pairs, issueStats, keywordStats }
   })
   return Response.json(result)
 }

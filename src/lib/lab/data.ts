@@ -124,22 +124,24 @@ export async function getLabData(supabase: SupabaseClient): Promise<LabData> {
         if ((data ?? []).length >= KEYWORD_ROWS_LIMIT) console.warn('[실험실] 키워드 방향: PostgREST max-rows 도달 — 최신 1,000건만 반영됨')
         return (data ?? []) as TrendRow[]
       } catch (error) {
-        recordLabError(errors, 'contents trend', error)
+        recordLabError(errors, 'keyword direction', error)
         return []
       }
     })(),
     (async (): Promise<TopicTrend[]> => {
-      const { data, error } = await supabase.rpc('trending_topic_groups', { p_days: 14, p_top: 8 })
-      if (error) {
-        console.warn(`[실험실] 뜨는 토픽 RPC 조회 실패: ${error.message}`)
+      try {
+        const { data, error } = await supabase.rpc('trending_topic_groups', { p_days: 14, p_top: 8 })
+        if (error) throw error
+        return ((data ?? []) as TrendingTopicRow[]).map((row) => ({
+          group: row.group_name,
+          cur: row.cur,
+          prev: row.prev,
+          changePct: row.change_pct,
+        }))
+      } catch (error) {
+        recordLabError(errors, 'trending topics', error)
         return []
       }
-      return ((data ?? []) as TrendingTopicRow[]).map((row) => ({
-        group: row.group_name,
-        cur: row.cur,
-        prev: row.prev,
-        changePct: row.change_pct,
-      }))
     })(),
     (async (): Promise<KgRow[]> => {
       try {
