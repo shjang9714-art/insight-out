@@ -118,7 +118,6 @@ export async function buildCandidatePool(opts?: {
       .range(from, to)
   )
 
-  if (error) console.warn(`[핵심Insight] 후보 조회 실패: ${error}`)
   if (truncated) console.warn('[핵심Insight] 후보 조회 페이지네이션 안전장치 도달')
   if (error) throw new Error(`후보 조회 실패: ${error}`)
 

@@ -595,6 +595,16 @@ interface TimelineCandidate {
   importanceScore: number
 }
 
+interface TimelineRawContent {
+  id: string
+  title: string
+  published_at: string | null
+  original_url: string | null
+  source_id: string | null
+  importance_score: number | null
+  matched_groups: string[] | null
+}
+
 /** 중요도 내림차순으로 날짜별 대표 최대 TIMELINE_MAX_PER_DATE건, 전체 TIMELINE_MAX_ARTICLES건으로
  * 캡한 뒤 published_at 오름차순(오래된→최신)으로 정렬해 반환한다. */
 function selectTimelineArticles(candidates: TimelineCandidate[]): DailyInsightSourceArticle[] {
@@ -634,24 +644,9 @@ function selectTimelineArticles(candidates: TimelineCandidate[]): DailyInsightSo
 async function gatherEntityTimeline(
   seed: EntityTimelineSeed,
   entityId: string | null,
-  admin: ReturnType<typeof createAdminClient>
+  admin: ReturnType<typeof createAdminClient>,
+  rawContents: TimelineRawContent[]
 ): Promise<DailyInsightSourceArticle[]> {
-  const windowStart = new Date(Date.now() - TIMELINE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
-
-  const { rows: rawContents, error, truncated } = await fetchAllPages((from, to) =>
-    admin
-      .from('contents')
-      .select('id, title, published_at, original_url, source_id, importance_score')
-      .eq('status', 'published')
-      .gte('published_at', windowStart)
-      .is('deleted_at', null)
-      .order('published_at', { ascending: false })
-      .range(from, to)
-  )
-  if (error) console.warn(`[daily-insights] 엔티티 타임라인 콘텐츠 조회 실패: ${error}`)
-  if (truncated) console.warn('[daily-insights] 엔티티 타임라인 콘텐츠 페이지네이션 안전장치 도달')
-  if (error || !rawContents || rawContents.length === 0) return []
-
   let entityContentIds = new Set<string>()
   if (entityId) {
     const { rows: entityHits, error: entityHitError, truncated: entityHitsTruncated } = await fetchAllPages(
@@ -736,24 +731,9 @@ function classifyContentCategory(matchedGroups: string[]): DailyInsightCategory 
  */
 async function gatherTopicTimeline(
   topicSeed: TopicTimelineSeed,
-  admin: ReturnType<typeof createAdminClient>
+  admin: ReturnType<typeof createAdminClient>,
+  rawContents: TimelineRawContent[]
 ): Promise<DailyInsightSourceArticle[]> {
-  const windowStart = new Date(Date.now() - TIMELINE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
-
-  const { rows: rawContents, error, truncated } = await fetchAllPages((from, to) =>
-    admin
-      .from('contents')
-      .select('id, title, published_at, original_url, source_id, importance_score, matched_groups')
-      .eq('status', 'published')
-      .gte('published_at', windowStart)
-      .is('deleted_at', null)
-      .order('published_at', { ascending: false })
-      .range(from, to)
-  )
-  if (error) console.warn(`[daily-insights] 주제 타임라인 콘텐츠 조회 실패: ${error}`)
-  if (truncated) console.warn('[daily-insights] 주제 타임라인 콘텐츠 페이지네이션 안전장치 도달')
-  if (error || !rawContents || rawContents.length === 0) return []
-
   const matched = rawContents.filter((c) => {
     const category = classifyContentCategory((c.matched_groups as string[] | null) ?? [])
     return category !== null && topicSeed.categories.includes(category)
@@ -995,6 +975,20 @@ export async function generateWeeklyFlows(
   const weekOf = getLastCompletedWeekKst().weekStart
   const prevWeekOf = shiftDateString(weekOf, -7)
   const pastFlows = await loadPastWeekFlowSignatures(admin, prevWeekOf)
+  const windowStart = new Date(Date.now() - TIMELINE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString()
+  const { rows: rawContents, error, truncated } = await fetchAllPages((from, to) =>
+    admin
+      .from('contents')
+      .select('id, title, published_at, original_url, source_id, importance_score, matched_groups')
+      .eq('status', 'published')
+      .gte('published_at', windowStart)
+      .is('deleted_at', null)
+      .order('published_at', { ascending: false })
+      .range(from, to)
+  )
+  if (error) console.warn(`[daily-insights] 타임라인 콘텐츠 조회 실패: ${error}`)
+  if (truncated) console.warn('[daily-insights] 타임라인 콘텐츠 페이지네이션 안전장치 도달')
+  if (error || rawContents.length === 0) return []
 
   // 회사 후보 — 우선순위(자사 LG유플러스 최상 → 경쟁사 순) 그대로 유지.
   const { data: entityRows } = await admin
@@ -1009,7 +1003,7 @@ export async function generateWeeklyFlows(
   const entityCandidates: FlowCandidate[] = []
   for (const seed of ENTITY_TIMELINE_SEEDS) {
     const entityId = entityIdByName.get(seed.canonicalName) ?? null
-    const timeline = await gatherEntityTimeline(seed, entityId, admin)
+    const timeline = await gatherEntityTimeline(seed, entityId, admin, rawContents)
     if (timeline.length === 0) continue
     const candidate = toFlowCandidate('entity', seed.displayName, timeline)
     if (isNoProgressVsPastWeek(candidate, pastFlows)) continue
@@ -1019,7 +1013,7 @@ export async function generateWeeklyFlows(
   // 주제 후보 — momentumScore(최근 7일 기사 수) 내림차순. 0건이면 후보에서 제외.
   const topicCandidates: FlowCandidate[] = []
   for (const seed of TOPIC_TIMELINE_SEEDS) {
-    const timeline = await gatherTopicTimeline(seed, admin)
+    const timeline = await gatherTopicTimeline(seed, admin, rawContents)
     if (timeline.length === 0) continue
     const momentumScore = recentArticleCount(timeline, TOPIC_MOMENTUM_WINDOW_DAYS)
     if (momentumScore === 0) continue
