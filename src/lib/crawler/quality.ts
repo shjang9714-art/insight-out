@@ -79,7 +79,12 @@ export interface ScoringGroup {
   signal_hint: string | null
 }
 
-export interface KeywordMatch { groups: string[]; keywords: string[] }
+export interface KeywordMatch {
+  groups: string[]
+  /** keywords는 표시용 상한, allKeywords는 엔티티 링킹용 무상한 목록이다. */
+  keywords: string[]
+  allKeywords: string[]
+}
 
 const MAX_TAG_KEYWORDS = 8
 
@@ -99,6 +104,7 @@ export function matchKeywordGroups(title: string, body: string, groups: ScoringG
   return {
     groups: [...groupSet],
     keywords: [...kwSet].slice(0, MAX_TAG_KEYWORDS),
+    allKeywords: [...kwSet],
   }
 }
 
