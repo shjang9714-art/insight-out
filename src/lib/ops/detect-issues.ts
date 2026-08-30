@@ -90,7 +90,7 @@ async function fetchCronLastRunAtByKey(admin: SupabaseClient): Promise<Map<strin
 }
 
 /** 497/499 구조를 그대로 써서 job_key별 마지막 성공(succeeded/skipped)을 모은다. */
-async function fetchCronLastSuccessAtByKey(admin: SupabaseClient): Promise<Map<string, string>> {
+async function fetchCronLastSuccessAtByKey(admin: SupabaseClient): Promise<Map<string, string> | null> {
   const highFrequencyKeys = EXPECTED_CRONS.filter(c => c.highFrequency).map(c => c.key)
   const normalCrons = EXPECTED_CRONS.filter(c => !c.highFrequency)
   const maxNormalMaxAgeHours = Math.max(...normalCrons.map(item => item.maxAgeHours))
@@ -102,6 +102,10 @@ async function fetchCronLastSuccessAtByKey(admin: SupabaseClient): Promise<Map<s
       admin.from('job_runs').select('job_key, started_at').eq('job_key', key).in('status', ['succeeded', 'skipped']).order('started_at', { ascending: false }).limit(1),
     ),
   ])
+  if (bulk.error) {
+    console.warn('[운영이슈] 크론 마지막 성공 조회 실패:', bulk.error.message)
+    return null
+  }
   if ((bulk.data ?? []).length >= 1000) {
     console.warn('[운영이슈] 크론 마지막 성공 조회가 1,000행 상한에 도달했습니다.')
   }
@@ -162,9 +166,10 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
 
 function buildCronFailingSignals(
   lastRunAtByKey: Map<string, string>,
-  lastSuccessAtByKey: Map<string, string>,
+  lastSuccessAtByKey: Awaited<ReturnType<typeof fetchCronLastSuccessAtByKey>>,
   now: number,
 ): Signal[] {
+  if (!lastSuccessAtByKey) return []
   const out: Signal[] = []
   for (const { key: jobKey, maxAgeHours } of EXPECTED_CRONS) {
     const lastRunAt = lastRunAtByKey.get(jobKey) ?? null
