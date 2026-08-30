@@ -77,6 +77,7 @@ export interface ScoringGroup {
   exclude_patterns: string[]
   weight: number
   signal_hint: string | null
+  link_only: boolean
 }
 
 export interface KeywordMatch {
@@ -93,8 +94,15 @@ export function matchKeywordGroups(title: string, body: string, groups: ScoringG
   const text = `${title} ${body}`.toLowerCase()
   const groupSet = new Set<string>()
   const kwSet = new Set<string>()
+  const linkSet = new Set<string>()
   for (const g of groups) {
     if (g.weight <= 0) continue
+    if (g.link_only) {
+      for (const p of g.include_patterns) {
+        if (patternHit(text, p)) linkSet.add(p)
+      }
+      continue
+    }
     let hit = false
     for (const p of g.include_patterns) {
       if (patternHit(text, p)) { kwSet.add(p); hit = true }
@@ -104,7 +112,7 @@ export function matchKeywordGroups(title: string, body: string, groups: ScoringG
   return {
     groups: [...groupSet],
     keywords: [...kwSet].slice(0, MAX_TAG_KEYWORDS),
-    allKeywords: [...kwSet],
+    allKeywords: [...new Set([...kwSet, ...linkSet])],
   }
 }
 
@@ -138,7 +146,8 @@ export function relatednessScore(
   const bodyLower = body.toLowerCase()
   let total = 0
   for (const g of groups) {
-    if (g.weight <= 0) continue  // 노이즈 그룹(weight 0) 점수 제외
+    // 엔티티 사전은 이름이 스쳤다는 이유만으로 기사의 관심사 관련도를 높이는 근거가 아니다.
+    if (g.weight <= 0 || g.link_only) continue
     const t = g.include_patterns.filter(p => patternHit(titleLower, p)).length
     const b = g.include_patterns.filter(p => patternHit(bodyLower, p)).length
     if (t + b > 0) total += g.weight * (t * 2 + b)

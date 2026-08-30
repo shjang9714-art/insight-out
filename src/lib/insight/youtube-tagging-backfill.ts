@@ -21,6 +21,7 @@ interface KeywordGroupRow {
   exclude_patterns: string[]
   weight: number
   signal_hint: string | null
+  link_only: boolean | null
 }
 
 /**
@@ -37,7 +38,7 @@ export async function backfillYoutubeTagging(
 
   const groupsRes = await admin
     .from('keyword_groups')
-    .select('name, include_patterns, exclude_patterns, weight, signal_hint')
+    .select('name, include_patterns, exclude_patterns, weight, signal_hint, link_only')
     .eq('is_active', true)
     .limit(200)
   if (groupsRes.error) {
@@ -49,6 +50,7 @@ export async function backfillYoutubeTagging(
     exclude_patterns: r.exclude_patterns,
     weight: r.weight,
     signal_hint: r.signal_hint,
+    link_only: r.link_only ?? false,
   }))
 
   const aliasMap = await loadEntityAliasMap(admin)
