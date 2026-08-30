@@ -173,9 +173,9 @@ export async function tagYoutubeContent(
 
   try {
     if (entityLinks) entityLinks.attempted++
-    if (aliasMap.size > 0 && matchedTags.keywords.length > 0) {
+    if (aliasMap.size > 0 && matchedTags.allKeywords.length > 0) {
       const entityIds = [...new Set(
-        matchedTags.keywords
+        matchedTags.allKeywords
           .map(kw => aliasMap.get(kw.toLowerCase()))
           .filter((id): id is string => id !== undefined)
       )]
@@ -715,10 +715,11 @@ async function processCrawlItem(
         try {
           if (entityLinks) entityLinks.attempted++
           if (aliasMap.size > 0) {
+            // 등록 패턴 수가 자연 상한이므로 엔티티 링킹에는 표시용 8개 상한을 두지 않는다.
             const mergedKws: string[] = [
-              ...matchedTags.keywords,
-              ...llmTags.filter(t => !matchedTags.keywords.includes(t)),
-            ].slice(0, MAX_MERGED_TAGS)
+              ...matchedTags.allKeywords,
+              ...llmTags.filter(t => !matchedTags.allKeywords.includes(t)),
+            ]
             const entityIds = [...new Set(
               mergedKws
                 .map(kw => aliasMap.get(kw.toLowerCase()))
@@ -1270,6 +1271,7 @@ interface KeywordGroupRow {
   exclude_patterns: string[]
   weight: number
   signal_hint: string | null
+  link_only: boolean | null
 }
 
 /** enrichment 대상 행 타입 */
@@ -1483,8 +1485,9 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       admin.from('sources').select('*').eq('is_active', true),
       admin.from('keywords').select('id, name'),
       admin.from('keyword_groups')
-        .select('name, include_patterns, exclude_patterns, weight, signal_hint')
-        .eq('is_active', true),
+        .select('name, include_patterns, exclude_patterns, weight, signal_hint, link_only')
+        .eq('is_active', true)
+        .order('name'),
     ])
 
     if (sourcesResult.error) throw sourcesResult.error
@@ -1501,6 +1504,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       exclude_patterns: r.exclude_patterns,
       weight: r.weight,
       signal_hint: r.signal_hint ?? null,
+      link_only: r.link_only ?? false,
     }))
 
     // search_seeds 별도 쿼리 — SQL 56 적용 전엔 컬럼이 없어 에러 날 수 있으므로 throw 금지
@@ -1508,6 +1512,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       .from('keyword_groups')
       .select('search_seeds')
       .eq('is_active', true)
+      .order('name')
     if (!seedsResult.error && seedsResult.data) {
       searchSeeds = [
         ...new Set(
