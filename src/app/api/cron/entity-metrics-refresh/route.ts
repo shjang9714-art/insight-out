@@ -63,5 +63,8 @@ export async function GET(request: NextRequest) {
       ...(errors.length ? { error: errors.join(' | ') } : {}),
     }
   })
+  if (result.ok === false) {
+    return Response.json(result, { status: 500 })
+  }
   return Response.json(result)
 }
