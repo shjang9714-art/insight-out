@@ -685,6 +685,37 @@ interface BasisArticleRow {
 
 const BASIS_ARTICLES_PAGE_SIZE = 1000 // Supabase/PostgREST 기본 max-rows — 단일 .limit()로 이 이상 요청해도 서버가 조용히 잘라서 반환
 const BASIS_ARTICLES_MAX_PAGES = 10 // 안전장치: 최대 10 * 1000 = 10000건까지만 페이지네이션(무한루프 방지). 실측 2,318건이라 안 걸림.
+const QUERY_RETRY_DELAY_MS = 300 // 조회 실패 시 1회 재시도 전 대기(2026-08-30 — 원인 파악용 로깅과 함께 추가)
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * postgrest 에러를 code/message/details까지 전부 로그에 남긴다. 2026-08-30 사고(뷰 타임아웃 →
+ * 화면이 3주 넘게 비상 폴백만 노출) 재발 시 원인 파악이 즉시 되도록 하기 위함 — 당시엔 에러
+ * 내용이 로그에 전혀 남지 않아 원인 특정에 오래 걸렸다.
+ */
+function logPostgrestError(
+  context: string,
+  error: { code?: string; message?: string; details?: string | null } | null | undefined,
+) {
+  console.error(
+    `[trending] ${context} 실패 — code=${error?.code ?? '?'} message=${error?.message ?? '?'} details=${error?.details ?? '?'}`,
+  )
+}
+
+async function fetchBasisArticlesPage(
+  supabase: ReturnType<typeof createPublicClient>,
+  from: number,
+  to: number,
+) {
+  return supabase
+    .from('trending_basis_articles')
+    .select('*')
+    .order('collected_at', { ascending: false })
+    .range(from, to)
+}
 
 /**
  * trending_basis_articles 뷰(지시서 548 선행 SQL)에서 72h 창의 기사를 전부 기사 단위(1행=1건)로
@@ -701,11 +732,13 @@ async function fetchAllBasisArticles(
     const from = page * BASIS_ARTICLES_PAGE_SIZE
     const to = from + BASIS_ARTICLES_PAGE_SIZE - 1
 
-    const { data, error } = await supabase
-      .from('trending_basis_articles')
-      .select('*')
-      .order('collected_at', { ascending: false })
-      .range(from, to)
+    let { data, error } = await fetchBasisArticlesPage(supabase, from, to)
+    if (error) {
+      logPostgrestError(`trending_basis_articles 조회(page=${page})`, error)
+      await sleep(QUERY_RETRY_DELAY_MS)
+      ;({ data, error } = await fetchBasisArticlesPage(supabase, from, to))
+      if (error) logPostgrestError(`trending_basis_articles 조회(page=${page}, 재시도)`, error)
+    }
 
     if (error || !data) return { rows, truncated: false, error: true, message: error?.message }
     rows.push(...(data as BasisArticleRow[]))
@@ -734,15 +767,25 @@ export type TrendingComputeResult =
 export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   const supabase = createPublicClient()
 
-  const { data: candidateData, error: viewErr } = await supabase
+  let { data: candidateData, error: viewErr } = await supabase
     .from('trending_keywords')
     .select('issue_id, title, recent_count, prev_count')
+
+  if (viewErr) {
+    logPostgrestError('trending_keywords 조회', viewErr)
+    await sleep(QUERY_RETRY_DELAY_MS)
+    ;({ data: candidateData, error: viewErr } = await supabase
+      .from('trending_keywords')
+      .select('issue_id, title, recent_count, prev_count'))
+    if (viewErr) logPostgrestError('trending_keywords 조회(재시도)', viewErr)
+  }
 
   if (viewErr) {
     return { ok: false, stage: 'trending_keywords', error: viewErr.message }
   }
   const candidates = (candidateData ?? []) as TrendingIssueRow[]
   if (candidates.length === 0) {
+    console.log('[trending] ok events=0 candidates=0 rows=0')
     return { ok: true, value: { events: [], asOfDateKst: getKstDateString(), truncated: false } }
   }
 
@@ -911,6 +954,10 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   const deduped = collapseDuplicateEvents(final)
   deduped.sort(compareByScoreDesc)
 
+  console.log(
+    `[trending] ok events=${deduped.length} candidates=${candidates.length} rows=${rows.length}`,
+  )
+
   return { ok: true, value: { events: deduped, asOfDateKst: basisDateKst, truncated } }
 }
 
@@ -947,8 +994,9 @@ async function computeTrendingEventsOrNull(): Promise<TrendingEventsResult | nul
   return result.value
 }
 
+// 2026-08-30 v9→v10: DB 뷰 타임아웃 시절 캐시된 null이 Hobby 플랜에서 Purge 불가라 키 bump로 폐기
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEventsOrNull,
-  ['trending-events-v9'],
+  ['trending-events-v10'],
   { revalidate: CACHE_REVALIDATE_SECONDS, tags: ['trending-events'] },
 )
