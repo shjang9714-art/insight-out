@@ -19,6 +19,8 @@ import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
 import CompanyDocumentCard from '@/components/entities/CompanyDocumentCard'
 import { entityStyle } from '@/lib/entities/entity-style'
 import { isAdminRole } from '@/lib/admin/capabilities'
+import EntityDetailGraph from '@/components/entities/EntityDetailGraph'
+import type { EntitySummary } from '@/components/entities/KnowledgeGraph'
 
 export const dynamic = 'force-dynamic'
 
@@ -243,6 +245,7 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
     signalSummary,
     entityEventsResult,
     companyDocuments,
+    { data: graphEntityData, error: graphEntityError },
   ] = await Promise.all([
     supabase
       .from('entities')
@@ -261,6 +264,11 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
     loadSignalSummary(supabase, id),
     loadEntityEvents(supabase, id),
     getPublishedCompanyDocuments(supabase, { entityId: id, limit: 8 }),
+    supabase
+      .from('entities')
+      .select('id, canonical_name, entity_type, is_competitor, mention_count')
+      .order('mention_count', { ascending: false })
+      .limit(500),
   ])
 
   const { items: entityEvents, updatedAt: entityEventsUpdatedAt } = entityEventsResult
@@ -270,6 +278,16 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
   }
 
   const e = entity as EntityRow
+  const graphEntities = graphEntityError
+    ? []
+    : (graphEntityData ?? []) as EntitySummary[]
+  const graphInitialCenter: EntitySummary = {
+    id: e.id,
+    canonical_name: e.canonical_name,
+    entity_type: e.entity_type,
+    is_competitor: e.is_competitor,
+    mention_count: e.mention_count,
+  }
   const aliases: AliasRow[] = (aliasData ?? []) as AliasRow[]
   const contentIds: string[] = (ceData ?? []).map((r: { content_id: string }) => r.content_id)
 
@@ -549,6 +567,14 @@ export default async function EntityDetailPage({ params, searchParams }: PagePro
       {sentimentTrendData.length > 1 && (
         <section className="mb-8 rounded-xl border border-border bg-card p-5">
           <IssueSentimentTrend data={sentimentTrendData} trend={sentimentTrend} />
+        </section>
+      )}
+
+      {/* 관계지도 */}
+      {graphEntities.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">관계지도</h2>
+          <EntityDetailGraph initialCenter={graphInitialCenter} entities={graphEntities} />
         </section>
       )}
 
