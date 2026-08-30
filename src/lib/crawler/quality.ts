@@ -81,7 +81,7 @@ export interface ScoringGroup {
 
 export interface KeywordMatch {
   groups: string[]
-  /** keywords는 표시용 상한, allKeywords는 엔티티 링킹용 무상한 목록이다. */
+  /** keywords는 표시용 상한, 전체 히트 목록은 엔티티 링킹용 무상한이다. */
   keywords: string[]
   allKeywords: string[]
 }
