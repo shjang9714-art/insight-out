@@ -102,8 +102,9 @@ async function fetchCronLastSuccessAtByKey(admin: SupabaseClient): Promise<Map<s
       admin.from('job_runs').select('job_key, started_at').eq('job_key', key).in('status', ['succeeded', 'skipped']).order('started_at', { ascending: false }).limit(1),
     ),
   ])
-  if (bulk.error) {
-    console.warn('[운영이슈] 크론 마지막 성공 조회 실패:', bulk.error.message)
+  const bulkError = bulk.error
+  if (bulkError) {
+    console.warn('[운영이슈] 크론 마지막 성공 조회 실패:', bulkError.message)
     return null
   }
   if ((bulk.data ?? []).length >= 1000) {
