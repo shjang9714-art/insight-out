@@ -30,6 +30,12 @@ export async function GET(request: NextRequest) {
         return { ok: false as const, error: `${trending.stage} 조회 실패: ${trending.error}` }
       }
 
+      if (trending.value.truncated) {
+        console.error(
+          '[크론/trending-snapshot] trending_basis_articles 페이지네이션 캡 도달 — 일부 기사가 누락된 채 계산됨',
+        )
+      }
+
       // 명시적 date 쿼리(백필용)가 없으면 랭킹에 반영된 기사들의 실제 최신일(asOfDateKst)로
       // 저장 — 시스템 시계상 "오늘"을 그대로 쓰면 히스토리 조회 시에도 날짜·건수 불일치가 재현된다.
       const date = explicitDate ?? trending.value.asOfDateKst

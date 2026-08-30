@@ -7,8 +7,8 @@ import { llmCompleteDetailed, type LlmTask } from '@/lib/llm'
 
 /**
  * 쿠키 비의존 anon 클라이언트 — unstable_cache로 요청 간 캐시하려면 특정 사용자
- * 세션에 묶이면 안 된다. trending_keywords·trending_issue_articles 뷰가 anon에
- * GRANT되어 있어(§1-3·§5) 이 클라이언트로 충분(기반 테이블 RLS는 뷰가 우회).
+ * 세션에 묶이면 안 된다. trending_keywords·trending_basis_articles 뷰가 anon에
+ * GRANT되어 있어(지시서 548 선행 SQL) 이 클라이언트로 충분(기반 테이블 RLS는 뷰가 우회).
  */
 function createPublicClient() {
   return createClient(
@@ -22,8 +22,11 @@ function createPublicClient() {
 // 72h 창·임계 2건은 trending_keywords/trending_issue_articles 뷰(SQL)에 고정 — 여기선 미사용.
 
 export const TRENDING_LIMIT = 12
-const MIN_DISPLAY = 10 // 특정 사건이 모자라면 이 개수까지 degrade(이슈 전체) 항목으로 backfill — 단, 오늘 기사가 있는 이슈로만 채움(§오늘자 게이트). 모자라면 목표치 미달인 채 그대로 반환(오늘 0건 이슈로 패딩 금지).
 const SUBCLUSTER_SIM = 0.35 // 이슈 내부 서브클러스터링(느슨 — 같은 사건 다매체 픽업 흡수용)
+// 공유 엔티티만으로 union하면 "삼성전자"가 달린 기사 수백 건이 제목과 무관하게 연쇄
+// 연결돼 한 덩어리가 된다(지시서 548 §1-3). 엔티티는 단독 트리거가 아니라 임계를
+// 낮춰주는 보조 신호로만 쓴다(§2-3).
+const SUBCLUSTER_SIM_WITH_ENTITY = 0.22
 const DEDUP_SIM = 0.5 // 이슈 간 동일 엔티티 + 헤드라인 유사 시 병합(느슨한 SUBCLUSTER_SIM보다 엄격)
 const IDENTICAL_SIM = 0.6 // 엔티티 무관, 사실상 같은 헤드라인이면 무조건 병합(교차 태깅된 동일 기사 중복 방지)
 // 헤드라인 핵심어(단어 단위) 겹침 임계 — "같은 회사로 확인된 두 이벤트"에만 적용하는 병합
@@ -34,9 +37,37 @@ const IDENTICAL_SIM = 0.6 // 엔티티 무관, 사실상 같은 헤드라인이�
 // 나스닥 데뷔 2건(5·10위류) 겹침 0.21인 반면, 그 외 진짜 다른 SK하이닉스 사건들(환율·
 // 40조 조달·반도체 열전 칼럼 등)의 최대 겹침은 0.15 — 그 사이(0.16~0.21)에서 0.2 채택.
 const HEADLINE_KEYWORD_OVERLAP_SIM = 0.2
+// 회사를 하나라도 못 알아본 쌍(예: SK AX·SAP — 사전 미등재)은 기존에 무조건 병합 금지였다
+// (§1-4). 사전이 영원히 완전할 수 없으므로, 회사 게이트를 못 쓰는 쌍은 "같은 회사 확인된
+// 쌍"보다 훨씬 엄격한 임계로 핵심어 겹침만 본다(§2-7).
+const UNKNOWN_COMPANY_OVERLAP_SIM = 0.34
 const MIN_SUBCLUSTER = 2
 const SURGE_CHANGE_PCT_THRESHOLD = 30
 const CACHE_REVALIDATE_SECONDS = 20 * 60 // 20분 — 크롤 주기(1일 1회) 대비 매 요청 재계산 방지
+
+// ─── 랭킹 점수 (지시서 548) ──────────────────────────────────────────────────
+// score = sourceCount^SOURCE_EXPONENT × burst
+//  - sourceCount : 슬롯 내 distinct source_key 수 = "몇 개 언론사가 이 사건을 다뤘나"
+//    기사 건수 대신 이걸 주 볼륨으로 쓴다. 한 매체가 후속기사 5건 쏟아낸 것과
+//    서로 다른 5개 매체가 동시 보도한 것을 구분하기 위함(후자가 진짜 큰 뉴스).
+//  - burst : 이슈의 72h 건수 / 직전 72h 건수 — "평소 대비 얼마나 튀었나".
+//    이게 있어야 상시 대형 테마(#AI)가 상단을 독점하지 않는다.
+// ⚠ source_trust_tier는 실측상 전 매체 1이라(§1-5) 이번엔 곱하지 않는다.
+//   등급이 채워지면 여기에 가중을 얹는다.
+const SOURCE_EXPONENT = 0.8
+const BURST_MULTIPLIER_MIN = 0.5
+const BURST_MULTIPLIER_MAX = 4 // 신규 이슈(prev=0)가 무한대로 튀는 것 방지
+// 노이즈 게이트 — 최소 2개 언론사가 다룬 사건만 순위에 올린다(§1-1 지역·대학 기사 배제).
+const MIN_SOURCE_COUNT = 2
+
+function computeBurst(recentCount: number, prevCount: number): number {
+  const raw = recentCount / Math.max(prevCount, 1)
+  return Math.min(Math.max(raw, BURST_MULTIPLIER_MIN), BURST_MULTIPLIER_MAX)
+}
+
+function computeScore(sourceCount: number, burst: number): number {
+  return Math.pow(Math.max(sourceCount, 1), SOURCE_EXPONENT) * burst
+}
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -47,18 +78,16 @@ interface TrendingIssueRow {
   prev_count: number
 }
 
-interface EntityRef {
-  name: string
-  concrete: boolean // company·product·person만 true — tech·industry·policy는 너무 범용(예: "AI")
-}
-
 interface ArticleRow {
   contentId: string
   title: string
   normTitle: string
   collectedAt: string
-  entities: EntityRef[]
+  /** trending_basis_articles 뷰가 이미 company·product·person만 골라 담는다(전부 concrete). */
+  entityNames: string[]
   matchedKeywords: string[]
+  clusterId: string | null
+  sourceKey: string | null
 }
 
 export interface TrendingEventsResult {
@@ -72,6 +101,8 @@ export interface TrendingEventsResult {
    * "오늘 N건" 문구도 전부 이 기준일을 따라간다(기준일이 어제면 "오늘"이라 부르지 않음).
    */
   asOfDateKst: string
+  /** true면 기반 데이터 페이지네이션 캡에 도달해 일부 기사가 누락된 채 계산됐다는 뜻(§2-4). */
+  truncated: boolean
 }
 
 export interface TrendingEvent {
@@ -101,9 +132,13 @@ interface InternalEvent extends TrendingEvent {
   issueIds: string[]
   /** 대표 기사 collected_at — 병합 시 대표 재선정 동률 tie-break(최신 우선)에 사용. */
   representativeCollectedAt: string
+  /** 슬롯 내 distinct source_key 수 — score 계산·MIN_SOURCE_COUNT 게이트에 사용. */
+  sourceCount: number
+  /** 슬롯이 흡수한 이슈들의 burst 중 최댓값. */
+  burst: number
+  /** sourceCount^SOURCE_EXPONENT × burst — 랭킹 정렬 1순위. */
+  score: number
 }
-
-const CONCRETE_ENTITY_TYPES = new Set(['company', 'product', 'person'])
 
 // ─── 제목 정규화 (§5-2 step2) ────────────────────────────────────────────────
 
@@ -154,6 +189,38 @@ const COMPANY_ALIASES: Record<string, string> = {
   '카카오': '카카오',
   '현대차': '현대차',
   '현대자동차': '현대차',
+  'SK AX': 'SK AX',
+  'SAP': 'SAP',
+  '오라클': '오라클',
+  '마이크로소프트': '마이크로소프트',
+  'MS': '마이크로소프트',
+  '구글': '구글',
+  '아마존': '아마존',
+  'AWS': '아마존',
+  '엔비디아': '엔비디아',
+  '인텔': '인텔',
+  'AMD': 'AMD',
+  'TSMC': 'TSMC',
+  '애플': '애플',
+  '메타': '메타',
+  '오픈AI': '오픈AI',
+  'OpenAI': '오픈AI',
+  '앤스로픽': '앤스로픽',
+  '퀄컴': '퀄컴',
+  '브로드컴': '브로드컴',
+  '팔란티어': '팔란티어',
+  '쿠팡': '쿠팡',
+  '토스': '토스',
+  '포스코': '포스코',
+  '한화': '한화',
+  '두산': '두산',
+  'HD현대': 'HD현대',
+  'CJ': 'CJ',
+  '롯데': '롯데',
+  '크래프톤': '크래프톤',
+  '엔씨소프트': '엔씨소프트',
+  '넥슨': '넥슨',
+  'KT클라우드': 'KT클라우드',
 }
 // 별칭이 서로의 부분 문자열일 수 있어(예: "삼성전자" ⊃ "삼성") 긴 별칭부터 매칭해야
 // "삼성전자" 기사가 "삼성"으로도 중복 카운트되어 index만 흐트러지는 걸 방지.
@@ -224,15 +291,38 @@ class UnionFind {
 function dominantEntity(articles: ArticleRow[]): string | null {
   const freq = new Map<string, number>()
   for (const a of articles) {
-    for (const e of a.entities) {
-      if (!e.concrete) continue
-      freq.set(e.name, (freq.get(e.name) ?? 0) + 1)
+    for (const name of a.entityNames) {
+      freq.set(name, (freq.get(name) ?? 0) + 1)
     }
   }
   let best: string | null = null
   let bestCount = 0
   for (const [name, count] of freq) {
     if (count > bestCount) { best = name; bestCount = count }
+  }
+  return best
+}
+
+// ─── 해시태그 라벨 (§2-8) ─────────────────────────────────────────────────────
+// matched_keywords[0]는 관련도가 아니라 매칭 순서라 본문에 스친 단어가 라벨로 붙는
+// 오류가 있었다(§1-6). 헤드라인에 실제 등장하는 키워드를 우선하고, 없으면 슬롯 내
+// 반복 빈도로 대체하며, 그래도 없으면 null(틀린 라벨보다 무라벨이 낫다).
+function pickSlotHashtag(headline: string, articles: ArticleRow[]): string | null {
+  const inHeadline = articles
+    .flatMap(a => a.matchedKeywords)
+    .filter(k => headline.includes(k))
+    .sort((a, b) => b.length - a.length)
+
+  if (inHeadline.length > 0) return inHeadline[0]
+
+  const freq = new Map<string, number>()
+  for (const a of articles) {
+    for (const k of a.matchedKeywords) freq.set(k, (freq.get(k) ?? 0) + 1)
+  }
+  let best: string | null = null
+  let bestCount = 0
+  for (const [k, count] of freq) {
+    if (count >= 2 && count > bestCount) { best = k; bestCount = count }
   }
   return best
 }
@@ -259,13 +349,25 @@ function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
   if (articles.length === 0) return []
 
   const uf = new UnionFind(articles.length)
+
+  // §2-2: 크롤러가 수집 시점에 이미 판정한 "같은 기사"(cluster_id)를 union-find 초기화
+  // 직전에 무조건 묶는다. 대표는 cluster_id=null(키=자기 contentId), 멤버는 대표 id를
+  // 가리키므로(키=대표 contentId) 같은 클러스터 기사끼리는 반드시 같은 키로 만난다.
+  const clusterKeyToIndex = new Map<string, number>()
+  articles.forEach((a, i) => {
+    const key = a.clusterId ?? a.contentId
+    const first = clusterKeyToIndex.get(key)
+    if (first !== undefined) uf.union(first, i)
+    else clusterKeyToIndex.set(key, i)
+  })
+
   for (let i = 0; i < articles.length; i++) {
     for (let j = i + 1; j < articles.length; j++) {
       const sim = similarity(articles[i].normTitle, articles[j].normTitle)
-      const sharedEntity = articles[i].entities.some(
-        e => e.concrete && articles[j].entities.some(e2 => e2.concrete && e2.name === e.name)
-      )
-      if (sim >= SUBCLUSTER_SIM || sharedEntity) uf.union(i, j)
+      const sharedEntity = articles[i].entityNames.some(name => articles[j].entityNames.includes(name))
+      // §2-3: 엔티티 공유는 단독 병합 트리거가 아니라 임계를 낮춰주는 보조 신호로만 쓴다
+      // (블롭 방지 — 지시서 548 §1-3).
+      if (sim >= SUBCLUSTER_SIM || (sharedEntity && sim >= SUBCLUSTER_SIM_WITH_ENTITY)) uf.union(i, j)
     }
   }
 
@@ -288,7 +390,7 @@ function subclusterIssue(articles: ArticleRow[]): SubclusterResult[] {
         headline: representative.title,
         contentId: representative.contentId,
         entityChip: dominantEntity(group),
-        topHashtag: representative.matchedKeywords[0] ?? null,
+        topHashtag: pickSlotHashtag(representative.title, group),
         count: group.length,
         todayCount: group.length,
         contentIds: group.map(a => a.contentId),
@@ -325,9 +427,12 @@ function isDuplicateEvent(a: TrendingEvent, b: TrendingEvent): boolean {
   // 핵심어 겹침이 아무리 높아도 병합 금지(예: 삼성전자 vs SK하이닉스).
   if (companyA !== null && companyB !== null && companyA !== companyB) return false
 
-  // 새 신호는 "같은 회사로 확인된 쌍"에만 적용 — 회사 미인식 조합은 핵심어 겹침
-  // 단독으로 병합시키지 않는다(위 기존 헤드라인 유사도 로직만으로 판단).
-  if (companyA === null || companyB === null) return false
+  // §2-7: 사전이 영원히 완전할 수 없다(예: SK AX·SAP — 미등재). 회사를 하나라도 못
+  // 알아본 쌍은 무조건 병합 금지 대신, "같은 회사로 확인된 쌍"보다 훨씬 엄격한 임계로
+  // 핵심어 겹침만 본다.
+  if (companyA === null || companyB === null) {
+    return keywordOverlap(a.headline, b.headline) >= UNKNOWN_COMPANY_OVERLAP_SIM
+  }
 
   return keywordOverlap(a.headline, b.headline) >= HEADLINE_KEYWORD_OVERLAP_SIM
 }
@@ -338,25 +443,27 @@ function isDuplicateEvent(a: TrendingEvent, b: TrendingEvent): boolean {
  * 않아, 같은 사건이 여러 이슈로 쪼개진 채 backfill로 각각 노출되는 문제가 있었다(§2).
  * 같은 사건으로 판정되면 recentCount가 더 높은 쪽만 남긴다.
  */
-function collapseDuplicateEvents<T extends TrendingEvent>(events: T[]): T[] {
-  const kept: T[] = []
+function collapseDuplicateEvents(events: InternalEvent[]): InternalEvent[] {
+  const kept: InternalEvent[] = []
   for (const ev of events) {
     const dupIndex = kept.findIndex(k => isDuplicateEvent(k, ev))
     if (dupIndex === -1) {
       kept.push(ev)
-    } else if (compareByRecentCountDesc(ev, kept[dupIndex]) < 0) {
+    } else if (compareByScoreDesc(ev, kept[dupIndex]) < 0) {
       kept[dupIndex] = ev
     }
   }
   return kept
 }
 
-/** recentCount 내림차순, 동률 시 changePct 내림차순(null은 최우선) — 특정사건·degrade 항목 통합 정렬에 공용. */
-function compareByRecentCountDesc(a: TrendingEvent, b: TrendingEvent): number {
-  if (b.recentCount !== a.recentCount) return b.recentCount - a.recentCount
-  const aScore = a.changePct === null ? Infinity : a.changePct
-  const bScore = b.changePct === null ? Infinity : b.changePct
-  return bScore - aScore
+/** score 내림차순 → sourceCount desc → todayCount desc → changePct desc(null 최우선) (§2-5). */
+function compareByScoreDesc(a: InternalEvent, b: InternalEvent): number {
+  if (b.score !== a.score) return b.score - a.score
+  if (b.sourceCount !== a.sourceCount) return b.sourceCount - a.sourceCount
+  if (b.todayCount !== a.todayCount) return b.todayCount - a.todayCount
+  const aPct = a.changePct === null ? Infinity : a.changePct
+  const bPct = b.changePct === null ? Infinity : b.changePct
+  return bPct - aPct
 }
 
 // ─── §3 LLM 의미 기반 근접중복 병합 ───────────────────────────────────────────
@@ -374,7 +481,7 @@ function compareByRecentCountDesc(a: TrendingEvent, b: TrendingEvent): number {
 // 감쌈) 실패하면 무조건 LLM 이전(§2 휴리스틱만 적용한) heuristicPrimary로 폴백한다.
 // 병합 후 결과가 비정상적으로 비었는데 heuristicPrimary엔 항목이 있는 경우도 같은
 // 폴백 대상 — 화면이 깨지거나 빈 채로 나가지 않게 하는 것이 최우선이다.
-const TRENDING_LLM_GROUP_TOP_N = 30
+const TRENDING_LLM_GROUP_TOP_N = 40
 const TRENDING_LLM_TASK: LlmTask = 'classify'
 
 interface LlmGroupCandidate {
@@ -462,7 +569,7 @@ async function groupEventsByLlm(candidates: LlmGroupCandidate[]): Promise<number
  * 이중집계되지 않도록 반드시 content_id 기준 distinct dedup(합산 금지) — 건수 = distinct
  * content_id 개수. 대표 헤드라인/해시태그는 멤버 중 오늘건수 최다(동률이면 최신 collectedAt).
  */
-function mergeEventGroup(members: InternalEvent[]): InternalEvent {
+function mergeEventGroup(members: InternalEvent[], sourceKeyOf: (contentId: string) => string | null): InternalEvent {
   const contentIdSet = new Set<string>()
   const issueIdSet = new Set<string>()
   for (const m of members) {
@@ -476,6 +583,16 @@ function mergeEventGroup(members: InternalEvent[]): InternalEvent {
   })[0]
 
   const distinctCount = contentIdSet.size
+  // §2-5: sourceCount는 반드시 contentIds 합집합에서 재계산(멤버 값 단순 합산 금지 —
+  // 같은 매체가 이중집계된다). burst는 멤버 최댓값.
+  const sourceSet = new Set<string>()
+  for (const id of contentIdSet) {
+    const key = sourceKeyOf(id)
+    if (key) sourceSet.add(key)
+  }
+  const sourceCount = sourceSet.size
+  const burst = Math.max(...members.map(m => m.burst))
+  const score = computeScore(sourceCount, burst)
 
   return {
     ...representative,
@@ -483,6 +600,9 @@ function mergeEventGroup(members: InternalEvent[]): InternalEvent {
     todayCount: distinctCount,
     contentIds: [...contentIdSet],
     issueIds: [...issueIdSet],
+    sourceCount,
+    burst,
+    score,
   }
 }
 
@@ -496,7 +616,10 @@ function mergeEventGroup(members: InternalEvent[]): InternalEvent {
  * LLM 호출·파싱·병합 전체를 감싼 try/catch에서 예외가 나거나, 병합 결과가 비정상적으로
  * 비어있으면(원본엔 항목이 있는데) 전부 heuristicPrimary로 폴백한다(경고 로그 남김).
  */
-async function buildPrimaryEvents(specificEvents: InternalEvent[]): Promise<InternalEvent[]> {
+async function buildPrimaryEvents(
+  specificEvents: InternalEvent[],
+  sourceKeyOf: (contentId: string) => string | null,
+): Promise<InternalEvent[]> {
   const heuristicDedup = (pool: InternalEvent[]): InternalEvent[] => {
     const result: InternalEvent[] = []
     for (const ev of pool) {
@@ -523,13 +646,13 @@ async function buildPrimaryEvents(specificEvents: InternalEvent[]): Promise<Inte
     const groups = await groupEventsByLlm(llmCandidates)
     if (!groups) return heuristicPrimary
 
-    const mergedTop = groups.map(idxs => mergeEventGroup(idxs.map(i => top[i])))
+    const mergedTop = groups.map(idxs => mergeEventGroup(idxs.map(i => top[i]), sourceKeyOf))
 
     const primary = [...mergedTop]
     for (const ev of rest) {
       if (!primary.some(k => isDuplicateEvent(k, ev))) primary.push(ev)
     }
-    primary.sort(compareByRecentCountDesc)
+    primary.sort(compareByScoreDesc)
 
     if (primary.length === 0) {
       console.warn('[trending] LLM 병합 결과가 비어 있어(원본엔 항목 있음) 휴리스틱 이벤트로 폴백')
@@ -548,57 +671,56 @@ async function buildPrimaryEvents(specificEvents: InternalEvent[]): Promise<Inte
 
 // ─── 메인 계산 (unstable_cache로 래핑) ────────────────────────────────────────
 
-interface IssueArticleRow {
-  issue_id: string
+interface BasisArticleRow {
   content_id: string
   title: string
   collected_at: string
-  entity_name: string | null
-  entity_type: string | null
   matched_keywords: string[] | null
+  cluster_id: string | null
+  source_key: string | null
+  source_trust_tier: number | null
+  issue_ids: string[] | null
+  entity_names: string[] | null
 }
 
-const ISSUE_ARTICLES_PAGE_SIZE = 1000 // Supabase/PostgREST 기본 max-rows — 단일 .limit()로 이 이상 요청해도 서버가 조용히 잘라서 반환
-const ISSUE_ARTICLES_MAX_PAGES = 10 // 안전장치: 최대 10 * 1000 = 10000건까지만 페이지네이션(무한루프 방지)
+const BASIS_ARTICLES_PAGE_SIZE = 1000 // Supabase/PostgREST 기본 max-rows — 단일 .limit()로 이 이상 요청해도 서버가 조용히 잘라서 반환
+const BASIS_ARTICLES_MAX_PAGES = 10 // 안전장치: 최대 10 * 1000 = 10000건까지만 페이지네이션(무한루프 방지). 실측 2,318건이라 안 걸림.
 
 /**
- * trending_issue_articles 뷰에서 issueIds에 매칭되는 행을 range() 페이지네이션으로 전부 가져온다.
- * 과거 단일 `.limit(5000)` 호출은 PostgREST 기본 max-rows(1000)에 조용히 잘리고 정렬 기준도
- * 없어, 이슈 후보군(31개)에 실제 매칭되는 3026건 중 1000건만 임의로(=최신순 보장 없이) 반환하던
- * 실측 버그(2026-07-12) — 같은 이슈라도 어느 기사가 이 1000건 표본에 포함되는지가 매 요청마다
- * 불안정해서 recentCount·순위·asOfDateKst가 실제 데이터 변화 없이도 흔들릴 수 있었다.
- * collected_at desc 정렬 + range()로 대체해, 잘리더라도 최소한 최신순으로 결정론적으로 잘리게 한다.
+ * trending_basis_articles 뷰(지시서 548 선행 SQL)에서 72h 창의 기사를 전부 기사 단위(1행=1건)로
+ * 가져온다. 예전 trending_issue_articles는 이슈·엔티티 fan-out으로 같은 창에서 158,384행이
+ * 나와 10,000행 캡에 걸려 실제 데이터의 6%만 보고 있었다(§1-1) — 이 뷰가 issue_ids·
+ * entity_names를 배열로 접어 그 fan-out을 없앴다.
  */
-async function fetchAllIssueArticles(
+async function fetchAllBasisArticles(
   supabase: ReturnType<typeof createPublicClient>,
-  issueIds: string[],
-): Promise<{ rows: IssueArticleRow[]; error: boolean; message?: string }> {
-  const rows: IssueArticleRow[] = []
+): Promise<{ rows: BasisArticleRow[]; truncated: boolean; error: boolean; message?: string }> {
+  const rows: BasisArticleRow[] = []
 
-  for (let page = 0; page < ISSUE_ARTICLES_MAX_PAGES; page++) {
-    const from = page * ISSUE_ARTICLES_PAGE_SIZE
-    const to = from + ISSUE_ARTICLES_PAGE_SIZE - 1
+  for (let page = 0; page < BASIS_ARTICLES_MAX_PAGES; page++) {
+    const from = page * BASIS_ARTICLES_PAGE_SIZE
+    const to = from + BASIS_ARTICLES_PAGE_SIZE - 1
 
     const { data, error } = await supabase
-      .from('trending_issue_articles')
-      .select('issue_id, content_id, title, collected_at, entity_name, entity_type, matched_keywords')
-      .in('issue_id', issueIds)
+      .from('trending_basis_articles')
+      .select('*')
       .order('collected_at', { ascending: false })
       .range(from, to)
 
-    if (error || !data) return { rows, error: true, message: error?.message }
-    rows.push(...(data as IssueArticleRow[]))
+    if (error || !data) return { rows, truncated: false, error: true, message: error?.message }
+    rows.push(...(data as BasisArticleRow[]))
 
-    if (data.length < ISSUE_ARTICLES_PAGE_SIZE) return { rows, error: false }
+    if (data.length < BASIS_ARTICLES_PAGE_SIZE) return { rows, truncated: false, error: false }
 
-    if (page === ISSUE_ARTICLES_MAX_PAGES - 1) {
-      console.warn(
-        `[trending] issue_articles 페이지네이션 안전장치 도달 — ${ISSUE_ARTICLES_MAX_PAGES * ISSUE_ARTICLES_PAGE_SIZE}건 초과 가능성, 이후 데이터는 누락된 채로 계산됨`,
+    if (page === BASIS_ARTICLES_MAX_PAGES - 1) {
+      console.error(
+        `[trending] basis_articles 페이지네이션 안전장치 도달 — ${BASIS_ARTICLES_MAX_PAGES * BASIS_ARTICLES_PAGE_SIZE}건 초과 가능성, 이후 데이터는 누락된 채로 계산됨`,
       )
+      return { rows, truncated: true, error: false }
     }
   }
 
-  return { rows, error: false }
+  return { rows, truncated: false, error: false }
 }
 
 export type TrendingComputeResult =
@@ -621,13 +743,13 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   }
   const candidates = (candidateData ?? []) as TrendingIssueRow[]
   if (candidates.length === 0) {
-    return { ok: true, value: { events: [], asOfDateKst: getKstDateString() } }
+    return { ok: true, value: { events: [], asOfDateKst: getKstDateString(), truncated: false } }
   }
 
-  const issueIds = candidates.map(c => c.issue_id)
+  const issueIdSet = new Set(candidates.map(c => c.issue_id))
 
-  // trending_issue_articles 뷰는 이미 status='published' & 72h 창으로 필터링됨(2026-07-08c/10 SQL).
-  const { rows, error: rowsErr, message: rowsErrMessage } = await fetchAllIssueArticles(supabase, issueIds)
+  // trending_basis_articles 뷰는 이미 status='published' & 72h 창으로 필터링됨(지시서 548 선행 SQL).
+  const { rows, truncated, error: rowsErr, message: rowsErrMessage } = await fetchAllBasisArticles(supabase)
 
   if (rowsErr) {
     return { ok: false, stage: 'trending_issue_articles', error: rowsErrMessage ?? '원인 미상' }
@@ -638,7 +760,7 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   // 자동 선정한다. 직전의 "무조건 오늘 고정"(2026-07-13 결정)은 크론 전 새벽엔 항상
   // events=[]인 빈 화면만 뜨는 문제가 있었다 — 실측(2026-07-14 00시대 배포 직후):
   // 오늘자 기사 0건 → "최근 급상승 이슈가 없습니다"만 노출.
-  // rows는 collected_at desc 정렬로 페이지네이션되어 있어(fetchAllIssueArticles),
+  // rows는 collected_at desc 정렬로 페이지네이션되어 있어(fetchAllBasisArticles),
   // rows[0]이 후보 풀 전체의 최신 기사 — 오늘 기사가 하나도 없으면 그 기사의 KST 날짜를
   // 기준일로 쓴다. 순위·건수·대표기사는 반드시 기준일 "하루"만 필터해서 계산한다
   // (>= 만으로 필터하면 72h 윈도우 특성상 기준일보다 오래된 기사까지 섞여 들어온다).
@@ -659,43 +781,57 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   const basisDayEndIso = new Date(new Date(basisDayStartIso).getTime() + 24 * 60 * 60 * 1000).toISOString()
   const inBasisDay = (collectedAt: string) => collectedAt >= basisDayStartIso && collectedAt < basisDayEndIso
 
-  // (issue_id, content_id, entity) 그레인 → 이슈별 기사 단위로 엔티티 fan-in.
-  // content_entities left join으로 한 기사에 엔티티가 여러 개면 뷰에서 같은 content_id가
-  // 행으로 중복 fan-out된다(실측 확인, 2026-07-12). Map을 issue_id→content_id로 이중 키잉해
-  // 이미 존재하는 content_id는 재생성 없이 entities 배열에만 추가하므로, 이후 subclusterIssue의
-  // count·todayCount 계산은 항상 distinct 기사 수 기준 — 별도 dedupe 불필요.
-  const byIssue = new Map<string, Map<string, ArticleRow>>()
-  for (const row of rows as IssueArticleRow[]) {
-    if (!byIssue.has(row.issue_id)) byIssue.set(row.issue_id, new Map())
-    const articles = byIssue.get(row.issue_id)!
+  // §2-1: 뷰가 이미 기사 1건 = 1행이므로 content_id → ArticleRow 단일 Map 하나면 충분하다
+  // (한 기사가 여러 이슈에 속해도 ArticleRow 객체는 1개만 존재 — 중복 집계 방지).
+  // issue_id → content_id[] 인덱스는 row.issue_ids를 후보 이슈 집합과 교집합해서 만든다
+  // (예전처럼 .in('issue_id', ...) 서버 필터가 없으므로 여기서 판정).
+  const articlesById = new Map<string, ArticleRow>()
+  const issueToContentIds = new Map<string, string[]>()
 
-    if (!articles.has(row.content_id)) {
-      articles.set(row.content_id, {
+  for (const row of rows) {
+    if (!articlesById.has(row.content_id)) {
+      articlesById.set(row.content_id, {
         contentId: row.content_id,
         title: row.title,
         normTitle: normalizeTitle(row.title),
         collectedAt: row.collected_at,
-        entities: [],
+        entityNames: row.entity_names ?? [],
         matchedKeywords: row.matched_keywords ?? [],
+        clusterId: row.cluster_id,
+        sourceKey: row.source_key,
       })
     }
-    if (row.entity_name && row.entity_type) {
-      articles.get(row.content_id)!.entities.push({
-        name: row.entity_name,
-        concrete: CONCRETE_ENTITY_TYPES.has(row.entity_type),
-      })
+    for (const issueId of row.issue_ids ?? []) {
+      if (!issueIdSet.has(issueId)) continue
+      if (!issueToContentIds.has(issueId)) issueToContentIds.set(issueId, [])
+      issueToContentIds.get(issueId)!.push(row.content_id)
     }
   }
 
+  const sourceKeyOf = (contentId: string): string | null => articlesById.get(contentId)?.sourceKey ?? null
+
+  function computeSourceCount(contentIds: string[]): number {
+    const sources = new Set<string>()
+    for (const id of contentIds) {
+      const key = sourceKeyOf(id)
+      if (key) sources.add(key)
+    }
+    return sources.size
+  }
+
   const specificEvents: InternalEvent[] = []
-  // 이슈별 changePct/changeFlag/기준일 건수 — backfill 단계에서 재사용(중복 계산 방지).
-  const issueChange = new Map<string, { changePct: number | null; changeFlag: 'surge' | null; todayCount: number }>()
+  // 이슈별 changePct/changeFlag/기준일 건수/burst — 여러 지점에서 재사용(중복 계산 방지).
+  const issueChange = new Map<
+    string,
+    { changePct: number | null; changeFlag: 'surge' | null; todayCount: number; burst: number }
+  >()
 
   for (const issue of candidates) {
     // "오늘의 급상승"은 기준일(basisDateKst) 하루 기사만으로 구성한다 — 클러스터링·건수·
     // 대표기사 이전에 기준일 기사만 남기고, 이후 모든 계산(subcluster size = 기준일 건수)은
     // 그 하루 기준. 72h 윈도우로 들어온 다른 날짜 기사는 여기서 전부 제외된다.
-    const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
+    const articles = (issueToContentIds.get(issue.issue_id) ?? [])
+      .map(id => articlesById.get(id)!)
       .filter(a => inBasisDay(a.collectedAt))
     const issueTodayCount = articles.length
     // 기준일 기사가 0건인 이슈는 순위 진입 자체를 막는다.
@@ -706,12 +842,14 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
       : (issue.recent_count > 0 ? null : 0)
     const isSurge = issue.recent_count > 0 && (changePct === null || changePct > SURGE_CHANGE_PCT_THRESHOLD)
     const changeFlag = isSurge ? 'surge' as const : null
-    issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount })
+    const burst = computeBurst(issue.recent_count, issue.prev_count)
+    issueChange.set(issue.issue_id, { changePct, changeFlag, todayCount: issueTodayCount, burst })
 
     let hasSubcluster = false
     for (const sc of subclusterIssue(articles)) {
       hasSubcluster = true
 
+      const sourceCount = computeSourceCount(sc.contentIds)
       specificEvents.push({
         issueId: issue.issue_id,
         contentId: sc.contentId,
@@ -725,113 +863,62 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
         contentIds: sc.contentIds,
         issueIds: [issue.issue_id],
         representativeCollectedAt: sc.representativeCollectedAt,
+        sourceCount,
+        burst,
+        score: computeScore(sourceCount, burst),
       })
     }
 
     // 이슈 내부에 유사헤드라인 2건 이상 서브클러스터가 없어도(예: 같은 사건이 issue_id별로
     // 어휘가 다른 단일기사 1건씩으로 쪼개진 경우 — 실측, 2026-07-13: SK하이닉스 나스닥 상장이
     // 이렇게 여러 issue_id로 쪼개져 여러 칸 노출), 이 이슈 대표 1건을 §3 LLM 후보 풀에 반드시
-    // 포함시킨다. 이걸 빠뜨리면 이런 이슈들은 전부 backfill(§main degrade) 경로로만 채워져
-    // LLM이 아예 보지 못하고, 서로 다른 issue_id로 쪼개진 같은 사건을 계속 놓치게 된다.
+    // 포함시킨다. 이걸 빠뜨리면 이런 이슈들은 서로 다른 issue_id로 쪼개진 같은 사건을 LLM이
+    // 아예 보지 못하고 계속 놓치게 된다.
     if (!hasSubcluster) {
       const sorted = [...articles].sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
       const representative = sorted[0]
+      const contentIds = articles.map(a => a.contentId)
+      const sourceCount = computeSourceCount(contentIds)
       specificEvents.push({
         issueId: issue.issue_id,
         contentId: representative.contentId,
         headline: representative.title,
         entityChip: dominantEntity(articles),
-        topHashtag: representative.matchedKeywords[0] ?? null,
+        topHashtag: pickSlotHashtag(representative.title, articles),
         recentCount: issueTodayCount,
         todayCount: issueTodayCount,
         changePct,
         changeFlag,
-        contentIds: articles.map(a => a.contentId),
+        contentIds,
         issueIds: [issue.issue_id],
         representativeCollectedAt: representative.collectedAt,
+        sourceCount,
+        burst,
+        score: computeScore(sourceCount, burst),
       })
     }
   }
 
-  specificEvents.sort(compareByRecentCountDesc)
+  specificEvents.sort(compareByScoreDesc)
 
-  const primary = await buildPrimaryEvents(specificEvents)
+  const primary = await buildPrimaryEvents(specificEvents, sourceKeyOf)
 
-  const final = primary.slice(0, TRENDING_LIMIT)
+  // §2-6: 10칸 강제 채우기(backfill) 폐지 — 게이트 통과 못 하면 억지로 채우지 않는다.
+  // 노이즈 게이트(§2-5): 최소 MIN_SOURCE_COUNT개 매체가 다룬 사건만 순위에 올린다.
+  const gated = primary.filter(ev => ev.sourceCount >= MIN_SOURCE_COUNT)
+  const final = gated.slice(0, TRENDING_LIMIT)
 
-  // 최소 노출 개수 미달 시 이슈 전체 대표 헤드라인으로 backfill. content_id·정규화 헤드라인
-  // 기준으로 전역 distinct 보장 — 같은 기사가 여러 이슈에 교차 태깅돼도 최종 리스트엔 1번만.
-  // 한 이슈의 최신 기사가 이미 쓰였으면 그 이슈의 다음 최신 기사로, 그래도 없으면 다음 이슈로.
-  if (final.length < MIN_DISPLAY) {
-    // §3 LLM 병합 슬롯은 여러 issue_id를 하나로 흡수할 수 있어, 대표 issueId 하나만으로
-    // "이미 씀"을 판정하면 병합돼 사라진 다른 issue_id가 backfill로 다시 노출될 수 있다
-    // (재발 방지) — 슬롯이 소비한 issueIds 전체를 used 처리.
-    const usedIssueIds = new Set(final.flatMap(f => f.issueIds))
-    const usedContentIds = new Set<string>()
-    const usedHeadlines = new Set(final.map(f => normalizeTitle(f.headline)))
-
-    // issueChange엔 issueTodayCount>=1인 이슈만 들어있다(위 이슈 레벨 게이트) — degrade
-    // backfill도 기준일 기사가 아예 없는 이슈로는 채우지 않는다(그게 원래 버그의 원인).
-    // 정렬은 72h recent_count가 아니라 기준일 건수(todayCount) 기준 — 순위는 기준일 건수만 사용.
-    const backfillIssues = candidates
-      .filter(c => !usedIssueIds.has(c.issue_id) && issueChange.has(c.issue_id))
-      .sort((a, b) =>
-        (issueChange.get(b.issue_id)!.todayCount) - (issueChange.get(a.issue_id)!.todayCount))
-
-    for (const issue of backfillIssues) {
-      if (final.length >= MIN_DISPLAY) break
-
-      const articles = [...(byIssue.get(issue.issue_id)?.values() ?? [])]
-        .filter(a => inBasisDay(a.collectedAt))
-        .sort((a, b) => b.collectedAt.localeCompare(a.collectedAt))
-
-      // 대표는 반드시 기준일 기사여야 한다 — 이미 다른 항목에 쓰여 소진됐으면(이 이슈의 유일한
-      // 기준일 기사가 다른 특정사건에 이미 대표로 쓰인 경우 등) 오래된 기사로 대체하지 않고
-      // 이 이슈는 degrade 노출에서 통째로 제외한다(제목길이 대표선정 버그와 같은 성격 재발 방지).
-      const todayArticle = articles.find(
-        a => !usedContentIds.has(a.contentId) && !usedHeadlines.has(a.normTitle)
-      )
-      if (!todayArticle) continue
-
-      const change = issueChange.get(issue.issue_id) ?? { changePct: null, changeFlag: null, todayCount: 0 }
-      final.push({
-        issueId: issue.issue_id,
-        contentId: todayArticle.contentId,
-        headline: todayArticle.title,
-        entityChip: dominantEntity([todayArticle]),
-        topHashtag: todayArticle.matchedKeywords[0] ?? null,
-        recentCount: change.todayCount, // 이슈 전체 기준일 건수(단일 기사 아님) — degrade는 "이슈 대표" 의미. 순위는 기준일 건수 기준이므로 recentCount에도 이 값을 넣는다.
-        todayCount: change.todayCount, // 이슈 전체 기사 중 기준일 발행분(단일 기사 아님) — degrade는 이슈 대표 의미
-        changePct: change.changePct,
-        changeFlag: change.changeFlag,
-        contentIds: articles.map(a => a.contentId), // 이슈 전체 기준일자 기사 id(recentCount와 정합)
-        issueIds: [issue.issue_id],
-        representativeCollectedAt: todayArticle.collectedAt,
-      })
-      usedContentIds.add(todayArticle.contentId)
-      usedHeadlines.add(todayArticle.normTitle)
-    }
-
-    // degrade 항목은 이슈 전체 recentCount를 쓰므로 특정사건보다 커질 수 있다 — 단순히 뒤에
-    // 이어붙이기만 하면 "특정사건이 항상 앞"이 되어 recentCount 내림차순이 깨진다(실측 확인,
-    // 2026-07-12: recentCount=2인 특정사건이 recentCount=54인 degrade 항목보다 위에 노출됨).
-    // 전체를 다시 정렬해 최종 리스트가 항상 recentCount 내림차순을 유지하게 한다.
-    final.sort(compareByRecentCountDesc)
-  }
-
-  // §2: primary 단계의 isDuplicateEvent 억제는 backfill(degrade) 항목엔 적용되지 않았으므로,
-  // final(primary+backfill) 전체에 대해 near-dup 붕괴 패스를 한 번 더 돌린다. recentCount가
-  // 더 높은 쪽만 남기고, 정렬은 compareByRecentCountDesc 유지.
   const deduped = collapseDuplicateEvents(final)
-  deduped.sort(compareByRecentCountDesc)
+  deduped.sort(compareByScoreDesc)
 
-  return { ok: true, value: { events: deduped, asOfDateKst: basisDateKst } }
+  return { ok: true, value: { events: deduped, asOfDateKst: basisDateKst, truncated } }
 }
 
 /**
  * 홈 "실시간 급상승 키워드" — `trending_keywords` 뷰(72h 발행건수 후보) 위에
  * 이슈 내부 서브이벤트 클러스터링(§5) + LLM 의미 병합(§3)을 얹어 특정 사건 단위로 반환.
- * 특정 사건이 MIN_DISPLAY 미만이면 degrade(이슈 전체) 항목으로 backfill.
+ * MIN_SOURCE_COUNT(최소 매체 수) 게이트를 통과 못 하면 억지로 채우지 않는다(지시서 548
+ * §2-6 — 과거 10칸 강제 backfill은 폐지).
  * 뷰가 아직 적용되지 않았으면(42P01/PGRST205 등 조회 실패) null — 호출부에서 폴백 처리.
  * `asOfDateKst`는 기준일(basisDateKst) — 오늘(KST)에 후보 기사가 있으면 오늘, 없으면
  * 데이터가 있는 가장 최근 직전 날짜로 자동 전환된다(2026-07-14 재설계). 순위·건수·
@@ -862,6 +949,6 @@ async function computeTrendingEventsOrNull(): Promise<TrendingEventsResult | nul
 
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEventsOrNull,
-  ['trending-events-v8'],
+  ['trending-events-v9'],
   { revalidate: CACHE_REVALIDATE_SECONDS, tags: ['trending-events'] },
 )
