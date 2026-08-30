@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import JobRunsTable, { type JobRunRow } from '@/components/admin/JobRunsTable'
-import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
+import { evaluateCronStatus, EXPECTED_CRONS, type CronTone } from '@/lib/jobs/expected-crons'
 import { cn } from '@/lib/utils'
 
 const STATUS_FILTERS: { value: string; label: string }[] = [
@@ -81,28 +81,34 @@ export default async function JobRunsPanel({ searchParams }: JobRunsPanelProps) 
 
   // 292 — 계측 누락("EXPECTED_CRONS 에 있는데 job_runs 에 기록이 없음") + "안 돈 크론"
   // (기록은 있는데 maxAgeHours 초과) 을 한 장치로 감지. skipped 도 "돌았다"로 친다(§4 가드).
-  type CronTone = 'ok' | 'stale' | 'missing'
-  interface CronStatus { key: string; label: string; tone: CronTone; lastAt: string | null }
+  interface CronStatus { key: string; label: string; tone: CronTone; lastAt: string | null; lastSuccessAt: string | null }
   let cronStatuses: CronStatus[] = []
   if (ready) {
     // Date.now() purity 규칙 회피 (§120 cutoffDate 패턴과 동일) — 루프 밖에서 한 번만 스냅샷.
     const nowMs = new Date().getTime()
     cronStatuses = await Promise.all(
       EXPECTED_CRONS.map(async (c) => {
-        const { data: row } = await admin
-          .from('job_runs')
-          .select('started_at')
-          .eq('job_key', c.key)
-          .order('started_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        const lastAt = (row as { started_at: string } | null)?.started_at ?? null
-        let tone: CronTone = 'missing'
-        if (lastAt) {
-          const ageHours = (nowMs - new Date(lastAt).getTime()) / 3_600_000
-          tone = ageHours <= c.maxAgeHours ? 'ok' : 'stale'
-        }
-        return { key: c.key, label: c.label, tone, lastAt }
+        const [lastRunResult, lastSuccessResult] = await Promise.all([
+          admin
+            .from('job_runs')
+            .select('started_at, status')
+            .eq('job_key', c.key)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          admin
+            .from('job_runs')
+            .select('started_at, status')
+            .eq('job_key', c.key)
+            .in('status', ['succeeded', 'skipped'])
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ])
+        const lastAt = (lastRunResult.data as { started_at: string } | null)?.started_at ?? null
+        const lastSuccessAt = (lastSuccessResult.data as { started_at: string } | null)?.started_at ?? null
+        const { tone } = evaluateCronStatus(c, lastAt, lastSuccessAt, nowMs)
+        return { key: c.key, label: c.label, tone, lastAt, lastSuccessAt }
       })
     )
   }
@@ -127,12 +133,14 @@ export default async function JobRunsPanel({ searchParams }: JobRunsPanelProps) 
                     'text-xs',
                     c.tone === 'ok' && 'text-muted-foreground',
                     c.tone === 'stale' && 'text-amber-600',
+                    c.tone === 'failing' && 'text-destructive',
                     c.tone === 'missing' && 'text-destructive'
                   )}
                 >
                   {c.tone === 'ok' ? '●' : '▲'} {c.label}
                   {c.tone === 'missing' && ' — 계측 안 됨 또는 한 번도 안 돎'}
                   {c.tone === 'stale' && ` — 안 돈 지 오래됨 (마지막: ${formatKST(c.lastAt)})`}
+                  {c.tone === 'failing' && ` — 연속 실패 (마지막 성공: ${formatKST(c.lastSuccessAt)})`}
                 </p>
               ))}
             </div>

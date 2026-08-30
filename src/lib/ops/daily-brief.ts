@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
+import { evaluateCronStatus, EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
 import {
   DEFAULT_MONTHLY_TOKEN_LIMIT,
   monthlyBudget,
@@ -46,8 +46,9 @@ export interface TrendMetric extends DataPoint<number> {
 export interface CronStatus {
   key: string
   label: string
-  tone: 'ok' | 'stale' | 'missing'
+  tone: 'ok' | 'stale' | 'missing' | 'failing'
   lastAt: string | null
+  lastSuccessAt: string | null
   maxAgeHours: number
 }
 
@@ -324,23 +325,31 @@ async function gatherCronStatuses(
   now: Date
 ): Promise<DataPoint<CronStatus[]>> {
   const rows = await Promise.all(EXPECTED_CRONS.map(async (cron) => {
-    const result = await safeData<{ started_at: string }>(
-      `cron ${cron.key}`,
-      admin
-        .from('job_runs')
-        .select('started_at')
-        .eq('job_key', cron.key)
-        .order('started_at', { ascending: false })
-        .limit(1)
-    )
-    if (!result.available) return { available: false as const, status: null }
-    const lastAt = result.value[0]?.started_at ?? null
-    const ageHours = lastAt ? (now.getTime() - new Date(lastAt).getTime()) / 3_600_000 : null
-    const tone: CronStatus['tone'] = lastAt === null
-      ? 'missing'
-      : ageHours !== null && ageHours > cron.maxAgeHours
-        ? 'stale'
-        : 'ok'
+    const [lastRunResult, lastSuccessResult] = await Promise.all([
+      safeData<{ started_at: string; status: string }>(
+        `cron ${cron.key} 마지막 실행`,
+        admin
+          .from('job_runs')
+          .select('started_at, status')
+          .eq('job_key', cron.key)
+          .order('started_at', { ascending: false })
+          .limit(1)
+      ),
+      safeData<{ started_at: string; status: string }>(
+        `cron ${cron.key} 마지막 성공`,
+        admin
+          .from('job_runs')
+          .select('started_at, status')
+          .eq('job_key', cron.key)
+          .in('status', ['succeeded', 'skipped'])
+          .order('started_at', { ascending: false })
+          .limit(1)
+      ),
+    ])
+    if (!lastRunResult.available || !lastSuccessResult.available) return { available: false as const, status: null }
+    const lastAt = lastRunResult.value[0]?.started_at ?? null
+    const lastSuccessAt = lastSuccessResult.value[0]?.started_at ?? null
+    const { tone } = evaluateCronStatus(cron, lastAt, lastSuccessAt, now.getTime())
     return {
       available: true as const,
       status: {
@@ -348,6 +357,7 @@ async function gatherCronStatuses(
         label: cron.label,
         tone,
         lastAt,
+        lastSuccessAt,
         maxAgeHours: cron.maxAgeHours,
       },
     }
@@ -654,7 +664,9 @@ export async function gatherDailyBrief(
   if (crons.available) {
     const stale = crons.value.filter(cron => cron.tone === 'stale').length
     const missing = crons.value.filter(cron => cron.tone === 'missing').length
+    const failing = crons.value.filter(cron => cron.tone === 'failing').length
     if (missing > 0) alerts.push({ severity: 'critical', message: `cron ${missing}건 미실행` })
+    if (failing > 0) alerts.push({ severity: 'critical', message: `cron ${failing}건 연속 실패` })
     if (stale > 0) alerts.push({ severity: 'warning', message: `cron ${stale}건 주의(maxAgeHours 초과)` })
   }
   if (collected.available && collected.value === 0) {
@@ -885,6 +897,7 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
         ok: brief.crons.value.filter(cron => cron.tone === 'ok').length,
         stale: brief.crons.value.filter(cron => cron.tone === 'stale').length,
         missing: brief.crons.value.filter(cron => cron.tone === 'missing').length,
+        failing: brief.crons.value.filter(cron => cron.tone === 'failing').length,
       }
     : null
   const reviewRows = brief.collection.reviewReasons.available
@@ -904,8 +917,10 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
           cron.label,
           cron.tone === 'missing'
             ? '미실행'
-            : `주의 · 마지막 ${cron.lastAt ? formatKstDateTime(cron.lastAt) : '없음'} KST`,
-          cron.tone === 'missing' ? 'critical' : 'warning'
+            : cron.tone === 'failing'
+              ? `연속 실패 · 마지막 성공 ${cron.lastSuccessAt ? formatKstDateTime(cron.lastSuccessAt) : '없음'} KST`
+              : `주의 · 마지막 ${cron.lastAt ? formatKstDateTime(cron.lastAt) : '없음'} KST`,
+          cron.tone === 'missing' || cron.tone === 'failing' ? 'critical' : 'warning'
         )).join('') || dataRow('전체 cron', 'maxAgeHours 기준 정상')
     : dataRow('cron 상태', '데이터를 불러오지 못했습니다', 'unavailable')
   const sourceCategoryRows = brief.collection.sourceBreakdown.available
@@ -1027,7 +1042,7 @@ export function buildDailyBriefHtml(brief: DailyBrief): string {
 
         ${sectionTitle('⑧', 'cron 상태')}
         <tr><td style="padding:0 20px">
-          <div style="padding:10px 12px;background:#f3f4f6;color:#374151;font-size:12px;font-weight:700">${cronCounts ? `정상 ${cronCounts.ok} / 주의 ${cronCounts.stale} / 미실행 ${cronCounts.missing}` : '데이터를 불러오지 못했습니다'}</div>
+          <div style="padding:10px 12px;background:#f3f4f6;color:#374151;font-size:12px;font-weight:700">${cronCounts ? `정상 ${cronCounts.ok} / 주의 ${cronCounts.stale} / 미실행 ${cronCounts.missing} / 연속 실패 ${cronCounts.failing}` : '데이터를 불러오지 못했습니다'}</div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #d7dce2">${cronRows}</table>
           <div style="padding-top:8px;color:#6b7280;font-size:10px;line-height:15px">Vercel Hobby 실행 시각 오차는 이상으로 판단하지 않으며, 각 작업의 maxAgeHours 초과 여부만 사용합니다.</div>
         </td></tr>
