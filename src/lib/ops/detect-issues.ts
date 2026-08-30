@@ -4,7 +4,7 @@ import {
   monthlyBudget,
 } from '@/lib/llm/token-limit'
 import { getOpsSettings } from '@/lib/ops/settings'
-import { EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
+import { evaluateCronStatus, EXPECTED_CRONS } from '@/lib/jobs/expected-crons'
 import { STALE_RUN_REAPED_PREFIX } from '@/lib/jobs/run-job'
 
 interface Signal { fingerprint: string; category: string; severity: 'critical' | 'warning'; title: string; suspected_cause: string; recommended_action: string; impact: string; count: number }
@@ -72,7 +72,7 @@ function formatKst(iso: string): string {
 async function fetchCronLastRunAtByKey(admin: SupabaseClient): Promise<Map<string, string>> {
   const highFrequencyKeys = EXPECTED_CRONS.filter(c => c.highFrequency).map(c => c.key)
   const normalCrons = EXPECTED_CRONS.filter(c => !c.highFrequency)
-  const maxNormalMaxAgeHours = Math.max(...normalCrons.map(c => c.maxAgeHours))
+  const maxNormalMaxAgeHours = Math.max(...normalCrons.map(item => item.maxAgeHours))
   const bulkCutoff = new Date(Date.now() - maxNormalMaxAgeHours * 2 * 3_600_000).toISOString()
 
   const [bulk, ...frequent] = await Promise.all([
@@ -87,6 +87,29 @@ async function fetchCronLastRunAtByKey(admin: SupabaseClient): Promise<Map<strin
   for (const r of bulk.data ?? []) if (!lastRunAtByKey.has(r.job_key)) lastRunAtByKey.set(r.job_key, r.started_at)
   for (const res of frequent) for (const r of res.data ?? []) lastRunAtByKey.set(r.job_key, r.started_at)
   return lastRunAtByKey
+}
+
+/** 497/499 구조를 그대로 써서 job_key별 마지막 성공(succeeded/skipped)을 모은다. */
+async function fetchCronLastSuccessAtByKey(admin: SupabaseClient): Promise<Map<string, string>> {
+  const highFrequencyKeys = EXPECTED_CRONS.filter(c => c.highFrequency).map(c => c.key)
+  const normalCrons = EXPECTED_CRONS.filter(c => !c.highFrequency)
+  const maxNormalMaxAgeHours = Math.max(...normalCrons.map(item => item.maxAgeHours))
+  const bulkCutoff = new Date(Date.now() - maxNormalMaxAgeHours * 2 * 3_600_000).toISOString()
+
+  const [bulk, ...frequent] = await Promise.all([
+    admin.from('job_runs').select('job_key, started_at').in('job_key', normalCrons.map(c => c.key)).in('status', ['succeeded', 'skipped']).gte('started_at', bulkCutoff).order('started_at', { ascending: false }),
+    ...highFrequencyKeys.map(key =>
+      admin.from('job_runs').select('job_key, started_at').eq('job_key', key).in('status', ['succeeded', 'skipped']).order('started_at', { ascending: false }).limit(1),
+    ),
+  ])
+  if ((bulk.data ?? []).length >= 1000) {
+    console.warn('[운영이슈] 크론 마지막 성공 조회가 1,000행 상한에 도달했습니다.')
+  }
+
+  const lastSuccessAtByKey = new Map<string, string>()
+  for (const r of bulk.data ?? []) if (!lastSuccessAtByKey.has(r.job_key)) lastSuccessAtByKey.set(r.job_key, r.started_at)
+  for (const res of frequent) for (const r of res.data ?? []) lastSuccessAtByKey.set(r.job_key, r.started_at)
+  return lastSuccessAtByKey
 }
 
 /**
@@ -119,10 +142,10 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
       })
       continue
     }
-    const elapsedHours = (now - new Date(lastRunAt).getTime()) / 3_600_000
-    if (elapsedHours <= maxAgeHours) continue
-    const severity: Signal['severity'] = elapsedHours > maxAgeHours * 2 ? 'critical' : 'warning'
-    const roundedHours = Math.round(elapsedHours)
+    const evaluation = evaluateCronStatus({ maxAgeHours }, lastRunAt, null, now)
+    if (evaluation.tone !== 'stale') continue
+    const roundedHours = Math.round(evaluation.lastRunAgeHours ?? 0)
+    const severity: Signal['severity'] = evaluation.staleSeverity ?? 'warning'
     out.push({
       fingerprint: `cron:absent:${jobKey}`,
       category: 'cron',
@@ -137,11 +160,41 @@ function buildCronAbsenceSignals(lastRunAtByKey: Map<string, string>, now: numbe
   return out
 }
 
+function buildCronFailingSignals(
+  lastRunAtByKey: Map<string, string>,
+  lastSuccessAtByKey: Map<string, string>,
+  now: number,
+): Signal[] {
+  const out: Signal[] = []
+  for (const { key: jobKey, maxAgeHours } of EXPECTED_CRONS) {
+    const lastRunAt = lastRunAtByKey.get(jobKey) ?? null
+    const lastSuccessAt = lastSuccessAtByKey.get(jobKey) ?? null
+    const evaluation = evaluateCronStatus({ maxAgeHours }, lastRunAt, lastSuccessAt, now)
+    if (evaluation.tone !== 'failing' || !evaluation.failingSeverity) continue
+
+    const roundedHours = Math.round(evaluation.lastSuccessAgeHours ?? maxAgeHours * 2)
+    const successDescription = lastSuccessAt
+      ? `${formatKst(lastSuccessAt)} 이후 ${roundedHours}시간 경과`
+      : `마지막 성공 기록 없음(최소 ${roundedHours}시간 경과로 판정)`
+    out.push({
+      fingerprint: `cron:failing:${jobKey}`,
+      category: 'cron',
+      severity: evaluation.failingSeverity,
+      title: '크론 연속 실패',
+      suspected_cause: `${jobKey} — ${successDescription}, 허용 ${maxAgeHours}시간`,
+      recommended_action: 'job_runs 최근 실행의 error 컬럼을 확인하세요.',
+      impact: '크론은 실행되지만 성공하지 못해 후속 데이터가 갱신되지 않음',
+      count: roundedHours,
+    })
+  }
+  return out
+}
+
 export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: number; resolved: number }> {
   const since = since24h()
   const signals: Signal[] = []
   const opsSettings = await getOpsSettings()
-  const [jobs, crawls, backlog, usage, lifetimeUsage, settings, translation, tts, routingModelErrors, primaryRoutes, lastRunAtByKey] = await Promise.all([
+  const [jobs, crawls, backlog, usage, lifetimeUsage, settings, translation, tts, routingModelErrors, primaryRoutes, lastRunAtByKey, lastSuccessAtByKey] = await Promise.all([
     admin.from('job_runs').select('job_key, error').eq('status', 'failed').gte('started_at', since),
     admin.from('crawl_logs').select('source_id, status').in('status', ['failed', 'partial']).gte('started_at', since),
     admin.from('contents').select('id', { count: 'exact', head: true }).eq('status', 'pending').is('body_fetched_at', null).is('deleted_at', null),
@@ -163,6 +216,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
       .eq('priority', 1)
       .order('task_type'),
     fetchCronLastRunAtByKey(admin),
+    fetchCronLastSuccessAtByKey(admin),
   ])
   // 523-B — Vercel maxDuration 하드킬을 reapStaleRunningJobs 가 failed 로 마감한 행은
   // 잡 오류가 아니라 실행시간 초과다(원인·조치가 다름) — error 접두사로 분리해 별도 신호로 낸다.
@@ -325,6 +379,7 @@ export async function detectOpsIssues(admin: SupabaseClient): Promise<{ open: nu
   }
 
   signals.push(...buildCronAbsenceSignals(lastRunAtByKey, Date.now()))
+  signals.push(...buildCronFailingSignals(lastRunAtByKey, lastSuccessAtByKey, Date.now()))
 
   const { data: existing } = await admin.from('ops_issues').select('fingerprint, status').in('status', ['open', 'resolved', 'acknowledged', 'in_progress', 'ignored'])
   const seen = new Set(signals.map(s => s.fingerprint)); let resolved = 0

@@ -15,6 +15,51 @@ export interface ExpectedCron {
   highFrequency?: boolean
 }
 
+export type CronTone = 'ok' | 'stale' | 'missing' | 'failing'
+
+export interface CronStatusEvaluation {
+  tone: CronTone
+  lastRunAgeHours: number | null
+  lastSuccessAgeHours: number | null
+  staleSeverity: 'critical' | 'warning' | null
+  failingSeverity: 'critical' | 'warning' | null
+}
+
+/** 마지막 실행과 마지막 성공을 함께 보고 크론 상태를 한 곳에서 판정한다. */
+export function evaluateCronStatus(
+  cron: Pick<ExpectedCron, 'maxAgeHours'>,
+  lastRunAt: string | null,
+  lastSuccessAt: string | null,
+  nowMs: number,
+): CronStatusEvaluation {
+  if (!lastRunAt) {
+    return { tone: 'missing', lastRunAgeHours: null, lastSuccessAgeHours: null, staleSeverity: null, failingSeverity: null }
+  }
+
+  const lastRunAgeHours = (nowMs - new Date(lastRunAt).getTime()) / 3_600_000
+  if (lastRunAgeHours > cron.maxAgeHours) {
+    return {
+      tone: 'stale',
+      lastRunAgeHours,
+      lastSuccessAgeHours: null,
+      staleSeverity: lastRunAgeHours > cron.maxAgeHours * 2 ? 'critical' : 'warning',
+      failingSeverity: null,
+    }
+  }
+  if (!lastSuccessAt) {
+    return { tone: 'failing', lastRunAgeHours, lastSuccessAgeHours: null, staleSeverity: null, failingSeverity: 'critical' }
+  }
+
+  const lastSuccessAgeHours = (nowMs - new Date(lastSuccessAt).getTime()) / 3_600_000
+  if (lastSuccessAgeHours > cron.maxAgeHours * 2) {
+    return { tone: 'failing', lastRunAgeHours, lastSuccessAgeHours, staleSeverity: null, failingSeverity: 'critical' }
+  }
+  if (lastSuccessAgeHours > cron.maxAgeHours) {
+    return { tone: 'failing', lastRunAgeHours, lastSuccessAgeHours, staleSeverity: null, failingSeverity: 'warning' }
+  }
+  return { tone: 'ok', lastRunAgeHours, lastSuccessAgeHours, staleSeverity: null, failingSeverity: null }
+}
+
 interface CronMeta {
   label: string
   maxAgeHours: number
