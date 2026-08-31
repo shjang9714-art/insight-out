@@ -38,6 +38,11 @@ const MAX_TRANSCRIPTS_PER_CRAWL = 15
 const RELATEDNESS_MARGIN = 0.15
 const MAX_MERGED_TAGS = 8
 const OPINION_LOOKBACK_DAYS = 7
+// 3일치 뉴스 2,349건과 크론 여유 6초 실측을 기준으로 수동 실험값의 폭주를 막는다.
+const SIMILARITY_CANDIDATE_LIMIT_MIN = 1
+const SIMILARITY_CANDIDATE_LIMIT_MAX = 5000
+const SIMILARITY_SINCE_DAYS_MIN = 1
+const SIMILARITY_SINCE_DAYS_MAX = 7
 
 // enrichment(풀본문 보강) 상수
 // 30→100(2026-07-13): 구글뉴스 신규 인코딩 URL 미해소로 하루 100건 넘게 body_short에 밀리던
@@ -261,6 +266,7 @@ export interface CrawlSummary {
   providerStatus: CrawlProviderStatus
   providerErrors?: CrawlProviderErrors
   entityLinks: EntityLinkStats
+  similarity: SimilarityCandidateCache['stats']
   /** ok=false(전체 실패) 사유 요약 — run-job.ts 의 job_runs.error 에 그대로 기록됨.
    *  ok=true(부분 실패 포함 성공)여도 problem 소스가 있으면 채워서 job_runs.meta.error 로
    *  경고 흔적을 남긴다. */
@@ -291,6 +297,8 @@ export type CrawlPhase = 'sources' | 'seeds' | 'companies' | 'all'
 export interface RunCrawlOptions extends CrawlScheduleOptions {
   sourceIds?: string[]
   gdeltBackfill?: { from: string; to: string }
+  similarityCandidateLimit?: number
+  similaritySinceDays?: number
   /** 498 — 기본 'all'(수동 실행·백필 기존 동작 보존). 크론만 'sources'/'seeds' 로 쪼개 호출한다. */
   phase?: CrawlPhase
 }
@@ -1467,6 +1475,16 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const shouldRunCompanies = phase === 'companies' || phase === 'all'
   const runStartedAt = new Date().toISOString()
   const softDeadline = Date.now() + CRAWL_SOFT_DEADLINE_MS
+  const similarityCandidateLimit = Number.isInteger(options.similarityCandidateLimit)
+    && options.similarityCandidateLimit! >= SIMILARITY_CANDIDATE_LIMIT_MIN
+    && options.similarityCandidateLimit! <= SIMILARITY_CANDIDATE_LIMIT_MAX
+    ? options.similarityCandidateLimit
+    : undefined
+  const similaritySinceDays = Number.isInteger(options.similaritySinceDays)
+    && options.similaritySinceDays! >= SIMILARITY_SINCE_DAYS_MIN
+    && options.similaritySinceDays! <= SIMILARITY_SINCE_DAYS_MAX
+    ? options.similaritySinceDays
+    : undefined
   const backfillDays =
     options.backfillDays && options.backfillDays > 0
       ? Math.min(Math.floor(options.backfillDays), 30)
@@ -1654,11 +1672,16 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     .filter(value => !Number.isNaN(value.getTime()))
     .sort((left, right) => left.getTime() - right.getTime())
   const earliestPublishedAt = similarityWindowStarts[0]?.toISOString() ?? since
-  const similarityCache = await createSimilarityCandidateCache(admin, earliestPublishedAt)
+  const similarityCache = await createSimilarityCandidateCache(
+    admin,
+    earliestPublishedAt,
+    similaritySinceDays,
+    similarityCandidateLimit,
+  )
 
   // GDELT BigQuery 소급 경로: 기존 아이템 처리 파이프라인을 그대로 재사용한다.
   if (options.gdeltBackfill) {
-    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, providerStatus, entityLinks, error: undefined }
+    if (!hasGdeltCredentials()) return { ok: true, sources_total: 0, success: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0, rejected: 0, held: 0, details: [], providers, providerStatus, entityLinks, similarity: similarityCache.stats, error: undefined }
     const terms = [...new Set([...keywords.map(k => k.name), ...searchSeeds, ...groups.flatMap(g => g.include_patterns ?? [])])]
     const discovered = await queryGdeltMonth({ ...options.gdeltBackfill, keywordTerms: terms })
     const counts = zeroRejectedBy()
@@ -1668,7 +1691,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
       if (result.errorMessage) console.warn('[GDELT 백필] 아이템 처리 실패:', result.errorMessage)
     }
     await enrichRecentContents(admin, runStartedAt, softDeadline, groups.length)
-    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers, providerStatus, entityLinks }
+    return { ok: true, sources_total: 1, success: 1, failed: 0, fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicates: itemCounts.duplicate, rejected: itemCounts.rejected, held: itemCounts.held, details: [{ source: 'GDELT BigQuery', status: 'success', fetched: itemCounts.fetched, inserted: itemCounts.inserted, duplicate: itemCounts.duplicate, rejected: itemCounts.rejected }], providers, providerStatus, entityLinks, similarity: similarityCache.stats }
   }
 
   // 소스별 격리 실행 — 1개 실패가 전체를 멈추지 않음
@@ -1897,6 +1920,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     providers,
     providerStatus,
     entityLinks,
+    similarity: similarityCache.stats, // run-job이 job_runs.meta.similarity로 저장한다.
     providerErrors: Object.keys(providerErrors).length > 0 ? providerErrors : undefined,
     error: errorSummary,
     truncatedPhases: truncatedPhases.length > 0 ? truncatedPhases : undefined,

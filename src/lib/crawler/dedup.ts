@@ -24,6 +24,13 @@ function similaritySinceIso(
 /** 런 단위 near-dup 후보 캐시. candidates 는 collected_at 내림차순을 유지한다. */
 export interface SimilarityCandidateCache {
   candidates: SimilarityCandidate[]
+  stats: {
+    candidateLimit: number
+    sinceDays: number
+    fetched: number
+    capped: boolean
+    spanHours: number
+  }
   find(publishedAt: string | null | undefined, sinceDays?: number): SimilarityCandidate[]
   add(candidate: SimilarityCandidate): void
 }
@@ -35,7 +42,8 @@ export interface SimilarityCandidateCache {
 export async function createSimilarityCandidateCache(
   admin: SupabaseClient,
   earliestPublishedAt: string,
-  sinceDays = 3
+  sinceDays = 3,
+  candidateLimit = SIMILARITY_CANDIDATE_LIMIT,
 ): Promise<SimilarityCandidateCache> {
   const broadSinceIso = similaritySinceIso(earliestPublishedAt, sinceDays)
   let candidates: SimilarityCandidate[] = []
@@ -48,7 +56,7 @@ export async function createSimilarityCandidateCache(
       .gte('collected_at', broadSinceIso)
       .is('deleted_at', null)
       .order('collected_at', { ascending: false })
-      .limit(SIMILARITY_CANDIDATE_LIMIT)
+      .limit(candidateLimit)
 
     if (error) {
       console.error('[크롤러] 런 유사 후보 캐시 조회 오류:', error.message)
@@ -57,8 +65,24 @@ export async function createSimilarityCandidateCache(
     }
   }
 
+  const collectedTimes = candidates
+    .map((candidate) => new Date(candidate.collected_at).getTime())
+    .filter((value) => !Number.isNaN(value))
+  const spanHours = collectedTimes.length > 1
+    ? (Math.max(...collectedTimes) - Math.min(...collectedTimes)) / (60 * 60 * 1000)
+    : 0
+  // add() 이후에도 최초 조회가 실제로 덮은 범위를 비교할 수 있도록 stats는 고정한다.
+  const stats = {
+    candidateLimit,
+    sinceDays,
+    fetched: candidates.length,
+    capped: candidates.length >= candidateLimit,
+    spanHours,
+  }
+
   return {
     get candidates() { return candidates },
+    stats,
     find(publishedAt, itemSinceDays = sinceDays) {
       const sinceIso = similaritySinceIso(publishedAt, itemSinceDays)
       if (!sinceIso) return []
@@ -68,7 +92,7 @@ export async function createSimilarityCandidateCache(
     },
     add(candidate) {
       candidates = [candidate, ...candidates.filter(current => current.id !== candidate.id)]
-        .slice(0, SIMILARITY_CANDIDATE_LIMIT)
+        .slice(0, candidateLimit)
     },
   }
 }
