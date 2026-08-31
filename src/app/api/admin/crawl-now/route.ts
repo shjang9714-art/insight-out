@@ -11,6 +11,11 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+function parseOptionalInteger(value: string | null): number | undefined {
+  if (value === null || value.trim() === '') return undefined
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? parsed : undefined
+}
 
 /**
  * POST /api/admin/crawl-now
@@ -22,6 +27,9 @@ export async function POST(request: NextRequest) {
   try {
     const gate = await verifyAdminRequest()
     if (!gate.ok) return gate.response
+
+    const similarityCandidateLimit = parseOptionalInteger(request.nextUrl.searchParams.get('similarityLimit'))
+    const similaritySinceDays = parseOptionalInteger(request.nextUrl.searchParams.get('similarityDays'))
 
     let sourceId: string | undefined
     let backfillDays: number | undefined
@@ -54,7 +62,13 @@ export async function POST(request: NextRequest) {
     const result = await runJob(admin, { key: jobKey, trigger: 'admin', startedBy: gate.userId }, async () => {
       after(async () => {
         try {
-          await runCrawl({ force: true, sourceIds: sourceId ? [sourceId] : undefined, backfillDays })
+          await runCrawl({
+            force: true,
+            sourceIds: sourceId ? [sourceId] : undefined,
+            backfillDays,
+            similarityCandidateLimit,
+            similaritySinceDays,
+          })
         } catch (error) {
           console.error('[/api/admin/crawl-now] 백그라운드 수집 오류:', error)
         }
