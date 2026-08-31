@@ -248,7 +248,9 @@ function RiseFactorsSection({
         <ol className="space-y-1">
           {evidenceIds.map((contentId, index) => {
             const evidenceArticle = evidenceArticles.get(contentId)
-            const article = evidenceArticle ?? articleById.get(contentId)
+            const article = evidenceArticle?.status === 'published'
+              ? evidenceArticle
+              : evidenceArticle ? undefined : articleById.get(contentId)
             const isDeleted = Boolean(evidenceArticle?.deletedAt)
             return (
               <li key={contentId} className="text-xs leading-relaxed text-muted-foreground">

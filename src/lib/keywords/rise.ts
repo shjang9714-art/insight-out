@@ -44,6 +44,7 @@ export interface RiseEvidenceArticle {
   publishedAt: string | null
   collectedAt: string
   deletedAt: string | null
+  status: string // RiseEvidenceArticle가 사용자에게 제목을 노출해도 되는지 판정한다.
 }
 
 export interface RiseVerifyReport {
@@ -66,6 +67,7 @@ interface RiseEvidenceRow {
   published_at: string | null
   collected_at: string
   deleted_at: string | null
+  status: string
 }
 
 function normalizeKeyword(name: string): string {
@@ -263,7 +265,7 @@ export async function getRiseEvidenceArticles(ids: string[]): Promise<Map<string
   const { rows, error } = await chunked.fetchInChunks<RiseEvidenceRow>(uniqueIds, (chunk) =>
     admin
       .from('contents')
-      .select('id, title, published_at, collected_at, deleted_at')
+      .select('id, title, published_at, collected_at, deleted_at, status') // RiseEvidenceArticle에 공개 상태를 포함한다.
       .in('id', chunk)
   )
   if (error) {
@@ -277,6 +279,7 @@ export async function getRiseEvidenceArticles(ids: string[]): Promise<Map<string
     publishedAt: row.published_at,
     collectedAt: row.collected_at,
     deletedAt: row.deleted_at,
+    status: row.status,
   }]))
 }
 
