@@ -18,7 +18,8 @@ import {
   getKeywordSnapshot,
   type KeywordArticle,
 } from '@/lib/keywords/detail'
-import { getRiseFactors, type RiseFactorSet } from '@/lib/keywords/rise'
+import * as riseData from '@/lib/keywords/rise'
+import type { RiseEvidenceArticle, RiseFactorSet } from '@/lib/keywords/rise'
 import {
   BUCKET_CHIP_CLS,
   TAG_BUCKETS,
@@ -180,9 +181,11 @@ function RiseFootnotes({
 function RiseFactorsSection({
   riseFactors,
   articles,
+  evidenceArticles,
 }: {
   riseFactors: RiseFactorSet | null
   articles: KeywordArticle[]
+  evidenceArticles: Map<string, RiseEvidenceArticle>
 }) {
   if (!riseFactors) {
     return (
@@ -203,15 +206,22 @@ function RiseFactorsSection({
   const articleById = new Map(articles.map((article) => [article.id, article]))
   const evidenceIds = Array.from(new Set(riseFactors.factors.flatMap((factor) => factor.evidence)))
   const indexById = new Map(evidenceIds.map((contentId, index) => [contentId, index + 1]))
+  const analysisDate = getKstDateKey(riseFactors.generatedAt)
+  const isStaleAnalysis = riseData.isRiseAnalysisStale(riseFactors.generatedAt)
 
   return (
     <section className="mb-8 rounded-xl border border-brand-600/20 bg-card p-5" aria-labelledby="rise-factors-title">
       <div className="mb-5 flex items-start gap-3">
         <AiMark title="AI 분석" className="mt-0.5 size-5" />
         <div>
-          <h2 id="rise-factors-title" className="text-base font-semibold text-foreground">상승 요인</h2>
+          <h2 id="rise-factors-title" className="text-base font-semibold text-foreground">
+            상승 요인 <span className="text-xs font-normal text-muted-foreground">· {analysisDate} 분석</span>
+          </h2>
           {riseFactors.overview && (
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{riseFactors.overview}</p>
+          )}
+          {isStaleAnalysis && (
+            <p className="mt-1 text-xs text-muted-foreground">30일 이상 지난 분석입니다. 최근 동향과 다를 수 있습니다.</p>
           )}
         </div>
       </div>
@@ -237,20 +247,32 @@ function RiseFactorsSection({
         <p className="mb-1.5 text-xs font-medium text-muted-foreground">근거</p>
         <ol className="space-y-1">
           {evidenceIds.map((contentId, index) => {
-            const article = articleById.get(contentId)
+            const evidenceArticle = evidenceArticles.get(contentId)
+            const article = evidenceArticle?.status === 'published'
+              ? evidenceArticle
+              : evidenceArticle ? undefined : articleById.get(contentId)
+            const isDeleted = Boolean(evidenceArticle?.deletedAt)
             return (
               <li key={contentId} className="text-xs leading-relaxed text-muted-foreground">
                 <span className="text-brand-600">[{index + 1}]</span>{' '}
-                <Link
-                  href={`/dashboard/contents/${contentId}`}
-                  prefetch={false}
-                  target="_blank"
-                  rel="noopener"
-                  className="transition-colors hover:text-brand-600"
-                >
-                  {article?.title ?? '근거 콘텐츠'}
-                </Link>
-                {article && <> · {formatKstDate(article.publishedAt ?? article.collectedAt)}</>}
+                {isDeleted ? (
+                  <span>삭제된 콘텐츠</span>
+                ) : article ? (
+                  <>
+                    <Link
+                      href={`/dashboard/contents/${contentId}`}
+                      prefetch={false}
+                      target="_blank"
+                      rel="noopener"
+                      className="transition-colors hover:text-brand-600"
+                    >
+                      {article.title}
+                    </Link>
+                    {' · '}{formatKstDate(article.publishedAt ?? article.collectedAt)}
+                  </>
+                ) : (
+                  <span>찾을 수 없는 콘텐츠</span>
+                )}
               </li>
             )
           })}
@@ -278,8 +300,14 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
     getKeywordDailyCounts(keyword),
     getKeywordSnapshot(keyword),
     getKeywordRelated(keyword),
-    getRiseFactors(keyword),
+    riseData.getRiseFactors(keyword),
   ])
+  const evidenceIds = riseFactors
+    ? Array.from(new Set(riseFactors.factors.flatMap((factor) => factor.evidence)))
+    : []
+  const evidenceArticles = riseFactors
+    ? await riseData.getRiseEvidenceArticles(evidenceIds)
+    : new Map<string, RiseEvidenceArticle>()
 
   const trendLabel = changeLabel(snapshot.changePct, snapshot.isNew)
   const relatedByBucket = new Map<TagBucket, typeof related.keywords>()
@@ -419,7 +447,11 @@ export default async function KeywordDetailPage({ params }: KeywordDetailPagePro
         </section>
       )}
 
-      <RiseFactorsSection riseFactors={riseFactors} articles={related.articles} />
+      <RiseFactorsSection
+        riseFactors={riseFactors}
+        articles={related.articles}
+        evidenceArticles={evidenceArticles}
+      />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
         <section className="min-w-0" aria-labelledby="keyword-timeline">
