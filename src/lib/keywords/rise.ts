@@ -2,10 +2,13 @@ import 'server-only'
 
 import { getKeywordRelated, type KeywordArticle } from '@/lib/keywords/detail'
 import { createAdminClient } from '@/lib/supabase/admin'
+import * as chunked from '@/lib/supabase/chunked'
 import { createClient } from '@/lib/supabase/server'
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000
 const MAX_FACTS = 60
+// 현재 유일한 분석이 7주 전인 실측을 반영해 30일이 지나면 오래된 분석임을 알린다.
+const RISE_ANALYSIS_STALE_DAYS = 30
 const NUMBER_TOKEN = /\d[\d,.]*\s*(?:조|억|만|GW|MW|kW|%|건|명|년|월)/g
 
 export interface RiseFact {
@@ -35,6 +38,14 @@ export interface RiseFactorSet extends VerifiedRiseFactors {
   status: 'draft' | 'published'
 }
 
+export interface RiseEvidenceArticle {
+  id: string
+  title: string
+  publishedAt: string | null
+  collectedAt: string
+  deletedAt: string | null
+}
+
 export interface RiseVerifyReport {
   dropped: { slot: string; text: string; reason: string }[]
   warnings: { slot: string; text: string; reason: string }[]
@@ -49,6 +60,14 @@ interface RiseFactorRow {
   status: string
 }
 
+interface RiseEvidenceRow {
+  id: string
+  title: string
+  published_at: string | null
+  collected_at: string
+  deleted_at: string | null
+}
+
 function normalizeKeyword(name: string): string {
   return name.trim().toLocaleLowerCase('ko-KR')
 }
@@ -58,6 +77,11 @@ function getKstDate(value: string): string {
   return Number.isNaN(date.getTime())
     ? value.slice(0, 10)
     : new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10)
+}
+
+export function isRiseAnalysisStale(generatedAt: string): boolean {
+  return Date.now() - new Date(generatedAt).getTime()
+    >= RISE_ANALYSIS_STALE_DAYS * 24 * 60 * 60 * 1000
 }
 
 function extractNumbers(text: string): Record<string, string> {
@@ -228,6 +252,32 @@ export async function getRiseFactors(name: string): Promise<RiseFactorSet | null
     generatedAt: row.generated_at,
     status: row.status === 'published' ? 'published' : 'draft',
   }
+}
+
+/** 최근 기사 창과 무관하게 저장된 상승 요인의 근거 콘텐츠를 직접 조회한다. */
+export async function getRiseEvidenceArticles(ids: string[]): Promise<Map<string, RiseEvidenceArticle>> {
+  const uniqueIds = Array.from(new Set(ids))
+  if (uniqueIds.length === 0) return new Map()
+
+  const admin = createAdminClient()
+  const { rows, error } = await chunked.fetchInChunks<RiseEvidenceRow>(uniqueIds, (chunk) =>
+    admin
+      .from('contents')
+      .select('id, title, published_at, collected_at, deleted_at')
+      .in('id', chunk)
+  )
+  if (error) {
+    console.error('[키워드 상승 요인] 근거 콘텐츠 조회 오류:', error)
+    return new Map()
+  }
+
+  return new Map(rows.map((row) => [row.id, {
+    id: row.id,
+    title: row.title,
+    publishedAt: row.published_at,
+    collectedAt: row.collected_at,
+    deletedAt: row.deleted_at,
+  }]))
 }
 
 /** 검증을 통과한 근거 콘텐츠 ID만 키워드별 최신 세트로 저장한다. */
