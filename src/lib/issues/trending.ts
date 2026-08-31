@@ -784,6 +784,7 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
     return { ok: false, stage: 'trending_keywords', error: viewErr.message }
   }
   const candidates = (candidateData ?? []) as TrendingIssueRow[]
+  console.log(`[trending] stage=trending_keywords candidates=${candidates.length}`)
   if (candidates.length === 0) {
     console.log('[trending] ok events=0 candidates=0 rows=0')
     return { ok: true, value: { events: [], asOfDateKst: getKstDateString(), truncated: false } }
@@ -797,6 +798,7 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   if (rowsErr) {
     return { ok: false, stage: 'trending_issue_articles', error: rowsErrMessage ?? '원인 미상' }
   }
+  console.log(`[trending] stage=trending_basis_articles rows=${rows.length} truncated=${truncated}`)
 
   // 기준일(basisDateKst) 결정 — 2026-07-14 재설계. "오늘(KST)에 후보 풀 기사가 있으면
   // 오늘, 없으면(당일 크론 05:00 KST 전 새벽 등) 데이터가 있는 가장 최근 직전 날짜"로
@@ -943,13 +945,16 @@ export async function computeTrendingEvents(): Promise<TrendingComputeResult> {
   }
 
   specificEvents.sort(compareByScoreDesc)
+  console.log(`[trending] stage=clusters count=${specificEvents.length}`)
 
   const primary = await buildPrimaryEvents(specificEvents, sourceKeyOf)
+  console.log(`[trending] stage=merged count=${primary.length}`)
 
   // §2-6: 10칸 강제 채우기(backfill) 폐지 — 게이트 통과 못 하면 억지로 채우지 않는다.
   // 노이즈 게이트(§2-5): 최소 MIN_SOURCE_COUNT개 매체가 다룬 사건만 순위에 올린다.
   const gated = primary.filter(ev => ev.sourceCount >= MIN_SOURCE_COUNT)
   const final = gated.slice(0, TRENDING_LIMIT)
+  console.log(`[trending] stage=gated(sourceCount>=${MIN_SOURCE_COUNT}) count=${gated.length}`)
 
   const deduped = collapseDuplicateEvents(final)
   deduped.sort(compareByScoreDesc)
@@ -995,8 +1000,13 @@ async function computeTrendingEventsOrNull(): Promise<TrendingEventsResult | nul
 }
 
 // 2026-08-30 v9→v10: DB 뷰 타임아웃 시절 캐시된 null이 Hobby 플랜에서 Purge 불가라 키 bump로 폐기
+// 2026-08-31 v10→v11: 동일 증상 재발 — computeTrendingEvents()는 정상(크론이 매일
+// trending_snapshots에 정상 저장 중)인데도 화면은 계속 폴백. trending_keywords가 anon
+// statement_timeout(3초) 근처(1.6~2.7초, 변동 심함)를 오가며 조인 폭발로 느려(§6 후속 조사),
+// 그 순간 타임아웃난 계산 결과(null)가 캐시에 박혀 이후 성공한 계산과 무관하게 계속
+// 서빙되는 것으로 추정 — Hobby plan Purge UI가 없어 키 bump가 유일한 확실한 폐기 수단.
 export const fetchTrendingEvents = unstable_cache(
   computeTrendingEventsOrNull,
-  ['trending-events-v10'],
+  ['trending-events-v11'],
   { revalidate: CACHE_REVALIDATE_SECONDS, tags: ['trending-events'] },
 )
