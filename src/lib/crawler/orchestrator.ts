@@ -1776,16 +1776,19 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     totalDuplicates += kwResult.counts.duplicate
     totalRejected   += kwResult.counts.rejected
     totalHeld       += kwResult.counts.held
+    const kwStatus = !kwResult.hadError
+      ? 'success'
+      : kwResult.counts.fetched > 0 ? 'partial' : 'failed'
     details.push({
       source:    'Google News 키워드',
-      status:    kwResult.hadError ? 'partial' : 'success',
+      status:    kwStatus,
       fetched:   kwResult.counts.fetched,
       inserted:  kwResult.counts.inserted,
       duplicate: kwResult.counts.duplicate,
       rejected:  kwResult.counts.rejected,
       error:     kwResult.firstError,
     })
-    if (!kwResult.hadError) successCount++
+    if (kwStatus !== 'failed') successCount++
   }
 
   // 회사 seed 수집(259) — curated_companies(253) 니치 회사 코퍼스 확보. 개별 소스 수집(sourceIds
@@ -1805,16 +1808,19 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
     totalDuplicates += companyResult.counts.duplicate
     totalRejected   += companyResult.counts.rejected
     totalHeld       += companyResult.counts.held
+    const companyStatus = !companyResult.hadError
+      ? 'success'
+      : companyResult.counts.fetched > 0 ? 'partial' : 'failed'
     details.push({
       source:    'Google News 회사 seed',
-      status:    companyResult.hadError ? 'partial' : 'success',
+      status:    companyStatus,
       fetched:   companyResult.counts.fetched,
       inserted:  companyResult.counts.inserted,
       duplicate: companyResult.counts.duplicate,
       rejected:  companyResult.counts.rejected,
       error:     companyResult.firstError,
     })
-    if (!companyResult.hadError) successCount++
+    if (companyStatus !== 'failed') successCount++
     companySeedsProcessed = companyResult.processedSeeds
     companySeedsTotal = companySeeds.length
     if (companyResult.processedSeeds < companySeeds.length) truncatedPhases.push('company_seed')
@@ -1862,6 +1868,7 @@ export async function runCrawl(options: RunCrawlOptions = {}): Promise<CrawlSumm
   const attemptedKeywordSearch = shouldRunKeywords && searchSeeds.length > 0
   const attemptedCompanySearch = shouldRunCompanies && companySeeds.length > 0
   const attemptedAnything = attemptedSources || attemptedKeywordSearch || attemptedCompanySearch
+  // 596: 541 이후 11일 사례처럼 1,000건 수집 후 provider 하나가 실패한 partial 과 0건 전체 실패를 구분한다.
   const ok = !attemptedAnything || successCount > 0
   // 시도할 대상 자체가 0이었던 경우 — 소스가 있었는데 전부 실패한 경우(ok=false)와는 다르다.
   // "아무 일도 안 일어남"이 succeeded 로 묻히지 않도록 skipped 로 명시한다(competitor-weekly
