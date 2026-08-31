@@ -98,6 +98,10 @@ async function TrendingRanking({ selectedDate, isToday }: { selectedDate: string
         sentimentNeg: 0,
       }))
     } else {
+      console.error(
+        '[trending] fallback: fetchTrendingEvents() null — 같은 요청 로그에 "[trending]" 실패 사유가 없으면 ' +
+        '캐시에 박힌 과거 실패값이 계속 서빙 중인 것(캐시 키 bump 필요)',
+      )
       all = await fetchFallbackTop()
     }
   } else {

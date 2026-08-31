@@ -52,6 +52,13 @@ export default async function IssueSignals() {
   // 기존 주간 활동량 집계로 폴백 — 섹션이 빈 화면이 되지 않게.
   const trending = await fetchTrendingEvents()
 
+  if (!trending) {
+    console.error(
+      '[trending] fallback: fetchTrendingEvents() null — 같은 요청 로그에 "[trending]" 실패 사유가 없으면 ' +
+      '캐시에 박힌 과거 실패값이 계속 서빙 중인 것(캐시 키 bump 필요)',
+    )
+  }
+
   const top: TickerIssue[] = trending
     ? trending.events.map(e => ({
         id: e.issueId,
