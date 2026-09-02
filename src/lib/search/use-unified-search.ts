@@ -366,6 +366,7 @@ export function useUnifiedSearch(
         const tokens = buildQueryTokens(q)
 
         requestTimeout = setTimeout(() => {
+          if (controller.signal.aborted) return
           controller.abort()
           startTransition(() => {
             setLoading(false)
