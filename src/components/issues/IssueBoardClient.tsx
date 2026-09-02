@@ -76,7 +76,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
   }
 
   const withLens = sanitizedCards.map(card => {
-    const target: LensTarget = { names: [card.title] }
+    const target: LensTarget = { text: [card.title] }
     const score   = lensScore(activeLens, ctx, target)
     const matched = activeLens !== 'all' && matchesLens(activeLens, ctx, target)
     // 범위(activeLens) 무관하게 항상 계산되는 개인 관련도 — "내 관련도" 정렬 전용

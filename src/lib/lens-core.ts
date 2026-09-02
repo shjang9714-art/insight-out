@@ -5,6 +5,7 @@ export type LensKey = 'watch' | 'all'
 export interface LensContext {
   entityIds: string[]
   topicNames: string[]
+  normalizedTopicNames: string[]
   names: string[]
   count: number
   defaultLens: LensKey
@@ -12,6 +13,7 @@ export interface LensContext {
 
 export interface LensTarget {
   names?: string[]
+  text?: string[]
   groups?: string[]
   isCompetitor?: boolean
   entityId?: string
@@ -25,6 +27,7 @@ export const LENS_PRESETS: Record<LensKey, { label: string; desc: string }> = {
 export const EMPTY_LENS_CONTEXT: LensContext = {
   entityIds: [],
   topicNames: [],
+  normalizedTopicNames: [],
   names: [],
   count: 0,
   defaultLens: 'all',
@@ -36,7 +39,6 @@ interface UserInterestRow {
   kind: string
   entity_id: string | null
   group_id: string | null
-  weight: number
 }
 
 /** 비교용 정규화 — 소문자 + 공백·중점·하이픈 제거. 그 외 문자는 건드리지 않는다. */
@@ -49,11 +51,14 @@ export function lensScore(key: LensKey, ctx: LensContext, target: LensTarget): n
   if (target.isCompetitor) return 3
   if (target.entityId && ctx.entityIds.includes(target.entityId)) return 3
 
-  const topicNameSet = new Set(ctx.topicNames.map(normalizeLensName))
-  if (target.groups?.some(group => topicNameSet.has(normalizeLensName(group)))) return 2
+  if (target.groups?.map(normalizeLensName).some(group => ctx.normalizedTopicNames.includes(group))) return 2
 
-  const contextNameSet = new Set(ctx.names)
-  if (target.names?.some(name => contextNameSet.has(normalizeLensName(name)))) return 2
+  if (target.names?.map(normalizeLensName).some(name => ctx.names.includes(name))) return 2
+
+  // 관심사 이름이 바늘이고 자유 텍스트가 건초더미다. 역방향은 짧은 텍스트의 오탐을 되살린다.
+  if (target.text?.some(text => ctx.names.some(interestName =>
+    interestName.length >= 2 && normalizeLensName(text).includes(interestName)
+  ))) return 1
 
   return 0
 }
@@ -70,7 +75,7 @@ export async function loadLensContext(
     const [interestsRes, userRes] = await Promise.all([
       supabase
         .from('user_interests')
-        .select('kind, entity_id, group_id, weight')
+        .select('kind, entity_id, group_id')
         .eq('user_id', userId)
         .limit(200),
       supabase
@@ -130,8 +135,9 @@ export async function loadLensContext(
     return {
       entityIds,
       topicNames,
+      normalizedTopicNames: topicNames.map(normalizeLensName),
       names: Array.from(new Set([...entityNames, ...topicNames].map(normalizeLensName))),
-      count: entityIds.length + topicNames.length,
+      count: entityIds.length + groupIds.length,
       defaultLens,
     }
   } catch (error) {
