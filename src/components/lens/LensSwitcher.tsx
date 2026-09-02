@@ -14,7 +14,7 @@ export default function LensSwitcher() {
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
 
-  const hasWatch = ctx.watchlist.length > 0
+  const hasWatch = ctx.count > 0
 
   const chips: { key: LensKey; disabled: boolean }[] = [
     { key: 'watch', disabled: !hasWatch },

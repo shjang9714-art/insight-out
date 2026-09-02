@@ -115,7 +115,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
   })
 
   // 빈 결과 사유 판단
-  const isMisconfigured = activeLens === 'watch' && ctx.watchlist.length === 0
+  const isMisconfigured = activeLens === 'watch' && ctx.count === 0
 
   return (
     <div>

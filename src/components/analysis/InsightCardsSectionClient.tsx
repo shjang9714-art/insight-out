@@ -106,10 +106,10 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
   }
 
   // 미설정 여부 판단
-  const hasSetting = activeLens === 'watch' ? ctx.watchlist.length > 0 : true
+  const hasSetting = activeLens === 'watch' ? ctx.count > 0 : true
 
   // 개인화 설정 여부 (렌즈 무관) — 내 관련도 배지 표시 조건
-  const hasPersonalization = ctx.watchlist.length > 0
+  const hasPersonalization = ctx.count > 0
 
   // 렌즈 필터/정렬 — 두 뷰 공유
   const visibleGroups = sanitizedGroups.map((g, idx) => {
