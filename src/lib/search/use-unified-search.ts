@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, startTransition } from 'react'
+import { useEffect, useRef, useState, startTransition } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { type ContentCategory } from '@/lib/types'
@@ -86,6 +86,17 @@ const MAX_QUERY_TOKENS = 5
 // linkedCount 는 이 상한 내에서의 "적어도" 값이 될 수 있음(카드엔 참고 신호로만 사용, 정밀 집계 목적 아님)
 const LINK_FETCH_CAP = 500
 const EPOCH = '1970-01-01T00:00:00.000Z'
+// DB 제한(8초) 밖에서 네트워크가 멈춘 경우의 백스톱이다. 검색 실측 최대는 26초였다.
+const SEARCH_ABORT_TIMEOUT_MS = 30_000
+const SEARCH_ABORT_TIMEOUT_MESSAGE = '검색이 오래 걸립니다. 검색어를 좁혀서 다시 시도해주세요.'
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { name?: string; message?: string }
+  return candidate.name === 'AbortError'
+    || candidate.message?.includes('AbortError') === true
+    || candidate.message?.includes('operation was aborted') === true
+}
 
 function sortDesc(items: UnifiedResult[]): UnifiedResult[] {
   return [...items].sort((a, b) => b.sortDate.localeCompare(a.sortDate))
@@ -157,6 +168,7 @@ async function fetchContentCategory(
   tokens: QueryToken[],
   categories: ContentCategory[] | undefined,
   cap: number,
+  signal: AbortSignal,
 ): Promise<UnifiedResult[]> {
   let query = applyTokenFilters(
     supabase.from('contents').select(
@@ -175,33 +187,33 @@ async function fetchContentCategory(
     'search_vector',
   ).eq('status', 'published')
   if (categories) query = query.in('category', categories)
-  const { data, error: err } = await query.order('published_at', { ascending: false, nullsFirst: false }).limit(Math.max(cap, FETCH_LIMIT))
+  const { data, error: err } = await query.abortSignal(signal).order('published_at', { ascending: false, nullsFirst: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] contents 조회 오류:', err); throw err }
   return ((data ?? []) as unknown as ContentSearchRow[])
     .map(row => ({ key: `content-${row.id}`, source: 'content' as const, sortDate: row.published_at ?? EPOCH, content: row }))
     .slice(0, cap)
 }
 
-async function fetchInsights(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
+async function fetchInsights(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
   const query = applyTokenFilters(
     supabase.from('daily_insights').select('id, headline, summary_ko, day_of'),
     ['headline', 'summary_ko', 'market_trend', 'competitor_trend', 'implication'],
     tokens,
   ).eq('status', 'published')
-  const { data, error: err } = await query.order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
+  const { data, error: err } = await query.abortSignal(signal).order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] daily_insights 조회 오류:', err); throw err }
   return ((data ?? []) as DailyInsightRow[])
     .map(row => ({ key: `insight-${row.id}`, source: 'daily_insights' as const, sortDate: new Date(row.day_of).toISOString(), insight: row }))
     .slice(0, cap)
 }
 
-async function fetchIssues(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
+async function fetchIssues(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
   const query = applyTokenFilters(
     supabase.from('issues').select('id, title, summary, created_at'),
     ['title', 'summary'],
     tokens,
   ).eq('status', 'published')
-  const { data, error: err } = await query.order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
+  const { data, error: err } = await query.abortSignal(signal).order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
   if (err) { console.error('[search] issues 조회 오류:', err); throw err }
   return ((data ?? []) as IssueRow[])
     .map(row => ({ key: `issue-${row.id}`, source: 'issues' as const, sortDate: row.created_at, issue: row }))
@@ -222,12 +234,12 @@ function aggregateLinks(rows: { linkId: string; publishedAt: string | null }[]):
   return stats
 }
 
-async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
+async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
   const { data: matched, error: err } = await applyTokenFilters(
     supabase.from('entities').select('id, canonical_name, description'),
     ['canonical_name', 'description'],
     tokens,
-  ).limit(FETCH_LIMIT)
+  ).abortSignal(signal).limit(FETCH_LIMIT)
   if (err) { console.error('[search] entities 조회 오류:', err); throw err }
   const ids = (matched ?? []).map((e) => e.id as string)
   if (ids.length === 0) return []
@@ -238,6 +250,7 @@ async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap
     .in('entity_id', ids)
     .eq('contents.status', 'published')
     .order('contents(published_at)', { ascending: false })
+    .abortSignal(signal)
     .limit(LINK_FETCH_CAP)
   if (linkErr) { console.error('[search] content_entities 조회 오류:', linkErr); throw linkErr }
 
@@ -258,12 +271,12 @@ async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap
   return sortDesc(items).slice(0, cap)
 }
 
-async function fetchKeywords(supabase: SupabaseClient, tokens: QueryToken[], cap: number): Promise<UnifiedResult[]> {
+async function fetchKeywords(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
   const { data: matched, error: err } = await applyTokenFilters(
     supabase.from('keywords').select('id, name'),
     ['name'],
     tokens,
-  ).limit(FETCH_LIMIT)
+  ).abortSignal(signal).limit(FETCH_LIMIT)
   if (err) { console.error('[search] keywords 조회 오류:', err); throw err }
   const ids = (matched ?? []).map((k) => k.id as string)
   if (ids.length === 0) return []
@@ -274,6 +287,7 @@ async function fetchKeywords(supabase: SupabaseClient, tokens: QueryToken[], cap
     .in('keyword_id', ids)
     .eq('contents.status', 'published')
     .order('contents(published_at)', { ascending: false })
+    .abortSignal(signal)
     .limit(LINK_FETCH_CAP)
   if (linkErr) { console.error('[search] content_keywords 조회 오류:', linkErr); throw linkErr }
 
@@ -299,39 +313,66 @@ async function fetchSection(
   key: SearchFilterKey,
   tokens: QueryToken[],
   cap: number,
+  signal: AbortSignal,
 ): Promise<UnifiedResult[]> {
   const def = searchFilterDef(key)
-  if (def.source === 'content') return fetchContentCategory(supabase, tokens, def.categories, cap)
-  if (def.source === 'daily_insights') return fetchInsights(supabase, tokens, cap)
-  if (def.source === 'issues') return fetchIssues(supabase, tokens, cap)
-  if (def.source === 'entities') return fetchEntities(supabase, tokens, cap)
-  return fetchKeywords(supabase, tokens, cap)
+  if (def.source === 'content') return fetchContentCategory(supabase, tokens, def.categories, cap, signal)
+  if (def.source === 'daily_insights') return fetchInsights(supabase, tokens, cap, signal)
+  if (def.source === 'issues') return fetchIssues(supabase, tokens, cap, signal)
+  if (def.source === 'entities') return fetchEntities(supabase, tokens, cap, signal)
+  return fetchKeywords(supabase, tokens, cap, signal)
 }
 
 export function useUnifiedSearch(
   q: string,
   filter: SearchFilterKey | '',
-): { sections: SearchSection[] | null; isLoading: boolean; error: string | null } {
+): { sections: SearchSection[] | null; isLoading: boolean; error: string | null; notice: string | null; cancel: () => void } {
   const [sections, setSections] = useState<SearchSection[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  const cancel = () => {
+    const controller = controllerRef.current
+    if (!controller || controller.signal.aborted) return
+    controller.abort()
+    startTransition(() => {
+      setLoading(false)
+      setError(null)
+      setNotice('검색을 취소했습니다.')
+    })
+  }
 
   useEffect(() => {
     if (!q) {
-      startTransition(() => { setSections(null); setLoading(false); setError(null) })
+      startTransition(() => { setSections(null); setLoading(false); setError(null); setNotice(null) })
       return
     }
 
     let cancelled = false
-    startTransition(() => { setLoading(true); setError(null) })
+    let requestTimeout: ReturnType<typeof setTimeout> | null = null
+    const controller = new AbortController()
+    controllerRef.current = controller
+    startTransition(() => { setLoading(true); setError(null); setNotice(null) })
 
-    // 509 — 타건마다 최대 8개 쿼리가 동시 발사되던 것을 300ms 디바운스로 묶는다.
+    // 509 — 타건마다 최대 7개 쿼리가 동시 발사되던 것을 300ms 디바운스로 묶는다.
     // q/filter 가 다시 바뀌면 클린업이 이 타이머를 지우므로 실제 요청은 타이핑이
     // 멈춘 뒤 1회만 나간다.
     const timer = setTimeout(() => {
+      if (controller.signal.aborted) return
       const fetchResults = async () => {
         const supabase = createClient()
         const tokens = buildQueryTokens(q)
+
+        requestTimeout = setTimeout(() => {
+          controller.abort()
+          startTransition(() => {
+            setLoading(false)
+            setError(null)
+            setNotice(SEARCH_ABORT_TIMEOUT_MESSAGE)
+          })
+        }, SEARCH_ABORT_TIMEOUT_MS)
 
         // 특정 카테고리 선택 시: 그 종류 하나만 조회, 표시 상한도 60(무회귀 — 기존 단독 필터와 동일)
         const keysToFetch = filter ? [filter] : SEARCH_SECTION_ORDER
@@ -350,11 +391,11 @@ export function useUnifiedSearch(
         // filter 지정(특정 카테고리 선택) 시엔 기존처럼 그 카테고리 하나만 조회(무회귀).
         const isContentKey = (key: SearchFilterKey) => searchFilterDef(key).source === 'content'
         const tasks: Promise<SearchSection[]>[] = filter
-          ? keysToFetch.map(async (key) => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key)) }])
+          ? keysToFetch.map(async (key) => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal) }])
           : [
               (async (): Promise<SearchSection[]> => {
                 const contentKeys = keysToFetch.filter(isContentKey)
-                const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT)
+                const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT, controller.signal)
                 // 주의 — 발행일 내림차순으로 한 번에 CONTENT_MERGE_LIMIT(240)행만 받으므로,
                 // 검색어가 특정 카테고리(예: 뉴스)에 압도적으로 많이 매칭되면 그 카테고리가
                 // 240건을 거의 다 차지해 물량이 적은 다른 카테고리 섹션이 비어 보일 수 있다.
@@ -372,11 +413,11 @@ export function useUnifiedSearch(
               })(),
               ...keysToFetch
                 .filter((key) => !isContentKey(key))
-                .map(async (key): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key)) }]),
+                .map(async (key): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal) }]),
             ]
 
         const settled = await Promise.allSettled(tasks)
-        if (cancelled) return
+        if (cancelled || controller.signal.aborted) return
 
         const sectionOrderIndex = (key: SearchFilterKey) => SEARCH_SECTION_ORDER.indexOf(key)
         const fulfilled = settled
@@ -386,7 +427,9 @@ export function useUnifiedSearch(
           // 화면은 항상 SEARCH_SECTION_ORDER 고정 순서를 유지해야 한다(SearchResultsPanel의
           // '전체' 결과가 이 순서를 그대로 관련도순으로 쓴다).
           .sort((a, b) => sectionOrderIndex(a.key) - sectionOrderIndex(b.key))
-        const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        const rejected = settled.filter((r): r is PromiseRejectedResult =>
+          r.status === 'rejected' && !isAbortError(r.reason)
+        )
 
         // 515-2 — 병합 쿼리(발행일 내림차순 CONTENT_MERGE_LIMIT행)는 물량 많은 카테고리가
         // 창을 독점하면 물량 적은 카테고리가 통째로 빈다(실측: 'aidc' 매칭 1,265건 중
@@ -404,10 +447,10 @@ export function useUnifiedSearch(
             const round2 = await Promise.allSettled(
               emptyContentKeys.map(async (key): Promise<SearchSection> => ({
                 key,
-                items: await fetchSection(supabase, key, tokens, capFor(key)),
+                items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal),
               }))
             )
-            if (cancelled) return
+            if (cancelled || controller.signal.aborted) return
             // 2라운드 실패는 조용히 무시 — 1라운드 결과(빈 섹션 → 자동 숨김)를 그대로
             // 둔다. 별도 에러 배너는 띄우지 않는다(아래 에러 판정은 1라운드 rejected만 반영).
             const round2ByKey = new Map(
@@ -435,21 +478,31 @@ export function useUnifiedSearch(
           setError(null)
         }
         setLoading(false)
+        if (requestTimeout) clearTimeout(requestTimeout)
+        if (controllerRef.current === controller) controllerRef.current = null
       }
 
       fetchResults().catch(errorValue => {
-        if (!cancelled) {
+        if (!cancelled && !isAbortError(errorValue)) {
           console.error('[search] 검색 중 오류:', errorValue)
           setError('검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
           setLoading(false)
         }
+        if (requestTimeout) clearTimeout(requestTimeout)
+        if (controllerRef.current === controller) controllerRef.current = null
       })
     }, 300)
 
-    return () => { cancelled = true; clearTimeout(timer) }
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      if (requestTimeout) clearTimeout(requestTimeout)
+      controller.abort()
+      if (controllerRef.current === controller) controllerRef.current = null
+    }
   }, [q, filter])
 
-  return { sections, isLoading, error }
+  return { sections, isLoading, error, notice, cancel }
 }
 
 export { SEARCH_FILTER_DEFS }
