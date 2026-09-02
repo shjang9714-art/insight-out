@@ -106,16 +106,16 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
   }
 
   // 미설정 여부 판단
-  const hasSetting = activeLens === 'watch' ? ctx.watchlist.length > 0 : true
+  const hasSetting = activeLens === 'watch' ? ctx.count > 0 : true
 
   // 개인화 설정 여부 (렌즈 무관) — 내 관련도 배지 표시 조건
-  const hasPersonalization = ctx.watchlist.length > 0
+  const hasPersonalization = ctx.count > 0
 
   // 렌즈 필터/정렬 — 두 뷰 공유
   const visibleGroups = sanitizedGroups.map((g, idx) => {
     const lensedCards = g.cards
       .map(card => {
-        const target: LensTarget = { names: [card.topic, card.headline] }
+        const target: LensTarget = { names: [card.topic], text: [card.topic, card.headline] }
         const score   = lensScore(activeLens, ctx, target)
         const matched = activeLens !== 'all' && matchesLens(activeLens, ctx, target)
         return { card, score, matched }
@@ -267,7 +267,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
                 const evidenceCount = citations.length || card.source_content_ids.length
 
                 // 중요도 / 내 관련도 / 선정 이유
-                const relevanceTarget: LensTarget = { names: [card.topic, card.headline] }
+                const relevanceTarget: LensTarget = { names: [card.topic], text: [card.topic, card.headline] }
                 const relevanceMatched = matchesLens('watch', ctx, relevanceTarget)
                 const relevanceScore = lensScore('watch', ctx, relevanceTarget)
                 const importance = computeImportance(card)

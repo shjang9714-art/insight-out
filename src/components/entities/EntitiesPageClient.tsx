@@ -68,7 +68,7 @@ export default function EntitiesPageClient({
   const [activeLens, setActiveLens] = useActiveLens()
 
   // 미설정 여부 판단
-  const hasSetting = activeLens === 'watch' ? ctx.watchlist.length > 0 : true
+  const hasSetting = activeLens === 'watch' ? ctx.count > 0 : true
 
   // 렌즈 적용된 엔티티 목록 (list 뷰용)
   const lensedEntities = useMemo(() => {
