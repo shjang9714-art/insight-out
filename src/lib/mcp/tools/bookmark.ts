@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { actorFrom, hasScope } from '@/lib/mcp/auth'
+import { withAudit } from '@/lib/mcp/audit'
 import { dbError, fail, forbidden, ok } from '@/lib/mcp/result'
 
 function guard(extra: unknown) {
@@ -48,7 +49,7 @@ export function registerBookmarkTools(server: McpServer) {
     inputSchema: {
       limit: z.number().int().min(1).max(100).optional(),
     },
-  }, async ({ limit }, extra) => {
+  }, withAudit('bookmark_list', async ({ limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const admin = createAdminClient()
@@ -94,5 +95,5 @@ export function registerBookmarkTools(server: McpServer) {
         })
       return ok(normalizedItems.length ? normalizedItems.map(stringify).join('\n\n') : '북마크가 없습니다.')
     } catch (error) { return dbError(error, 'bookmarks') }
-  })
+  }))
 }

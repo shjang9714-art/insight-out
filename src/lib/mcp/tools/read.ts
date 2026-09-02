@@ -9,6 +9,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { actorFrom, hasScope } from '@/lib/mcp/auth'
+import { withAudit } from '@/lib/mcp/audit'
 import { getEntityBrief } from '@/lib/entities/brief'
 
 interface ContentRow {
@@ -56,16 +57,17 @@ export function registerReadTools(server: McpServer) {
       description:
         '인사이트 아웃이 수집한 콘텐츠(뉴스·리포트·유튜브)를 검색합니다. ' +
         '보고서나 인사이트를 쓰기 전에 반드시 이 툴로 근거 자료를 찾고, 반환된 id 를 인용에 사용하세요. ' +
-        'query 로 제목·요약 검색, group 으로 키워드그룹(예: AI, 클라우드) 필터링이 가능합니다.',
+        'query 로 제목·요약 검색, group 으로 키워드그룹(예: AI, 클라우드) 필터링이 가능합니다. ' +
+        '기간이 길수록 느립니다. 30~90일을 권장합니다.',
       inputSchema: {
         query: z.string().optional().describe('제목·요약에서 검색할 문자열'),
         group: z.string().optional().describe('키워드그룹명 필터 (matched_groups)'),
         category: z.string().optional().describe('news | report | youtube | opinion 등'),
-        days: z.number().int().min(1).max(365).optional().describe('최근 N일 이내 (기본 30)'),
+        days: z.number().int().min(1).max(180).optional().describe('최근 N일 이내 (기본 30, 30~90 권장)'),
         limit: z.number().int().min(1).max(50).optional().describe('기본 10, 최대 50'),
       },
     },
-    async ({ query, group, category, days, limit }, extra) => {
+    withAudit('content_search', async ({ query, group, category, days, limit }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       try {
@@ -81,7 +83,11 @@ export function registerReadTools(server: McpServer) {
           .order('published_at', { ascending: false })
           .limit(limit ?? 10)
 
-        if (query) q = q.or(`title.ilike.%${query}%,summary_ko.ilike.%${query}%`)
+        if (query) {
+          q = query.length >= 3
+            ? q.or(`title.ilike.%${query}%,summary_ko.ilike.%${query}%`)
+            : q.ilike('title', `%${query}%`)
+        }
         if (group) q = q.contains('matched_groups', [group])
         if (category) q = q.eq('category', category)
 
@@ -89,14 +95,17 @@ export function registerReadTools(server: McpServer) {
         if (error) return dbError(error, 'contents')
 
         const rows = (data ?? []) as ContentRow[]
+        const shortQueryNotice = query && query.length <= 2
+          ? '※ 2자 이하 검색어는 제목만 검색합니다.\n\n'
+          : ''
         if (rows.length === 0) {
-          return ok('검색 결과가 없습니다. 기간(days)을 늘리거나 검색어를 넓혀보세요.')
+          return ok(`${shortQueryNotice}검색 결과가 없습니다. 기간(days)을 늘리거나 검색어를 넓혀보세요.`)
         }
-        return ok(`${rows.length}건 검색됨:\n\n${rows.map(contentLine).join('\n\n')}`)
+        return ok(`${shortQueryNotice}${rows.length}건 검색됨:\n\n${rows.map(contentLine).join('\n\n')}`)
       } catch (err) {
         return dbError(err, 'contents')
       }
-    }
+    })
   )
 
   // ── 콘텐츠 본문 조회 ──────────────────────────────────────
@@ -112,7 +121,7 @@ export function registerReadTools(server: McpServer) {
         max_chars: z.number().int().min(500).max(20000).optional().describe('본문 최대 길이 (기본 6000)'),
       },
     },
-    async ({ id, max_chars }, extra) => {
+    withAudit('content_get', async ({ id, max_chars }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       try {
@@ -155,7 +164,7 @@ export function registerReadTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'contents')
       }
-    }
+    })
   )
 
   // ── 이슈 목록 ─────────────────────────────────────────────
@@ -172,7 +181,7 @@ export function registerReadTools(server: McpServer) {
         limit: z.number().int().min(1).max(50).optional(),
       },
     },
-    async ({ query, status, limit }, extra) => {
+    withAudit('issue_list', async ({ query, status, limit }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       try {
@@ -210,7 +219,7 @@ export function registerReadTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'issues')
       }
-    }
+    })
   )
 
   // ── 기업·기관 조회 ────────────────────────────────────────
@@ -227,7 +236,7 @@ export function registerReadTools(server: McpServer) {
         limit: z.number().int().min(1).max(50).optional(),
       },
     },
-    async ({ query, competitor_only, limit }, extra) => {
+    withAudit('entity_list', async ({ query, competitor_only, limit }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       try {
@@ -264,7 +273,7 @@ export function registerReadTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'entities')
       }
-    }
+    })
   )
 
   // ── 기업·기관 종합 조회 ──────────────────────────────────
@@ -283,7 +292,7 @@ export function registerReadTools(server: McpServer) {
         contents: z.number().int().min(1).max(30).optional().describe('최근 뉴스 개수 (기본 10)'),
       },
     },
-    async ({ name, entity_id, events, neighbors, contents }, extra) => {
+    withAudit('entity_brief', async ({ name, entity_id, events, neighbors, contents }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       if (!name && !entity_id) return fail('name 또는 entity_id 중 하나를 입력해주세요.')
@@ -330,6 +339,6 @@ export function registerReadTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'entity_brief')
       }
-    }
+    })
   )
 }
