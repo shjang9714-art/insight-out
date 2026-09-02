@@ -137,12 +137,12 @@ function truncateTitle(title: string): string {
 function buildInsightRow(label: string, body: string): string {
   return `
         <tr>
-          <td width="62" valign="top" style="padding:0 8px 6px 0; font-size:12.5px; font-weight:700; color:#E6007E; line-height:1.6;">${escapeHtml(label)}</td>
+          <td width="84" valign="top" style="padding:0 8px 6px 0; font-size:12.5px; font-weight:700; color:#E6007E; line-height:1.6; white-space:nowrap;">${escapeHtml(label)}</td>
           <td valign="top" style="padding:0 0 6px; font-size:12.5px; line-height:1.6; color:#4b5563;">${escapeHtml(body)}</td>
         </tr>`
 }
 
-/** 인사이트 블록. what·why·action 셋 다 없으면 아무것도 그리지 않는다. 과거 문자열 payload 는 한 줄로 렌더(하위호환). */
+/** 인사이트 블록. why·action 둘 다 없으면 아무것도 그리지 않는다. 과거 문자열 payload 는 한 줄로 렌더(하위호환). */
 function buildInsightBlock(insight: NewsletterCard['insight']): string {
   if (!insight) return ''
 
@@ -152,12 +152,11 @@ function buildInsightBlock(insight: NewsletterCard['insight']): string {
             <p style="margin:0 0 8px; font-size:12.5px; line-height:1.6; color:#4b5563; border-top:1px dashed #eef0f3; padding-top:8px;">💡 <span style="color:#E6007E; font-weight:700;">인사이트 ·</span> ${escapeHtml(insight)}</p>`
   }
 
-  if (!insight.what && !insight.why && !insight.action) return ''
+  if (!insight.why && !insight.action) return ''
 
   const rows = [
-    insight.what ? buildInsightRow('무엇이', insight.what) : '',
-    insight.why ? buildInsightRow('왜 중요', insight.why) : '',
-    insight.action ? buildInsightRow('U+ 시사점', insight.action) : '',
+    insight.why ? buildInsightRow('짚어보면', insight.why) : '',
+    insight.action ? buildInsightRow('그래서 U+는', insight.action) : '',
   ].join('')
 
   return `
