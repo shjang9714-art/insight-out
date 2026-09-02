@@ -57,7 +57,7 @@ export function dbError(err: unknown, table: string): McpToolResult {
     return fail('해당 id 의 항목을 찾을 수 없습니다.')
   }
   if (code === STATEMENT_TIMEOUT_CODE) {
-    return fail('조회가 서버 제한시간(8초)을 넘겼습니다. 기간(days)을 줄이거나 검색어를 3자 이상으로 좁혀서 다시 시도해주세요.')
+    return fail('조회가 서버 제한시간을 넘겼습니다. 기간(days)을 줄이거나 검색어를 3자 이상으로 좁혀서 다시 시도해주세요.')
   }
   return fail(`DB 오류: ${errMessage(err)}`)
 }
