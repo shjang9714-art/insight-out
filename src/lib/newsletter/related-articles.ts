@@ -12,14 +12,24 @@ export interface RelatedArticle {
 
 /** 카드마다 붙일 관련기사 상한. */
 const MAX_RELATED_PER_CARD = 3
-/** 이슈 클러스터 후보가 부족할 때, 키워드 매칭으로 보충 조회할 상한. */
-const KEYWORD_FALLBACK_LIMIT = 10
 /**
- * 카드 1장의 이슈클러스터 후보 상한. 대형 이슈는 클러스터 멤버가 수백 건에 달할 수 있어
- * (실측 확인) 상한 없이 합치면 3단계 본문조회의 `in(id, ...)` 목록이 커져 요청이 거부된다
- * (Bad Request). 최종 채택은 어차피 최신순 상위 3건뿐이라 여유분만 가져오면 충분하다.
+ * 클러스터 멤버 id `in(id,...)` 조회 청크 크기. id 목록이 길면(수백~천 단위) 요청이
+ * 거부되므로(Bad Request) 200개씩 나눠 병렬 조회한다(지시서 20260902 §7-2).
  */
-const CLUSTER_CANDIDATE_CAP_PER_CARD = 15
+const CLUSTER_ID_CHUNK_SIZE = 200
+/**
+ * 본문을 조회할 후보 id 합집합(카드 전체 기준)의 상한(=5청크 × 200). 카드별로 상한을 걸면
+ * 카드 10장 × 1,000건이 그대로 합쳐져 최악 10,000건 → 병렬 쿼리 50개가 될 수 있으므로,
+ * 카드별 루프에서는 상한을 두지 않고 합집합에 이 값만큼 쌓이면 전체 수집을 멈춘다.
+ */
+const CLUSTER_CANDIDATE_FETCH_CAP = CLUSTER_ID_CHUNK_SIZE * 5
+/**
+ * 이슈 클러스터 자체가 무차별적으로 태깅돼(지시서 548 §1-3 — 72h 전체 기사의 59%가 이슈 하나에
+ * 묶인 실측 사례) 멤버가 이 수를 넘는 이슈는 "같은 사건"이 아니라 잡다한 묶음으로 보고 후보에서
+ * 제외한다(지시서 20260902 §7 후속). 실측: 「엘리스그룹 GPU 클라우드」 카드가 걸친 이슈 중
+ * 하나가 무관한 기사(개각 평가·지분 매각 등) 수백 건을 묶고 있어 최신 3건이 거기서 뽑혔다.
+ */
+const MAX_ISSUE_CLUSTER_SIZE = 30
 
 interface RelatedContentRow {
   id: string
@@ -28,7 +38,6 @@ interface RelatedContentRow {
   published_at: string | null
   summary_ko: string | null
   category: string
-  matched_keywords: string[] | null
   sources: { name: string; type: string | null } | { name: string; type: string | null }[] | null
 }
 
@@ -64,16 +73,19 @@ function excludeNonNews(rows: RelatedContentRow[]): RelatedContentRow[] {
 }
 
 const RELATED_CONTENT_SELECT =
-  'id, title, original_url, published_at, summary_ko, category, matched_keywords, sources(name, type)'
+  'id, title, original_url, published_at, summary_ko, category, sources(name, type)'
 
 /**
- * 카드마다 같은 사건을 다룬 관련기사를 최대 3건 찾는다(이슈 클러스터 우선 → 부족분 키워드 매칭).
- * LLM 호출 없이 순수 DB 조회. 카드가 몇 장이든 DB 왕복은 최대 4회(카드별 루프 안에서 쿼리 금지).
- * 실패해도 절대 throw 하지 않고 빈 Map 을 반환한다(관련기사 없이 발송하는 폴백).
+ * 카드마다 같은 이슈 클러스터에 속한 관련기사를 최대 3건 찾는다. 키워드 매칭 폴백은 쓰지 않는다
+ * — 키워드 1개만 겹쳐도 통과하는 방식이라 주제가 무관한 기사가 자주 붙었다(지시서 20260902 §7-1
+ * 실측: "하청 안전" 카드에 "현대차 데이터 플라이휠" 이 붙는 등). 같은 이슈 클러스터에 속한
+ * 기사만 붙이고, 없으면 섹션을 그대로 숨긴다 — 붙는 빈도가 줄어드는 건 의도된 결과다.
+ * LLM 호출 없이 순수 DB 조회. 실패해도 절대 throw 하지 않고 빈 Map 을 반환한다(관련기사 없이
+ * 발송하는 폴백).
  */
 export async function fetchRelatedArticles(
   supabase: SupabaseClient,
-  cards: { id: string; matchedKeywords: string[] }[],
+  cards: { id: string }[],
   baseUrl: string,
   excludeIds: Set<string>,
 ): Promise<Map<string, RelatedArticle[]>> {
@@ -116,84 +128,66 @@ export async function fetchRelatedArticles(
       }
     }
 
-    // 카드별 이슈클러스터 후보 = 자기 이슈들에 속한 content_id 합집합 − 자기 자신 − excludeIds
+    // 카드별 이슈클러스터 후보 = 자기 이슈들 중 멤버 수가 MAX_ISSUE_CLUSTER_SIZE 이하인 것만
+    // 골라 속한 content_id 합집합 − 자기 자신 − excludeIds. 카드별 상한은 두지 않는다 — 상한을
+    // 두면 "임의로 먼저 만난 N건"이 되어 뒤의 최신순 정렬이 무의미해진다(§7-2).
     const clusterCandidates = new Map<string, Set<string>>()
     for (const card of cards) {
       const candidates = new Set<string>()
-      outer: for (const issueId of cardToIssueIds.get(card.id) ?? []) {
-        for (const contentId of issueToContentIds.get(issueId) ?? []) {
+      for (const issueId of cardToIssueIds.get(card.id) ?? []) {
+        const members = issueToContentIds.get(issueId)
+        if (!members || members.size > MAX_ISSUE_CLUSTER_SIZE) continue
+        for (const contentId of members) {
           if (contentId === card.id) continue
           if (excludeIds.has(contentId)) continue
           candidates.add(contentId)
-          if (candidates.size >= CLUSTER_CANDIDATE_CAP_PER_CARD) break outer
         }
       }
       clusterCandidates.set(card.id, candidates)
     }
 
-    // 2단계 — 부족분(3건 미만)만 키워드 매칭으로 보충 (DB 왕복 최대 1회, 카드별 루프 안 아님)
-    const cardsNeedingKeywordFallback = cards.filter(
-      (c) => (clusterCandidates.get(c.id)?.size ?? 0) < MAX_RELATED_PER_CARD && c.matchedKeywords.length > 0
-    )
-    const keywordCandidateRows = new Map<string, RelatedContentRow[]>()
-    if (cardsNeedingKeywordFallback.length > 0) {
-      const allKeywords = Array.from(new Set(cardsNeedingKeywordFallback.flatMap((c) => c.matchedKeywords)))
-      const { data: keywordRows, error: keywordErr } = await supabase
-        .from('contents')
-        .select(RELATED_CONTENT_SELECT)
-        .eq('status', 'published')
-        .is('deleted_at', null)
-        .not('summary_ko', 'is', null)
-        .overlaps('matched_keywords', allKeywords)
-        .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(KEYWORD_FALLBACK_LIMIT * cardsNeedingKeywordFallback.length)
-
-      if (keywordErr) throw keywordErr
-      const cleanedKeywordRows = excludeNonNews((keywordRows ?? []) as unknown as RelatedContentRow[])
-
-      for (const card of cardsNeedingKeywordFallback) {
-        const keywordSet = new Set(card.matchedKeywords)
-        const matches = cleanedKeywordRows.filter((r) => {
-          if (r.id === card.id) return false
-          if (excludeIds.has(r.id)) return false
-          if (clusterCandidates.get(card.id)?.has(r.id)) return false
-          return r.matched_keywords?.some((k) => keywordSet.has(k)) ?? false
-        })
-        keywordCandidateRows.set(card.id, matches.slice(0, KEYWORD_FALLBACK_LIMIT))
+    // 본문을 조회할 후보 id — 카드별 상한 없이 합집합에 쌓다가, 합집합 크기가
+    // CLUSTER_CANDIDATE_FETCH_CAP 에 도달하면 전체 수집을 멈춘다(카드별로 걸면 카드 수만큼
+    // 배로 불어나던 버그 수정).
+    const allCandidateIds = new Set<string>()
+    outer: for (const set of clusterCandidates.values()) {
+      for (const id of set) {
+        if (allCandidateIds.size >= CLUSTER_CANDIDATE_FETCH_CAP) break outer
+        allCandidateIds.add(id)
       }
     }
 
-    // 3단계 — 후보 id 전체를 한 번에 조회
-    const allCandidateIds = new Set<string>()
-    for (const set of clusterCandidates.values()) for (const id of set) allCandidateIds.add(id)
-    for (const rows of keywordCandidateRows.values()) for (const r of rows) allCandidateIds.add(r.id)
-
+    // 200개씩 청크로 나눠 병렬 조회(원래 Bad Request 는 id 목록이 길어서 났던 것이므로 청크로 해결된다).
     const contentById = new Map<string, RelatedContentRow>()
-    for (const rows of keywordCandidateRows.values()) {
-      for (const r of rows) contentById.set(r.id, r)
-    }
-    const idsToFetch = Array.from(allCandidateIds).filter((id) => !contentById.has(id))
-
+    const idsToFetch = Array.from(allCandidateIds)
     if (idsToFetch.length > 0) {
-      const { data: contentRows, error: contentErr } = await supabase
-        .from('contents')
-        .select(RELATED_CONTENT_SELECT)
-        .eq('status', 'published')
-        .is('deleted_at', null)
-        .not('summary_ko', 'is', null)
-        .in('id', idsToFetch)
-      if (contentErr) throw contentErr
+      const chunks: string[][] = []
+      for (let i = 0; i < idsToFetch.length; i += CLUSTER_ID_CHUNK_SIZE) {
+        chunks.push(idsToFetch.slice(i, i + CLUSTER_ID_CHUNK_SIZE))
+      }
 
-      const cleaned = excludeNonNews((contentRows ?? []) as unknown as RelatedContentRow[])
-      for (const r of cleaned) contentById.set(r.id, r)
+      const chunkResults = await Promise.all(
+        chunks.map((chunk) =>
+          supabase
+            .from('contents')
+            .select(RELATED_CONTENT_SELECT)
+            .eq('status', 'published')
+            .is('deleted_at', null)
+            .not('summary_ko', 'is', null)
+            .in('id', chunk)
+        )
+      )
+
+      for (const { data, error } of chunkResults) {
+        if (error) throw error
+        const cleaned = excludeNonNews((data ?? []) as unknown as RelatedContentRow[])
+        for (const r of cleaned) contentById.set(r.id, r)
+      }
     }
 
-    // 카드별 최종 조합: 이슈클러스터 후보 + 키워드 후보 → 품질게이트 통과분만 → 제목 중복 제거 → 최신순 → 상한 3건
+    // 카드별 최종 조합: 이슈클러스터 후보 → 품질게이트 통과분만 → 제목 중복 제거 → 최신순 → 상한 3건
     for (const card of cards) {
-      const candidateIds = new Set<string>([
-        ...(clusterCandidates.get(card.id) ?? []),
-        ...(keywordCandidateRows.get(card.id) ?? []).map((r) => r.id),
-      ])
+      const candidateIds = clusterCandidates.get(card.id) ?? new Set<string>()
 
       const rows = Array.from(candidateIds)
         .map((id) => contentById.get(id))

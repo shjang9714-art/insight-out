@@ -119,6 +119,11 @@ export function classifyNewsGroup(content: NewsGroupClassifiable, names: Competi
  * 비어버리는 문제가 있었다(실측: 경쟁사 태그 기사가 상위 200건 중 6건뿐, 첫 등장이 57위).
  * ⑤ 시장·B2B동향은 넓은 일반 후보 풀에서 위 네 버킷 중 하나로도 분류되지 않는(=진짜 잔여) 건만
  * classifyNewsGroup 으로 걸러 채우는 catch-all이다.
+ *
+ * 🔴 게이트(지시서 20260902 §7-4): matchedGroups 가 하나도 없는 완전 무태그 기사(영화·연예·
+ * 일반 노무 등)는 후보에서 아예 배제한다. 게이트 없이는 "①~④ 어디에도 안 걸린 것"이 곧
+ * "아무 키워드그룹도 안 붙은 것"과 같아져, U+ B2B 와 무관한 기사가 조회수만으로 뽑혀 왔다.
+ * 후보가 maxCount 에 못 미쳐도 잡음으로 채우지 않고 그대로 적게 반환한다.
  */
 export function pickResidualMarketCandidates<T extends NewsGroupClassifiable & { id: string }>(
   pool: T[],
@@ -129,6 +134,7 @@ export function pickResidualMarketCandidates<T extends NewsGroupClassifiable & {
   const picked: T[] = []
   for (const c of pool) {
     if (excludeIds.has(c.id)) continue
+    if (c.matchedGroups.length === 0) continue
     if (classifyNewsGroup(c, names) !== 'market_b2b') continue
     picked.push(c)
     if (picked.length >= maxCount) break
