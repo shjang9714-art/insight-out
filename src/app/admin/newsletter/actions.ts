@@ -114,6 +114,7 @@ export async function getPreviewHtml() {
         detailUrl: c.detailUrl,
         originalUrl: c.originalUrl,
         insight: c.insight,
+        relatedArticles: c.relatedArticles,
       })),
     })),
     topTeaser: toTemplateTopTeaser(prepared.topTeaser),

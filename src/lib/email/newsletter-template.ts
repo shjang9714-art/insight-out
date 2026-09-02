@@ -1,4 +1,6 @@
 import type { NewsGroupKey } from '@/lib/newsletter/news-groups'
+import type { CardInsight } from '@/lib/newsletter/card-insights'
+import type { RelatedArticle } from '@/lib/newsletter/related-articles'
 
 export interface NewsletterCard {
   title: string
@@ -7,7 +9,9 @@ export interface NewsletterCard {
   summaryKo: string | null
   detailUrl: string
   originalUrl: string | null
-  insight: string | null
+  /** 과거 payload(`newsletter_issues.payload`)는 문자열 인사이트를 담고 있을 수 있다 — 하위호환. */
+  insight: CardInsight | string | null
+  relatedArticles?: RelatedArticle[]
 }
 
 export interface NewsletterNewsGroup {
@@ -123,6 +127,67 @@ function buildTopTeaserSection(data: NewsletterEmailData['topTeaser']): string {
   return data.type === 'flow' ? buildTopTeaserFlowSection(data) : buildTopTeaserInsightSection(data)
 }
 
+const RELATED_TITLE_MAX_LENGTH = 45
+
+function truncateTitle(title: string): string {
+  return title.length > RELATED_TITLE_MAX_LENGTH ? `${title.slice(0, RELATED_TITLE_MAX_LENGTH)}…` : title
+}
+
+/** 인사이트 라벨 행 하나(2열 테이블 — Outlook 대응상 flex·grid 대신 table 로 정렬). */
+function buildInsightRow(label: string, body: string): string {
+  return `
+        <tr>
+          <td width="62" valign="top" style="padding:0 8px 6px 0; font-size:12.5px; font-weight:700; color:#E6007E; line-height:1.6;">${escapeHtml(label)}</td>
+          <td valign="top" style="padding:0 0 6px; font-size:12.5px; line-height:1.6; color:#4b5563;">${escapeHtml(body)}</td>
+        </tr>`
+}
+
+/** 인사이트 블록. what·why·action 셋 다 없으면 아무것도 그리지 않는다. 과거 문자열 payload 는 한 줄로 렌더(하위호환). */
+function buildInsightBlock(insight: NewsletterCard['insight']): string {
+  if (!insight) return ''
+
+  if (typeof insight === 'string') {
+    if (!insight.trim()) return ''
+    return `
+            <p style="margin:0 0 8px; font-size:12.5px; line-height:1.6; color:#4b5563; border-top:1px dashed #eef0f3; padding-top:8px;">💡 <span style="color:#E6007E; font-weight:700;">인사이트 ·</span> ${escapeHtml(insight)}</p>`
+  }
+
+  if (!insight.what && !insight.why && !insight.action) return ''
+
+  const rows = [
+    insight.what ? buildInsightRow('무엇이', insight.what) : '',
+    insight.why ? buildInsightRow('왜 중요', insight.why) : '',
+    insight.action ? buildInsightRow('U+ 시사점', insight.action) : '',
+  ].join('')
+
+  return `
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 8px; border-top:1px dashed #eef0f3; padding-top:8px;">
+              <tr><td colspan="2" style="padding:0 0 6px; font-size:12px; font-weight:700; color:#E6007E;">💡 인사이트</td></tr>
+              ${rows}
+            </table>`
+}
+
+/** 관련 기사 블록. 배열이 비었거나 undefined 면 소제목 포함 전체를 렌더하지 않는다. */
+function buildRelatedArticlesBlock(articles: RelatedArticle[] | undefined): string {
+  if (!articles || articles.length === 0) return ''
+
+  const items = articles
+    .map(
+      (a) => `
+        <tr>
+          <td style="padding:0 0 4px; font-size:12px; line-height:1.6;">
+            · <a href="${a.detailUrl}" style="color:#4b5563; text-decoration:none;">${escapeHtml(truncateTitle(a.title))}</a>${a.sourceName ? ` <span style="color:#9ca3af;">(${escapeHtml(a.sourceName)})</span>` : ''}
+          </td>
+        </tr>`
+    )
+    .join('')
+
+  return `
+            <p style="margin:0 0 4px; font-size:11px; font-weight:700; color:#9ca3af;">관련 기사</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">${items}
+            </table>`
+}
+
 function buildNewsCardItem(card: NewsletterCard, i: number, isLast: boolean): string {
   return `
   <tr>
@@ -136,7 +201,8 @@ function buildNewsCardItem(card: NewsletterCard, i: number, isLast: boolean): st
             <p style="margin:0 0 5px; font-size:11px; color:#9ca3af;"><span style="color:#E6007E; font-weight:700;">${escapeHtml(card.category)}</span>${card.sourceName ? ` · ${escapeHtml(card.sourceName)}` : ''}</p>
             <p style="margin:0 0 6px; font-size:15px; font-weight:700; line-height:1.45; color:#111827;">${escapeHtml(card.title)}</p>
             ${card.summaryKo ? `<p style="margin:0 0 8px; font-size:13px; line-height:1.65; color:#6b7280;">${escapeHtml(card.summaryKo)}</p>` : ''}
-            ${card.insight ? `<p style="margin:0 0 8px; font-size:12.5px; line-height:1.6; color:#4b5563; border-top:1px dashed #eef0f3; padding-top:8px;">💡 <span style="color:#E6007E; font-weight:700;">인사이트 ·</span> ${escapeHtml(card.insight)}</p>` : ''}
+            ${buildInsightBlock(card.insight)}
+            ${buildRelatedArticlesBlock(card.relatedArticles)}
             <a href="${card.detailUrl}" style="font-size:12px; font-weight:700; color:#E6007E; text-decoration:none;">자세히 보기 →</a>
           </td>
         </tr>

@@ -34,6 +34,19 @@ function getTodayKST(): string {
   return kst.toISOString().slice(0, 10)
 }
 
+/**
+ * 카드 인사이트 텍스트 추출. 새 payload 는 { what, why, action } 구조체, 과거 payload
+ * (`newsletter_issues.payload`)는 문자열을 담고 있을 수 있어 둘 다 안전하게 처리한다.
+ */
+function extractInsightText(insight: unknown): string {
+  if (typeof insight === 'string') return insight
+  if (insight && typeof insight === 'object') {
+    const i = insight as { what?: unknown; why?: unknown; action?: unknown }
+    return [i.what, i.why, i.action].filter((v): v is string => typeof v === 'string' && v.length > 0).join(' ')
+  }
+  return ''
+}
+
 /** payload → 그룹 구조. items 는 이 결과를 평탄화해 만든다(두 벌 금지). */
 function buildGroups(payload: unknown): TeamsNewsletterGroup[] {
   const p = payload as Partial<PreparedNewsletterIssue> | null | undefined
@@ -47,7 +60,7 @@ function buildGroups(payload: unknown): TeamsNewsletterGroup[] {
         group: group.label,
         title: card.title,
         summary: card.summaryKo ?? '',
-        insight: card.insight ?? '',
+        insight: extractInsightText(card.insight),
         source: card.sourceName ?? '',
         url: card.originalUrl ?? card.detailUrl ?? null,
       })),
