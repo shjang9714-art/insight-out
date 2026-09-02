@@ -18,12 +18,18 @@ const MAX_RELATED_PER_CARD = 3
  */
 const CLUSTER_ID_CHUNK_SIZE = 200
 /**
- * 카드 1장의 클러스터 후보 중 실제로 본문을 조회할 상한(=5청크 × 200). 대형 이슈는 클러스터
- * 멤버가 수백~천 건에 달할 수 있어(실측 최대 1,408건) 전량 조회는 비용이 크다. 예전엔 이 상한을
- * "먼저 만난 15건"에 걸어 최신순 정렬이 무의미해졌다(임의 15건 중 최신 3건) — 이제는 후보 수집
- * 자체엔 상한을 두지 않고, 본문 조회 단계에서만 상한을 적용해 정렬이 실제 후보군 전체를 반영하게 한다.
+ * 본문을 조회할 후보 id 합집합(카드 전체 기준)의 상한(=5청크 × 200). 카드별로 상한을 걸면
+ * 카드 10장 × 1,000건이 그대로 합쳐져 최악 10,000건 → 병렬 쿼리 50개가 될 수 있으므로,
+ * 카드별 루프에서는 상한을 두지 않고 합집합에 이 값만큼 쌓이면 전체 수집을 멈춘다.
  */
 const CLUSTER_CANDIDATE_FETCH_CAP = CLUSTER_ID_CHUNK_SIZE * 5
+/**
+ * 이슈 클러스터 자체가 무차별적으로 태깅돼(지시서 548 §1-3 — 72h 전체 기사의 59%가 이슈 하나에
+ * 묶인 실측 사례) 멤버가 이 수를 넘는 이슈는 "같은 사건"이 아니라 잡다한 묶음으로 보고 후보에서
+ * 제외한다(지시서 20260902 §7 후속). 실측: 「엘리스그룹 GPU 클라우드」 카드가 걸친 이슈 중
+ * 하나가 무관한 기사(개각 평가·지분 매각 등) 수백 건을 묶고 있어 최신 3건이 거기서 뽑혔다.
+ */
+const MAX_ISSUE_CLUSTER_SIZE = 30
 
 interface RelatedContentRow {
   id: string
@@ -122,14 +128,16 @@ export async function fetchRelatedArticles(
       }
     }
 
-    // 카드별 이슈클러스터 후보 = 자기 이슈들에 속한 content_id 합집합 − 자기 자신 − excludeIds.
-    // 여기서는 상한을 두지 않는다 — 상한을 두면 "임의로 먼저 만난 N건"이 되어 뒤의 최신순 정렬이
-    // 무의미해진다(§7-2). 상한은 아래 본문 조회 단계에서만 건다.
+    // 카드별 이슈클러스터 후보 = 자기 이슈들 중 멤버 수가 MAX_ISSUE_CLUSTER_SIZE 이하인 것만
+    // 골라 속한 content_id 합집합 − 자기 자신 − excludeIds. 카드별 상한은 두지 않는다 — 상한을
+    // 두면 "임의로 먼저 만난 N건"이 되어 뒤의 최신순 정렬이 무의미해진다(§7-2).
     const clusterCandidates = new Map<string, Set<string>>()
     for (const card of cards) {
       const candidates = new Set<string>()
       for (const issueId of cardToIssueIds.get(card.id) ?? []) {
-        for (const contentId of issueToContentIds.get(issueId) ?? []) {
+        const members = issueToContentIds.get(issueId)
+        if (!members || members.size > MAX_ISSUE_CLUSTER_SIZE) continue
+        for (const contentId of members) {
           if (contentId === card.id) continue
           if (excludeIds.has(contentId)) continue
           candidates.add(contentId)
@@ -138,14 +146,14 @@ export async function fetchRelatedArticles(
       clusterCandidates.set(card.id, candidates)
     }
 
-    // 본문을 조회할 후보 id — 카드별로 최대 CLUSTER_CANDIDATE_FETCH_CAP 건만, 전체는 합집합(중복 제거).
+    // 본문을 조회할 후보 id — 카드별 상한 없이 합집합에 쌓다가, 합집합 크기가
+    // CLUSTER_CANDIDATE_FETCH_CAP 에 도달하면 전체 수집을 멈춘다(카드별로 걸면 카드 수만큼
+    // 배로 불어나던 버그 수정).
     const allCandidateIds = new Set<string>()
-    for (const set of clusterCandidates.values()) {
-      let count = 0
+    outer: for (const set of clusterCandidates.values()) {
       for (const id of set) {
-        if (count >= CLUSTER_CANDIDATE_FETCH_CAP) break
+        if (allCandidateIds.size >= CLUSTER_CANDIDATE_FETCH_CAP) break outer
         allCandidateIds.add(id)
-        count++
       }
     }
 
