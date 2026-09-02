@@ -234,7 +234,7 @@ export async function prepareNewsletterIssue(
       : Promise.resolve(new Map<string, CardInsight>()),
     fetchRelatedArticles(
       supabase,
-      selected.map((r) => ({ id: r.id, matchedKeywords: r.matched_keywords ?? [] })),
+      selected.map((r) => ({ id: r.id })),
       baseUrl,
       relatedArticleExcludeIds
     ),
