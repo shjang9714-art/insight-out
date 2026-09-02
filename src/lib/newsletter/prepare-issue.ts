@@ -1,7 +1,8 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { filterOutStockContent, filterOutYoutubeContent } from '@/lib/newsletter/content-filter'
-import { generateCardInsights } from '@/lib/newsletter/card-insights'
+import { generateCardInsights, type CardInsight } from '@/lib/newsletter/card-insights'
+import { fetchRelatedArticles, type RelatedArticle } from '@/lib/newsletter/related-articles'
 import { getKstWeekMondayString } from '@/lib/date'
 import {
   getKnowledgeReportTeasers,
@@ -27,7 +28,8 @@ export interface PreparedCard {
   summaryKo: string | null
   originalUrl: string | null
   detailUrl: string
-  insight: string | null
+  insight: CardInsight | null
+  relatedArticles: RelatedArticle[]
 }
 
 export interface PreparedNewsGroup {
@@ -219,9 +221,24 @@ export async function prepareNewsletterIssue(
   const bucketsWithMarket: Record<NewsGroupKey, RawContentRow[]> = { ...buckets, market_b2b: marketRows }
   const selected = NEWS_GROUP_DEFS.flatMap((def) => bucketsWithMarket[def.key])
 
-  const insights = generateInsights
-    ? await generateCardInsights(selected.map((r) => ({ id: r.id, title: r.title, summaryKo: r.summary_ko })))
-    : new Map<string, string>()
+  // 관련기사 배제 집합(§3-3): 그 회차 전체 카드 id + weeklyExcludeIds. 관련기사로 쓴 id 는
+  // usedIds 에 넣지 않는다 — 다음 회차 카드 후보에서 빠지면 안 된다(보조 링크일 뿐).
+  const relatedArticleExcludeIds = new Set<string>(weeklyExcludeIds)
+  for (const r of selected) relatedArticleExcludeIds.add(r.id)
+
+  // LLM 콜(인사이트)과 순수 DB 조회(관련기사)는 서로 의존이 없으니 병렬 실행한다
+  // (직렬로 붙이면 cron 시간만 늘어난다).
+  const [insights, relatedArticlesByCard] = await Promise.all([
+    generateInsights
+      ? generateCardInsights(selected.map((r) => ({ id: r.id, title: r.title, summaryKo: r.summary_ko })))
+      : Promise.resolve(new Map<string, CardInsight>()),
+    fetchRelatedArticles(
+      supabase,
+      selected.map((r) => ({ id: r.id, matchedKeywords: r.matched_keywords ?? [] })),
+      baseUrl,
+      relatedArticleExcludeIds
+    ),
+  ])
 
   const toCard = (r: RawContentRow): PreparedCard => ({
     id: r.id,
@@ -232,6 +249,7 @@ export async function prepareNewsletterIssue(
     originalUrl: r.original_url,
     detailUrl: `${baseUrl}/dashboard/contents/${r.id}`,
     insight: insights.get(r.id) ?? null,
+    relatedArticles: relatedArticlesByCard.get(r.id) ?? [],
   })
 
   const newsGroups: PreparedNewsGroup[] = NEWS_GROUP_DEFS.map((def) => ({
