@@ -33,7 +33,7 @@ import { registerReportTools } from '@/lib/mcp/tools/reports'
 import { registerBookmarkTools } from '@/lib/mcp/tools/bookmark'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 // 툴은 요청과 무관하게 1회 등록된다. 권한(스코프) 검사는 각 툴 콜백 안에서
 // extra.authInfo 를 읽어 수행한다 — 등록 시점에는 호출자가 누구인지 알 수 없다.
@@ -48,7 +48,7 @@ const mcpHandler = createMcpHandler(
   {
     serverInfo: { name: 'insight-out', version: '190' },
   },
-  { basePath: '/api', maxDuration: 60, verboseLogs: false }
+  { basePath: '/api', maxDuration: 300, verboseLogs: false }
 )
 
 /**

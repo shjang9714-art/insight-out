@@ -7,6 +7,7 @@ import { getPublishedCompetitorWeeklyReports, getCompetitorWeeklyReportByWeek } 
 import { getPublishedCompanyDocuments } from '@/lib/company-docs/query'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { actorFrom, hasScope } from '@/lib/mcp/auth'
+import { withAudit } from '@/lib/mcp/audit'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
 import type { CompanyDocumentType } from '@/lib/types'
 
@@ -36,7 +37,7 @@ export function registerAnalyticsReadTools(server: McpServer) {
     title: '발행 AI 리포트 목록',
     description: '발행된 AI 전략 리포트만 조회합니다. 반환된 id를 report_get에서 상세 근거로 사용할 수 있습니다.',
     inputSchema: { limit: z.number().int().min(1).max(50).optional() },
-  }, async ({ limit }, extra) => {
+  }, withAudit('ai_report_list', async ({ limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const reports = await getPublishedReports(createAdminClient())
@@ -46,13 +47,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
         keywords: report.keywords,
       }))))
     } catch (error) { return dbError(error, 'ai_reports') }
-  })
+  }))
 
   server.registerTool('ai_report_get', {
     title: '발행 AI 리포트 상세',
     description: '발행된 AI 리포트 한 건의 본문과 안전한 메타데이터를 조회합니다. 미발행 리포트는 반환하지 않습니다.',
     inputSchema: { id: z.string().uuid() },
-  }, async ({ id }, extra) => {
+  }, withAudit('ai_report_get', async ({ id }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const report = await getReport(createAdminClient(), id)
@@ -63,13 +64,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
         topic: report.topic, body_md: report.body_md, body_html: report.body_html, keywords: report.keywords,
       }))
     } catch (error) { return dbError(error, 'ai_reports') }
-  })
+  }))
 
   server.registerTool('competitor_weekly_list', {
     title: '경쟁사 주간 리포트 목록',
     description: '발행된 경쟁사 주간 리포트만 조회합니다. sections의 citations로 근거 콘텐츠를 연결할 수 있습니다.',
     inputSchema: { limit: z.number().int().min(1).max(30).optional() },
-  }, async ({ limit }, extra) => {
+  }, withAudit('competitor_weekly_list', async ({ limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const reports = await getPublishedCompetitorWeeklyReports(createAdminClient(), limit ?? 12)
@@ -79,13 +80,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
         emerging_topics: report.emerging_topics, sections: report.sections,
       }))))
     } catch (error) { return dbError(error, 'competitor_weekly_reports') }
-  })
+  }))
 
   server.registerTool('competitor_weekly_get', {
     title: '경쟁사 주간 리포트 상세',
     description: 'week_start(YYYY-MM-DD)에 해당하는 발행 경쟁사 주간 리포트를 조회합니다.',
     inputSchema: { week_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) },
-  }, async ({ week_start }, extra) => {
+  }, withAudit('competitor_weekly_get', async ({ week_start }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const report = await getCompetitorWeeklyReportByWeek(createAdminClient(), week_start)
@@ -95,13 +96,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
         emerging_topics: report.emerging_topics, sections: report.sections,
       }) : '해당 주의 발행 리포트가 없습니다.')
     } catch (error) { return dbError(error, 'competitor_weekly_reports') }
-  })
+  }))
 
   server.registerTool('daily_insight_list', {
     title: '데일리 인사이트 목록',
     description: '검토를 마친 발행 데일리 인사이트만 조회합니다.',
     inputSchema: { limit: z.number().int().min(1).max(50).optional() },
-  }, async ({ limit }, extra) => {
+  }, withAudit('daily_insight_list', async ({ limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('daily_insights')
@@ -111,13 +112,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'daily_insights')
       return ok(rowsText(data ?? []))
     } catch (error) { return dbError(error, 'daily_insights') }
-  })
+  }))
 
   server.registerTool('daily_insight_get', {
     title: '데일리 인사이트 상세',
     description: '발행되고 검토 완료된 데일리 인사이트 한 건을 조회합니다.',
     inputSchema: { id: z.string().uuid() },
-  }, async ({ id }, extra) => {
+  }, withAudit('daily_insight_get', async ({ id }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('daily_insights')
@@ -126,13 +127,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'daily_insights')
       return ok(data ? textValue(data) : '발행된 데일리 인사이트가 없습니다.')
     } catch (error) { return dbError(error, 'daily_insights') }
-  })
+  }))
 
   server.registerTool('briefing_list', {
     title: '모닝브리핑 목록',
     description: '발행 또는 보관된 모닝브리핑만 조회합니다.',
     inputSchema: { limit: z.number().int().min(1).max(30).optional() },
-  }, async ({ limit }, extra) => {
+  }, withAudit('briefing_list', async ({ limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('briefings')
@@ -141,13 +142,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'briefings')
       return ok(rowsText((data ?? []).map(resolveBriefingAudioUrl)))
     } catch (error) { return dbError(error, 'briefings') }
-  })
+  }))
 
   server.registerTool('briefing_get', {
     title: '모닝브리핑 상세',
     description: '발행 또는 보관된 모닝브리핑 한 건의 스크립트와 하이라이트를 조회합니다.',
     inputSchema: { id: z.string().uuid() },
-  }, async ({ id }, extra) => {
+  }, withAudit('briefing_get', async ({ id }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('briefings')
@@ -156,13 +157,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'briefings')
       return ok(data ? textValue(resolveBriefingAudioUrl(data)) : '발행된 모닝브리핑이 없습니다.')
     } catch (error) { return dbError(error, 'briefings') }
-  })
+  }))
 
   server.registerTool('newsletter_list', {
     title: '발송 뉴스레터 목록',
     description: '발송 완료 또는 일부 발송된 뉴스레터만 최신순으로 조회합니다. 수신자 개인 정보는 포함하지 않습니다.',
     inputSchema: { limit: z.number().int().min(1).max(50).optional() },
-  }, async ({ limit }, extra) => {
+  }, withAudit('newsletter_list', async ({ limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('newsletter_issues')
@@ -173,13 +174,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'newsletter_issues')
       return ok(rowsText(data ?? [], '발송된 뉴스레터가 없습니다.'))
     } catch (error) { return dbError(error, 'newsletter_issues') }
-  })
+  }))
 
   server.registerTool('newsletter_get', {
     title: '발송 뉴스레터 상세',
     description: '발송된 뉴스레터 한 건의 제목·날짜·수록 기사 id·발송 본문(payload)을 조회합니다. content_ids의 각 기사는 content_get으로 연결할 수 있으며 수신자 정보는 포함하지 않습니다.',
     inputSchema: { id: z.string().uuid() },
-  }, async ({ id }, extra) => {
+  }, withAudit('newsletter_get', async ({ id }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('newsletter_issues')
@@ -190,13 +191,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'newsletter_issues')
       return ok(data ? textValue(data) : '발송되지 않은 뉴스레터이거나 존재하지 않습니다.')
     } catch (error) { return dbError(error, 'newsletter_issues') }
-  })
+  }))
 
   server.registerTool('entity_events', {
     title: '기업 엔티티 이벤트',
     description: '발행 기사 기반 확정 이벤트 타임라인을 entity_id로만 조회합니다. 전체 이벤트 덤프는 지원하지 않습니다.',
     inputSchema: { entity_id: z.string().uuid(), limit: z.number().int().min(1).max(100).optional() },
-  }, async ({ entity_id, limit }, extra) => {
+  }, withAudit('entity_events', async ({ entity_id, limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const { data, error } = await createAdminClient().from('entity_events')
@@ -205,7 +206,7 @@ export function registerAnalyticsReadTools(server: McpServer) {
       if (error) return dbError(error, 'entity_events')
       return ok(rowsText(data ?? []))
     } catch (error) { return dbError(error, 'entity_events') }
-  })
+  }))
 
   server.registerTool('company_document_list', {
     title: '공개 기업 문서 목록',
@@ -215,7 +216,7 @@ export function registerAnalyticsReadTools(server: McpServer) {
       doc_type: z.enum(COMPANY_DOC_TYPES).optional(),
       limit: z.number().int().min(1).max(50).optional(),
     },
-  }, async ({ entity_id, doc_type, limit }, extra) => {
+  }, withAudit('company_document_list', async ({ entity_id, doc_type, limit }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const documents = await getPublishedCompanyDocuments(createAdminClient(), {
@@ -227,13 +228,13 @@ export function registerAnalyticsReadTools(server: McpServer) {
         entityName: document.entityName, doc_type: document.docType, is_official: document.isOfficial,
       }))))
     } catch (error) { return dbError(error, 'company_documents') }
-  })
+  }))
 
   server.registerTool('company_document_get', {
     title: '공개 기업 문서 상세',
     description: 'content_id로 공개 범위이고 검토 완료된 기업 문서 한 건을 조회합니다.',
     inputSchema: { content_id: z.string().uuid() },
-  }, async ({ content_id }, extra) => {
+  }, withAudit('company_document_get', async ({ content_id }, extra) => {
     const g = guard(extra); if (g.err) return g.err
     try {
       const documents = await getPublishedCompanyDocuments(createAdminClient(), { contentId: content_id, limit: 1 })
@@ -244,5 +245,5 @@ export function registerAnalyticsReadTools(server: McpServer) {
         entityName: document.entityName, doc_type: document.docType, is_official: document.isOfficial,
       }) : '공개된 기업 문서가 없습니다.')
     } catch (error) { return dbError(error, 'company_documents') }
-  })
+  }))
 }

@@ -21,9 +21,30 @@ export function fail(text: string): McpToolResult {
 export const TABLE_MISSING_CODE  = '42P01'
 export const COLUMN_MISSING_CODE = '42703'
 export const NO_ROWS_CODE        = 'PGRST116' // .single() 결과 0건
+export const STATEMENT_TIMEOUT_CODE = '57014'
 
 export function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  if (err instanceof Error) return err.message
+  if (typeof err === 'string') return err
+
+  if (err !== null && typeof err === 'object') {
+    const value = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+    if (typeof value.message === 'string') {
+      const code = typeof value.code === 'string' ? `[${value.code}] ` : ''
+      const extras = [value.details, value.hint].filter(
+        (part): part is string => typeof part === 'string' && part.length > 0
+      )
+      return `${code}${value.message}${extras.length > 0 ? ` · ${extras.join(' · ')}` : ''}`
+    }
+  }
+
+  try {
+    const serialized = JSON.stringify(err)
+    if (serialized !== undefined) return serialized
+  } catch {
+    // 순환 참조 등 JSON 직렬화가 불가능한 값만 최종 문자열 변환으로 처리한다.
+  }
+  return String(err)
 }
 
 /** Supabase 에러를 사용자에게 이해되는 한국어 메시지로 변환 */
@@ -34,6 +55,9 @@ export function dbError(err: unknown, table: string): McpToolResult {
   }
   if (code === NO_ROWS_CODE) {
     return fail('해당 id 의 항목을 찾을 수 없습니다.')
+  }
+  if (code === STATEMENT_TIMEOUT_CODE) {
+    return fail('조회가 서버 제한시간을 넘겼습니다. 기간(days)을 줄이거나 검색어를 3자 이상으로 좁혀서 다시 시도해주세요.')
   }
   return fail(`DB 오류: ${errMessage(err)}`)
 }

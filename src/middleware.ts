@@ -43,7 +43,6 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
   // /api/cron/* 는 자체 CRON_SECRET 로 인증, /api/version 은 공개 배포정보,
@@ -59,6 +58,13 @@ export async function middleware(request: NextRequest) {
     '/api/webhooks/brevo', '/api/mcp', '/api/council', '/manifest.webmanifest', '/sw.js',
     '/dashboard/contents/', '/dashboard/daily-insights/',
   ]
+  const hasAuthCookie = request.cookies.getAll().some(
+    (cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('-auth-token')
+  )
+  const isPublicPath = publicPaths.some((path) => pathname.startsWith(path))
+  const user = !hasAuthCookie && isPublicPath
+    ? null
+    : (await supabase.auth.getUser()).data.user
   // API 라우트는 JSON 응답이라 온보딩/승인/관리자 리다이렉트 대상이 될 수 없고(리다이렉트해도
   // 클라이언트는 그냥 실패로 처리됨), 관리자 API는 각 라우트 핸들러에서 role을 자체 재검증하고
   // 있어 아래 profile 조회가 완전히 중복 — API 요청마다 걸리던 Supabase 왕복 1회를 절감

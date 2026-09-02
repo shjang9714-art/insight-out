@@ -12,6 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { auditLog, actorFrom, hasScope, type McpActor } from '@/lib/mcp/auth'
+import { withAudit } from '@/lib/mcp/audit'
 import { isAdminRole } from '@/lib/admin/capabilities'
 
 const REPORT_TYPES = ['시장동향', '경쟁사분석', '키워드분석', '서비스리포트', '자유주제'] as const
@@ -211,7 +212,7 @@ export function registerReportTools(server: McpServer) {
         limit: z.number().int().min(1).max(50).optional(),
       },
     },
-    async ({ mine, published_only, limit }, extra) => {
+    withAudit('report_list', async ({ mine, published_only, limit }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       const actor = g.actor
@@ -243,6 +244,6 @@ export function registerReportTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'ai_reports')
       }
-    }
+    })
   )
 }

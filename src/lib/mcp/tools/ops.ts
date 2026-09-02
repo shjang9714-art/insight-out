@@ -12,6 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { auditLog, actorFrom, hasScope, type McpActor } from '@/lib/mcp/auth'
+import { withAudit } from '@/lib/mcp/audit'
 import {
   REQUEST_STATUSES,
   ANNOUNCEMENT_STATUSES,
@@ -67,7 +68,7 @@ export function registerOpsTools(server: McpServer) {
         limit: z.number().int().min(1).max(100).optional(),
       },
     },
-    async ({ post_type, status, owner, phase, limit }, extra) => {
+    withAudit('ops_list', async ({ post_type, status, owner, phase, limit }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       const postType: PostType = post_type ?? 'work'
@@ -102,7 +103,7 @@ export function registerOpsTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'ops_requests')
       }
-    }
+    })
   )
 
   // ── 상세 조회 (188 에 없던 툴) ────────────────────────────
@@ -115,7 +116,7 @@ export function registerOpsTools(server: McpServer) {
         'ops_update 의 note 로 append 한 기록을 다시 읽으려면 이 툴을 쓰세요.',
       inputSchema: { id: z.string().uuid() },
     },
-    async ({ id }, extra) => {
+    withAudit('ops_get', async ({ id }, extra) => {
       const g = guard(extra)
       if (g.err) return g.err
       try {
@@ -140,7 +141,7 @@ export function registerOpsTools(server: McpServer) {
       } catch (err) {
         return dbError(err, 'ops_requests')
       }
-    }
+    })
   )
 
   // ── 생성 ──────────────────────────────────────────────────
