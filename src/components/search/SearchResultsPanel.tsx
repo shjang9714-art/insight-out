@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
+import { BulbScene } from '@/components/login/BulbScene'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import SearchTypeTabs, { type SearchSortMode, type SearchTypeOption } from '@/components/search/SearchTypeTabs'
 import { renderSearchResultItem } from '@/components/search/SearchResultsList'
@@ -22,6 +24,36 @@ export function SearchResultsSkeleton() {
           <div className="h-3 w-1/2 rounded bg-muted" />
         </div>
       ))}
+    </div>
+  )
+}
+
+function SearchLoading({ onCancel }: { onCancel: () => void }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  useEffect(() => {
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="relative flex min-h-64 max-h-80 overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 opacity-15 blur-sm">
+        <BulbScene />
+      </div>
+      <div className="relative z-10 m-auto flex flex-col items-center px-6 py-12 text-center">
+        <span className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-dashed border-brand-600" aria-hidden="true" />
+        <p className="text-sm font-semibold text-foreground">검색 중… {elapsedSeconds}초</p>
+        {elapsedSeconds >= 5 && (
+          <p className="mt-2 text-xs text-muted-foreground">검색 범위가 넓습니다. 잠시만 기다려주세요.</p>
+        )}
+        <Button type="button" variant="outline" size="sm" className="mt-5" onClick={onCancel}>
+          취소
+        </Button>
+      </div>
     </div>
   )
 }
@@ -48,7 +80,7 @@ interface Props {
 export default function SearchResultsPanel({
   q, activeType, onTypeChange, sortMode, onSortChange, emptyStateExtra, stickyTopClassName = 'top-0',
 }: Props) {
-  const { sections, isLoading, error } = useUnifiedSearch(q, '')
+  const { sections, isLoading, error, notice, cancel } = useUnifiedSearch(q, '')
 
   // 선택한 종류가 결과에서 사라지면(재검색 등) '전체'로 안전하게 되돌림
   useEffect(() => {
@@ -100,7 +132,14 @@ export default function SearchResultsPanel({
       )}
 
       <div>
-        {showSkeleton && <SearchResultsSkeleton />}
+        {showSkeleton && <SearchLoading key={q} onCancel={cancel} />}
+
+        {!showSkeleton && notice && (
+          <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            <p>{notice}</p>
+            {sections === null && <p className="mt-1">다시 검색해보세요.</p>}
+          </div>
+        )}
 
         {!showSkeleton && error && (
           <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
