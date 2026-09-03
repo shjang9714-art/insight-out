@@ -17,7 +17,7 @@ export interface ContentSearchRow {
   id: string
   title: string
   summary_ko: string | null
-  body_original: string | null
+  excerpt: string | null
   category: ContentCategory
   published_at: string | null
   file_path: string | null
@@ -174,14 +174,15 @@ async function fetchContentCategory(
     supabase.from('contents').select(
       // 514 — 태그는 content_keywords(keywords(name)) 조인이 아니라 matched_groups·
       // matched_keywords 원본을 tagsOf2로 통일 처리(다른 목록 화면과 같은 경로).
-      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords'
+      'id, title, summary_ko, excerpt, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords'
     ),
     // 509 1단계 — body_original 에는 pg_trgm 인덱스가 없어 OR 로 묶이는 순간 인덱스 경로가
     // 버려지고 전량 스캔이 된다(운영 실측 8,166ms, authenticated statement_timeout 8,000ms
     // 초과 → 57014 상시 실패). title/summary_ko 만 ilike 대상으로 한다. .select() 의
-    // body_original 은 그대로 둔다 — ContentRow 가 요약 폴백으로 쓴다.
+    // body_original 은 ilike 대상에서 뺀다.
     // 509 2단계 — search_vector(제목+요약+번역본문+원문본문, GIN 인덱스)로 본문 커버리지를
     // 되살린다. ilike 는 그대로 두고 fts 를 OR 로 추가만 한다(교체 아님).
+    // 602 — SELECT 에서도 뺀다. TOAST 379MB / shared_buffers 224MB, 실측 4,937→189ms.
     ['title', 'summary_ko'],
     tokens,
     'search_vector',

@@ -15,7 +15,7 @@ export function renderSearchResultItem(item: UnifiedResult, highlightQuery?: str
     // 514 — content_keywords(keywords.name) 조인 대신 다른 목록 화면과 같은
     // tagsOf2(matched_groups + matched_keywords) 경로로 통일.
     const keywords = tagsOf2(content.matched_groups ?? [], content.matched_keywords ?? [], content.category)
-    return <ContentRow key={item.key} id={content.id} title={content.title} summaryKo={content.summary_ko} bodyOriginal={content.body_original} category={content.category} publishedAt={content.published_at} originalUrl={content.original_url} filePath={content.file_path} isEditorPick={content.is_editor_pick} author={content.author} sourceName={content.sources?.name ?? null} keywords={keywords} highlightQuery={highlightQuery} />
+    return <ContentRow key={item.key} id={content.id} title={content.title} summaryKo={content.summary_ko} bodyOriginal={content.excerpt} category={content.category} publishedAt={content.published_at} originalUrl={content.original_url} filePath={content.file_path} isEditorPick={content.is_editor_pick} author={content.author} sourceName={content.sources?.name ?? null} keywords={keywords} highlightQuery={highlightQuery} />
   }
   if (item.source === 'daily_insights' && item.insight) {
     const insight = item.insight
