@@ -22,6 +22,7 @@ import {
 
 const POST_TYPES = ['request', 'announcement', 'work'] as const
 type PostType = (typeof POST_TYPES)[number]
+const OPS_STATUSES = [...REQUEST_STATUSES, ...ANNOUNCEMENT_STATUSES] as [string, ...string[]]
 
 /** post_type 별로 허용되는 status — 188 은 이 교차검증이 없어 공지에 'pending' 을 넣을 수 있었다. */
 const STATUS_BY_TYPE: Record<PostType, readonly string[]> = {
@@ -62,7 +63,7 @@ export function registerOpsTools(server: McpServer) {
         'status 미지정 시 작업·요청은 미완료(대기+진행)만 반환합니다. 본문은 포함되지 않으니 ops_get 으로 상세를 보세요.',
       inputSchema: {
         post_type: z.enum(POST_TYPES).optional().describe('기본 work'),
-        status: z.string().optional().describe('pending | in_progress | done | blocked (공지: active | archived)'),
+        status: z.enum(OPS_STATUSES).optional().describe('작업·요청·공지 상태'),
         owner: z.string().optional(),
         phase: z.string().optional().describe('작업 단계 필터'),
         limit: z.number().int().min(1).max(100).optional(),
@@ -209,7 +210,7 @@ export function registerOpsTools(server: McpServer) {
         'status=done 전환 시 완료시각은 DB 가 자동 기록합니다. 삭제는 지원하지 않습니다 — done/archived 로 종료하세요.',
       inputSchema: {
         id: z.string().uuid(),
-        status: z.string().optional(),
+        status: z.enum(OPS_STATUSES).optional(),
         owner: z.string().optional(),
         ref: z.string().optional(),
         pinned: z.boolean().optional(),

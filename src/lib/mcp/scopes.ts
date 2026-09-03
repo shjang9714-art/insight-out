@@ -12,6 +12,22 @@
 export const MCP_SCOPES = ['read', 'ops', 'reports', 'publish', 'bookmark'] as const
 export type McpScope = (typeof MCP_SCOPES)[number]
 
+// DB enum content_category 와 1:1. types.ts 의 ContentCategory 와 다르다(UI 값 포함).
+// DB enum 이 바뀌면 여기도 바꾼다.
+export const MCP_CONTENT_CATEGORIES = [
+  '뉴스',
+  '가트너',
+  'KRG',
+  '웹인사이트',
+  '오피니언',
+  '뉴스레터',
+  'AI보고서',
+  '유튜브',
+  '리포트',
+  '기업자료',
+  '지식보고서',
+] as const
+
 export const MCP_SCOPE_LABEL: Record<McpScope, string> = {
   read:     '조회·검색',
   ops:      '작업기록',
