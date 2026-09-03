@@ -553,6 +553,36 @@ export function useUnifiedSearch(
         })
         if (cancelled || controller.signal.aborted) return
 
+        // 605 — contents.merged 가 57014(DB statement_timeout)로 실패하면 그 자리에서 한 번만
+        // 재시도한다. 앞선 시도가 필요한 힙 페이지 상당수를 이미 shared_buffers 에 읽어들였을
+        // 가능성이 높다(실측: 콜드 2.8s → 웜 22ms, 128배). 근본 해결책이 아니라 완화책이다 —
+        // ★ 다른 소스(insights·issues·entities·keywords)의 57014는 재시도하지 않는다. 이번엔
+        // contents.merged 하나만으로 범위를 좁힌다.
+        if (!filter) {
+          const contentsMergedIndex = tasks.findIndex((task) => task.name === 'contents.merged')
+          const first = settled[contentsMergedIndex]
+          if (
+            contentsMergedIndex >= 0
+            && first.status === 'rejected'
+            && (first.reason as { code?: string } | null)?.code === '57014'
+          ) {
+            const retryStartedAt = performance.now()
+            try {
+              const value = await tasks[contentsMergedIndex].run()
+              settled[contentsMergedIndex] = { status: 'fulfilled', value }
+              console.debug('[search] contents.merged 재시도 성공', {
+                ms: Math.round(performance.now() - retryStartedAt),
+              })
+            } catch (reason) {
+              settled[contentsMergedIndex] = { status: 'rejected', reason }
+              console.debug('[search] contents.merged 재시도 실패', {
+                ms: Math.round(performance.now() - retryStartedAt),
+              })
+            }
+            if (cancelled || controller.signal.aborted) return
+          }
+        }
+
         const sectionOrderIndex = (key: SearchFilterKey) => SEARCH_SECTION_ORDER.indexOf(key)
         const fulfilled = settled
           .filter((r): r is PromiseFulfilledResult<SearchSection[]> => r.status === 'fulfilled')
