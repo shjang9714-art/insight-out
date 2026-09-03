@@ -41,11 +41,10 @@ function SearchLoading({ onCancel }: { onCancel: () => void }) {
 
   return (
     <div className="relative flex min-h-64 max-h-80 overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 opacity-15 blur-sm">
+      <div className="io-bulb pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 opacity-60">
         <BulbScene />
       </div>
       <div className="relative z-10 m-auto flex flex-col items-center px-6 py-12 text-center">
-        <span className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-dashed border-brand-600" aria-hidden="true" />
         <p className="text-sm font-semibold text-foreground">검색 중… {elapsedSeconds}초</p>
         {elapsedSeconds >= 5 && (
           <p className="mt-2 text-xs text-muted-foreground">검색 범위가 넓습니다. 잠시만 기다려주세요.</p>
