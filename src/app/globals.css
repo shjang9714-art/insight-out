@@ -526,7 +526,8 @@
     linear-gradient(120deg, #eef0f8 0%, #f5f3fb 46%, #eef1f8 100%);
 }
 
-.io-login .io-anim-layer {
+.io-login .io-anim-layer,
+.io-bulb .io-anim-layer {
   pointer-events: none; /* 폼 조작(클릭·입력·탭)을 절대 방해하지 않는다 */
 }
 
@@ -540,23 +541,32 @@
   50%      { opacity: .9;  transform: scale(1.18); }
 }
 
-.io-login .io-glow-pulse { animation: ioGlowPulse 3.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.io-login .io-twinkle    { animation: ioTwinkle 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.io-login .io-twinkle.s2 { animation-delay: .8s; }
-.io-login .io-twinkle.s3 { animation-delay: 1.5s; }
-.io-login .io-twinkle.s4 { animation-delay: 1.1s; }
+.io-login .io-glow-pulse,
+.io-bulb .io-glow-pulse { animation: ioGlowPulse 3.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.io-login .io-twinkle,
+.io-bulb .io-twinkle    { animation: ioTwinkle 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.io-login .io-twinkle.s2,
+.io-bulb .io-twinkle.s2 { animation-delay: .8s; }
+.io-login .io-twinkle.s3,
+.io-bulb .io-twinkle.s3 { animation-delay: 1.5s; }
+.io-login .io-twinkle.s4,
+.io-bulb .io-twinkle.s4 { animation-delay: 1.1s; }
 
 /* 모바일: 입자 수를 줄여 성능 확보 (.io-extra 로 표시된 orb 숨김) */
 @media (max-width: 768px) {
-  .io-login .io-extra { display: none; }
+  .io-login .io-extra,
+  .io-bulb .io-extra { display: none; }
 }
 
 /* 접근성: 모션 최소화 설정 시 움직이는 요소(orb·comet)를 숨기고
  * 정적 글로우·트윙클은 은은하게 유지해 시각적 공백을 피한다. */
 @media (prefers-reduced-motion: reduce) {
-  .io-login .io-anim { display: none; }
-  .io-login .io-glow-pulse { animation: none; opacity: .35; }
-  .io-login .io-twinkle { animation: none; opacity: .5; }
+  .io-login .io-anim,
+  .io-bulb .io-anim { display: none; }
+  .io-login .io-glow-pulse,
+  .io-bulb .io-glow-pulse { animation: none; opacity: .35; }
+  .io-login .io-twinkle,
+  .io-bulb .io-twinkle { animation: none; opacity: .5; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

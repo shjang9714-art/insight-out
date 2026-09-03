@@ -80,6 +80,9 @@ const FETCH_LIMIT = 60
 // 리포트·공시자료) 6개 섹션을 category IN(...) 조건 없는 단일 쿼리로 합쳐서 가져온 뒤
 // 클라이언트에서 category 로 나눠 배분한다 — 섹션별 표시 상한 합(현재 84) 보다 넉넉하게.
 const CONTENT_MERGE_LIMIT = 240
+// PostgREST 행 상한 사각지대를 피하고, PK 본문 조회가 과도한 .in() 요청이 되지 않게 한다.
+const CONTENT_BODY_FETCH_CAP = 200
+const SEARCH_DEFAULT_SINCE_DAYS: number | null = null
 // 다중 단어 검색 시 토큰 상한 — 과도한 .or() 체이닝 방지
 const MAX_QUERY_TOKENS = 5
 // 엔티티/키워드 ↔ 콘텐츠 연결 조회 시 안전판(다건 연결된 항목이 과도한 로우를 끌어오지 않게) — 최신순 정렬 후 자르므로
@@ -169,12 +172,13 @@ async function fetchContentCategory(
   categories: ContentCategory[] | undefined,
   cap: number,
   signal: AbortSignal,
+  sinceDays: number | null,
 ): Promise<UnifiedResult[]> {
   let query = applyTokenFilters(
     supabase.from('contents').select(
       // 514 — 태그는 content_keywords(keywords(name)) 조인이 아니라 matched_groups·
       // matched_keywords 원본을 tagsOf2로 통일 처리(다른 목록 화면과 같은 경로).
-      'id, title, summary_ko, body_original, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords'
+      'id, title, summary_ko, category, published_at, file_path, original_url, is_editor_pick, author, sources(name), matched_groups, matched_keywords'
     ),
     // 509 1단계 — body_original 에는 pg_trgm 인덱스가 없어 OR 로 묶이는 순간 인덱스 경로가
     // 버려지고 전량 스캔이 된다(운영 실측 8,166ms, authenticated statement_timeout 8,000ms
@@ -182,16 +186,48 @@ async function fetchContentCategory(
     // body_original 은 그대로 둔다 — ContentRow 가 요약 폴백으로 쓴다.
     // 509 2단계 — search_vector(제목+요약+번역본문+원문본문, GIN 인덱스)로 본문 커버리지를
     // 되살린다. ilike 는 그대로 두고 fts 를 OR 로 추가만 한다(교체 아님).
+    // 602 — SELECT 에서도 뺐다. 매칭 6,888행의 본문을 읽고 240행만 쓰던 것을 2단계로 나눴다.
     ['title', 'summary_ko'],
     tokens,
     'search_vector',
   ).eq('status', 'published')
   if (categories) query = query.in('category', categories)
+  if (sinceDays !== null) {
+    query = query.gte('published_at', new Date(Date.now() - sinceDays * 86_400_000).toISOString())
+  }
+  const startedAt = performance.now()
   const { data, error: err } = await query.abortSignal(signal).order('published_at', { ascending: false, nullsFirst: false }).limit(Math.max(cap, FETCH_LIMIT))
+  console.debug('[search] contents 1단계', {
+    ms: Math.round(performance.now() - startedAt),
+    rows: data?.length ?? 0,
+    sinceDays,
+  })
   if (err) { console.error('[search] contents 조회 오류:', err); throw err }
-  return ((data ?? []) as unknown as ContentSearchRow[])
-    .map(row => ({ key: `content-${row.id}`, source: 'content' as const, sortDate: row.published_at ?? EPOCH, content: row }))
-    .slice(0, cap)
+
+  const rows = ((data ?? []) as unknown as Omit<ContentSearchRow, 'body_original'>[]).slice(0, cap)
+  const ids = rows.slice(0, CONTENT_BODY_FETCH_CAP).map((row) => row.id)
+  const bodyById = new Map<string, string | null>()
+  if (ids.length > 0) {
+    const { data: bodies, error: bodyError } = await supabase
+      .from('contents')
+      .select('id, body_original')
+      .in('id', ids)
+      .abortSignal(signal)
+    if (bodyError) {
+      console.warn('[search] contents 본문 조회 오류:', bodyError)
+    } else {
+      for (const body of bodies ?? []) {
+        bodyById.set(body.id as string, body.body_original as string | null)
+      }
+    }
+  }
+
+  return rows.map(row => ({
+    key: `content-${row.id}`,
+    source: 'content' as const,
+    sortDate: row.published_at ?? EPOCH,
+    content: { ...row, body_original: bodyById.get(row.id) ?? null },
+  }))
 }
 
 async function fetchInsights(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
@@ -314,9 +350,10 @@ async function fetchSection(
   tokens: QueryToken[],
   cap: number,
   signal: AbortSignal,
+  sinceDays: number | null,
 ): Promise<UnifiedResult[]> {
   const def = searchFilterDef(key)
-  if (def.source === 'content') return fetchContentCategory(supabase, tokens, def.categories, cap, signal)
+  if (def.source === 'content') return fetchContentCategory(supabase, tokens, def.categories, cap, signal, sinceDays)
   if (def.source === 'daily_insights') return fetchInsights(supabase, tokens, cap, signal)
   if (def.source === 'issues') return fetchIssues(supabase, tokens, cap, signal)
   if (def.source === 'entities') return fetchEntities(supabase, tokens, cap, signal)
@@ -326,12 +363,14 @@ async function fetchSection(
 export function useUnifiedSearch(
   q: string,
   filter: SearchFilterKey | '',
+  opts?: { sinceDays?: number | null },
 ): { sections: SearchSection[] | null; isLoading: boolean; error: string | null; notice: string | null; cancel: () => void } {
   const [sections, setSections] = useState<SearchSection[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
+  const sinceDays = opts?.sinceDays ?? SEARCH_DEFAULT_SINCE_DAYS
 
   const cancel = () => {
     const controller = controllerRef.current
@@ -392,11 +431,11 @@ export function useUnifiedSearch(
         // filter 지정(특정 카테고리 선택) 시엔 기존처럼 그 카테고리 하나만 조회(무회귀).
         const isContentKey = (key: SearchFilterKey) => searchFilterDef(key).source === 'content'
         const tasks: Promise<SearchSection[]>[] = filter
-          ? keysToFetch.map(async (key) => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal) }])
+          ? keysToFetch.map(async (key) => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays) }])
           : [
               (async (): Promise<SearchSection[]> => {
                 const contentKeys = keysToFetch.filter(isContentKey)
-                const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT, controller.signal)
+                const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT, controller.signal, sinceDays)
                 // 주의 — 발행일 내림차순으로 한 번에 CONTENT_MERGE_LIMIT(240)행만 받으므로,
                 // 검색어가 특정 카테고리(예: 뉴스)에 압도적으로 많이 매칭되면 그 카테고리가
                 // 240건을 거의 다 차지해 물량이 적은 다른 카테고리 섹션이 비어 보일 수 있다.
@@ -414,7 +453,7 @@ export function useUnifiedSearch(
               })(),
               ...keysToFetch
                 .filter((key) => !isContentKey(key))
-                .map(async (key): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal) }]),
+                .map(async (key): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays) }]),
             ]
 
         const settled = await Promise.allSettled(tasks)
@@ -448,7 +487,7 @@ export function useUnifiedSearch(
             const round2 = await Promise.allSettled(
               emptyContentKeys.map(async (key): Promise<SearchSection> => ({
                 key,
-                items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal),
+                items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays),
               }))
             )
             if (cancelled || controller.signal.aborted) return
@@ -501,7 +540,7 @@ export function useUnifiedSearch(
       controller.abort()
       if (controllerRef.current === controller) controllerRef.current = null
     }
-  }, [q, filter])
+  }, [q, filter, sinceDays])
 
   return { sections, isLoading, error, notice, cancel }
 }
