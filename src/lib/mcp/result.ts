@@ -22,6 +22,7 @@ export const TABLE_MISSING_CODE  = '42P01'
 export const COLUMN_MISSING_CODE = '42703'
 export const NO_ROWS_CODE        = 'PGRST116' // .single() 결과 0건
 export const STATEMENT_TIMEOUT_CODE = '57014'
+export const INVALID_INPUT_CODE = '22P02'
 
 export function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message
@@ -58,6 +59,9 @@ export function dbError(err: unknown, table: string): McpToolResult {
   }
   if (code === STATEMENT_TIMEOUT_CODE) {
     return fail('조회가 서버 제한시간을 넘겼습니다. 기간(days)을 줄이거나 검색어를 3자 이상으로 좁혀서 다시 시도해주세요.')
+  }
+  if (code === INVALID_INPUT_CODE) {
+    return fail(`인자 값이 올바르지 않습니다. 툴 스키마의 허용값을 확인하고 다시 시도해주세요. (원문: ${errMessage(err)})`)
   }
   return fail(`DB 오류: ${errMessage(err)}`)
 }

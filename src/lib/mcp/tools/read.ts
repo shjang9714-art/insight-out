@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ok, fail, dbError, forbidden } from '@/lib/mcp/result'
 import { actorFrom, hasScope } from '@/lib/mcp/auth'
 import { withAudit } from '@/lib/mcp/audit'
+import { MCP_CONTENT_CATEGORIES } from '@/lib/mcp/scopes'
 import { getEntityBrief } from '@/lib/entities/brief'
 
 interface ContentRow {
@@ -62,7 +63,7 @@ export function registerReadTools(server: McpServer) {
       inputSchema: {
         query: z.string().optional().describe('제목·요약에서 검색할 문자열'),
         group: z.string().optional().describe('키워드그룹명 필터 (matched_groups)'),
-        category: z.string().optional().describe('news | report | youtube | opinion 등'),
+        category: z.enum(MCP_CONTENT_CATEGORIES).optional().describe('콘텐츠 분류. 미지정 시 전체'),
         days: z.number().int().min(1).max(180).optional().describe('최근 N일 이내 (기본 30, 30~90 권장)'),
         limit: z.number().int().min(1).max(50).optional().describe('기본 10, 최대 50'),
       },
@@ -286,7 +287,7 @@ export function registerReadTools(server: McpServer) {
         '순서대로 부르는 대신 이 툴을 먼저 부르세요. 이름(name)만으로 조회됩니다.',
       inputSchema: {
         name: z.string().optional().describe('기업·기관 이름'),
-        entity_id: z.string().optional().describe('기업·기관 id'),
+        entity_id: z.string().uuid().optional().describe('기업·기관 id'),
         events: z.number().int().min(1).max(30).optional().describe('최근 사건 개수 (기본 10)'),
         neighbors: z.number().int().min(1).max(30).optional().describe('관계 기업·기관 개수 (기본 8)'),
         contents: z.number().int().min(1).max(30).optional().describe('최근 뉴스 개수 (기본 10)'),
