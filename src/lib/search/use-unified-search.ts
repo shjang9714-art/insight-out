@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, startTransition } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { fetchInChunks } from '@/lib/supabase/chunked'
+import { fetchInChunks, IN_FILTER_CHUNK_SIZE } from '@/lib/supabase/chunked'
 import { type ContentCategory } from '@/lib/types'
 import { normalizeCompany } from '@/lib/search/company-alias'
 import {
@@ -91,6 +91,33 @@ const EPOCH = '1970-01-01T00:00:00.000Z'
 // DB 제한(8초) 밖에서 네트워크가 멈춘 경우의 백스톱이다. 검색 실측 최대는 26초였다.
 const SEARCH_ABORT_TIMEOUT_MS = 30_000
 const SEARCH_ABORT_TIMEOUT_MESSAGE = '검색이 오래 걸립니다. 검색어를 좁혀서 다시 시도해주세요.'
+// 224MB shared_buffers 를 동시 쿼리가 서로 밀어내면 각각이 콜드가 된다.
+// 515·515-2 가 기록한 8초 타임아웃의 원인과 같은 부류다. 값은 계측 후 조정한다.
+const SEARCH_QUERY_CONCURRENCY = 3
+
+export async function allSettledLimited<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number,
+): Promise<PromiseSettledResult<T>[]> {
+  const results = new Array<PromiseSettledResult<T>>(tasks.length)
+  const workerCount = Math.min(tasks.length, Math.max(1, Math.floor(limit)))
+  let nextIndex = 0
+
+  const worker = async () => {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex
+      nextIndex += 1
+      try {
+        results[index] = { status: 'fulfilled', value: await tasks[index]() }
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason }
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  return results
+}
 
 function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
@@ -98,6 +125,34 @@ function isAbortError(error: unknown): boolean {
   return candidate.name === 'AbortError'
     || candidate.message?.includes('AbortError') === true
     || candidate.message?.includes('operation was aborted') === true
+}
+
+function searchFailureDetails(reason: unknown): { code: string; message: string } {
+  if (reason !== null && typeof reason === 'object') {
+    const candidate = reason as { code?: unknown; message?: unknown }
+    return {
+      code: typeof candidate.code === 'string' ? candidate.code : '-',
+      message: typeof candidate.message === 'string' ? candidate.message : '알 수 없는 오류',
+    }
+  }
+  if (typeof reason === 'string') return { code: '-', message: reason }
+  return { code: '-', message: '알 수 없는 오류' }
+}
+
+function throwSearchFailure(reason: unknown, searchSource: string): never {
+  if (reason !== null && typeof reason === 'object') {
+    Object.assign(reason, { searchSource })
+    throw reason
+  }
+  throw { message: typeof reason === 'string' ? reason : '알 수 없는 오류', searchSource }
+}
+
+function searchFailureSource(reason: unknown, fallback: string): string {
+  if (reason !== null && typeof reason === 'object') {
+    const source = (reason as { searchSource?: unknown }).searchSource
+    if (typeof source === 'string') return source
+  }
+  return fallback
 }
 
 function sortDesc(items: UnifiedResult[]): UnifiedResult[] {
@@ -206,6 +261,7 @@ async function fetchContentCategory(
   const rows = ((data ?? []) as unknown as Omit<ContentSearchRow, 'body_original'>[]).slice(0, cap)
   const ids = rows.map((row) => row.id)
   const bodyById = new Map<string, string | null>()
+  const bodyStartedAt = performance.now()
   if (ids.length > 0) {
     const { rows: bodies, error: bodyError } = await fetchInChunks(ids, (chunk) =>
       supabase
@@ -221,6 +277,11 @@ async function fetchContentCategory(
       bodyById.set(body.id as string, body.body_original as string | null)
     }
   }
+  console.debug('[search] contents.body', {
+    ms: Math.round(performance.now() - bodyStartedAt),
+    rows: bodyById.size,
+    chunks: Math.ceil(ids.length / IN_FILTER_CHUNK_SIZE),
+  })
 
   return rows.map(row => ({
     key: `content-${row.id}`,
@@ -236,8 +297,10 @@ async function fetchInsights(supabase: SupabaseClient, tokens: QueryToken[], cap
     ['headline', 'summary_ko', 'market_trend', 'competitor_trend', 'implication'],
     tokens,
   ).eq('status', 'published')
+  const startedAt = performance.now()
   const { data, error: err } = await query.abortSignal(signal).order('day_of', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
-  if (err) { console.error('[search] daily_insights 조회 오류:', err); throw err }
+  console.debug('[search] insights', { ms: Math.round(performance.now() - startedAt), rows: data?.length ?? 0 })
+  if (err) { console.error('[search] daily_insights 조회 오류:', err); throwSearchFailure(err, 'insights') }
   return ((data ?? []) as DailyInsightRow[])
     .map(row => ({ key: `insight-${row.id}`, source: 'daily_insights' as const, sortDate: new Date(row.day_of).toISOString(), insight: row }))
     .slice(0, cap)
@@ -249,8 +312,10 @@ async function fetchIssues(supabase: SupabaseClient, tokens: QueryToken[], cap: 
     ['title', 'summary'],
     tokens,
   ).eq('status', 'published')
+  const startedAt = performance.now()
   const { data, error: err } = await query.abortSignal(signal).order('created_at', { ascending: false }).limit(Math.max(cap, FETCH_LIMIT))
-  if (err) { console.error('[search] issues 조회 오류:', err); throw err }
+  console.debug('[search] issues', { ms: Math.round(performance.now() - startedAt), rows: data?.length ?? 0 })
+  if (err) { console.error('[search] issues 조회 오류:', err); throwSearchFailure(err, 'issues') }
   return ((data ?? []) as IssueRow[])
     .map(row => ({ key: `issue-${row.id}`, source: 'issues' as const, sortDate: row.created_at, issue: row }))
     .slice(0, cap)
@@ -271,15 +336,18 @@ function aggregateLinks(rows: { linkId: string; publishedAt: string | null }[]):
 }
 
 async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
+  const matchedStartedAt = performance.now()
   const { data: matched, error: err } = await applyTokenFilters(
     supabase.from('entities').select('id, canonical_name, description'),
     ['canonical_name', 'description'],
     tokens,
   ).abortSignal(signal).limit(FETCH_LIMIT)
-  if (err) { console.error('[search] entities 조회 오류:', err); throw err }
+  console.debug('[search] entities', { ms: Math.round(performance.now() - matchedStartedAt), rows: matched?.length ?? 0 })
+  if (err) { console.error('[search] entities 조회 오류:', err); throwSearchFailure(err, 'entities') }
   const ids = (matched ?? []).map((e) => e.id as string)
   if (ids.length === 0) return []
 
+  const linksStartedAt = performance.now()
   const { data: links, error: linkErr } = await supabase
     .from('content_entities')
     .select('entity_id, contents!inner(published_at)')
@@ -288,7 +356,8 @@ async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap
     .order('contents(published_at)', { ascending: false })
     .abortSignal(signal)
     .limit(LINK_FETCH_CAP)
-  if (linkErr) { console.error('[search] content_entities 조회 오류:', linkErr); throw linkErr }
+  console.debug('[search] entities.links', { ms: Math.round(performance.now() - linksStartedAt), rows: links?.length ?? 0 })
+  if (linkErr) { console.error('[search] content_entities 조회 오류:', linkErr); throwSearchFailure(linkErr, 'entities.links') }
 
   const stats = aggregateLinks(
     ((links ?? []) as unknown as { entity_id: string; contents: { published_at: string | null } }[])
@@ -308,15 +377,18 @@ async function fetchEntities(supabase: SupabaseClient, tokens: QueryToken[], cap
 }
 
 async function fetchKeywords(supabase: SupabaseClient, tokens: QueryToken[], cap: number, signal: AbortSignal): Promise<UnifiedResult[]> {
+  const matchedStartedAt = performance.now()
   const { data: matched, error: err } = await applyTokenFilters(
     supabase.from('keywords').select('id, name'),
     ['name'],
     tokens,
   ).abortSignal(signal).limit(FETCH_LIMIT)
-  if (err) { console.error('[search] keywords 조회 오류:', err); throw err }
+  console.debug('[search] keywords', { ms: Math.round(performance.now() - matchedStartedAt), rows: matched?.length ?? 0 })
+  if (err) { console.error('[search] keywords 조회 오류:', err); throwSearchFailure(err, 'keywords') }
   const ids = (matched ?? []).map((k) => k.id as string)
   if (ids.length === 0) return []
 
+  const linksStartedAt = performance.now()
   const { data: links, error: linkErr } = await supabase
     .from('content_keywords')
     .select('keyword_id, contents!inner(published_at)')
@@ -325,7 +397,8 @@ async function fetchKeywords(supabase: SupabaseClient, tokens: QueryToken[], cap
     .order('contents(published_at)', { ascending: false })
     .abortSignal(signal)
     .limit(LINK_FETCH_CAP)
-  if (linkErr) { console.error('[search] content_keywords 조회 오류:', linkErr); throw linkErr }
+  console.debug('[search] keywords.links', { ms: Math.round(performance.now() - linksStartedAt), rows: links?.length ?? 0 })
+  if (linkErr) { console.error('[search] content_keywords 조회 오류:', linkErr); throwSearchFailure(linkErr, 'keywords.links') }
 
   const stats = aggregateLinks(
     ((links ?? []) as unknown as { keyword_id: string; contents: { published_at: string | null } }[])
@@ -430,33 +503,54 @@ export function useUnifiedSearch(
         // 여러 개를 반환할 수 있으므로 각 태스크는 SearchSection[] 를 돌려준다.
         // filter 지정(특정 카테고리 선택) 시엔 기존처럼 그 카테고리 하나만 조회(무회귀).
         const isContentKey = (key: SearchFilterKey) => searchFilterDef(key).source === 'content'
-        const tasks: Promise<SearchSection[]>[] = filter
-          ? keysToFetch.map(async (key) => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays) }])
+        const sourceNameFor = (key: SearchFilterKey) => {
+          const source = searchFilterDef(key).source
+          if (source === 'content') return `contents.${key}`
+          if (source === 'daily_insights') return 'insights'
+          return source
+        }
+        const tasks: { name: string; run: () => Promise<SearchSection[]> }[] = filter
+          ? keysToFetch.map((key) => ({
+              name: sourceNameFor(key),
+              run: async () => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays) }],
+            }))
           : [
-              (async (): Promise<SearchSection[]> => {
-                const contentKeys = keysToFetch.filter(isContentKey)
-                const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT, controller.signal, sinceDays)
-                // 주의 — 발행일 내림차순으로 한 번에 CONTENT_MERGE_LIMIT(240)행만 받으므로,
-                // 검색어가 특정 카테고리(예: 뉴스)에 압도적으로 많이 매칭되면 그 카테고리가
-                // 240건을 거의 다 차지해 물량이 적은 다른 카테고리 섹션이 비어 보일 수 있다.
-                // 카테고리별 정확한 상한 보장이 아니라 "최신순 240건 중 이 카테고리 몫"이라는
-                // 한계 — 콜드 캐시 타임아웃 회피가 우선순위였던 절충이다.
-                return contentKeys.map((key) => {
-                  const categories = searchFilterDef(key).categories ?? []
-                  return {
-                    key,
-                    items: merged
-                      .filter((r) => categories.includes(r.content!.category))
-                      .slice(0, capFor(key)),
-                  }
-                })
-              })(),
+              {
+                name: 'contents.merged',
+                run: async (): Promise<SearchSection[]> => {
+                  const contentKeys = keysToFetch.filter(isContentKey)
+                  const merged = await fetchContentCategory(supabase, tokens, undefined, CONTENT_MERGE_LIMIT, controller.signal, sinceDays)
+                  // 주의 — 발행일 내림차순으로 한 번에 CONTENT_MERGE_LIMIT(240)행만 받으므로,
+                  // 검색어가 특정 카테고리(예: 뉴스)에 압도적으로 많이 매칭되면 그 카테고리가
+                  // 240건을 거의 다 차지해 물량이 적은 다른 카테고리 섹션이 비어 보일 수 있다.
+                  // 카테고리별 정확한 상한 보장이 아니라 "최신순 240건 중 이 카테고리 몫"이라는
+                  // 한계 — 콜드 캐시 타임아웃 회피가 우선순위였던 절충이다.
+                  return contentKeys.map((key) => {
+                    const categories = searchFilterDef(key).categories ?? []
+                    return {
+                      key,
+                      items: merged
+                        .filter((r) => categories.includes(r.content!.category))
+                        .slice(0, capFor(key)),
+                    }
+                  })
+                },
+              },
               ...keysToFetch
                 .filter((key) => !isContentKey(key))
-                .map(async (key): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays) }]),
+                .map((key) => ({
+                  name: sourceNameFor(key),
+                  run: async (): Promise<SearchSection[]> => [{ key, items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays) }],
+                })),
             ]
 
-        const settled = await Promise.allSettled(tasks)
+        const round1StartedAt = performance.now()
+        const settled = await allSettledLimited(tasks.map((task) => task.run), SEARCH_QUERY_CONCURRENCY)
+        console.debug('[search] round1', {
+          ms: Math.round(performance.now() - round1StartedAt),
+          tasks: tasks.length,
+          concurrency: SEARCH_QUERY_CONCURRENCY,
+        })
         if (cancelled || controller.signal.aborted) return
 
         const sectionOrderIndex = (key: SearchFilterKey) => SEARCH_SECTION_ORDER.indexOf(key)
@@ -467,9 +561,11 @@ export function useUnifiedSearch(
           // 화면은 항상 SEARCH_SECTION_ORDER 고정 순서를 유지해야 한다(SearchResultsPanel의
           // '전체' 결과가 이 순서를 그대로 관련도순으로 쓴다).
           .sort((a, b) => sectionOrderIndex(a.key) - sectionOrderIndex(b.key))
-        const rejected = settled.filter((r): r is PromiseRejectedResult =>
-          r.status === 'rejected' && !isAbortError(r.reason)
-        )
+        const rejected = settled
+          .map((result, index) => ({ result, name: tasks[index].name }))
+          .filter((item): item is { result: PromiseRejectedResult; name: string } =>
+            item.result.status === 'rejected' && !isAbortError(item.result.reason)
+          )
 
         // 515-2 — 병합 쿼리(발행일 내림차순 CONTENT_MERGE_LIMIT행)는 물량 많은 카테고리가
         // 창을 독점하면 물량 적은 카테고리가 통째로 빈다(실측: 'aidc' 매칭 1,265건 중
@@ -483,12 +579,14 @@ export function useUnifiedSearch(
             .filter((s) => isContentKey(s.key) && s.items.length === 0)
             .map((s) => s.key)
 
+          const round2StartedAt = performance.now()
           if (emptyContentKeys.length > 0) {
-            const round2 = await Promise.allSettled(
-              emptyContentKeys.map(async (key): Promise<SearchSection> => ({
+            const round2 = await allSettledLimited(
+              emptyContentKeys.map((key) => async (): Promise<SearchSection> => ({
                 key,
                 items: await fetchSection(supabase, key, tokens, capFor(key), controller.signal, sinceDays),
-              }))
+              })),
+              SEARCH_QUERY_CONCURRENCY,
             )
             if (cancelled || controller.signal.aborted) return
             // 2라운드 실패는 조용히 무시 — 1라운드 결과(빈 섹션 → 자동 숨김)를 그대로
@@ -500,6 +598,10 @@ export function useUnifiedSearch(
             )
             finalSections = fulfilled.map((s) => round2ByKey.get(s.key) ?? s)
           }
+          console.debug('[search] round2', {
+            ms: Math.round(performance.now() - round2StartedAt),
+            keys: emptyContentKeys,
+          })
         }
 
         // 매칭 0건 종류는 섹션 자체를 숨김, 고정 순서(SEARCH_SECTION_ORDER) 유지
@@ -507,8 +609,13 @@ export function useUnifiedSearch(
         setSections(nonEmpty)
 
         if (rejected.length > 0) {
-          rejected.forEach((r) => console.error('[search] 일부 검색 실패:', r.reason))
-          const isTimeout = rejected.some((r) => (r.reason as { code?: string } | null)?.code === '57014')
+          rejected.forEach(({ name, result }) => {
+            const { code, message } = searchFailureDetails(result.reason)
+            console.error(`[search] 실패: ${searchFailureSource(result.reason, name)} code=${code} message=${message}`)
+          })
+          const isTimeout = rejected.some(({ result }) =>
+            (result.reason as { code?: string } | null)?.code === '57014'
+          )
           setError(
             isTimeout
               ? '검색이 오래 걸려 중단되었습니다. 검색어를 좁혀서 다시 시도해주세요.'
