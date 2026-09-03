@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, startTransition } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { fetchInChunks } from '@/lib/supabase/chunked'
 import { type ContentCategory } from '@/lib/types'
 import { normalizeCompany } from '@/lib/search/company-alias'
 import {
@@ -80,8 +81,6 @@ const FETCH_LIMIT = 60
 // 리포트·공시자료) 6개 섹션을 category IN(...) 조건 없는 단일 쿼리로 합쳐서 가져온 뒤
 // 클라이언트에서 category 로 나눠 배분한다 — 섹션별 표시 상한 합(현재 84) 보다 넉넉하게.
 const CONTENT_MERGE_LIMIT = 240
-// PostgREST 행 상한 사각지대를 피하고, PK 본문 조회가 과도한 .in() 요청이 되지 않게 한다.
-const CONTENT_BODY_FETCH_CAP = 200
 const SEARCH_DEFAULT_SINCE_DAYS: number | null = null
 // 다중 단어 검색 시 토큰 상한 — 과도한 .or() 체이닝 방지
 const MAX_QUERY_TOKENS = 5
@@ -205,20 +204,21 @@ async function fetchContentCategory(
   if (err) { console.error('[search] contents 조회 오류:', err); throw err }
 
   const rows = ((data ?? []) as unknown as Omit<ContentSearchRow, 'body_original'>[]).slice(0, cap)
-  const ids = rows.slice(0, CONTENT_BODY_FETCH_CAP).map((row) => row.id)
+  const ids = rows.map((row) => row.id)
   const bodyById = new Map<string, string | null>()
   if (ids.length > 0) {
-    const { data: bodies, error: bodyError } = await supabase
-      .from('contents')
-      .select('id, body_original')
-      .in('id', ids)
-      .abortSignal(signal)
+    const { rows: bodies, error: bodyError } = await fetchInChunks(ids, (chunk) =>
+      supabase
+        .from('contents')
+        .select('id, body_original')
+        .in('id', chunk)
+        .abortSignal(signal)
+    )
     if (bodyError) {
       console.warn('[search] contents 본문 조회 오류:', bodyError)
-    } else {
-      for (const body of bodies ?? []) {
-        bodyById.set(body.id as string, body.body_original as string | null)
-      }
+    }
+    for (const body of bodies) {
+      bodyById.set(body.id as string, body.body_original as string | null)
     }
   }
 
