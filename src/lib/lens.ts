@@ -15,6 +15,19 @@ import {
 let cachedCtx: LensContext | null = null
 let fetchPromise: Promise<LensContext> | null = null
 
+export function invalidateLensContext(): void {
+  cachedCtx = null
+  fetchPromise = null
+  window.dispatchEvent(new Event('lens:context-changed'))
+}
+
+function getClientLensContext(): Promise<LensContext> {
+  if (!fetchPromise) {
+    fetchPromise = loadClientLensContext().then(c => { cachedCtx = c; return c })
+  }
+  return fetchPromise
+}
+
 async function loadClientLensContext(): Promise<LensContext> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -26,13 +39,18 @@ export function useLensContext(): LensContext {
   const [ctx, setCtx] = useState<LensContext>(cachedCtx ?? EMPTY_LENS_CONTEXT)
 
   useEffect(() => {
-    if (cachedCtx) return  // useState 초기값으로 이미 설정됨
-    if (!fetchPromise) {
-      fetchPromise = loadClientLensContext().then(c => { cachedCtx = c; return c })
-    }
     let cancelled = false
-    fetchPromise.then(c => { if (!cancelled) setCtx(c) })
-    return () => { cancelled = true }
+    const refresh = () => {
+      getClientLensContext().then(c => { if (!cancelled) setCtx(c) })
+    }
+
+    if (!cachedCtx) refresh()
+    const handleContextChanged = () => refresh()
+    window.addEventListener('lens:context-changed', handleContextChanged)
+    return () => {
+      cancelled = true
+      window.removeEventListener('lens:context-changed', handleContextChanged)
+    }
   }, [])
 
   return ctx

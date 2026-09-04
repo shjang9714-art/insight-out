@@ -2,8 +2,8 @@
 
 import { startTransition, useEffect, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
-import { Building2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import InterestManager from '@/components/interests/InterestManager'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { DEPARTMENT_DISPLAY_LABEL, ORG_GROUPS, isOrgGroup } from '@/lib/org'
-import WatchlistSettingsModal from '@/components/watchlist/WatchlistSettingsModal'
 import type {
   NewsletterForm,
   ProfileForm,
@@ -40,30 +39,6 @@ interface Props {
   onWatchlistChange: () => void
 }
 
-function SummaryChips({ labels, emptyLabel }: { labels: string[]; emptyLabel: string }) {
-  if (labels.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {labels.slice(0, 8).map((label) => (
-        <span
-          key={label}
-          className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground"
-        >
-          {label}
-        </span>
-      ))}
-      {labels.length > 8 && (
-        <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-          +{labels.length - 8}개
-        </span>
-      )}
-    </div>
-  )
-}
-
 export default function SettingsTab({
   authEmail,
   profile,
@@ -76,10 +51,7 @@ export default function SettingsTab({
   newsletterStatus,
   newsletterError,
   onNewsletterSave,
-  watchlistItems,
-  onWatchlistChange,
 }: Props) {
-  const watchlistLabels = watchlistItems.map((item) => item.company)
   const [mounted, setMounted] = useState(false)
   const { resolvedTheme, setTheme } = useTheme()
 
@@ -161,30 +133,8 @@ export default function SettingsTab({
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="mb-5 text-base font-semibold text-foreground">관심 설정</h2>
-
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-brand-600" />
-                  <p className="text-sm font-semibold text-foreground">관심 기업 · {watchlistItems.length}개 선택됨</p>
-                </div>
-                <div className="mt-3">
-                  <SummaryChips labels={watchlistLabels} emptyLabel="아직 선택한 관심 기업이 없습니다." />
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  📍 기업동향 · AI 인사이트에서 이 기업들의 소식을 모아 보여줍니다.
-                </p>
-              </div>
-              <WatchlistSettingsModal
-                onChange={onWatchlistChange}
-                trigger={<Button type="button" variant="outline" size="sm">기업 설정</Button>}
-              />
-            </div>
-          </div>
-        </div>
+        <h2 className="mb-5 text-base font-semibold text-foreground">내 관심사</h2>
+        <InterestManager />
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
