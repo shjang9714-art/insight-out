@@ -81,7 +81,8 @@ const FETCH_LIMIT = 60
 // 리포트·공시자료) 6개 섹션을 category IN(...) 조건 없는 단일 쿼리로 합쳐서 가져온 뒤
 // 클라이언트에서 category 로 나눠 배분한다 — 섹션별 표시 상한 합(현재 84) 보다 넉넉하게.
 const CONTENT_MERGE_LIMIT = 240
-const SEARCH_DEFAULT_SINCE_DAYS: number | null = null
+// 606-B — 흔한 검색어의 전체 기간 조회(26.5초)를 피하도록 기본 검색 범위를 14일로 제한한다.
+const SEARCH_DEFAULT_SINCE_DAYS: number | null = 14
 // 다중 단어 검색 시 토큰 상한 — 과도한 .or() 체이닝 방지
 const MAX_QUERY_TOKENS = 5
 // 엔티티/키워드 ↔ 콘텐츠 연결 조회 시 안전판(다건 연결된 항목이 과도한 로우를 끌어오지 않게) — 최신순 정렬 후 자르므로
@@ -437,13 +438,22 @@ export function useUnifiedSearch(
   q: string,
   filter: SearchFilterKey | '',
   opts?: { sinceDays?: number | null },
-): { sections: SearchSection[] | null; isLoading: boolean; error: string | null; notice: string | null; cancel: () => void } {
+): {
+  sections: SearchSection[] | null
+  isLoading: boolean
+  error: string | null
+  notice: string | null
+  cancel: () => void
+  sinceDays: number | null
+} {
   const [sections, setSections] = useState<SearchSection[] | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
-  const sinceDays = opts?.sinceDays ?? SEARCH_DEFAULT_SINCE_DAYS
+  const sinceDays = opts?.sinceDays === null
+    ? null
+    : (opts?.sinceDays ?? SEARCH_DEFAULT_SINCE_DAYS)
 
   const cancel = () => {
     const controller = controllerRef.current
@@ -679,7 +689,7 @@ export function useUnifiedSearch(
     }
   }, [q, filter, sinceDays])
 
-  return { sections, isLoading, error, notice, cancel }
+  return { sections, isLoading, error, notice, cancel, sinceDays }
 }
 
 export { SEARCH_FILTER_DEFS }

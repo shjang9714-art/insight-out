@@ -79,7 +79,14 @@ interface Props {
 export default function SearchResultsPanel({
   q, activeType, onTypeChange, sortMode, onSortChange, emptyStateExtra, stickyTopClassName = 'top-0',
 }: Props) {
-  const { sections, isLoading, error, notice, cancel } = useUnifiedSearch(q, '')
+  const [fullRangeQuery, setFullRangeQuery] = useState<string | null>(null)
+  // 확장을 누른 검색어만 전체 기간을 쓴다. q가 바뀌면 렌더 즉시 false가 되어 14일로 복귀한다.
+  const fullRange = fullRangeQuery === q
+  const { sections, isLoading, error, notice, cancel, sinceDays } = useUnifiedSearch(
+    q,
+    '',
+    { sinceDays: fullRange ? null : undefined },
+  )
 
   // 선택한 종류가 결과에서 사라지면(재검색 등) '전체'로 안전하게 되돌림
   useEffect(() => {
@@ -132,6 +139,15 @@ export default function SearchResultsPanel({
 
       <div>
         {showSkeleton && <SearchLoading key={q} onCancel={cancel} />}
+
+        {!showSkeleton && sinceDays !== null && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-4 py-3">
+            <p className="text-sm text-muted-foreground">최근 {sinceDays}일 결과예요.</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setFullRangeQuery(q)}>
+              전체 기간에서 검색
+            </Button>
+          </div>
+        )}
 
         {!showSkeleton && notice && (
           <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
