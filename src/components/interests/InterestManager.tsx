@@ -3,23 +3,21 @@
 import { useEffect, useState } from 'react'
 import { Check, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import {
+  fetchSelectableTopics,
+  type SelectableTopic,
+} from '@/lib/interests/topics'
 import { invalidateLensContext } from '@/lib/lens'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 const MAX_ENTITY_INTERESTS = 30
-const NOISE_TOPIC_NAME = '노이즈 제외'
 
 interface EntityOption {
   id: string
   canonical_name: string
   entity_type: string
   is_competitor: boolean
-}
-
-interface TopicOption {
-  id: string
-  name: string
 }
 
 interface InterestItem {
@@ -47,7 +45,7 @@ function interestKey(kind: InterestItem['kind'], targetId: string): string {
 
 export default function InterestManager() {
   const [items, setItems] = useState<InterestItem[]>([])
-  const [topics, setTopics] = useState<TopicOption[]>([])
+  const [topics, setTopics] = useState<SelectableTopic[]>([])
   const [recommendedEntities, setRecommendedEntities] = useState<EntityOption[]>([])
   const [searchResults, setSearchResults] = useState<EntityOption[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -74,13 +72,9 @@ export default function InterestManager() {
           .from('user_interests')
           .select('kind, entity_id, group_id')
           .eq('user_id', user.id),
-        supabase
-          .from('keyword_groups')
-          .select('id, name')
-          .eq('is_active', true)
-          .or('link_only.is.null,link_only.eq.false')
-          .neq('name', NOISE_TOPIC_NAME)
-          .order('name'),
+        fetchSelectableTopics(supabase)
+          .then(data => ({ data, error: null }))
+          .catch((error: unknown) => ({ data: null, error })),
         supabase
           .from('entities')
           .select('id, canonical_name, entity_type, is_competitor')
@@ -95,7 +89,8 @@ export default function InterestManager() {
 
       if (interestResult.error || topicResult.error || competitorResult.error || signalResult.error) {
         console.warn('[InterestManager] 관심사 초기 조회 실패:',
-          interestResult.error?.message ?? topicResult.error?.message
+          interestResult.error?.message
+          ?? (topicResult.error instanceof Error ? topicResult.error.message : null)
           ?? competitorResult.error?.message ?? signalResult.error?.message)
         if (!cancelled) {
           setError('관심사 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
@@ -136,7 +131,7 @@ export default function InterestManager() {
       const entities = (entityResult.data ?? []) as EntityOption[]
       const entityById = new Map(entities.map(entity => [entity.id, entity]))
       const selectedTopicById = new Map(
-        ((selectedTopicResult.data ?? []) as TopicOption[]).map(topic => [topic.id, topic]),
+        ((selectedTopicResult.data ?? []) as SelectableTopic[]).map(topic => [topic.id, topic]),
       )
       const loadedItems = interestRows.flatMap((row): InterestItem[] => {
         if (row.kind === 'entity' && row.entity_id) {
@@ -172,7 +167,7 @@ export default function InterestManager() {
 
       if (!cancelled) {
         setItems(loadedItems)
-        setTopics((topicResult.data ?? []) as TopicOption[])
+        setTopics(topicResult.data ?? [])
         setRecommendedEntities([...competitors, ...topEntities])
         setLoading(false)
       }
