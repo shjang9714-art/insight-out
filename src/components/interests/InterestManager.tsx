@@ -78,6 +78,7 @@ export default function InterestManager() {
           .from('keyword_groups')
           .select('id, name')
           .eq('is_active', true)
+          .or('link_only.is.null,link_only.eq.false')
           .neq('name', NOISE_TOPIC_NAME)
           .order('name'),
         supabase
