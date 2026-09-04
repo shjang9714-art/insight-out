@@ -69,8 +69,14 @@ function extractSourceType(src: RawContentRow['sources']): string | null {
 
 const CONTENT_SELECT = 'id, title, category, summary_ko, original_url, matched_groups, matched_keywords, sources(name, type)'
 
-/** 카테고리(§2)당 최대 노출 건수. */
+/** 카테고리(§2)당 최종 노출 건수. */
 const MAX_CARDS_PER_GROUP = 2
+/**
+ * 인사이트 생성 단계에 넘기는 그룹당 후보 수(지시서 20260902 §9-5-가). 인사이트가 없는 기사는
+ * 카드에서 빠지므로(§9-5), 탈락분을 감안해 MAX_CARDS_PER_GROUP 보다 1건 더 뽑아 인사이트를 만들고,
+ * 살아남은 것 중 상위 MAX_CARDS_PER_GROUP 건만 최종 카드로 낸다.
+ */
+const CANDIDATE_CARDS_PER_GROUP = MAX_CARDS_PER_GROUP + 1
 /** 버킷별 전용 조회 시 후보 여유분(유튜브·주식 필터로 일부 걸러질 것을 감안). */
 const PER_BUCKET_FETCH_LIMIT = 15
 /** ⑤ 시장·B2B동향(잔여) 판정용 일반 후보 풀 크기. */
@@ -152,9 +158,11 @@ async function fetchGroupBuckets(
   ])
 
   // 그 주 이미 노출된 기사(규칙 2)는 버킷 분류 이전에 걸러, 이번 회차 어느 섹션에도 다시 나오지 않게 한다.
+  // §9-5-가: 최종 노출(MAX_CARDS_PER_GROUP)보다 1건 더 많은 CANDIDATE_CARDS_PER_GROUP 까지 후보로 남겨
+  // 인사이트 생성 단계에 넘긴다.
   const usedIds = new Set<string>(weeklyExcludeIds)
   const dedupeAgainstUsed = (rows: RawContentRow[]): RawContentRow[] => {
-    const result = rows.filter((r) => !usedIds.has(r.id)).slice(0, MAX_CARDS_PER_GROUP)
+    const result = rows.filter((r) => !usedIds.has(r.id)).slice(0, CANDIDATE_CARDS_PER_GROUP)
     result.forEach((r) => usedIds.add(r.id))
     return result
   }
@@ -215,30 +223,55 @@ export async function prepareNewsletterIssue(
     residualPool.map((r) => ({ ...r, matchedGroups: r.matched_groups ?? [], matchedKeywords: r.matched_keywords ?? [] })),
     competitorNames,
     usedIds,
-    MAX_CARDS_PER_GROUP
+    CANDIDATE_CARDS_PER_GROUP
   )
 
-  const bucketsWithMarket: Record<NewsGroupKey, RawContentRow[]> = { ...buckets, market_b2b: marketRows }
-  const selected = NEWS_GROUP_DEFS.flatMap((def) => bucketsWithMarket[def.key])
+  // candidateBuckets: 그룹당 최대 CANDIDATE_CARDS_PER_GROUP 건(§9-5-가) — 아직 최종 카드가 아니다.
+  const candidateBuckets: Record<NewsGroupKey, RawContentRow[]> = { ...buckets, market_b2b: marketRows }
+  const candidates = NEWS_GROUP_DEFS.flatMap((def) => candidateBuckets[def.key])
 
-  // 관련기사 배제 집합(§3-3): 그 회차 전체 카드 id + weeklyExcludeIds. 관련기사로 쓴 id 는
+  // 관련기사 배제 집합(§3-3): 그 회차 전체 카드 id + weeklyExcludeIds. 후보 전체(candidates)를
+  // 기준으로 넉넉히 배제한다 — 최종 탈락분이 있어도 과다 배제일 뿐 안전하다. 관련기사로 쓴 id 는
   // usedIds 에 넣지 않는다 — 다음 회차 카드 후보에서 빠지면 안 된다(보조 링크일 뿐).
   const relatedArticleExcludeIds = new Set<string>(weeklyExcludeIds)
-  for (const r of selected) relatedArticleExcludeIds.add(r.id)
+  for (const r of candidates) relatedArticleExcludeIds.add(r.id)
 
   // LLM 콜(인사이트)과 순수 DB 조회(관련기사)는 서로 의존이 없으니 병렬 실행한다
-  // (직렬로 붙이면 cron 시간만 늘어난다).
+  // (직렬로 붙이면 cron 시간만 늘어난다). 관련기사는 후보 전체 기준으로 미리 조회해두고,
+  // 아래에서 최종 카드로 확정된 것만 꺼내 쓴다.
   const [insights, relatedArticlesByCard] = await Promise.all([
     generateInsights
-      ? generateCardInsights(selected.map((r) => ({ id: r.id, title: r.title, summaryKo: r.summary_ko })))
+      ? generateCardInsights(candidates.map((r) => ({ id: r.id, title: r.title, summaryKo: r.summary_ko })))
       : Promise.resolve(new Map<string, CardInsight>()),
     fetchRelatedArticles(
       supabase,
-      selected.map((r) => ({ id: r.id })),
+      candidates.map((r) => ({ id: r.id })),
       baseUrl,
       relatedArticleExcludeIds
     ),
   ])
+
+  // §9-5: 인사이트가 없는(why 도 action 도 없는) 후보는 카드에서 뺀다. 살아남은 것 중 그룹당
+  // 상위 MAX_CARDS_PER_GROUP 건만 최종 카드로 낸다. generateInsights=false(어드민 가벼운 미리보기)면
+  // 인사이트 자체를 생성하지 않았으므로 이 필터를 적용하지 않고 후보 상위 N건을 그대로 낸다.
+  const finalizeBucket = (rows: RawContentRow[]): RawContentRow[] => {
+    if (!generateInsights) return rows.slice(0, MAX_CARDS_PER_GROUP)
+    return rows.filter((r) => insights.get(r.id)?.why || insights.get(r.id)?.action).slice(0, MAX_CARDS_PER_GROUP)
+  }
+
+  let finalBuckets: Record<NewsGroupKey, RawContentRow[]> = Object.fromEntries(
+    NEWS_GROUP_DEFS.map((def) => [def.key, finalizeBucket(candidateBuckets[def.key])])
+  ) as Record<NewsGroupKey, RawContentRow[]>
+
+  // §9-5-다 전멸 방지: 인사이트 필터로 전체 카드가 0장이 되면(모든 그룹이 비면) dispatch.ts 의
+  // no_contents 가스켓에 걸려 그날 메일이 아예 안 나간다. 이 경우 인사이트 없이 원래 후보 상위
+  // N건을 그대로 내보낸다(LLM 실패 시 인사이트 없이 발송하는 기존 폴백과 같은 취지).
+  const totalFinalCards = NEWS_GROUP_DEFS.reduce((sum, def) => sum + finalBuckets[def.key].length, 0)
+  if (generateInsights && totalFinalCards === 0) {
+    finalBuckets = Object.fromEntries(
+      NEWS_GROUP_DEFS.map((def) => [def.key, candidateBuckets[def.key].slice(0, MAX_CARDS_PER_GROUP)])
+    ) as Record<NewsGroupKey, RawContentRow[]>
+  }
 
   const toCard = (r: RawContentRow): PreparedCard => ({
     id: r.id,
@@ -255,10 +288,11 @@ export async function prepareNewsletterIssue(
   const newsGroups: PreparedNewsGroup[] = NEWS_GROUP_DEFS.map((def) => ({
     key: def.key,
     label: def.label,
-    cards: bucketsWithMarket[def.key].map(toCard),
+    cards: finalBuckets[def.key].map(toCard),
   }))
 
-  const relatedGroups = Array.from(new Set(selected.flatMap((r) => r.matched_groups ?? [])))
+  const finalSelected = NEWS_GROUP_DEFS.flatMap((def) => finalBuckets[def.key])
+  const relatedGroups = Array.from(new Set(finalSelected.flatMap((r) => r.matched_groups ?? [])))
 
   // 뉴스 카드 선정으로 usedIds 가 더 채워졌으니, 지식보고서 배제 집합은 usedIds 최종본을 사용.
   const knowledgeReports = await getKnowledgeReportTeasers(supabase, baseUrl, relatedGroups, usedIds)
