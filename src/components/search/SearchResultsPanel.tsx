@@ -28,6 +28,9 @@ export function SearchResultsSkeleton() {
   )
 }
 
+// 606-B 이후 대부분 1~2초에 끝나므로 짧은 검색의 숫자 깜빡임은 막고 긴 대기 신호만 남긴다.
+const SEARCH_ELAPSED_VISIBLE_SEC = 3
+
 function SearchLoading({ onCancel }: { onCancel: () => void }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
@@ -40,12 +43,14 @@ function SearchLoading({ onCancel }: { onCancel: () => void }) {
   }, [])
 
   return (
-    <div className="relative flex min-h-64 max-h-80 overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="io-bulb pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 opacity-60">
+    <div className="relative flex min-h-72 overflow-hidden rounded-2xl border border-border bg-card sm:min-h-[26rem]">
+      <div className="io-bulb pointer-events-none absolute left-1/2 top-1/2 w-full max-w-[34rem] -translate-x-1/2 -translate-y-1/2 opacity-60">
         <BulbScene />
       </div>
       <div className="relative z-10 m-auto flex flex-col items-center px-6 py-12 text-center">
-        <p className="text-sm font-semibold text-foreground">검색 중… {elapsedSeconds}초</p>
+        <p className="text-sm font-semibold text-foreground">
+          검색 중…{elapsedSeconds >= SEARCH_ELAPSED_VISIBLE_SEC && ` ${elapsedSeconds}초`}
+        </p>
         {elapsedSeconds >= 5 && (
           <p className="mt-2 text-xs text-muted-foreground">검색 범위가 넓습니다. 잠시만 기다려주세요.</p>
         )}
