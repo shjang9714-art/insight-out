@@ -1,23 +1,23 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { Plus, X } from 'lucide-react'
+import { Heart, Plus, X } from 'lucide-react'
+import InterestPickerDialog, {
+  type SelectedInterest,
+} from '@/components/interests/InterestPickerDialog'
 import LensSwitcher from '@/components/lens/LensSwitcher'
-import { invalidateLensContext } from '@/lib/lens'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { removeInterest } from '@/lib/interests/mutations'
 import { createClient } from '@/lib/supabase/client'
 
 interface InterestRow {
   kind: 'entity' | 'topic'
   entity_id: string | null
   group_id: string | null
-}
-
-interface InterestItem {
-  key: string
-  kind: InterestRow['kind']
-  targetId: string
-  label: string
 }
 
 interface EntityNameRow {
@@ -30,17 +30,118 @@ interface TopicNameRow {
   name: string
 }
 
-function interestKey(kind: InterestItem['kind'], targetId: string): string {
+function interestKey(kind: SelectedInterest['kind'], targetId: string): string {
   return `${kind}:${targetId}`
 }
 
+function sortInterests(items: SelectedInterest[]): SelectedInterest[] {
+  return [...items].sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === 'topic' ? -1 : 1
+    return left.label.localeCompare(right.label, 'ko')
+  })
+}
+
+interface RailContentProps {
+  items: SelectedInterest[]
+  pendingKeys: string[]
+  loading: boolean
+  error: string | null
+  onRemove: (item: SelectedInterest) => void
+  onOpenPicker: () => void
+}
+
+function RailContent({
+  items,
+  pendingKeys,
+  loading,
+  error,
+  onRemove,
+  onOpenPicker,
+}: RailContentProps) {
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">내 관심사</h2>
+          <span className="text-xs tabular-nums text-muted-foreground">{items.length}개</span>
+        </div>
+
+        {loading ? (
+          <p className="text-xs text-muted-foreground">불러오는 중...</p>
+        ) : items.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs leading-5 text-muted-foreground">
+              관심사를 고르면 화면이 내게 맞춰집니다
+            </p>
+            <button
+              type="button"
+              onClick={onOpenPicker}
+              className="text-xs font-medium text-brand-600 hover:underline"
+            >
+              고르러 가기
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {items.map(item => (
+              <span
+                key={item.key}
+                className="inline-flex min-w-0 items-center gap-1 rounded-full bg-brand-600/10 py-1 pl-2.5 pr-1 text-xs font-medium text-brand-600"
+              >
+                <span className="truncate">{item.label}</span>
+                <button
+                  type="button"
+                  disabled={pendingKeys.includes(item.key)}
+                  onClick={() => onRemove(item)}
+                  className="shrink-0 rounded-full p-0.5 transition-colors hover:bg-brand-600/15 disabled:opacity-50"
+                  aria-label={`${item.label} 관심사 해제`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {error ? <p className="mt-3 text-xs text-destructive">{error}</p> : null}
+
+        <button
+          type="button"
+          onClick={onOpenPicker}
+          className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          관심사 추가
+        </button>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <LensSwitcher />
+      </section>
+    </div>
+  )
+}
+
 export default function InterestRail() {
-  const [items, setItems] = useState<InterestItem[]>([])
+  const [wide, setWide] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [items, setItems] = useState<SelectedInterest[]>([])
+  const [userId, setUserId] = useState<string | null>(null)
   const [pendingKeys, setPendingKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1620px)')
+    const sync = () => setWide(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  useEffect(() => {
+    if (!wide && !pickerOpen) return
     let cancelled = false
 
     const loadInterests = async () => {
@@ -53,6 +154,7 @@ export default function InterestRail() {
         }
         return
       }
+      if (!cancelled) setUserId(user.id)
 
       const { data, error: interestError } = await supabase
         .from('user_interests')
@@ -98,7 +200,7 @@ export default function InterestRail() {
       const topicNames = new Map(
         ((topicResult.data ?? []) as TopicNameRow[]).map(topic => [topic.id, topic.name]),
       )
-      const loadedItems = rows.flatMap((row): InterestItem[] => {
+      const loadedItems = rows.flatMap((row): SelectedInterest[] => {
         const targetId = row.kind === 'topic' ? row.group_id : row.entity_id
         const label = targetId
           ? row.kind === 'topic' ? topicNames.get(targetId) : entityNames.get(targetId)
@@ -109,13 +211,10 @@ export default function InterestRail() {
           targetId,
           label,
         }] : []
-      }).sort((left, right) => {
-        if (left.kind !== right.kind) return left.kind === 'topic' ? -1 : 1
-        return left.label.localeCompare(right.label, 'ko')
       })
 
       if (!cancelled) {
-        setItems(loadedItems)
+        setItems(sortInterests(loadedItems))
         setError(null)
         setLoading(false)
       }
@@ -127,113 +226,87 @@ export default function InterestRail() {
       cancelled = true
       window.removeEventListener('lens:context-changed', loadInterests)
     }
-  }, [])
+  }, [wide, pickerOpen])
 
-  async function removeInterest(item: InterestItem) {
+  async function handleRemove(item: SelectedInterest) {
     if (pendingKeys.includes(item.key)) return
-    setError(null)
     setPendingKeys(previous => [...previous, item.key])
+    setError(null)
 
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id
+    if (!resolvedUserId) {
       setError('로그인이 필요합니다.')
       setPendingKeys(previous => previous.filter(key => key !== item.key))
       return
     }
 
-    let deleteQuery = supabase
-      .from('user_interests')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('kind', item.kind)
-    deleteQuery = item.kind === 'entity'
-      ? deleteQuery.eq('entity_id', item.targetId)
-      : deleteQuery.eq('group_id', item.targetId)
-    const { error: deleteError } = await deleteQuery
-
-    if (deleteError) {
+    try {
+      await removeInterest(supabase, resolvedUserId, item.kind, item.targetId)
+      setItems(previous => previous.filter(existing => existing.key !== item.key))
+    } catch (removeError) {
+      console.warn(
+        '[InterestRail] 관심사 해제 실패:',
+        removeError instanceof Error ? removeError.message : removeError,
+      )
       setError('관심사 해제에 실패했습니다.')
+    } finally {
       setPendingKeys(previous => previous.filter(key => key !== item.key))
-      return
     }
-
-    setItems(previous => previous.filter(existing => existing.key !== item.key))
-
-    if (item.kind === 'entity') {
-      // 608 이행기 — user_watchlist 소비처 정리 후 제거
-      const { error: watchlistError } = await supabase
-        .from('user_watchlist')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('entity_id', item.targetId)
-      if (watchlistError) {
-        console.warn('[InterestRail] user_watchlist 동시 삭제 실패:', watchlistError.message)
-      }
-    }
-
-    invalidateLensContext()
-    setPendingKeys(previous => previous.filter(key => key !== item.key))
   }
 
+  function handleInterestChanged(item: SelectedInterest, selected: boolean) {
+    setItems(previous => sortInterests(selected
+      ? previous.some(existing => existing.key === item.key) ? previous : [...previous, item]
+      : previous.filter(existing => existing.key !== item.key)))
+  }
+
+  const content = (
+    <RailContent
+      items={items}
+      pendingKeys={pendingKeys}
+      loading={loading}
+      error={error}
+      onRemove={item => void handleRemove(item)}
+      onOpenPicker={() => setDialogOpen(true)}
+    />
+  )
+
   return (
-    <div className="sticky top-14 max-h-[calc(100vh-3.5rem)] space-y-5 overflow-y-auto px-1 py-6">
-      <section className="rounded-xl border border-border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">내 관심사</h2>
-          <span className="text-xs tabular-nums text-muted-foreground">{items.length}개</span>
-        </div>
+    <>
+      <div className="fixed bottom-6 left-6 z-40 hidden w-48 min-[1620px]:block">
+        {content}
+      </div>
 
-        {loading ? (
-          <p className="text-xs text-muted-foreground">불러오는 중...</p>
-        ) : items.length === 0 ? (
-          <div className="space-y-3">
-            <p className="text-xs leading-5 text-muted-foreground">
-              관심사를 고르면 화면이 내게 맞춰집니다
-            </p>
-            <Link
-              href="/dashboard/mypage"
-              className="inline-flex text-xs font-medium text-brand-600 hover:underline"
+      <div className="fixed bottom-6 left-6 z-40 hidden md:block min-[1620px]:hidden">
+        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:text-foreground"
+              aria-label="내 관심사 열기"
             >
-              고르러 가기
-            </Link>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {items.map(item => (
-              <span
-                key={item.key}
-                className="inline-flex min-w-0 items-center gap-1 rounded-full bg-brand-600/10 py-1 pl-2.5 pr-1 text-xs font-medium text-brand-600"
-              >
-                <span className="truncate">{item.label}</span>
-                <button
-                  type="button"
-                  disabled={pendingKeys.includes(item.key)}
-                  onClick={() => void removeInterest(item)}
-                  className="shrink-0 rounded-full p-0.5 transition-colors hover:bg-brand-600/15 disabled:opacity-50"
-                  aria-label={`${item.label} 관심사 해제`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
+              <Heart className="h-5 w-5" />
+              {items.length > 0 ? (
+                <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-brand-600 px-1 text-center text-[10px] font-semibold leading-5 text-white">
+                  {items.length}
+                </span>
+              ) : null}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-64 p-0">
+            {content}
+          </PopoverContent>
+        </Popover>
+      </div>
 
-        {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
-
-        <Link
-          href="/dashboard/mypage"
-          className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          관심사 추가
-        </Link>
-      </section>
-
-      <section className="rounded-xl border border-border bg-card p-4">
-        <LensSwitcher />
-      </section>
-    </div>
+      <InterestPickerDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        selectedItems={items}
+        userId={userId}
+        onInterestChanged={handleInterestChanged}
+      />
+    </>
   )
 }
