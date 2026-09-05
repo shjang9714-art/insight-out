@@ -48,7 +48,6 @@ export function normalizeLensName(s: string): string {
 
 export function lensScore(key: LensKey, ctx: LensContext, target: LensTarget): number {
   if (key === 'all') return 0
-  if (target.isCompetitor) return 3
   if (target.entityId && ctx.entityIds.includes(target.entityId)) return 3
 
   if (target.groups?.map(normalizeLensName).some(group => ctx.normalizedTopicNames.includes(group))) return 2
