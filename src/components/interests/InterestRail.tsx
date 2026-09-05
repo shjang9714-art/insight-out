@@ -293,7 +293,7 @@ export default function InterestRail() {
       : previous.filter(existing => existing.key !== item.key)))
   }
 
-  const badgeCount = items.length > 0 ? items.length : (count ?? 0)
+  const badgeCount = loading && count !== null ? count : items.length
 
   const content = (
     <RailContent
