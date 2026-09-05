@@ -124,9 +124,11 @@ function RailContent({
 
 export default function InterestRail() {
   const [wide, setWide] = useState(false)
+  const [hasButton, setHasButton] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [items, setItems] = useState<SelectedInterest[]>([])
+  const [count, setCount] = useState<number | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [pendingKeys, setPendingKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -139,6 +141,36 @@ export default function InterestRail() {
     mq.addEventListener('change', sync)
     return () => mq.removeEventListener('change', sync)
   }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const sync = () => setHasButton(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  useEffect(() => {
+    if (!hasButton || wide || pickerOpen) return
+    let cancelled = false
+
+    void (async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { count: n, error: countError } = await supabase
+        .from('user_interests')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+      if (countError) {
+        console.warn('[InterestRail] 관심사 개수 조회 실패:', countError.message)
+        return
+      }
+      if (!cancelled) setCount(n ?? 0)
+    })()
+
+    return () => { cancelled = true }
+  }, [hasButton, wide, pickerOpen])
 
   useEffect(() => {
     if (!wide && !pickerOpen) return
@@ -261,6 +293,8 @@ export default function InterestRail() {
       : previous.filter(existing => existing.key !== item.key)))
   }
 
+  const badgeCount = items.length > 0 ? items.length : (count ?? 0)
+
   const content = (
     <RailContent
       items={items}
@@ -287,9 +321,9 @@ export default function InterestRail() {
               aria-label="내 관심사 열기"
             >
               <Heart className="h-5 w-5" />
-              {items.length > 0 ? (
+              {badgeCount > 0 ? (
                 <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-brand-600 px-1 text-center text-[10px] font-semibold leading-5 text-white">
-                  {items.length}
+                  {badgeCount}
                 </span>
               ) : null}
             </button>
