@@ -14,7 +14,6 @@ import {
   LENS_PRESETS,
   type LensTarget,
 } from '@/lib/lens'
-import LensSwitcher from '@/components/lens/LensSwitcher'
 import type { IssueCard } from '@/lib/issues/activity'
 import { buildIssueInsight, buildIssueRelevance } from '@/lib/issues/interpret'
 import { stripLlmArtifacts } from '@/lib/text/strip-llm-artifacts'
@@ -50,12 +49,11 @@ function attentionRank(card: IssueCard): number {
 
 interface Props {
   cards: IssueCard[]
-  showLensSwitcher?: boolean
 }
 
 // ─── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
-export default function IssueBoardClient({ cards, showLensSwitcher = true }: Props) {
+export default function IssueBoardClient({ cards }: Props) {
   const ctx = useLensContext()
   const sanitizedCards = cards.map((card) => ({
     ...card,
@@ -135,12 +133,6 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
 
   return (
     <div>
-      {showLensSwitcher && (
-        <div className="mb-4 md:hidden">
-          <LensSwitcher />
-        </div>
-      )}
-
       <div className="mb-4">
         <p className="text-sm text-muted-foreground">
           시장 주요 이슈를 추적합니다.

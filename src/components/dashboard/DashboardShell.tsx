@@ -8,6 +8,7 @@ import DashboardHeader, { NAV_TABS } from '@/components/dashboard/DashboardHeade
 import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
 import { MobileBottomNav } from '@/components/dashboard/MobileBottomNav'
 import InterestPanel from '@/components/interests/InterestPanel'
+import LensStatusBar from '@/components/lens/LensStatusBar'
 import SearchOverlay from '@/components/mobile/SearchOverlay'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import { resolveActiveNav } from '@/lib/nav/active'
@@ -73,6 +74,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
       {/* 풀폭 본문 */}
       <main className="mx-auto w-full max-w-6xl pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 print:max-w-none print:pb-0">
+        <LensStatusBar />
         {children}
       </main>
 

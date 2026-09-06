@@ -6,7 +6,6 @@ import InterestDrawer, {
   type ChangedInterest,
   type DrawerInterestItem,
 } from '@/components/interests/InterestDrawer'
-import LensSwitcher from '@/components/lens/LensSwitcher'
 import {
   useActiveLens,
   useSelectedInterests,
@@ -271,10 +270,6 @@ export default function InterestPanel() {
             </div>
           </div>
 
-          <div className="mb-3">
-            <LensSwitcher />
-          </div>
-
           {loading ? (
             <p className="py-2 text-[13px] text-muted-foreground">불러오는 중...</p>
           ) : !hasInterests ? (
@@ -300,12 +295,12 @@ export default function InterestPanel() {
                     type="button"
                     onClick={() => toggleSelect(item.key)}
                     aria-pressed={selected}
-                    className="flex h-8 items-center gap-2 text-left text-[13px] text-foreground"
+                    className="group -mx-1.5 flex h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent"
                   >
                     <span
                       className={cn(
                         'h-[18px] w-[3px] shrink-0 rounded-full',
-                        selected ? 'bg-brand-600' : 'bg-transparent',
+                        selected ? 'bg-brand-600' : 'bg-transparent group-hover:bg-muted-foreground/40',
                       )}
                       aria-hidden="true"
                     />

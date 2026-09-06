@@ -194,7 +194,7 @@ export default function LabBoard({
           <p className="mb-4 text-xs text-muted-foreground">
             추적 이슈의 변화 — 건수·논조 변동을 확인합니다
           </p>
-          <IssueBoardClient cards={safeIssueCards} showLensSwitcher={false} />
+          <IssueBoardClient cards={safeIssueCards} />
         </section>
       )}
 
