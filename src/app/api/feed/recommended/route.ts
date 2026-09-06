@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { isB2BRelevant } from '@/lib/feed-blocklist'
 import { dedupSimilarItems } from '@/lib/feed-dedup'
 import { hashtagsForCategories } from '@/lib/feed/categories'
+import { getUserFeedCategories } from '@/lib/preferences'
 
 const CONTENT_SELECT =
   'id, title, summary_ko, body_original, category, published_at, thumbnail_url, sources(name), matched_groups, matched_keywords'
@@ -55,12 +56,7 @@ export async function GET(req: NextRequest) {
   // (personalized/explore 만 사용, trending/editor 는 무시)
   let hashtags: string[] = []
   if (slot === 'personalized' || slot === 'explore') {
-    const { data: userRow } = await supabase
-      .from('users')
-      .select('feed_categories')
-      .eq('id', user.id)
-      .single()
-    const categoryKeys = (userRow as { feed_categories: string[] } | null)?.feed_categories ?? []
+    const categoryKeys = await getUserFeedCategories(supabase, user.id)
     hashtags = hashtagsForCategories(categoryKeys)
     // personalized 인데 선택 카테고리가 없으면 매칭 대상이 없어 빈 결과
     if (slot === 'personalized' && hashtags.length === 0) {
