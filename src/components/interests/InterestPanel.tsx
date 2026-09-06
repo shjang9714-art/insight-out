@@ -1,30 +1,24 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Heart, X } from 'lucide-react'
 import InterestDrawer, {
   type ChangedInterest,
   type DrawerInterestItem,
 } from '@/components/interests/InterestDrawer'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import LensSwitcher from '@/components/lens/LensSwitcher'
 import {
   useActiveLens,
   useSelectedInterests,
   useLensContext,
-  LENS_PRESETS,
-  type LensKey,
 } from '@/lib/lens'
 import { toggleInterestSelection, recordInterestUse } from '@/lib/interests/selection'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 const MAX_VISIBLE = 6
-const LENS_ORDER: LensKey[] = ['boost', 'only', 'all']
+const COLLAPSE_STORAGE_KEY = 'io:interest-panel-collapsed'
+const COLLAPSE_BREAKPOINT = 1280
 
 interface InterestRow {
   kind: 'entity' | 'topic'
@@ -49,7 +43,7 @@ interface TopicNameRow {
 
 type SidebarItem = DrawerInterestItem
 
-export default function InterestSidebar() {
+export default function InterestPanel() {
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
   const [selectedKeys, setSelectedKeys] = useSelectedInterests()
@@ -58,6 +52,28 @@ export default function InterestSidebar() {
   const [loading, setLoading] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'explore' | 'manage'>('explore')
+  const [collapsed, setCollapsed] = useState<boolean | null>(null)
+  const [collapseInitialized, setCollapseInitialized] = useState(false)
+
+  // 접힘 상태 — localStorage 에 명시적으로 기억된 값이 있으면 그걸 쓰고,
+  // 없으면(첫 방문) 1280px 미만인지로 기본값을 정한다. window 가 있는 첫 렌더에서
+  // 단 한 번만 계산한다(렌더 도중 상태 조정 — effect 로 하면 마운트마다 추가 렌더가 생긴다).
+  if (!collapseInitialized && typeof window !== 'undefined') {
+    setCollapseInitialized(true)
+    let initial: boolean
+    try {
+      const stored = localStorage.getItem(COLLAPSE_STORAGE_KEY)
+      initial = stored !== null ? stored === 'true' : window.innerWidth < COLLAPSE_BREAKPOINT
+    } catch {
+      initial = window.innerWidth < COLLAPSE_BREAKPOINT
+    }
+    setCollapsed(initial)
+  }
+
+  function setCollapsedAndPersist(next: boolean) {
+    setCollapsed(next)
+    try { localStorage.setItem(COLLAPSE_STORAGE_KEY, String(next)) } catch { /* noop */ }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -77,7 +93,7 @@ export default function InterestSidebar() {
         .eq('user_id', user.id)
 
       if (error) {
-        console.warn('[InterestSidebar] 관심사 조회 실패:', error.message)
+        console.warn('[InterestPanel] 관심사 조회 실패:', error.message)
         if (!cancelled) setLoading(false)
         return
       }
@@ -96,7 +112,7 @@ export default function InterestSidebar() {
 
       if (entityResult.error || topicResult.error) {
         console.warn(
-          '[InterestSidebar] 관심사 이름 조회 실패:',
+          '[InterestPanel] 관심사 이름 조회 실패:',
           entityResult.error?.message ?? topicResult.error?.message,
         )
         if (!cancelled) setLoading(false)
@@ -183,11 +199,6 @@ export default function InterestSidebar() {
     if (turnedOn) recordInterestUse(key)
   }
 
-  function handleLensChange(next: LensKey) {
-    setActiveLens(next)
-    if (next === 'all') setSelectedKeys([])
-  }
-
   function openExplore() {
     setDrawerMode('explore')
     setDrawerOpen(true)
@@ -218,87 +229,105 @@ export default function InterestSidebar() {
   })
   const visible = sorted.slice(0, MAX_VISIBLE)
 
+  // 접힘 여부를 아직 모르는 첫 렌더(마운트 전) — 아무것도 그리지 않는다.
+  if (collapsed === null) return null
+
   return (
-    <div className="flex h-full flex-col border-r border-border pr-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">관심사</h2>
+    <div className="fixed bottom-6 left-6 z-40 hidden md:block print:hidden">
+      {collapsed ? (
         <button
           type="button"
-          onClick={openManage}
-          className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => setCollapsedAndPersist(false)}
+          className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:text-foreground"
+          aria-label="관심사 패널 펼치기"
         >
-          관리
+          <Heart className="h-5 w-5" />
+          {ctx.count > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-brand-600 px-1 text-center text-[10px] font-semibold leading-5 text-white">
+              {ctx.count}
+            </span>
+          )}
         </button>
-      </div>
+      ) : (
+        <div className="w-46 rounded-xl border border-border bg-card p-4 shadow-lg">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">관심사</h2>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openManage}
+                className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                관리
+              </button>
+              <button
+                type="button"
+                onClick={() => setCollapsedAndPersist(true)}
+                className="rounded-lg p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="관심사 패널 접기"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
 
-      <Select
-        value={hasInterests ? activeLens : 'all'}
-        onValueChange={value => handleLensChange(value as LensKey)}
-        disabled={!hasInterests}
-      >
-        <SelectTrigger size="sm" className="mb-3 w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {LENS_ORDER.map(key => (
-            <SelectItem key={key} value={key} disabled={key !== 'all' && !hasInterests}>
-              {LENS_PRESETS[key].label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          <div className="mb-3">
+            <LensSwitcher />
+          </div>
 
-      {loading ? (
-        <p className="py-2 text-[13px] text-muted-foreground">불러오는 중...</p>
-      ) : !hasInterests ? (
-        <div className="space-y-2 py-2">
-          <p className="text-[13px] leading-5 text-muted-foreground">
-            관심사를 고르면 화면이 내게 맞춰집니다
-          </p>
+          {loading ? (
+            <p className="py-2 text-[13px] text-muted-foreground">불러오는 중...</p>
+          ) : !hasInterests ? (
+            <div className="space-y-2 py-2">
+              <p className="text-[13px] leading-5 text-muted-foreground">
+                관심사를 고르면 화면이 내게 맞춰집니다
+              </p>
+              <button
+                type="button"
+                onClick={openManage}
+                className="text-[13px] font-medium text-brand-600 hover:underline"
+              >
+                관심사 고르기
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {visible.map(item => {
+                const selected = selectedKeys.includes(item.key)
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => toggleSelect(item.key)}
+                    aria-pressed={selected}
+                    className="flex h-8 items-center gap-2 text-left text-[13px] text-foreground"
+                  >
+                    <span
+                      className={cn(
+                        'h-[18px] w-[3px] shrink-0 rounded-full',
+                        selected ? 'bg-brand-600' : 'bg-transparent',
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className={cn('truncate', selected ? 'font-semibold' : 'font-medium')}>
+                      {item.label}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={openManage}
-            className="text-[13px] font-medium text-brand-600 hover:underline"
+            onClick={openExplore}
+            className="mt-2 flex items-center justify-between text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
-            관심사 고르기
+            <span>모든 관심사 보기</span>
+            <span className="tabular-nums">{ctx.count}</span>
           </button>
         </div>
-      ) : (
-        <div className="flex flex-col">
-          {visible.map(item => {
-            const selected = selectedKeys.includes(item.key)
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => toggleSelect(item.key)}
-                aria-pressed={selected}
-                className="flex h-8 items-center gap-2 text-left text-[13px] text-foreground"
-              >
-                <span
-                  className={cn(
-                    'h-[18px] w-[3px] shrink-0 rounded-full',
-                    selected ? 'bg-brand-600' : 'bg-transparent',
-                  )}
-                  aria-hidden="true"
-                />
-                <span className={cn('truncate', selected ? 'font-semibold' : 'font-medium')}>
-                  {item.label}
-                </span>
-              </button>
-            )
-          })}
-        </div>
       )}
-
-      <button
-        type="button"
-        onClick={openExplore}
-        className="mt-2 flex items-center justify-between text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <span>모든 관심사 보기</span>
-        <span className="tabular-nums">{ctx.count}</span>
-      </button>
 
       <InterestDrawer
         open={drawerOpen}
