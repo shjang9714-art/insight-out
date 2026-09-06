@@ -136,7 +136,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
   return (
     <div>
       {showLensSwitcher && (
-        <div className="mb-4 min-[1440px]:hidden">
+        <div className="mb-4 md:hidden">
           <LensSwitcher />
         </div>
       )}
