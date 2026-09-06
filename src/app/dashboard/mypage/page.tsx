@@ -117,7 +117,7 @@ export default function MyPage() {
           team: userRow.team ?? '',
           team_name: userRow.team_name ?? '',
           default_lens:
-            userRow.default_lens === 'watch' || userRow.default_lens === 'all'
+            userRow.default_lens === 'boost' || userRow.default_lens === 'only' || userRow.default_lens === 'all'
               ? userRow.default_lens
               : 'all',
         })

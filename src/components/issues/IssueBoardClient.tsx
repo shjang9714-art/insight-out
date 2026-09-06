@@ -7,8 +7,10 @@ import { cn } from '@/lib/utils'
 import {
   useLensContext,
   useActiveLens,
+  useSelectedInterests,
   matchesLens,
   lensScore,
+  deriveSelectedContext,
   LENS_PRESETS,
   type LensTarget,
 } from '@/lib/lens'
@@ -61,6 +63,8 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
     summary: card.summary ? stripLlmArtifacts(card.summary) : card.summary,
   }))
   const [activeLens, setActiveLens] = useActiveLens()
+  const [selectedKeys, setSelectedKeys] = useSelectedInterests()
+  const selectedCtx = deriveSelectedContext(ctx, selectedKeys)
   const [sortBy, setSortBy] = useState<SortKey>(() => {
     if (typeof window === 'undefined') return 'surge'
     try {
@@ -75,22 +79,34 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
     try { localStorage.setItem(SORT_STORAGE_KEY, key) } catch { /* noop */ }
   }
 
+  function resetToAll() {
+    setActiveLens('all')
+    setSelectedKeys([])
+  }
+
+  // lensScore는 key === 'all'이면 0을 돌려주므로, boost/only 판정 시에는 'only'를 넘겨 점수를 받는다.
   const withLens = sanitizedCards.map(card => {
     const target: LensTarget = { text: [card.title] }
-    const score   = lensScore(activeLens, ctx, target)
-    const matched = activeLens !== 'all' && matchesLens(activeLens, ctx, target)
-    // 범위(activeLens) 무관하게 항상 계산되는 개인 관련도 — "내 관련도" 정렬 전용
-    const relevanceScore = lensScore('watch', ctx, target)
+    const scoreKey = activeLens === 'all' ? 'all' : 'only'
+    const score   = lensScore(scoreKey, selectedCtx, target)
+    const matched = activeLens !== 'all' && matchesLens(scoreKey, selectedCtx, target)
+    // 범위(activeLens)·선택 무관하게 항상 계산되는 개인 관련도 — "내 관련도" 정렬 전용
+    const relevanceScore = lensScore('only', ctx, target)
     return { card, score, matched, relevanceScore }
   })
 
+  // all/boost 는 거르지 않는다. only 만 matched 로 거른다.
   const displayed =
-    activeLens === 'all'
-      ? withLens
-      : withLens.filter(({ matched }) => matched)
+    activeLens === 'only'
+      ? withLens.filter(({ matched }) => matched)
+      : withLens
+
+  // boost 는 사용자가 정렬을 따로 고르지 않았을 때(기본값 'surge')만 점수 정렬을 앞세운다.
+  const useScoreSort = activeLens === 'boost' && sortBy === 'surge'
 
   // 범위 필터(activeLens) 적용 결과 안에서 사용자가 고른 정렬 기준 적용
   const sorted = [...displayed].sort((a, b) => {
+    if (useScoreSort && b.score !== a.score) return b.score - a.score
     switch (sortBy) {
       case 'activity':
         return b.card.recentCount - a.card.recentCount
@@ -114,13 +130,13 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
     }
   })
 
-  // 빈 결과 사유 판단
-  const isMisconfigured = activeLens === 'watch' && ctx.count === 0
+  // 빈 결과 사유 판단 (only 로 걸렀는데 관심사 자체가 없는 경우)
+  const isMisconfigured = activeLens === 'only' && ctx.count === 0
 
   return (
     <div>
       {showLensSwitcher && (
-        <div className="mb-4 min-[1620px]:hidden">
+        <div className="mb-4 min-[1440px]:hidden">
           <LensSwitcher />
         </div>
       )}
@@ -140,7 +156,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
           </span>
           <button
             type="button"
-            onClick={() => setActiveLens('all')}
+            onClick={resetToAll}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             전체 보기 →
@@ -172,7 +188,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
 
       {sorted.length === 0 && (
         <div className="rounded-lg border border-dashed p-16 text-center">
-          {activeLens === 'all' ? (
+          {activeLens !== 'only' ? (
             <p className="text-sm text-muted-foreground">아직 등록된 이슈가 없습니다.</p>
           ) : isMisconfigured ? (
             <div className="space-y-2">
@@ -193,7 +209,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
               </p>
               <button
                 type="button"
-                onClick={() => setActiveLens('all')}
+                onClick={resetToAll}
                 className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
               >
                 전체 보기로 전환
@@ -208,7 +224,7 @@ export default function IssueBoardClient({ cards, showLensSwitcher = true }: Pro
           {sorted.map(({ card, matched }) => {
             const total14Days = card.recentCount + card.prevCount
             const sentimentTotal = card.sentimentPos + card.sentimentNeg
-            const lensLabel = activeLens === 'watch' ? '내 관심사' : null
+            const lensLabel = activeLens !== 'all' ? '내 관심사' : null
 
             return (
               <Link

@@ -7,7 +7,7 @@ import { X } from 'lucide-react'
 import DashboardHeader, { NAV_TABS } from '@/components/dashboard/DashboardHeader'
 import FloatingBriefingMini from '@/components/dashboard/FloatingBriefingMini'
 import { MobileBottomNav } from '@/components/dashboard/MobileBottomNav'
-import InterestRail from '@/components/interests/InterestRail'
+import InterestSidebar from '@/components/interests/InterestSidebar'
 import SearchOverlay from '@/components/mobile/SearchOverlay'
 import ContentsL2Tabs from '@/components/nav/ContentsL2Tabs'
 import { resolveActiveNav } from '@/lib/nav/active'
@@ -71,10 +71,14 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         />
       )}
 
-      {/* 풀폭 본문 */}
-      <main className="mx-auto w-full max-w-6xl pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 print:max-w-none print:pb-0">
-        {children}
-      </main>
+      <div className="mx-auto flex w-full max-w-[86rem] gap-6">
+        <aside className="hidden w-46 shrink-0 min-[1440px]:block print:hidden">
+          <InterestSidebar />
+        </aside>
+        <main className="mx-auto w-full max-w-6xl pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 print:max-w-none print:pb-0">
+          {children}
+        </main>
+      </div>
 
       <MobileBottomNav />
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
@@ -121,11 +125,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           </div>
         </div>
       )}
-
-      {/* 610-C — 좌측 하단 관심사. 우측 하단 브리핑 미니와 대칭 */}
-      <div className="print:hidden">
-        <InterestRail />
-      </div>
 
       {/* 플로팅 모닝브리핑 미니 플레이어 */}
       <div className="print:hidden">

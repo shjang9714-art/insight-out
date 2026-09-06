@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   useLensContext,
   useActiveLens,
+  useSelectedInterests,
   LENS_PRESETS,
   type LensKey,
 } from '@/lib/lens'
@@ -13,15 +14,22 @@ import {
 export default function LensSwitcher() {
   const ctx = useLensContext()
   const [activeLens, setActiveLens] = useActiveLens()
+  const [, setSelectedKeys] = useSelectedInterests()
 
-  const hasWatch = ctx.count > 0
+  const hasInterests = ctx.count > 0
 
   const chips: { key: LensKey; disabled: boolean }[] = [
-    { key: 'watch', disabled: !hasWatch },
-    { key: 'all',   disabled: false     },
+    { key: 'boost', disabled: !hasInterests },
+    { key: 'only',  disabled: !hasInterests },
+    { key: 'all',   disabled: false         },
   ]
 
-  const showWatchHint = !hasWatch
+  const showSettingHint = !hasInterests
+
+  function selectLens(key: LensKey) {
+    setActiveLens(key)
+    if (key === 'all') setSelectedKeys([])
+  }
 
   return (
     <div className="space-y-1.5">
@@ -34,7 +42,7 @@ export default function LensSwitcher() {
               key={key}
               type="button"
               disabled={disabled}
-              onClick={() => { if (!disabled) setActiveLens(key) }}
+              onClick={() => { if (!disabled) selectLens(key) }}
               className={cn(
                 'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                 active && !disabled
@@ -53,7 +61,7 @@ export default function LensSwitcher() {
         {activeLens !== 'all' && (
           <button
             type="button"
-            onClick={() => setActiveLens('all')}
+            onClick={() => selectLens('all')}
             className="inline-flex items-center gap-0.5 rounded-full border border-brand-600/40 bg-brand-600/5 px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-600/10 transition-colors"
           >
             전체로
@@ -63,7 +71,7 @@ export default function LensSwitcher() {
       </div>
 
       {/* 미설정 안내 */}
-      {showWatchHint && (
+      {showSettingHint && (
         <p className="text-[11px] text-muted-foreground">
           관심 기업을 등록하면 해당 소식만 모아볼 수 있어요.{' '}
           <Link href="/dashboard/mypage" className="text-brand-600 hover:underline">

@@ -39,7 +39,7 @@ export function buildIssueInsight(card: IssueCard): IssueInsight {
 
 export function buildIssueRelevance(
   matched: boolean,
-  activeLens: 'all' | 'watch',
+  activeLens: 'all' | 'boost' | 'only',
 ): string | null {
   if (!matched || activeLens === 'all') return null
   return '내 관심사와 연관된 이슈입니다.'

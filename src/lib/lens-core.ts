@@ -1,8 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type LensKey = 'watch' | 'all'
+export type LensKey = 'boost' | 'only' | 'all'
+
+export interface LensInterestItem {
+  key: string            // `${kind}:${id}` — InterestRail 이 쓰던 것과 같은 모양
+  kind: 'entity' | 'topic'
+  id: string
+  name: string
+}
 
 export interface LensContext {
+  items: LensInterestItem[]
   entityIds: string[]
   topicNames: string[]
   normalizedTopicNames: string[]
@@ -20,17 +28,46 @@ export interface LensTarget {
 }
 
 export const LENS_PRESETS: Record<LensKey, { label: string; desc: string }> = {
-  watch: { label: '내 관심사', desc: '관심 기업·토픽만' },
-  all:   { label: '전체',      desc: '모든 콘텐츠 보기' },
+  boost: { label: '관심사 우선',   desc: '관련을 위로, 나머지도 보여줍니다' },
+  only:  { label: '관심사만 보기', desc: '선택한 관심사 관련만' },
+  all:   { label: '전체 보기',     desc: '관심사 영향 없음' },
 }
 
 export const EMPTY_LENS_CONTEXT: LensContext = {
+  items: [],
   entityIds: [],
   topicNames: [],
   normalizedTopicNames: [],
   names: [],
   count: 0,
   defaultLens: 'all',
+}
+
+function deriveLensFields(items: LensInterestItem[]): Pick<
+  LensContext, 'entityIds' | 'topicNames' | 'normalizedTopicNames' | 'names' | 'count'
+> {
+  const entityIds = items.filter(item => item.kind === 'entity').map(item => item.id)
+  const topicNames = items.filter(item => item.kind === 'topic').map(item => item.name)
+  return {
+    entityIds,
+    topicNames,
+    normalizedTopicNames: topicNames.map(normalizeLensName),
+    names: Array.from(new Set(items.map(item => item.name).map(normalizeLensName))),
+    count: items.length,
+  }
+}
+
+/** 사이드바에서 고른 부분집합만 남긴 컨텍스트를 만든다. `lensScore`·`matchesLens`는 그대로 쓴다. */
+export function deriveSelectedContext(ctx: LensContext, selectedKeys: string[]): LensContext {
+  if (selectedKeys.length === 0) return ctx
+
+  const selectedKeySet = new Set(selectedKeys)
+  const selectedItems = ctx.items.filter(item => selectedKeySet.has(item.key))
+
+  return {
+    ...ctx,
+    ...deriveLensFields(selectedItems),
+  }
 }
 
 type SupabaseLike = Pick<SupabaseClient, 'from'>
@@ -121,22 +158,21 @@ export async function loadLensContext(
     if (entitiesRes.error) console.warn('[렌즈] 관심 엔티티 조회 오류:', entitiesRes.error.message)
     if (groupsRes.error) console.warn('[렌즈] 관심 토픽 조회 오류:', groupsRes.error.message)
 
-    const entityNames = ((entitiesRes.data ?? []) as { id: string; canonical_name: string }[])
-      .map(row => row.canonical_name)
-    const topicNames = ((groupsRes.data ?? []) as { id: string; name: string }[])
-      .map(row => row.name)
+    const entityItems: LensInterestItem[] = ((entitiesRes.data ?? []) as { id: string; canonical_name: string }[])
+      .map(row => ({ key: `entity:${row.id}`, kind: 'entity' as const, id: row.id, name: row.canonical_name }))
+    const topicItems: LensInterestItem[] = ((groupsRes.data ?? []) as { id: string; name: string }[])
+      .map(row => ({ key: `topic:${row.id}`, kind: 'topic' as const, id: row.id, name: row.name }))
+    const items = [...entityItems, ...topicItems]
+
     const storedDefaultLens = userRes.data?.default_lens
     const defaultLens: LensKey =
-      !userRes.error && (storedDefaultLens === 'watch' || storedDefaultLens === 'all')
+      !userRes.error && (storedDefaultLens === 'boost' || storedDefaultLens === 'only' || storedDefaultLens === 'all')
         ? storedDefaultLens
         : 'all'
 
     return {
-      entityIds,
-      topicNames,
-      normalizedTopicNames: topicNames.map(normalizeLensName),
-      names: Array.from(new Set([...entityNames, ...topicNames].map(normalizeLensName))),
-      count: entityIds.length + groupIds.length,
+      items,
+      ...deriveLensFields(items),
       defaultLens,
     }
   } catch (error) {
