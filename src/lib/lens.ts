@@ -61,7 +61,7 @@ export function useLensContext(): LensContext {
 const STORAGE_KEY = 'io:lens'
 
 function normalizeLens(value: string | null): LensKey {
-  return value === 'watch' ? 'watch' : 'all'
+  return value === 'boost' || value === 'only' ? value : 'all'
 }
 
 export function useActiveLens(): [LensKey, (k: LensKey) => void] {
@@ -96,4 +96,38 @@ export function useActiveLens(): [LensKey, (k: LensKey) => void] {
   }
 
   return [lens, setActiveLens]
+}
+
+// ─── useSelectedInterests (localStorage io:interest-selection + 이벤트 브로드캐스트) ──
+
+const SELECTION_STORAGE_KEY = 'io:interest-selection'
+
+function readSelection(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(SELECTION_STORAGE_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function useSelectedInterests(): [string[], (keys: string[]) => void] {
+  const [selected, setSelected] = useState<string[]>(() => readSelection())
+
+  useEffect(() => {
+    const handler = () => setSelected(readSelection())
+    window.addEventListener('lens:selection-changed', handler)
+    return () => window.removeEventListener('lens:selection-changed', handler)
+  }, [])
+
+  const setSelectedInterests = (keys: string[]) => {
+    localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(keys))
+    window.dispatchEvent(new Event('lens:selection-changed'))
+    setSelected(keys)
+  }
+
+  return [selected, setSelectedInterests]
 }

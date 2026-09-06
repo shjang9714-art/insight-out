@@ -106,7 +106,7 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
   }
 
   // 미설정 여부 판단
-  const hasSetting = activeLens === 'watch' ? ctx.count > 0 : true
+  const hasSetting = activeLens === 'only' ? ctx.count > 0 : true
 
   // 개인화 설정 여부 (렌즈 무관) — 내 관련도 배지 표시 조건
   const hasPersonalization = ctx.count > 0
@@ -268,8 +268,8 @@ export default function InsightCardsSectionClient({ groups, contentMap, bucketBy
 
                 // 중요도 / 내 관련도 / 선정 이유
                 const relevanceTarget: LensTarget = { names: [card.topic], text: [card.topic, card.headline] }
-                const relevanceMatched = matchesLens('watch', ctx, relevanceTarget)
-                const relevanceScore = lensScore('watch', ctx, relevanceTarget)
+                const relevanceMatched = matchesLens('only', ctx, relevanceTarget)
+                const relevanceScore = lensScore('only', ctx, relevanceTarget)
                 const importance = computeImportance(card)
                 const relevance  = computeRelevance(relevanceScore, relevanceMatched, hasPersonalization)
                 const selectionReason = buildSelectionReason({

@@ -87,7 +87,7 @@ export default function OnboardingPage() {
         name: step1Data.name,
         team: step1Data.team,
         team_name: step1Data.team_name,
-        default_lens: topicIds.length > 0 ? 'watch' : 'all',
+        default_lens: 'all',
       })
       if (profileResult.error) throw new Error(profileResult.error)
 
