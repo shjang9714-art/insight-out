@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import InterestPickerDialog, {
-  type SelectedInterest,
-} from '@/components/interests/InterestPickerDialog'
+import InterestDrawer, {
+  type ChangedInterest,
+  type DrawerInterestItem,
+} from '@/components/interests/InterestDrawer'
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ import {
   LENS_PRESETS,
   type LensKey,
 } from '@/lib/lens'
+import { toggleInterestSelection } from '@/lib/interests/selection'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
@@ -39,15 +41,10 @@ interface EntityNameRow {
 interface TopicNameRow {
   id: string
   name: string
+  tag_type: string | null
 }
 
-interface SidebarItem {
-  key: string
-  kind: 'entity' | 'topic'
-  targetId: string
-  label: string
-  createdAt: string
-}
+type SidebarItem = DrawerInterestItem
 
 export default function InterestSidebar() {
   const ctx = useLensContext()
@@ -56,7 +53,8 @@ export default function InterestSidebar() {
   const [items, setItems] = useState<SidebarItem[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerMode, setDrawerMode] = useState<'explore' | 'manage'>('explore')
 
   useEffect(() => {
     let cancelled = false
@@ -89,7 +87,7 @@ export default function InterestSidebar() {
           ? supabase.from('entities').select('id, canonical_name').in('id', entityIds)
           : Promise.resolve({ data: [], error: null }),
         groupIds.length > 0
-          ? supabase.from('keyword_groups').select('id, name').in('id', groupIds)
+          ? supabase.from('keyword_groups').select('id, name, tag_type').in('id', groupIds)
           : Promise.resolve({ data: [], error: null }),
       ])
 
@@ -105,21 +103,33 @@ export default function InterestSidebar() {
       const entityNames = new Map(
         ((entityResult.data ?? []) as EntityNameRow[]).map(entity => [entity.id, entity.canonical_name]),
       )
-      const topicNames = new Map(
-        ((topicResult.data ?? []) as TopicNameRow[]).map(topic => [topic.id, topic.name]),
+      const topics = new Map(
+        ((topicResult.data ?? []) as TopicNameRow[]).map(topic => [topic.id, topic]),
       )
       const loadedItems = rows.flatMap((row): SidebarItem[] => {
         const targetId = row.kind === 'topic' ? row.group_id : row.entity_id
-        const label = targetId
-          ? row.kind === 'topic' ? topicNames.get(targetId) : entityNames.get(targetId)
-          : null
-        return targetId && label ? [{
-          key: `${row.kind}:${targetId}`,
-          kind: row.kind,
+        if (!targetId) return []
+        if (row.kind === 'topic') {
+          const topic = topics.get(targetId)
+          if (!topic) return []
+          return [{
+            key: `topic:${targetId}`,
+            kind: 'topic',
+            targetId,
+            label: topic.name,
+            tagType: topic.tag_type ?? undefined,
+            createdAt: row.created_at,
+          }]
+        }
+        const label = entityNames.get(targetId)
+        if (!label) return []
+        return [{
+          key: `entity:${targetId}`,
+          kind: 'entity',
           targetId,
           label,
           createdAt: row.created_at,
-        }] : []
+        }]
       })
 
       if (!cancelled) {
@@ -136,7 +146,7 @@ export default function InterestSidebar() {
     }
   }, [])
 
-  function handleInterestChanged(item: SelectedInterest, selected: boolean) {
+  function handleInterestChanged(item: ChangedInterest, selected: boolean) {
     setItems(previous => selected
       ? previous.some(existing => existing.key === item.key)
         ? previous
@@ -151,20 +161,24 @@ export default function InterestSidebar() {
   }
 
   function toggleSelect(key: string) {
-    const isSelected = selectedKeys.includes(key)
-    const next = isSelected ? selectedKeys.filter(k => k !== key) : [...selectedKeys, key]
-    setSelectedKeys(next)
-
-    if (!isSelected && activeLens === 'all') {
-      setActiveLens('boost')
-    } else if (isSelected && next.length === 0 && activeLens !== 'all') {
-      setActiveLens('all')
-    }
+    const { nextSelectedKeys, nextLens } = toggleInterestSelection(key, selectedKeys, activeLens)
+    setSelectedKeys(nextSelectedKeys)
+    if (nextLens) setActiveLens(nextLens)
   }
 
   function handleLensChange(next: LensKey) {
     setActiveLens(next)
     if (next === 'all') setSelectedKeys([])
+  }
+
+  function openExplore() {
+    setDrawerMode('explore')
+    setDrawerOpen(true)
+  }
+
+  function openManage() {
+    setDrawerMode('manage')
+    setDrawerOpen(true)
   }
 
   const hasInterests = ctx.count > 0
@@ -177,20 +191,13 @@ export default function InterestSidebar() {
   })
   const visible = sorted.slice(0, MAX_VISIBLE)
 
-  const selectedItems: SelectedInterest[] = items.map(item => ({
-    key: item.key,
-    kind: item.kind,
-    targetId: item.targetId,
-    label: item.label,
-  }))
-
   return (
     <div className="flex h-full flex-col border-r border-border pr-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">관심사</h2>
         <button
           type="button"
-          onClick={() => setDialogOpen(true)}
+          onClick={openManage}
           className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           관리
@@ -223,7 +230,7 @@ export default function InterestSidebar() {
           </p>
           <button
             type="button"
-            onClick={() => setDialogOpen(true)}
+            onClick={openManage}
             className="text-[13px] font-medium text-brand-600 hover:underline"
           >
             관심사 고르기
@@ -259,17 +266,18 @@ export default function InterestSidebar() {
 
       <button
         type="button"
-        onClick={() => setDialogOpen(true)}
+        onClick={openExplore}
         className="mt-2 flex items-center justify-between text-[13px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <span>모든 관심사 보기</span>
         <span className="tabular-nums">{ctx.count}</span>
       </button>
 
-      <InterestPickerDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        selectedItems={selectedItems}
+      <InterestDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        initialMode={drawerMode}
+        items={items}
         userId={userId}
         onInterestChanged={handleInterestChanged}
       />
