@@ -19,7 +19,7 @@ import {
   LENS_PRESETS,
   type LensKey,
 } from '@/lib/lens'
-import { toggleInterestSelection } from '@/lib/interests/selection'
+import { toggleInterestSelection, recordInterestUse } from '@/lib/interests/selection'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +31,9 @@ interface InterestRow {
   entity_id: string | null
   group_id: string | null
   created_at: string
+  pinned: boolean
+  last_used_at: string | null
+  use_count: number
 }
 
 interface EntityNameRow {
@@ -70,7 +73,7 @@ export default function InterestSidebar() {
 
       const { data, error } = await supabase
         .from('user_interests')
-        .select('kind, entity_id, group_id, created_at')
+        .select('kind, entity_id, group_id, created_at, pinned, last_used_at, use_count')
         .eq('user_id', user.id)
 
       if (error) {
@@ -119,6 +122,9 @@ export default function InterestSidebar() {
             label: topic.name,
             tagType: topic.tag_type ?? undefined,
             createdAt: row.created_at,
+            pinned: row.pinned,
+            lastUsedAt: row.last_used_at,
+            useCount: row.use_count,
           }]
         }
         const label = entityNames.get(targetId)
@@ -129,6 +135,9 @@ export default function InterestSidebar() {
           targetId,
           label,
           createdAt: row.created_at,
+          pinned: row.pinned,
+          lastUsedAt: row.last_used_at,
+          useCount: row.use_count,
         }]
       })
 
@@ -156,14 +165,22 @@ export default function InterestSidebar() {
             targetId: item.targetId,
             label: item.label,
             createdAt: new Date().toISOString(),
+            pinned: false,
+            lastUsedAt: null,
+            useCount: 0,
           }]
       : previous.filter(existing => existing.key !== item.key))
   }
 
+  function handlePinChanged(key: string, pinned: boolean) {
+    setItems(previous => previous.map(item => item.key === key ? { ...item, pinned } : item))
+  }
+
   function toggleSelect(key: string) {
-    const { nextSelectedKeys, nextLens } = toggleInterestSelection(key, selectedKeys, activeLens)
+    const { nextSelectedKeys, nextLens, turnedOn } = toggleInterestSelection(key, selectedKeys, activeLens)
     setSelectedKeys(nextSelectedKeys)
     if (nextLens) setActiveLens(nextLens)
+    if (turnedOn) recordInterestUse(key)
   }
 
   function handleLensChange(next: LensKey) {
@@ -183,10 +200,20 @@ export default function InterestSidebar() {
 
   const hasInterests = ctx.count > 0
 
+  // 설계 §3 정렬 — ① 선택 ② 고정 ③ 최근 사용(내림차순, null 은 뒤로) ④ 빈도 ⑤ 등록순
   const sorted = [...items].sort((a, b) => {
     const aSelected = selectedKeys.includes(a.key)
     const bSelected = selectedKeys.includes(b.key)
     if (aSelected !== bSelected) return aSelected ? -1 : 1
+
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+
+    const aUsed = a.lastUsedAt ? new Date(a.lastUsedAt).getTime() : -Infinity
+    const bUsed = b.lastUsedAt ? new Date(b.lastUsedAt).getTime() : -Infinity
+    if (aUsed !== bUsed) return bUsed - aUsed
+
+    if (a.useCount !== b.useCount) return b.useCount - a.useCount
+
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   })
   const visible = sorted.slice(0, MAX_VISIBLE)
@@ -280,6 +307,7 @@ export default function InterestSidebar() {
         items={items}
         userId={userId}
         onInterestChanged={handleInterestChanged}
+        onPinChanged={handlePinChanged}
       />
     </div>
   )

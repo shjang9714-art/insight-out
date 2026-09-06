@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Search } from 'lucide-react'
+import { Check, Pin, Search } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
 import {
@@ -10,10 +10,13 @@ import {
 } from '@/lib/interests/options'
 import { addInterest, removeInterest, type InterestKind } from '@/lib/interests/mutations'
 import { fetchSelectableTopics, type SelectableTopic } from '@/lib/interests/topics'
-import { toggleInterestSelection } from '@/lib/interests/selection'
+import { toggleInterestSelection, recordInterestUse } from '@/lib/interests/selection'
 import { useActiveLens, useSelectedInterests } from '@/lib/lens'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+
+const MAX_PINNED = 6
+const PIN_LIMIT_MESSAGE = '고정은 6개까지예요. 하나를 풀고 다시 시도해 주세요.'
 
 export interface DrawerInterestItem {
   key: string
@@ -22,6 +25,9 @@ export interface DrawerInterestItem {
   label: string
   tagType?: string
   createdAt: string
+  pinned: boolean
+  lastUsedAt: string | null
+  useCount: number
 }
 
 export interface ChangedInterest {
@@ -54,6 +60,7 @@ interface Props {
   items: DrawerInterestItem[]
   userId: string | null
   onInterestChanged: (item: ChangedInterest, selected: boolean) => void
+  onPinChanged: (key: string, pinned: boolean) => void
 }
 
 export default function InterestDrawer({
@@ -63,6 +70,7 @@ export default function InterestDrawer({
   items,
   userId,
   onInterestChanged,
+  onPinChanged,
 }: Props) {
   const [mode, setMode] = useState<Mode>(initialMode)
   const [search, setSearch] = useState('')
@@ -129,8 +137,9 @@ export default function InterestDrawer({
   }, [items, search])
 
   const recentItems = useMemo(() => (
-    [...filteredItems]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    filteredItems
+      .filter(item => item.lastUsedAt !== null)
+      .sort((a, b) => new Date(b.lastUsedAt!).getTime() - new Date(a.lastUsedAt!).getTime())
       .slice(0, 3)
   ), [filteredItems])
 
@@ -151,18 +160,59 @@ export default function InterestDrawer({
   }, [filteredItems])
 
   function toggleSelect(key: string) {
-    const { nextSelectedKeys, nextLens } = toggleInterestSelection(key, selectedKeys, activeLens)
+    const { nextSelectedKeys, nextLens, turnedOn } = toggleInterestSelection(key, selectedKeys, activeLens)
     setSelectedKeys(nextSelectedKeys)
     if (nextLens) setActiveLens(nextLens)
+    if (turnedOn) recordInterestUse(key)
   }
 
   // ─── 관리 모드 ────────────────────────────────────────────────────────
-  const interestKeys = new Set(items.map(item => item.key))
+  const itemsByKey = new Map(items.map(item => [item.key, item]))
+  const pinnedCount = items.filter(item => item.pinned).length
+  const [pendingPinKeys, setPendingPinKeys] = useState<string[]>([])
+
   function catalogOptionKey(kind: InterestKind, targetId: string): string {
     return `${kind}:${targetId}`
   }
   function isInInterests(key: string): boolean {
-    return interestKeys.has(key)
+    return itemsByKey.has(key)
+  }
+
+  async function togglePinned(key: string) {
+    const item = itemsByKey.get(key)
+    if (!item || pendingPinKeys.includes(key)) return
+
+    const nextPinned = !item.pinned
+    if (nextPinned && pinnedCount >= MAX_PINNED) {
+      setError(PIN_LIMIT_MESSAGE)
+      return
+    }
+
+    setPendingPinKeys(previous => [...previous, key])
+    setError(null)
+
+    const supabase = createClient()
+    const resolvedUserId = userId ?? (await supabase.auth.getUser()).data.user?.id
+    if (!resolvedUserId) {
+      setPendingPinKeys(previous => previous.filter(pendingKey => pendingKey !== key))
+      setError('로그인이 필요합니다.')
+      return
+    }
+
+    const { error: updateError } = await supabase
+      .from('user_interests')
+      .update({ pinned: nextPinned })
+      .eq('user_id', resolvedUserId)
+      .eq('kind', item.kind)
+      .eq(item.kind === 'entity' ? 'entity_id' : 'group_id', item.targetId)
+
+    if (updateError) {
+      console.warn('[InterestDrawer] 고정 토글 실패:', updateError.message)
+      setError('고정 상태를 변경하지 못했습니다.')
+    } else {
+      onPinChanged(key, nextPinned)
+    }
+    setPendingPinKeys(previous => previous.filter(pendingKey => pendingKey !== key))
   }
 
   async function toggleCatalogOption(targetId: string, label: string) {
@@ -262,7 +312,7 @@ export default function InterestDrawer({
               <>
                 {recentItems.length > 0 && (
                   <div className="space-y-2">
-                    <h3 className="text-xs font-semibold text-muted-foreground">최근 추가</h3>
+                    <h3 className="text-xs font-semibold text-muted-foreground">최근 사용</h3>
                     <div className="flex flex-wrap gap-x-3 gap-y-1.5">
                       {recentItems.map(item => (
                         <InterestCheckItem
@@ -340,23 +390,40 @@ export default function InterestDrawer({
               ) : visibleCatalogOptions.map(option => {
                 const key = catalogOptionKey(activeTab, option.id)
                 const selected = isInInterests(key)
+                const pinned = itemsByKey.get(key)?.pinned ?? false
                 return (
-                  <button
-                    key={key}
-                    type="button"
-                    disabled={pendingKeys.includes(key)}
-                    onClick={() => void toggleCatalogOption(option.id, option.label)}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:opacity-50',
-                      selected
-                        ? 'bg-brand-600/10 font-medium text-brand-600'
-                        : 'text-foreground hover:bg-accent',
+                  <div key={key} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={pendingKeys.includes(key)}
+                      onClick={() => void toggleCatalogOption(option.id, option.label)}
+                      className={cn(
+                        'flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:opacity-50',
+                        selected
+                          ? 'bg-brand-600/10 font-medium text-brand-600'
+                          : 'text-foreground hover:bg-accent',
+                      )}
+                      aria-pressed={selected}
+                    >
+                      <span className="truncate">{option.label}</span>
+                      {selected ? <Check className="h-4 w-4 shrink-0" /> : null}
+                    </button>
+                    {selected && (
+                      <button
+                        type="button"
+                        disabled={pendingPinKeys.includes(key)}
+                        onClick={() => void togglePinned(key)}
+                        aria-pressed={pinned}
+                        aria-label={pinned ? `${option.label} 고정 해제` : `${option.label} 고정`}
+                        className={cn(
+                          'shrink-0 rounded-lg p-2 transition-colors disabled:opacity-50',
+                          pinned ? 'text-brand-600' : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        <Pin className="h-4 w-4" fill={pinned ? 'currentColor' : 'none'} />
+                      </button>
                     )}
-                    aria-pressed={selected}
-                  >
-                    <span className="truncate">{option.label}</span>
-                    {selected ? <Check className="h-4 w-4 shrink-0" /> : null}
-                  </button>
+                  </div>
                 )
               })}
             </div>
