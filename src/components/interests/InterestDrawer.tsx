@@ -88,6 +88,7 @@ export default function InterestDrawer({
       setMode(initialMode)
       setSearch('')
       setError(null)
+      setCatalogLoaded(false)
     }
   }
 
